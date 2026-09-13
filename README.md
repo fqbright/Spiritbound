@@ -1,52 +1,152 @@
 # Spiritbound
 
-## Primary Client: Godot 4 (iOS & Mobile)
+A portrait mobile card-battler built in Godot 4. You play a spirit tamer working
+up a 50-stage campaign across ten chapters, building a 25-card deck and fitting
+it with equipment, runes and relics along the way.
 
-The complete mobile game client is located in [`Godot/`](file:///Users/xujiacong/Documents/Projects/Spiritbound/Godot/). It features a 50-stage campaign, 12 equipment items, 10 runes, rich audio, custom art, full bilingual support (English + 简体中文), and an exported Xcode project ready to run on physical iPhones.
+Fully bilingual — English and 简体中文 — switchable at any time from the map.
 
-- Quick test runner: `/opt/homebrew/bin/godot --headless --path Godot/ --script res://tests/test_runner.gd`
-- Open in Xcode: `open Godot/build/ios/Spiritbound.xcodeproj`
-- Full setup instructions: [`Godot/README.md`](file:///Users/xujiacong/Documents/Projects/Spiritbound/Godot/README.md)
+> Status: playable end to end and running on device, but still in active
+> development. Balance, art and progression are all subject to change.
 
-## Legacy Prototypes
+## How it plays
 
-### Expo Go version
-The React Native prototype is in `Expo/`.
+Each turn you get **3 energy and 2 plays**. There is no End Turn button — the
+turn hands itself over once your plays are spent, or when nothing left in hand
+is affordable. Enemies telegraph their next move a turn ahead (attack, defend,
+empower, curse, or a combination) and then do exactly what they showed, so you
+can always plan against a known board.
 
-### Swift/SwiftUI Prototype
-Milestone 2: a native portrait training battle, built on the tested Swift combat foundation in `Sources/` and `App/`.
+Drag a card onto an enemy and the predicted damage appears above it, including
+Focus, equipment, relic and rune bonuses, plus how much their shield will absorb
+and whether the hit is lethal.
 
-## Open and run on iPhone simulator
+## Running it
 
-1. Open `App/Spiritbound.xcodeproj` in full Xcode with an iOS SDK and Swift 6 support.
-2. Select the shared **Spiritbound** scheme and an iPhone simulator running iOS 17 or newer.
-3. Run. No third-party packages, services or credentials are required.
-4. For a physical device, select your development team and replace the development bundle identifier in Signing & Capabilities.
+Requires **Godot 4.7.2** (`brew install --cask godot`).
 
-Tap cards to play them against the sentinel, then end the turn. Inspect any pile, change language with the globe menu, or restart. A new battle shuffles the ten-card starting deck. Restarting an active battle asks before replacing it.
+```bash
+godot --path Godot/
+```
 
-## Delivered
+The design viewport is 390 × 844 portrait.
 
-- UI-independent combat module with seeded randomness, unique card instances, four piles, energy, shield, Burn, Focus and terminal states.
-- SwiftUI battle screen with visible enemy intent, health and status explanations, adaptive scrollable card grid, pile sheets and outcome panel.
-- English and Simplified Chinese UI, cards, effects and status explanations; remembered language preference with system-language default.
-- VoiceOver labels for cards, controls and resources; scalable text and scrollable content. Device accessibility testing remains pending.
-- JSON balance data, ten regression checks, and a shared iPhone Xcode app scheme.
+### On an iPhone
 
-The training enemy and spirit use system-symbol placeholders. No final creature artwork, audio, save/resume, run map or progression is included yet. Battles restart on app relaunch; only the language preference is saved.
+Requires Xcode 16+ and an Apple developer account (a free one works).
 
-## Package checks
+```bash
+./deploy_ios.sh
+```
 
-From this directory use `swift build` and `swift test`. The package supports iOS 17+ and macOS 14+; macOS support allows compilation and headless rules checks without an iOS simulator.
+This exports the project, configures signing, then builds, installs and launches
+on a connected device. See [Godot/README.md](Godot/README.md) for the manual
+Xcode route and signing details.
 
-In this delivery environment, both core and SwiftUI modules compile with Swift 6.3.1. Ten combat/presentation checks passed through a temporary assertion harness using the same XCTest method bodies. The app entry point typechecks against the macOS-built modules, and the project/plist files pass syntax validation. English and Chinese screens were visually inspected using a 390-point-wide native macOS host; this is not iOS runtime verification.
+**The iOS Simulator does not work** and this is not a project bug: the official
+Godot 4.7.2 iOS export templates ship a simulator library that contains only an
+x86_64 slice, despite being packaged under an `ios-arm64_x86_64-simulator`
+folder. On Apple Silicon there is no arm64 slice to link against, and recent iOS
+simulator runtimes no longer execute x86_64 apps, so the usual workaround is
+dead too. Test on a physical device, or use the headless suites below.
 
-Standard XCTest, Xcode project build, iOS simulator/device behavior and touch/VoiceOver interaction still require full Xcode. This machine currently provides only Command Line Tools. No iOS binary is included.
+## Tests
 
-## Provisional combat rules
+```bash
+godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules engine
+godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + one full combat turn
+```
 
-Draw five cards and refresh to three energy per turn. Unplayed cards discard at end of turn. Shield clears at its owner's next turn start. The sentinel attacks for seven damage. Burn deals shield-absorbed damage at its owner's turn end, then loses one stack. Focus adds three damage to the first damage effect of the next attack and is consumed; Focus stacks add together. Numeric balance values live in JSON.
+The UI smoke test exists because the simulator is unavailable. It walks every
+screen, plays a full combat turn, and asserts things that are hard to eyeball —
+for example that the damage preview equals the damage actually dealt, and that
+enemies execute exactly the intent they telegraphed. It has already caught
+several bugs that unit tests could not, including a type error that silently
+killed a coroutine mid-turn and a parse error that left the main script
+unattached.
 
-## Next milestone
+## Layout
 
-Validate the battle on iOS, then expand the combat system with a modifier pipeline, duration policies, card upgrades and additional Crimson Fox Burn interactions before introducing run progression. See `Docs/ROADMAP.md`, `Docs/ARCHITECTURE.md` and `Docs/MILESTONE-2.md`.
+| Path | What it is |
+| --- | --- |
+| `Godot/scripts/combat.gd` | Rules engine — cards, intents, relics, statuses. No UI. |
+| `Godot/scripts/game.gd` | Every screen: map, battle, deck, equipment, shop, camp. |
+| `Godot/scripts/content.gd` | Card/equipment/rune/relic definitions and all UI strings. |
+| `Godot/scripts/save_store.gd` | Local profile, versioned and ready for cloud sync. |
+| `Godot/data/core.json` | Card definitions and balance numbers. |
+| `Docs/` | Architecture and roadmap notes from the Swift era. |
+
+Combat logic is deliberately kept free of UI code, which is what makes the
+headless test suites possible.
+
+### Legacy prototypes
+
+`Sources/`, `App/` and `Tests/` hold the original Swift/SwiftUI prototype
+(`swift build && swift test`), and `Expo/` holds a React Native one. Both predate
+the Godot port and are kept for reference only — neither is maintained.
+
+## Why this is open source
+
+Spiritbound is public because the interesting part of it is not the game, it is
+everything around building one this way.
+
+Most of this codebase was written by AI coding agents working against a running
+game, and the failures were more instructive than the successes. Several bugs in
+here were invisible to unit tests and only showed up by driving the real UI: a
+health bar that never moved because a container silently resized its child every
+frame, a turn that never ended because a wrong type annotation aborted a
+coroutine without crashing. The project keeps its scaffolding — the headless
+smoke test, the test that compares predicted damage against dealt damage — in
+the repository rather than throwing it away, because that scaffolding is the
+part worth copying.
+
+It is also a reasonably complete small game rather than a toy: a rules engine
+with no UI dependencies, a bilingual interface, a real iOS build and deploy
+pipeline, and a save format built for sync before any backend exists. If you are
+building a mobile card game, or working out how to verify software an agent
+wrote for you, there should be something here you can take.
+
+No contributor licence agreement, no roadmap you have to agree with. Fork it and
+do what you want with the code.
+
+## Contributing
+
+Issues and pull requests are welcome — bug reports especially, since the game
+gets tested on exactly one device.
+
+Before opening a PR:
+
+1. **Run both suites.** `test_runner.gd` for rules changes, `ui_smoke.gd` for
+   anything that touches a screen. Both must pass.
+2. **Add a check for what you changed.** If you fix a bug, add the assertion
+   that would have caught it. If you touch combat, prefer `test_runner.gd`; if
+   you touch a screen, `ui_smoke.gd`.
+3. **Keep combat free of UI.** `combat.gd` must never reference a node, scene or
+   `Control`. That boundary is what keeps the game testable headlessly.
+4. **Say how you verified it.** "Tests pass" is fine for rules work. For UI work,
+   say whether you ran it on a device, in the editor, or only headlessly —
+   headless-only is acceptable, just be explicit about it.
+
+Both languages need to stay in sync: user-facing strings live in `UI_TEXT` in
+`content.gd` and every entry needs `zh-Hans` and `en`. Never hardcode a string
+in `game.gd`.
+
+Some things to know before you dig in:
+
+- `game.gd` builds its UI in code rather than with scenes. That is unusual for
+  Godot and it makes the file long, but it keeps every screen in one searchable
+  place.
+- GDScript warnings are errors in this project. `var x := some_dictionary.get(k)`
+  will fail the build, because `Dictionary.get()` returns `Variant` — annotate
+  the type explicitly.
+- Containers resize their children. If you need a node to keep a size you set
+  yourself, parent it to a `Control` or `Panel`, not a `PanelContainer`.
+- Bind looping tweens to the node they animate (`sprite.create_tween()`), not to
+  the game root, or they outlive the screen and spin as zero-duration loops.
+
+## Licence
+
+Source code is MIT. **Artwork and audio are not** — they are All Rights Reserved
+and excluded from the MIT grant. You can build and play the game, and reuse the
+code freely; you cannot ship the assets. See [LICENSE](LICENSE) for the exact
+boundary.
