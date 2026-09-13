@@ -70,8 +70,10 @@ fi
 
 # Step 3: Find connected iOS device
 echo "📱 [3/4] Locating connected iOS device..."
-DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null | grep -E "connected|available" | grep -v "Hostname" | grep -o -E "[0-9A-F]{8}-[0-9A-F]{16}|[0-9A-F]{24}" | head -n 1)
-DEVICE_NAME=$(xcrun devicectl list devices 2>/dev/null | grep -E "connected|available" | grep -v "Hostname" | head -n 1 | awk '{print $1" "$2}')
+# Match the state column as a whole word: "unavailable" also contains "available".
+DEVICE_LINE=$(xcrun devicectl list devices 2>/dev/null | grep -E "[[:space:]]connected[[:space:]]" | head -n 1)
+DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" | head -n 1)
+DEVICE_NAME=$(echo "$DEVICE_LINE" | awk '{print $1" "$2}')
 
 if [ -z "$DEVICE_ID" ]; then
     echo "⚠️  No physical device connected via devicectl. Building for generic iOS..."
