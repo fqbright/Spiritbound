@@ -1,89 +1,104 @@
 extends Control
 
 class TouchScrollContainer extends ScrollContainer:
+	# Scroll position is kept as a float and only rounded on the way out; tracking it as an
+	# int loses every sub-pixel step and is what made slow drags feel like they stuttered.
 	var _touch_start := Vector2.ZERO
 	var _last_pos := Vector2.ZERO
+	var _last_time := 0.0
 	var _is_touching := false
 	var _is_dragging := false
 	var _velocity := Vector2.ZERO
+	var _pos := Vector2.ZERO
 	var drag_threshold := 8.0
 	var allow_horizontal := false
 	var allow_vertical := true
 
+	# Fraction of the fling speed surviving one second. Lower stops sooner.
+	const FRICTION := 0.06
+	const MIN_SPEED := 8.0
+	const MAX_SPEED := 6000.0
+
 	func _ready() -> void:
 		set_process(true)
 		mouse_filter = Control.MOUSE_FILTER_PASS
+		_pos = Vector2(float(scroll_horizontal), float(scroll_vertical))
+
+	func _limits() -> Vector2:
+		var v_bar := get_v_scroll_bar()
+		var h_bar := get_h_scroll_bar()
+		var max_y: float = maxf(0.0, v_bar.max_value - v_bar.page) if v_bar else 0.0
+		var max_x: float = maxf(0.0, h_bar.max_value - h_bar.page) if h_bar else 0.0
+		return Vector2(max_x, max_y)
+
+	func _apply(offset: Vector2) -> void:
+		var limit := _limits()
+		if allow_horizontal:
+			_pos.x = clampf(_pos.x + offset.x, 0.0, limit.x)
+			scroll_horizontal = int(round(_pos.x))
+		if allow_vertical:
+			_pos.y = clampf(_pos.y + offset.y, 0.0, limit.y)
+			scroll_vertical = int(round(_pos.y))
+
+	func _press(pos: Vector2) -> void:
+		if not get_global_rect().has_point(pos): return
+		_is_touching = true
+		_is_dragging = false
+		_touch_start = pos
+		_last_pos = pos
+		_last_time = Time.get_ticks_msec() / 1000.0
+		_velocity = Vector2.ZERO
+		_pos = Vector2(float(scroll_horizontal), float(scroll_vertical))
+
+	func _drag_to(pos: Vector2) -> void:
+		if not _is_touching: return
+		var now := Time.get_ticks_msec() / 1000.0
+		var dt: float = maxf(now - _last_time, 0.004)
+		var delta: Vector2 = pos - _last_pos
+		_last_pos = pos
+		_last_time = now
+		if not _is_dragging and (pos - _touch_start).length() > drag_threshold:
+			_is_dragging = true
+		if not _is_dragging: return
+		get_viewport().set_input_as_handled()
+		_apply(-delta)
+		# Blend towards the instantaneous speed so one jittery sample cannot define the fling.
+		var instant: Vector2 = (-delta / dt).limit_length(MAX_SPEED)
+		_velocity = _velocity.lerp(instant, 0.4)
+
+	func _release() -> void:
+		if not _is_touching: return
+		_is_touching = false
+		if _is_dragging:
+			get_viewport().set_input_as_handled()
+			_is_dragging = false
+			# A finger resting before release should stop the list, not fling it.
+			if (Time.get_ticks_msec() / 1000.0) - _last_time > 0.09: _velocity = Vector2.ZERO
+		else:
+			_velocity = Vector2.ZERO
 
 	func _input(event: InputEvent) -> void:
 		if not is_visible_in_tree(): return
-		var global_rect := get_global_rect()
-
 		if event is InputEventScreenTouch:
-			if event.pressed:
-				if global_rect.has_point(event.position):
-					_is_touching = true
-					_is_dragging = false
-					_touch_start = event.position
-					_last_pos = event.position
-					_velocity = Vector2.ZERO
-			else:
-				if _is_touching:
-					_is_touching = false
-					if _is_dragging:
-						get_viewport().set_input_as_handled()
-						_is_dragging = false
-
+			if event.pressed: _press(event.position)
+			else: _release()
 		elif event is InputEventScreenDrag:
-			if _is_touching:
-				var delta: Vector2 = event.position - _last_pos
-				_last_pos = event.position
-				if not _is_dragging and (event.position - _touch_start).length() > drag_threshold:
-					_is_dragging = true
-				if _is_dragging:
-					get_viewport().set_input_as_handled()
-					if allow_vertical:
-						scroll_vertical -= int(delta.y)
-					if allow_horizontal:
-						scroll_horizontal -= int(delta.x)
-					_velocity = delta * 40.0
-
-		elif event is InputEventMouseButton:
-			if event.button_index == MOUSE_BUTTON_LEFT:
-				if event.pressed:
-					if global_rect.has_point(event.position):
-						_is_touching = true
-						_is_dragging = false
-						_touch_start = event.position
-						_last_pos = event.position
-						_velocity = Vector2.ZERO
-				else:
-					if _is_touching:
-						_is_touching = false
-						if _is_dragging:
-							get_viewport().set_input_as_handled()
-							_is_dragging = false
-
+			_drag_to(event.position)
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed: _press(event.position)
+			else: _release()
 		elif event is InputEventMouseMotion:
-			if _is_touching:
-				var delta: Vector2 = event.position - _last_pos
-				_last_pos = event.position
-				if not _is_dragging and (event.position - _touch_start).length() > drag_threshold:
-					_is_dragging = true
-				if _is_dragging:
-					get_viewport().set_input_as_handled()
-					if allow_vertical:
-						scroll_vertical -= int(delta.y)
-					if allow_horizontal:
-						scroll_horizontal -= int(delta.x)
-					_velocity = delta * 40.0
+			_drag_to(event.position)
 
 	func _process(delta: float) -> void:
-		if not _is_touching and _velocity.length_squared() > 1.0:
-			if allow_vertical:
-				scroll_vertical -= int(_velocity.y * delta)
-			if allow_horizontal:
-				scroll_horizontal -= int(_velocity.x * delta)
-			_velocity = _velocity.lerp(Vector2.ZERO, 6.0 * delta)
+		if _is_touching or _velocity.length() < MIN_SPEED: return
+		_apply(_velocity * delta)
+		var limit := _limits()
+		# Kill the glide at the ends instead of grinding against them.
+		if allow_vertical and (_pos.y <= 0.0 or _pos.y >= limit.y): _velocity.y = 0.0
+		if allow_horizontal and (_pos.x <= 0.0 or _pos.x >= limit.x): _velocity.x = 0.0
+		_velocity *= pow(FRICTION, delta)
+		if _velocity.length() < MIN_SPEED: _velocity = Vector2.ZERO
 
 
 class HandCard extends Control:
@@ -226,6 +241,9 @@ var muted := false
 var lang := "zh-Hans"
 var resolving := false
 var loadout_tab := "equipment"
+var pending_rewards: Dictionary = {}
+var selected_card := -1
+var advancing_to_reward := false
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
@@ -246,10 +264,12 @@ const TEXT = Color("f7f3e8")
 const MUTED = Color("bdd0d0")
 const BATTLE_BACKGROUNDS = ["battlefield-v1.jpg","lantern-marsh-v1.jpg","rune-ravine-v1.jpg","ember-cliff-v1.jpg","mountain-forge-v1.jpg"]
 
-const MAP_WIDTH = 366.0
+# The map is full-bleed: it spans the whole 390pt screen rather than sitting inside the
+# page margins every other screen uses.
+const MAP_WIDTH = 390.0
 const BAND_HEIGHT = 520.0
 # Serpentine trail inside one chapter band, walked top to bottom as the stage index grows.
-const BAND_NODES = [Vector2(76,118), Vector2(214,196), Vector2(112,286), Vector2(252,368), Vector2(166,456)]
+const BAND_NODES = [Vector2(84,118), Vector2(228,196), Vector2(120,286), Vector2(268,368), Vector2(178,456)]
 const CHAPTER_BACKGROUNDS = [
 	"spirit-world-map-v1.jpg","lantern-marsh-v1.jpg","rune-ravine-v1.jpg","ember-cliff-v1.jpg","mountain-forge-v1.jpg",
 	"battlefield-v1.jpg","lantern-marsh-v1.jpg","spirit-world-map-v1.jpg","ember-cliff-v1.jpg","mountain-forge-v1.jpg",
@@ -474,6 +494,7 @@ func _clear() -> void:
 
 # iOS-style interactive back: a drag that starts on the left screen edge pops the page.
 func _input(event: InputEvent) -> void:
+	if _handle_targeting(event): return
 	if not _back_action.is_valid(): return
 	var pressed := false
 	var released := false
@@ -625,7 +646,47 @@ func show_map() -> void:
 	_clear(); _play_music(false)
 	var backdrop := ColorRect.new(); backdrop.color = BG; backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(backdrop); root.move_child(backdrop,0)
-	var page := _create_page(4)
+
+	# The scroller fills the screen edge to edge; the bar and dock float over it, so the
+	# artwork runs under the status bar and home indicator instead of being letterboxed.
+	map_scroll = TouchScrollContainer.new()
+	map_scroll.allow_vertical = true
+	map_scroll.allow_horizontal = false
+	map_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	map_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	map_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	root.add_child(map_scroll)
+
+	var overlay_page := Control.new()
+	overlay_page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay_page.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Stage pins and the traveller carry their own z_index (10 and 25), which outranks tree
+	# order, so the floating bars need to sit above that — but below the toast layer at 500.
+	overlay_page.z_index = 100
+	root.add_child(overlay_page)
+
+	var top_shade := _fade_strip(float(_safe_top()) + 74.0, false)
+	top_shade.size = Vector2(MAP_WIDTH, float(_safe_top()) + 74.0)
+	top_shade.modulate.a = 0.9
+	overlay_page.add_child(top_shade)
+
+	# Anchored by hand rather than with a preset: a preset resolves its offsets from the
+	# minimum size at call time, which is zero before the children exist, and the parent is
+	# a plain Control so nothing ever recomputes it — the bar collapses to an invisible strip.
+	var header_holder := MarginContainer.new()
+	header_holder.anchor_left = 0.0
+	header_holder.anchor_right = 1.0
+	header_holder.anchor_top = 0.0
+	header_holder.anchor_bottom = 0.0
+	header_holder.offset_left = 0.0
+	header_holder.offset_right = 0.0
+	header_holder.offset_top = 0.0
+	header_holder.offset_bottom = float(_safe_top()) + 50.0
+	header_holder.add_theme_constant_override("margin_top", _safe_top())
+	header_holder.add_theme_constant_override("margin_left", 12)
+	header_holder.add_theme_constant_override("margin_right", 12)
+	header_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_page.add_child(header_holder)
 
 	var header := _header("SPIRITBOUND", t("ui.choose_dest"))
 	var btn_lang := _button(t("ui.lang_toggle"), _toggle_language, Color("17363e"), Vector2(50,34))
@@ -637,13 +698,7 @@ func show_map() -> void:
 	var btn_music := _button("♫" if not muted else "♩", _toggle_music, Color("17363e"), Vector2(34,34))
 	btn_music.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_music)
-	page.add_child(header)
-
-	map_scroll = TouchScrollContainer.new()
-	map_scroll.allow_vertical = true
-	map_scroll.allow_horizontal = false
-	map_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(map_scroll)
+	header_holder.add_child(header)
 
 	map_canvas = Control.new()
 	map_canvas.custom_minimum_size = Vector2(MAP_WIDTH, BAND_HEIGHT * 10.0)
@@ -664,16 +719,31 @@ func show_map() -> void:
 	t_idle.tween_property(traveler, "position:y", traveler.position.y - 4.0, 0.75).set_trans(Tween.TRANS_SINE)
 	t_idle.tween_property(traveler, "position:y", traveler.position.y + 2.0, 0.85).set_trans(Tween.TRANS_SINE)
 
+	var dock_holder := MarginContainer.new()
+	dock_holder.anchor_left = 0.0
+	dock_holder.anchor_right = 1.0
+	dock_holder.anchor_top = 1.0
+	dock_holder.anchor_bottom = 1.0
+	dock_holder.offset_left = 0.0
+	dock_holder.offset_right = 0.0
+	dock_holder.offset_top = -(float(_safe_bottom()) + 60.0)
+	dock_holder.offset_bottom = 0.0
+	dock_holder.add_theme_constant_override("margin_bottom", _safe_bottom())
+	dock_holder.add_theme_constant_override("margin_left", 12)
+	dock_holder.add_theme_constant_override("margin_right", 12)
+	dock_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_page.add_child(dock_holder)
+
 	var dock_bg := PanelContainer.new()
-	dock_bg.add_theme_stylebox_override("panel", _panel(Color("0c1a1f"), 26, Color("1f404d")))
-	page.add_child(dock_bg)
-	
+	dock_bg.add_theme_stylebox_override("panel", _panel(Color(0.047, 0.102, 0.122, 0.94), 26, Color("1f404d")))
+	dock_holder.add_child(dock_bg)
+
 	var dock := HBoxContainer.new()
 	dock.custom_minimum_size.y = 52
 	dock.add_theme_constant_override("separation", 0)
 	dock.alignment = BoxContainer.ALIGNMENT_CENTER
 	dock_bg.add_child(dock)
-	
+
 	var items = [
 		["▤\n" + t("ui.deck_btn").replace("▤\n", ""), show_deck],
 		["⚔\n" + t("ui.equip_btn").replace("⚔\n", ""), show_loadout],
@@ -700,7 +770,7 @@ func show_map() -> void:
 		btn.pressed.connect(item[1])
 		dock.add_child(btn)
 	await get_tree().process_frame
-	if map_scroll: map_scroll.scroll_vertical = int(maxi(0, int(_map_point(profile.position).y - 280)))
+	if map_scroll: map_scroll.scroll_vertical = int(maxi(0, int(_map_point(profile.position).y - 360)))
 
 func _map_point(index: int) -> Vector2:
 	var node: Vector2 = BAND_NODES[index % 5]
@@ -866,7 +936,7 @@ func _travel_to(index: int) -> void:
 	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.tween_property(traveler, "position", _map_point(index) - Vector2(0, 26), 0.65)
 	for value in range(int(profile.position), index + 1):
-		tween.parallel().tween_method(func(y): map_scroll.scroll_vertical = int(y), float(map_scroll.scroll_vertical), float(maxi(0, int(_map_point(index).y - 280))), 0.65)
+		tween.parallel().tween_method(func(y): map_scroll.scroll_vertical = int(y), float(map_scroll.scroll_vertical), float(maxi(0, int(_map_point(index).y - 360))), 0.65)
 	await tween.finished; profile.position = index; SpiritSave.write(profile)
 	var kind := content.node_kind(index)
 	if kind in ["event","merchant","rest"] and index == int(profile.unlocked): show_event(index,kind)
@@ -895,6 +965,8 @@ func begin_battle(index: int) -> void:
 	var equipped: Array = profile.equipment_slots.values()
 	combat.create(seed,content.encounters[index],profile.deck,int(profile.health),profile.upgrades,equipped,profile.card_runes,active_modifier,profile.relics)
 	combat.event.connect(_combat_event)
+	advancing_to_reward = false
+	selected_card = -1
 	show_battle()
 	_maybe_end_turn()
 
@@ -943,35 +1015,43 @@ func show_battle() -> void:
 		enemy_area.add_child(box)
 		enemy_boxes.append(box)
 
-	page.add_child(_build_player_stage())
-
 	var push_down := Control.new()
 	push_down.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(push_down)
 
+	page.add_child(_build_player_stage())
+
 	if combat.state.phase == "player":
 		_add_hand(page)
 	else:
-		var outcome := _label(t("ui.battle_won") if combat.state.phase == "won" else t("ui.battle_lost"), 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-		outcome.size_flags_vertical = Control.SIZE_EXPAND_FILL; outcome.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; page.add_child(outcome)
-		page.add_child(_button(t("ui.open_chest") if combat.state.phase == "won" else t("ui.return_map"), show_reward if combat.state.phase == "won" else _leave_battle, EMBER, Vector2(0,50)))
+		var won: bool = combat.state.phase == "won"
+		var outcome := _label(t("ui.battle_won") if won else t("ui.battle_lost"), 26, TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		outcome.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		outcome.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		page.add_child(outcome)
+		if won:
+			# Straight through to the chest. This used to be a button labelled "open chest"
+			# that led to a screen with another button labelled "open chest".
+			_advance_to_reward()
+		else:
+			page.add_child(_button(t("ui.return_map"), _leave_battle, EMBER, Vector2(0, 50)))
 
 func _intent_style(intent: Dictionary) -> Dictionary:
 	var kind := str(intent.get("kind", "attack"))
 	var amount := int(intent.get("amount", 0))
 	match kind:
 		"critical":
-			return {"text": tf("ui.intent_critical", amount), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
+			return {"text": tf("ui.intent_critical", amount), "caption": t("ui.intent_name_critical"), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
 		"defend":
-			return {"text": tf("ui.intent_defend", amount), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
+			return {"text": tf("ui.intent_defend", amount), "caption": t("ui.intent_name_defend"), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
 		"empower":
-			return {"text": tf("ui.intent_empower", amount), "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
+			return {"text": tf("ui.intent_empower", amount), "caption": t("ui.intent_name_empower"), "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
 		"curse":
-			return {"text": tf("ui.intent_curse", amount), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
+			return {"text": tf("ui.intent_curse", amount), "caption": t("ui.intent_name_curse"), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
 		"attack_defend":
-			return {"text": tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
+			return {"text": tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "caption": t("ui.intent_name_attack_defend"), "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
 		_:
-			return {"text": tf("ui.intent_attack", amount), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
+			return {"text": tf("ui.intent_attack", amount), "caption": t("ui.intent_name_attack"), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
 
 func _enemy_view(index: int) -> Control:
 	var enemy: Dictionary = combat.state.enemies[index]
@@ -986,15 +1066,23 @@ func _enemy_view(index: int) -> Control:
 
 	var center_x := u_width / 2.0
 
-	var glow := PanelContainer.new()
+	# A ring around the whole unit reads as "selectable" far better than scaling the sprite.
+	var selectable: bool = selected_card >= 0 and enemy.health > 0
+	var glow := Panel.new()
 	glow.name = "TargetGlow"
-	glow.custom_minimum_size = Vector2(74.0, 20.0)
+	glow.custom_minimum_size = Vector2(u_width - 4.0, 150.0)
 	glow.size = glow.custom_minimum_size
-	glow.position = Vector2(center_x - 37.0, 114.0)
+	glow.position = Vector2(2.0, 16.0)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	glow.add_theme_stylebox_override("panel", _panel(Color(1.0, 0.86, 0.42, 0.25), 10, Color(1.0, 0.86, 0.42, 0.5)))
-	glow.modulate.a = 0.2
+	var ring := _panel(Color(1.0, 0.86, 0.42, 0.10), 14, Color(1.0, 0.86, 0.42, 0.95))
+	ring.border_width_left = 2; ring.border_width_right = 2; ring.border_width_top = 2; ring.border_width_bottom = 2
+	glow.add_theme_stylebox_override("panel", ring)
+	glow.modulate.a = 0.85 if selectable else 0.0
 	unit.add_child(glow)
+	if selectable:
+		var pulse := glow.create_tween().set_loops()
+		pulse.tween_property(glow, "modulate:a", 0.35, 0.55).set_trans(Tween.TRANS_SINE)
+		pulse.tween_property(glow, "modulate:a", 0.9, 0.55).set_trans(Tween.TRANS_SINE)
 
 	var art_key := _art_key_for_enemy(enemy)
 	var sprite := Sprite2D.new()
@@ -1012,20 +1100,34 @@ func _enemy_view(index: int) -> Control:
 	idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
 	idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
 
+	# Intent banner: the icon and number alone read as an unexplained box, so it names the
+	# action too and sits on a card the same colour as the effect it is promising.
 	var intent: Dictionary = enemy.get("intent", {})
 	var intent_style := _intent_style(intent)
+	var intent_w: float = minf(u_width, 104.0)
 	var intent_bg := Panel.new()
-	intent_bg.custom_minimum_size = Vector2(66.0, 24.0)
+	intent_bg.custom_minimum_size = Vector2(intent_w, 38.0)
 	intent_bg.size = intent_bg.custom_minimum_size
-	intent_bg.position = Vector2(center_x - 33.0, 0.0)
+	intent_bg.position = Vector2(center_x - intent_w / 2.0, 0.0)
 	intent_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	intent_bg.add_theme_stylebox_override("panel", _panel(intent_style.bg, 12, intent_style.border))
-	var intent_lbl := _label(intent_style.text, 11, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER)
-	intent_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	intent_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	intent_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	intent_bg.add_child(intent_lbl)
+	var intent_box := _panel(intent_style.bg, 11, intent_style.border)
+	intent_box.border_width_left = 2; intent_box.border_width_right = 2
+	intent_box.border_width_top = 2; intent_box.border_width_bottom = 2
+	intent_bg.add_theme_stylebox_override("panel", intent_box)
 	unit.add_child(intent_bg)
+
+	var intent_stack := VBoxContainer.new()
+	intent_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	intent_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	intent_stack.add_theme_constant_override("separation", -2)
+	intent_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	intent_bg.add_child(intent_stack)
+	intent_stack.add_child(_label(intent_style.text, 15, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
+	intent_stack.add_child(_label(intent_style.caption, 8, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var telegraph := intent_bg.create_tween().set_loops()
+	telegraph.tween_property(intent_bg, "modulate", Color(1.18, 1.18, 1.18), 0.9).set_trans(Tween.TRANS_SINE)
+	telegraph.tween_property(intent_bg, "modulate", Color.WHITE, 0.9).set_trans(Tween.TRANS_SINE)
 
 	var element: String = enemy.get("element", "")
 	if not element.is_empty():
@@ -1114,6 +1216,10 @@ func _pile_chip(count: int, caption: String, number_color: Color) -> Panel:
 	return chip
 
 func _add_hand(page: VBoxContainer) -> void:
+	if selected_card >= 0:
+		var hint := _label("%s · %s" % [t("ui.target_pick"), t("ui.target_cancel")], 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+		page.add_child(hint)
+
 	# Resource row sits on its own line; previously these floated over the fanned cards.
 	var status := HBoxContainer.new()
 	status.custom_minimum_size.y = 48
@@ -1123,17 +1229,12 @@ func _add_hand(page: VBoxContainer) -> void:
 
 	status.add_child(_pile_chip(combat.state.draw.size(), t("ui.draw_pile"), Color("f3e8cf")))
 
-	var orb := Panel.new()
-	orb.custom_minimum_size = Vector2(48.0, 48.0)
-	orb.size = orb.custom_minimum_size
-	orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	orb.add_theme_stylebox_override("panel", _panel(Color("003140"), 24, Color("4dc5e8")))
-	var orb_lbl := _label("⚡%d" % combat.state.energy, 17, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-	orb_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	orb_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	orb_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	orb.add_child(orb_lbl)
-	status.add_child(orb)
+	# Energy reads as compact text; the big countdown disc it replaces was mistaken for a timer.
+	var energy_lbl := _label("⚡ %d" % combat.state.energy, 14, Color("9fe4ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	energy_lbl.custom_minimum_size = Vector2(46, 0)
+	energy_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	energy_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status.add_child(energy_lbl)
 
 	# Remaining plays as pips: the turn ends by itself once they run out, so there is no End Turn button.
 	var plays := VBoxContainer.new()
@@ -1169,8 +1270,53 @@ func _add_hand(page: VBoxContainer) -> void:
 		var card_tile := _card_view(combat.state.hand[index], index, count)
 		hand_zone.add_child(card_tile)
 
+func _card_is_attack(card: Dictionary) -> bool:
+	for effect in card.effects:
+		if effect.operation == "damage" and effect.target == "opponent": return true
+	return false
+
+func _living_enemies() -> Array:
+	var living: Array = []
+	if combat == null: return living
+	for i in combat.state.enemies.size():
+		if combat.state.enemies[i].health > 0: living.append(i)
+	return living
+
+# Tapping an attack card with more than one enemy alive arms a target choice rather than
+# guessing; everything else still plays on the first tap.
 func _tap_card(hand_index: int) -> void:
+	if combat == null or combat.state.phase != "player" or resolving: return
+	if hand_index < 0 or hand_index >= combat.state.hand.size(): return
+	if selected_card == hand_index:
+		selected_card = -1
+		show_battle()
+		return
+	var card := content.card(combat.state.hand[hand_index].card_id)
+	if _card_is_attack(card) and _living_enemies().size() > 1:
+		selected_card = hand_index
+		show_battle()
+		return
+	selected_card = -1
 	_attempt_play_card(hand_index, -1)
+
+func _handle_targeting(event: InputEvent) -> bool:
+	if selected_card < 0 or combat == null or combat.state.phase != "player" or resolving: return false
+	var pos := Vector2.ZERO
+	if event is InputEventScreenTouch and not event.pressed: pos = event.position
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed: pos = event.position
+	else: return false
+
+	for box in enemy_boxes:
+		if box == null or not is_instance_valid(box): continue
+		if not box.get_global_rect().has_point(pos): continue
+		var enemy_index := int(box.get_meta("enemy_index"))
+		if combat.state.enemies[enemy_index].health <= 0: continue
+		var card_index := selected_card
+		selected_card = -1
+		get_viewport().set_input_as_handled()
+		_attempt_play_card(card_index, enemy_index)
+		return true
+	return false
 
 func _has_playable_card() -> bool:
 	if combat == null: return false
@@ -1221,6 +1367,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	
 	var art_clip := PanelContainer.new()
 	art_clip.clip_contents = true
+	art_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	art_clip.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, 6))
 	art_clip.add_child(art)
@@ -1229,6 +1376,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	
 	var cost_badge := PanelContainer.new()
 	cost_badge.custom_minimum_size = Vector2(26, 26)
+	cost_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cost_badge.position = Vector2(-8, -8)
 	cost_badge.add_theme_stylebox_override("panel", _panel(accent, 13, Color("2b1a10")))
 	var cost_lbl := _label(str(card.cost), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1265,6 +1413,13 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	tile.position = tile.home_pos
 	tile.rotation = tile.home_rot
 	tile.z_index = index
+
+	# The armed card lifts clear of the fan so it is obvious which one is waiting on a target.
+	if index == selected_card:
+		frame.add_theme_stylebox_override("panel", _panel(Color("1d3a35"), 12, GOLD))
+		tile.position = tile.home_pos - Vector2(0, 30)
+		tile.rotation = 0.0
+		tile.z_index = 80
 
 	return tile
 
@@ -1352,11 +1507,14 @@ func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 		if box and is_instance_valid(box) and int(box.get_meta("enemy_index")) == enemy_index:
 			var glow: Control = box.get_node_or_null("TargetGlow")
 			if glow:
-				glow.modulate.a = 1.0 if targeted else 0.2
+				if targeted:
+					var tween := glow.create_tween()
+					tween.tween_property(glow, "modulate:a", 1.0, 0.08)
+				else:
+					glow.modulate.a = 0.85 if selected_card >= 0 else 0.0
+			# Brighten rather than enlarge: the old 1.08x jump read as the model popping.
 			var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
-			if sprite:
-				var base_scale: float = float(sprite.get_meta("base_scale", 1.0))
-				sprite.scale = Vector2.ONE * base_scale * (1.08 if targeted else 1.0)
+			if sprite: sprite.modulate = Color(1.35, 1.3, 1.15) if targeted else Color.WHITE
 
 # Stays synchronous so callers get a real bool back; the animation runs in _resolve_play.
 func _attempt_play_card(hand_index: int, target: int) -> bool:
@@ -1366,6 +1524,7 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	if not combat.play(hand_index, target):
 		_toast(t("ui.target_invalid"))
 		return false
+	selected_card = -1
 	resolving = true
 	_resolve_play(before)
 	return true
@@ -1432,22 +1591,68 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	await tween.finished
 	popup.queue_free()
 
+func _advance_to_reward() -> void:
+	# show_battle can run several times while the win is on screen; only one hand-off.
+	if advancing_to_reward: return
+	advancing_to_reward = true
+	await get_tree().create_timer(0.8).timeout
+	advancing_to_reward = false
+	if combat != null and combat.state.phase == "won": show_reward()
+
 func _enemy_turn() -> void:
+	selected_card = -1
+	# Snapshot the telegraphed intents before end_turn consumes them, so each enemy can play
+	# the animation for what it actually promised.
+	var planned: Array = []
+	for enemy in combat.state.enemies:
+		planned.append(str(enemy.get("intent", {}).get("kind", "attack")) if enemy.health > 0 else "")
 	for box in enemy_boxes:
 		if box == null or not is_instance_valid(box): continue
-		var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
-		if sprite:
-			var orig_y := sprite.position.y
-			var tween := create_tween()
-			tween.tween_property(sprite, "position:y", orig_y + 24.0, 0.12)
-			tween.tween_property(sprite, "position:y", orig_y, 0.14)
-			await tween.finished
+		var index := int(box.get_meta("enemy_index"))
+		if index >= planned.size() or str(planned[index]).is_empty(): continue
+		await _animate_enemy_action(box, str(planned[index]))
+
 	var before_health: int = combat.state.player.health
 	combat.end_turn()
 	if combat.state.player.health < before_health:
 		Input.vibrate_handheld(35)
 		await _animate_player_hit(before_health - combat.state.player.health)
 	show_battle()
+
+func _animate_enemy_action(box: Control, kind: String) -> void:
+	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
+	if sprite == null: return
+	var origin: Vector2 = sprite.position
+	var base_scale: float = float(sprite.get_meta("base_scale", 1.0))
+	var tween := sprite.create_tween()
+	match kind:
+		"defend":
+			tween.tween_property(sprite, "modulate", Color(0.75, 0.95, 1.6), 0.12)
+			tween.tween_property(sprite, "position:y", origin.y - 10.0, 0.12).set_trans(Tween.TRANS_SINE)
+			tween.tween_property(sprite, "position:y", origin.y, 0.14)
+			tween.tween_property(sprite, "modulate", Color.WHITE, 0.14)
+		"empower":
+			tween.tween_property(sprite, "modulate", Color(1.6, 0.9, 1.8), 0.14)
+			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.16, 0.16).set_trans(Tween.TRANS_BACK)
+			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.16)
+			tween.tween_property(sprite, "modulate", Color.WHITE, 0.14)
+		"curse":
+			tween.tween_property(sprite, "modulate", Color(0.9, 1.6, 0.7), 0.14)
+			tween.tween_property(sprite, "position:x", origin.x + 7.0, 0.07)
+			tween.tween_property(sprite, "position:x", origin.x - 7.0, 0.07)
+			tween.tween_property(sprite, "position:x", origin.x, 0.07)
+			tween.tween_property(sprite, "modulate", Color.WHITE, 0.14)
+		_:
+			# Wind up away from the player, then drive down onto them.
+			tween.tween_property(sprite, "position:y", origin.y - 18.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tween.tween_property(sprite, "position:y", origin.y + 50.0, 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+			tween.parallel().tween_property(sprite, "modulate", Color(1.9, 1.1, 0.9), 0.1)
+			tween.tween_property(sprite, "position:y", origin.y, 0.24).set_trans(Tween.TRANS_SINE)
+			tween.parallel().tween_property(sprite, "modulate", Color.WHITE, 0.22)
+	await tween.finished
+	sprite.position = origin
+	sprite.scale = Vector2.ONE * base_scale
+	sprite.modulate = Color.WHITE
 
 func _animate_player_hit(amount: int) -> void:
 	var popup := _label("−%d" % amount, 38, Color("ff786a"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1461,6 +1666,17 @@ func _animate_player_hit(amount: int) -> void:
 	punch.tween_property(popup, "scale", Vector2(1.25, 1.25), 0.14)
 	punch.tween_property(popup, "scale", Vector2.ONE, 0.1)
 	_shake_screen(clampf(float(amount) * 0.7, 4.0, 12.0), 0.3)
+
+	# Red wash over the screen so a hit registers even if you were looking at your hand.
+	var flash := ColorRect.new()
+	flash.color = Color(0.85, 0.15, 0.12, 0.0)
+	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(flash)
+	var wash := flash.create_tween()
+	wash.tween_property(flash, "color:a", 0.28, 0.07)
+	wash.tween_property(flash, "color:a", 0.0, 0.32)
+	wash.tween_callback(flash.queue_free)
 
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(popup, "position:y", popup.position.y - 60.0, 0.6)
@@ -1500,98 +1716,211 @@ func _toast(message: String, color := TEXT) -> void:
 	var tween := create_tween(); tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.55); tween.tween_property(toast,"modulate:a",0.0,.25); tween.tween_callback(toast.queue_free)
 
 func _leave_battle() -> void:
+	selected_card = -1
 	if combat != null: profile.health = maxi(1,int(combat.state.player.health))
 	SpiritSave.write(profile); show_map()
 
 func show_reward() -> void:
 	_clear(); _play_music(false)
-	var page := _create_page(8)
+	var page := _create_page(10)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
-	page.add_child(_label(t("ui.battle_won"), 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	var chest := TextureRect.new(); var atlas := AtlasTexture.new(); atlas.atlas = _texture("chest-atlas-v1.png"); atlas.region = Rect2(0,0,atlas.atlas.get_width()/2.0,atlas.atlas.get_height()); chest.texture = atlas; chest.custom_minimum_size = Vector2(200,160); chest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; chest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; page.add_child(chest)
-	var open := _button(t("ui.open_chest"), Callable(), EMBER, Vector2(210,48)); open.pressed.connect(func(): _open_chest(chest,atlas,page,open)); page.add_child(open)
+	page.add_child(_label(t("ui.battle_won"), 26, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 
-func _open_chest(chest: TextureRect, atlas: AtlasTexture, page: VBoxContainer, button: Button) -> void:
-	button.disabled = true; Input.vibrate_handheld(35)
-	var tween := create_tween(); tween.tween_property(chest,"rotation",-.04,.08); tween.tween_property(chest,"rotation",.04,.08); tween.tween_property(chest,"rotation",0.0,.08); await tween.finished
-	atlas.region.position.x = atlas.atlas.get_width()/2.0; chest.texture = atlas
-	var encounter: Dictionary = content.encounters[current_stage]; var multiplier: float = active_modifier.get("reward_scale",1.0); if profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
-	var gold := int(round(encounter.reward*multiplier)); profile.gold += gold; profile.health = mini(60,int(combat.state.player.health)+10); profile.unlocked = maxi(int(profile.unlocked),mini(49,current_stage+1)); profile.position = current_stage
-	page.add_child(_label(tf("ui.gold_reward", gold), 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var chest := TextureRect.new()
+	var atlas := AtlasTexture.new()
+	atlas.atlas = _texture("chest-atlas-v1.png")
+	atlas.region = Rect2(0, 0, atlas.atlas.get_width() / 2.0, atlas.atlas.get_height())
+	chest.texture = atlas
+	chest.custom_minimum_size = Vector2(200, 180)
+	chest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	chest.pivot_offset = Vector2(100, 90)
+	page.add_child(chest)
+
+	var open := _button(t("ui.open_chest"), Callable(), EMBER, Vector2(220, 52))
+	open.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	open.pressed.connect(func(): _open_chest(chest, atlas, open))
+	page.add_child(open)
+
+func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> void:
+	button.disabled = true
+	Input.vibrate_handheld(35)
+	var shake := chest.create_tween()
+	shake.tween_property(chest, "rotation", -0.05, 0.08)
+	shake.tween_property(chest, "rotation", 0.05, 0.08)
+	shake.tween_property(chest, "rotation", -0.03, 0.07)
+	shake.tween_property(chest, "rotation", 0.0, 0.07)
+	await shake.finished
+
+	atlas.region.position.x = atlas.atlas.get_width() / 2.0
+	chest.texture = atlas
+	_shake_screen(6.0)
+	var pop := chest.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), 0.16)
+	pop.tween_property(chest, "scale", Vector2.ONE, 0.12)
+	await pop.finished
+	await get_tree().create_timer(0.25).timeout
+
+	_grant_stage_rewards()
+	# The chest and its button have done their job; rebuild the page so only the
+	# rewards and the card choice remain on screen.
+	show_reward_details()
+
+func _grant_stage_rewards() -> void:
+	var encounter: Dictionary = content.encounters[current_stage]
+	var multiplier: float = active_modifier.get("reward_scale", 1.0)
+	if profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
+	pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": ""}
+	profile.gold += int(pending_rewards.gold)
+	profile.health = mini(60, int(combat.state.player.health) + 10)
+	profile.unlocked = maxi(int(profile.unlocked), mini(49, current_stage + 1))
+	profile.position = current_stage
+
 	var kind := content.node_kind(current_stage)
 	if kind == "boss":
 		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
-		var id: String = order[(current_stage/5+int(profile.difficulty)*2)%order.size()]; if not profile.equipment_owned.has(id): profile.equipment_owned.append(id)
-		var item := content.equipment(id); page.add_child(_reward_item(tf("ui.boss_equip_title", [item.icon, _equip_name(item)]), _equip_detail(item), GOLD))
-		# Clearing a chapter also grants that chapter's relic, which persists for the whole run.
+		var id: String = order[(current_stage / 5 + int(profile.difficulty) * 2) % order.size()]
+		if not profile.equipment_owned.has(id): profile.equipment_owned.append(id)
+		pending_rewards.equipment = id
 		var relic: Dictionary = SpiritContent.RELICS[(current_stage / 5) % SpiritContent.RELICS.size()]
 		if not profile.relics.has(relic.id):
 			profile.relics.append(relic.id)
-			page.add_child(_reward_item(tf("ui.relic_reward_title", [relic.icon, _relic_name(relic)]), _relic_detail(relic), Color(relic.color)))
-	if kind == "elite":
-		var rune: Dictionary = SpiritContent.RUNES[(current_stage/5+int(profile.difficulty))%SpiritContent.RUNES.size()]; profile.rune_inventory[rune.id] = profile.rune_inventory.get(rune.id,0)+1
-		page.add_child(_reward_item(tf("ui.elite_rune_title", [rune.icon, _rune_name(rune)]), _rune_detail(rune), Color(rune.color)))
-	var options: Array = content.cards.filter(func(card): return card.rarity != "Starter")
-	page.add_child(_label(t("ui.choose_card"), 12, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-	var choices := HBoxContainer.new()
-	choices.alignment = BoxContainer.ALIGNMENT_CENTER
-	choices.add_theme_constant_override("separation", 10)
-	for offset in 3:
-		var card: Dictionary = options[(current_stage+offset)%options.size()]
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(110, 150)
-		var btn_style := _panel(Color("0c1a1f"), 8, _card_color(card))
-		btn.add_theme_stylebox_override("normal", btn_style)
-		btn.add_theme_stylebox_override("hover", _panel(Color("162e36"), 8, GOLD))
-		btn.add_theme_stylebox_override("pressed", _panel(Color("081014"), 8, EMBER))
-		btn.pressed.connect(func(): _claim_card(card))
-		
-		var stack := VBoxContainer.new()
-		stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		stack.add_theme_constant_override("separation", 0)
-		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(stack)
-		
-		var art_clip := PanelContainer.new()
-		art_clip.clip_contents = true
-		art_clip.custom_minimum_size = Vector2(110, 90)
-		art_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var clip_style := _panel(Color.TRANSPARENT, 8)
-		clip_style.corner_radius_bottom_left = 0
-		clip_style.corner_radius_bottom_right = 0
-		art_clip.add_theme_stylebox_override("panel", clip_style)
-		
-		var art := TextureRect.new()
-		art.texture = _get_card_texture(card.id)
-		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		art_clip.add_child(art)
-		stack.add_child(art_clip)
-		
-		var texts := VBoxContainer.new()
-		texts.alignment = BoxContainer.ALIGNMENT_CENTER
-		texts.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		texts.add_child(_label(content.text(card.nameKey, lang), 10, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-		var kind_txt := "%s %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))]
-		texts.add_child(_label(kind_txt, 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
-		stack.add_child(texts)
-		
-		choices.add_child(btn)
-	page.add_child(choices)
-	page.add_child(_button(t("ui.skip_card"), _finish_reward, Color("19383f"), Vector2(220,44)))
+			pending_rewards.relic = relic.id
+	elif kind == "elite":
+		var rune: Dictionary = SpiritContent.RUNES[(current_stage / 5 + int(profile.difficulty)) % SpiritContent.RUNES.size()]
+		profile.rune_inventory[rune.id] = profile.rune_inventory.get(rune.id, 0) + 1
+		pending_rewards.rune = rune.id
 	SpiritSave.write(profile)
+
+func show_reward_details() -> void:
+	_clear(); _play_music(false)
+	var page := _create_page(8)
+	page.add_child(_label(t("ui.battle_won"), 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var spoils := HBoxContainer.new()
+	spoils.alignment = BoxContainer.ALIGNMENT_CENTER
+	spoils.add_theme_constant_override("separation", 14)
+	page.add_child(spoils)
+	spoils.add_child(_label(tf("ui.reward_gold_line", int(pending_rewards.get("gold", 0))), 15, GOLD))
+	spoils.add_child(_label(t("ui.reward_heal_line"), 13, JADE))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	var equip_id := str(pending_rewards.get("equipment", ""))
+	if not equip_id.is_empty():
+		var item := content.equipment(equip_id)
+		list.add_child(_reward_item(tf("ui.boss_equip_title", [item.icon, _equip_name(item)]), _equip_detail(item), GOLD))
+	var relic_id := str(pending_rewards.get("relic", ""))
+	if not relic_id.is_empty():
+		var relic := content.relic(relic_id)
+		list.add_child(_reward_item(tf("ui.relic_reward_title", [relic.icon, _relic_name(relic)]), _relic_detail(relic), Color(relic.color)))
+	var rune_id := str(pending_rewards.get("rune", ""))
+	if not rune_id.is_empty():
+		var rune := content.rune(rune_id)
+		list.add_child(_reward_item(tf("ui.elite_rune_title", [rune.icon, _rune_name(rune)]), _rune_detail(rune), Color(rune.color)))
+
+	list.add_child(_label(t("ui.reward_choose"), 13, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	var options: Array = content.cards.filter(func(card): return card.rarity != "Starter")
+	for offset in 3:
+		list.add_child(_reward_card_row(options[(current_stage + offset) % options.size()]))
+
+func _reward_card_row(card: Dictionary) -> Control:
+	var accent := _card_color(card)
+	var owned: int = int(profile.collection.get(card.id, 0))
+	var in_deck: int = profile.deck.count(card.id)
+
+	var panel := Panel.new()
+	panel.custom_minimum_size.y = 126
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, accent))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 8)
+	panel.add_child(pad)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	pad.add_child(row)
+
+	var art_holder := Control.new()
+	art_holder.custom_minimum_size = Vector2(76, 106)
+	art_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(art_holder)
+	art_holder.add_child(_card_art_panel(card.id, Vector2(76, 106)))
+	var badge := _cost_badge(int(card.cost), accent, 24)
+	badge.position = Vector2(3, 3)
+	art_holder.add_child(badge)
+
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 2)
+	row.add_child(right)
+
+	right.add_child(_label(content.text(card.nameKey, lang), 15, TEXT))
+	right.add_child(_label("%s · %s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit")), card.rarity], 9, GOLD))
+	var desc := _label(_card_description(card), 11, Color("cfe3e0"), HORIZONTAL_ALIGNMENT_LEFT, true)
+	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(desc)
+	right.add_child(_label("%s · %s" % [tf("ui.reward_owned", owned), tf("ui.reward_in_deck", in_deck)], 9, MUTED))
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	right.add_child(actions)
+	var collect := _button(t("ui.reward_collect"), func(): _collect_card(card), Color("24444b"), Vector2(0, 38))
+	collect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(collect)
+	var add := _button(t("ui.reward_smart_add"), func(): _smart_add_card(card), Color("2f5c3f"), Vector2(0, 38))
+	add.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(add)
+
+	return panel
+
+func _collect_card(card: Dictionary) -> void:
+	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
+	SpiritSave.write(profile)
+	_toast(tf("ui.reward_collected", content.text(card.nameKey, lang)), JADE)
+	_finish_reward()
+
+# Adds the card to the deck, and when the deck is already at 25 drops the weakest card
+# to make room — starters first, then whatever scores lowest.
+func _smart_add_card(card: Dictionary) -> void:
+	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
+	if profile.deck.size() < 25:
+		profile.deck.append(card.id)
+		SpiritSave.write(profile)
+		_toast(tf("ui.reward_added", content.text(card.nameKey, lang)), JADE)
+		_finish_reward()
+		return
+
+	var worst := -1
+	var worst_score := INF
+	for i in profile.deck.size():
+		var existing := content.card(profile.deck[i])
+		if existing.is_empty(): continue
+		var score := _card_build_score(existing)
+		if str(existing.get("rarity", "")) == "Starter": score -= 100.0
+		# Prefer not to cut a copy of the very card being added.
+		if str(existing.id) == str(card.id): score += 60.0
+		if score < worst_score:
+			worst_score = score
+			worst = i
+	if worst < 0: worst = 0
+	var replaced := content.card(profile.deck[worst])
+	profile.deck[worst] = card.id
+	SpiritSave.write(profile)
+	_toast(tf("ui.reward_replaced", [content.text(card.nameKey, lang), content.text(replaced.nameKey, lang)]), JADE)
+	_finish_reward()
 
 func _reward_item(title: String, detail: String, color: Color) -> PanelContainer:
 	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(340,54); panel.add_theme_stylebox_override("panel",_panel(Color("193839"),12,color)); var stack := VBoxContainer.new(); panel.add_child(stack); stack.add_child(_label(title, 12, color, HORIZONTAL_ALIGNMENT_CENTER)); stack.add_child(_label(detail, 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)); return panel
-
-func _claim_card(card: Dictionary) -> void:
-	profile.collection[card.id] = profile.collection.get(card.id,0)+1
-	var replace := -1
-	for i in profile.deck.size():
-		if content.card(profile.deck[i]).rarity == "Starter": replace = i; break
-	if replace >= 0: profile.deck[replace] = card.id
-	_finish_reward()
 
 func _finish_reward() -> void:
 	SpiritSave.write(profile); show_map()
@@ -1674,13 +2003,10 @@ func _shop_card_tile(card: Dictionary, price: int) -> Control:
 	var can_afford: bool = int(profile.gold) >= price
 	var owned: int = int(profile.collection.get(card.id, 0))
 
-	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(176, 218)
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.add_theme_stylebox_override("normal", _panel(Color("11242a"), 12, accent if can_afford else Color("24373d")))
-	btn.add_theme_stylebox_override("hover", _panel(Color("173038"), 12, GOLD))
-	btn.add_theme_stylebox_override("pressed", _panel(Color("0c1c21"), 12, EMBER))
-	btn.pressed.connect(func(): _buy_card(card, price))
+	# The tile is inert; only the price button below buys, so brushing a card cannot spend gold.
+	var btn := Panel.new()
+	btn.custom_minimum_size = Vector2(176, 228)
+	btn.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, accent if can_afford else Color("24373d")))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1716,16 +2042,21 @@ func _shop_card_tile(card: Dictionary, price: int) -> Control:
 	stack.add_child(desc)
 	stack.add_child(_label("%s %d" % [t("ui.deck_owned_short"), owned], 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
-	var price_tag := Panel.new()
-	price_tag.custom_minimum_size.y = 30
-	price_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	price_tag.add_theme_stylebox_override("panel", _panel(Color("2f4a22") if can_afford else Color("3a2723"), 8, GOLD if can_afford else Color("6b4038")))
-	stack.add_child(price_tag)
-	var price_lbl := _label(tf("ui.shop_gold", price), 13, GOLD if can_afford else Color("c78b7f"), HORIZONTAL_ALIGNMENT_CENTER)
-	price_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	price_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	price_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	price_tag.add_child(price_lbl)
+	var buy := Button.new()
+	buy.custom_minimum_size.y = 38
+	buy.focus_mode = Control.FOCUS_NONE
+	buy.text = "%s  ◆%d" % [t("ui.shop_buy"), price]
+	if font_cjk: buy.add_theme_font_override("font", font_cjk)
+	buy.add_theme_font_size_override("font_size", 13)
+	buy.add_theme_color_override("font_color", Color("0f1d10") if can_afford else Color("c78b7f"))
+	buy.add_theme_color_override("font_hover_color", Color("0f1d10"))
+	buy.add_theme_stylebox_override("normal", _panel(GOLD if can_afford else Color("3a2723"), 9, GOLD if can_afford else Color("6b4038")))
+	buy.add_theme_stylebox_override("hover", _panel(GOLD.lightened(0.15) if can_afford else Color("46302b"), 9, Color.WHITE))
+	buy.add_theme_stylebox_override("pressed", _panel(GOLD.darkened(0.2), 9, EMBER))
+	buy.add_theme_stylebox_override("disabled", _panel(Color("2a2320"), 9, Color("53403a")))
+	buy.disabled = not can_afford
+	buy.pressed.connect(func(): _buy_card(card, price))
+	stack.add_child(buy)
 
 	return btn
 
