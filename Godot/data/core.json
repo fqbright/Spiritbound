@@ -1,0 +1,774 @@
+{
+  "rules": {
+    "energy": 3,
+    "draw": 5,
+    "handLimit": 10,
+    "playerHealth": 60,
+    "enemyHealth": 40,
+    "enemyDamage": 7
+  },
+  "cards": [
+    {
+      "id": "strike",
+      "nameKey": "card.strike",
+      "rarity": "Starter",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "ward",
+      "nameKey": "card.ward",
+      "rarity": "Starter",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "foxfire",
+      "nameKey": "card.foxfire",
+      "rarity": "Starter",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "amount": 3,
+          "status": "burn"
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "focus",
+      "nameKey": "card.focus",
+      "rarity": "Starter",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "amount": 1,
+          "status": "focus"
+        }
+      ],
+      "kind": "Power",
+      "element": "spirit"
+    },
+    {
+      "id": "moonfang",
+      "nameKey": "card.moonfang",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit"
+    },
+    {
+      "id": "renewal",
+      "nameKey": "card.renewal",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 7
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "spiritCurrent",
+      "nameKey": "card.spiritCurrent",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "special": "recycleDiscard",
+      "effects": [
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Tactic",
+      "element": "spirit"
+    },
+    {
+      "id": "ashRecall",
+      "nameKey": "card.ashRecall",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": false,
+      "special": "recoverExhaust",
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        }
+      ],
+      "kind": "Tactic",
+      "element": "fire"
+    },
+    {
+      "id": "emberClaw",
+      "nameKey": "card.emberClaw",
+      "rarity": "Uncommon",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "amount": 2,
+          "status": "burn"
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "mirrorWard",
+      "nameKey": "card.mirrorWard",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 4
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "wildSpark",
+      "nameKey": "card.wildSpark",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "foxBlessing",
+      "nameKey": "card.foxBlessing",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "amount": 2,
+          "status": "focus"
+        }
+      ],
+      "kind": "Power",
+      "element": "spirit"
+    },
+    {
+      "id": "stoneBreaker",
+      "nameKey": "card.stoneBreaker",
+      "rarity": "Common",
+      "pool": "Universal",
+      "kind": "Attack",
+      "element": "stone",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "id": "calmWard",
+      "nameKey": "card.calmWard",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "kind": "Skill",
+      "element": "spirit",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 14
+        }
+      ]
+    },
+    {
+      "id": "spiritLance",
+      "nameKey": "card.spiritLance",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "kind": "Attack",
+      "element": "spirit",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "special": "pierce"
+    },
+    {
+      "id": "cinderHex",
+      "nameKey": "card.cinderHex",
+      "rarity": "Uncommon",
+      "pool": "CrimsonFox",
+      "kind": "Tactic",
+      "element": "fire",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "opponent",
+          "amount": 5,
+          "status": "burn"
+        }
+      ]
+    },
+    {
+      "id": "stormArc",
+      "nameKey": "card.stormArc",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "kind": "Attack",
+      "element": "fire",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        }
+      ],
+      "special": "cleave"
+    },
+    {
+      "id": "soulBrand",
+      "nameKey": "card.soulBrand",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "kind": "Power",
+      "element": "fire",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "opponent",
+          "amount": 7,
+          "status": "burn"
+        }
+      ]
+    },
+    {
+      "id": "twinMoon",
+      "nameKey": "card.twinMoon",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "kind": "Attack",
+      "element": "spirit",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        }
+      ]
+    },
+    {
+      "id": "finalFlare",
+      "nameKey": "card.finalFlare",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "kind": "Attack",
+      "element": "fire",
+      "cost": 2,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        }
+      ],
+      "special": "critical"
+    },
+    {
+      "id": "mountainSeal",
+      "nameKey": "card.mountainSeal",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "kind": "Tactic",
+      "element": "stone",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        }
+      ],
+      "special": "stun"
+    },
+    {
+      "id": "worldFlame",
+      "nameKey": "card.worldFlame",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "kind": "Attack",
+      "element": "fire",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "special": "cleave"
+    }
+  ],
+  "statuses": [
+    {
+      "id": "burn",
+      "trigger": "turnEnd",
+      "effect": {
+        "operation": "damage",
+        "target": "actor",
+        "amount": 1
+      },
+      "scaleWithStacks": true,
+      "decay": 1
+    },
+    {
+      "id": "focus",
+      "trigger": "cardPlayed",
+      "effect": {
+        "operation": "energy",
+        "target": "actor",
+        "amount": 0
+      },
+      "scaleWithStacks": false,
+      "decay": 0,
+      "nextAttackBonus": 3
+    }
+  ],
+  "startingDeck": [
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "strike",
+    "ward",
+    "ward",
+    "ward",
+    "ward",
+    "ward",
+    "ward",
+    "ward",
+    "ward",
+    "foxfire",
+    "foxfire",
+    "foxfire",
+    "foxfire",
+    "focus",
+    "focus",
+    "focus"
+  ],
+  "translations": {
+    "en": {
+      "card.strike": "Strike",
+      "card.ward": "Spirit Ward",
+      "card.foxfire": "Foxfire",
+      "card.focus": "Focus Spirit",
+      "battle.subtitle": "The Ember Trial",
+      "battle.chapter": "MISTWOOD · TRAINING",
+      "battle.stage": "Encounter {current} / {total}",
+      "battle.drag": "Drag a card upward to play",
+      "battle.release": "Release to invoke",
+      "battle.chooseTarget": "Drop on a glowing target, or release on open ground for smart targeting",
+      "battle.enemyAttack": "The enemy strikes for {damage}",
+      "battle.actions": "{amount} card plays remaining",
+      "battle.actionsRemaining": "{amount} card plays remaining",
+      "battle.autoTurn": "The enemy acts after your second card",
+      "battle.journey": "Following the spirit path",
+      "battle.travelTo": "Traveling to Encounter {current}",
+      "battle.bossAhead": "Boss ahead",
+      "battle.critical": "CRITICAL HIT",
+      "battle.empowered": "FORGE OVERLOAD",
+      "battle.blocked": "BLOCKED",
+      "battle.musicOn": "Mute music",
+      "battle.musicOff": "Play music",
+      "battle.continue": "Continue onward",
+      "battle.heal": "Recover {amount} Health before the next encounter.",
+      "battle.runWon": "Mistwood conquered",
+      "enemy.sentinel2": "Lanternstone Keeper",
+      "enemy.sentinel3": "Runebound Colossus",
+      "enemy.sentinel4": "Embercliff Guardian",
+      "enemy.sentinel5": "Heart of the Mountain",
+      "enemy.runeShard": "Runic Shard",
+      "enemy.ashRaven": "Ash Raven",
+      "enemy.forgeSpark": "Forge Spark",
+      "mechanic.basic": "Calm Stone · No special power",
+      "mechanic.armor": "Stone Skin · Gains 3 Shield each turn",
+      "mechanic.thorns": "Runic Thorns · Attacks retaliate for 1; destroy the supporting Shard",
+      "mechanic.critical": "Skyfire Precision · Every 3rd attack is a double-damage Critical; the Raven also attacks",
+      "mechanic.forge": "Forge Overload · Gains 2 Shield, grows each round, gains +2 damage below half Health, and commands two Sparks",
+      "location.1": "Moonlit Maple Shrine",
+      "location.2": "Lantern Marsh",
+      "location.3": "Runebound Ravine",
+      "location.4": "Ember Cliff",
+      "location.5": "Mountain Forge",
+      "battle.turn": "Turn {turn}",
+      "enemy.name": "Hollowstone Sentinel",
+      "spirit.fox": "Crimson Fox",
+      "enemy.intent": "Next: attack for {damage} damage",
+      "enemy.intentCritical": "Next: CRITICAL HIT for {damage} damage",
+      "enemy.intentEmpowered": "Next: OVERLOAD attack for {damage} damage",
+      "battle.health": "{current} / {max} Health",
+      "battle.shield": "{amount} Shield",
+      "battle.energy": "{amount} Energy",
+      "battle.hand": "Your hand",
+      "battle.tap": "Tap a card to play it.",
+      "card.cost": "Costs {amount} Energy",
+      "card.exhaust": "Exhaust: removed for this battle after use.",
+      "rarity.Starter": "STARTER",
+      "battle.endTurn": "End turn",
+      "battle.restart": "New battle",
+      "battle.won": "Trial overcome",
+      "battle.lost": "The embers fade",
+      "battle.outcomeDetail": "Begin another trial with a newly shuffled deck.",
+      "battle.welcome": "Your contract begins. Meet the sentinel with fire and resolve.",
+      "battle.played": "Card resolved. Choose your next move.",
+      "battle.nextTurn": "The sentinel acted. Your energy is restored.",
+      "battle.rules": "Keep unplayed cards and draw back up to 5 each turn. Played cards stay in Discard for this battle unless a card explicitly recycles them. Play 2 cards, then all surviving enemies attack.",
+      "pile.draw": "Draw",
+      "pile.discard": "Discard",
+      "pile.exhaust": "Exhaust",
+      "pile.empty": "This pile is empty.",
+      "pile.orderNote": "Cards are grouped by type. Draw order is hidden.",
+      "pile.drawDetail": "Your fixed 25-card battle deck. At turn start, draw from here until your hand contains five cards. It does not refill automatically this battle.",
+      "pile.discardDetail": "Played cards stay here for the rest of this battle unless a card explicitly recycles them. Unplayed cards remain in your hand.",
+      "pile.exhaustDetail": "One-use cards stay removed from this battle, so timing them matters.",
+      "action.language": "Language",
+      "action.cancel": "Cancel",
+      "action.done": "Done",
+      "action.ok": "OK",
+      "restart.title": "Start a new battle?",
+      "restart.message": "Your current battle will be replaced.",
+      "error.title": "Unable to act",
+      "error.energy": "Not enough Energy.",
+      "error.actions": "You have already played two cards this turn.",
+      "error.card": "That card is no longer in your hand.",
+      "error.targetMissing": "That target is no longer available.",
+      "error.targetSelf": "A purely harmful card cannot target your spirit.",
+      "error.targetEnemy": "A purely beneficial card cannot target an enemy.",
+      "error.finished": "This battle has ended.",
+      "error.content": "Game content could not be loaded. Please retry.",
+      "target.self": "yourself",
+      "target.enemy": "the enemy",
+      "effect.damage": "Deal {amount} damage to {target}.",
+      "effect.shield": "Grant {target} {amount} Shield.",
+      "effect.draw": "{target}: draw {amount} cards.",
+      "effect.energy": "{target}: gain {amount} Energy.",
+      "effect.status": "Apply {amount} {status} to {target}.",
+      "effect.heal": "Restore {amount} Health to {target}.",
+      "status.burn": "Burn",
+      "status.focus": "Focus",
+      "status.burn.detail": "At turn end, take {amount} damage, then lose {decay} Burn. Shield absorbs this damage.",
+      "status.focus.detail": "Your next attack deals {bonus} extra damage on its first hit, then consumes Focus.",
+      "card.moonfang": "Moonfang",
+      "card.renewal": "Jade Renewal",
+      "card.spiritCurrent": "Spirit Current",
+      "card.ashRecall": "Ash Recall",
+      "card.special.recycleDiscard": "Shuffle up to 2 cards from Discard into Draw.",
+      "card.special.recoverExhaust": "Return the newest Exhausted card to your hand.",
+      "rarity.Common": "COMMON",
+      "rarity.Uncommon": "UNCOMMON",
+      "rarity.Rare": "RARE",
+      "pool.Universal": "UNIVERSAL",
+      "pool.CrimsonFox": "CRIMSON FOX",
+      "card.emberClaw": "Ember Claw",
+      "card.mirrorWard": "Mirror Ward",
+      "card.wildSpark": "Twin Wildspark",
+      "card.foxBlessing": "Fox Blessing",
+      "card.stoneBreaker": "Stone Breaker",
+      "card.calmWard": "Calm Ward",
+      "card.spiritLance": "Spirit Lance",
+      "card.cinderHex": "Cinder Hex",
+      "card.stormArc": "Storm Arc",
+      "card.soulBrand": "Soul Brand",
+      "card.twinMoon": "Twin Moon",
+      "card.finalFlare": "Final Flare",
+      "card.mountainSeal": "Mountain Seal",
+      "card.worldFlame": "World Flame",
+      "card.special.pierce": "Pierce: ignores Shield.",
+      "card.special.cleave": "Cleave: hits every living enemy.",
+      "card.special.critical": "Critical: doubles this card’s damage.",
+      "card.special.stun": "Stun: target skips its next attack.",
+      "kind.Attack": "ATTACK",
+      "kind.Skill": "SKILL",
+      "kind.Power": "POWER",
+      "kind.Tactic": "TACTIC",
+      "element.fire": "FIRE",
+      "element.spirit": "SPIRIT",
+      "element.stone": "STONE",
+      "mechanic.chapter1": "Training · Learn targeting and enemy intents.",
+      "mechanic.chapter2": "Element Cycle · Stone beats Fire, Fire beats Spirit, Spirit beats Stone.",
+      "mechanic.chapter3": "Critical Rhythm · Every third enemy attack deals double damage.",
+      "mechanic.chapter4": "Stone Armor · Enemies gain 4 Shield every turn.",
+      "mechanic.chapter5": "Runic Thorns · Direct attacks retaliate for 1 damage.",
+      "mechanic.chapter6": "Spirit Swarm · Additional enemies join the formation.",
+      "mechanic.chapter7": "Renewal · Enemies restore 3 Health before attacking.",
+      "mechanic.chapter8": "Mist Step · Every third incoming hit is dodged.",
+      "mechanic.chapter9": "Rising Fury · Enemy attack grows each round.",
+      "mechanic.chapter10": "Worldforge · Armor, criticals, elements and overload combine."
+    },
+    "zh-Hans": {
+      "card.strike": "击打",
+      "card.ward": "灵盾",
+      "card.foxfire": "狐火",
+      "card.focus": "凝神",
+      "battle.subtitle": "烬火试炼",
+      "battle.chapter": "雾林 · 试炼",
+      "battle.stage": "第 {current} / {total} 场",
+      "battle.drag": "向上拖出卡牌即可使用",
+      "battle.release": "松手释放灵力",
+      "battle.chooseTarget": "拖到发光目标上；在空白处松手会智能选择目标",
+      "battle.enemyAttack": "敌人攻击，造成 {damage} 点伤害",
+      "battle.actions": "本回合还可出牌 {amount} 次",
+      "battle.actionsRemaining": "本回合还可出牌 {amount} 次",
+      "battle.autoTurn": "打出第二张牌后，敌人自动行动",
+      "battle.journey": "沿灵迹前行",
+      "battle.travelTo": "正在前往第 {current} 场",
+      "battle.bossAhead": "前方首领",
+      "battle.critical": "暴击",
+      "battle.empowered": "锻炉过载",
+      "battle.blocked": "格挡",
+      "battle.musicOn": "关闭音乐",
+      "battle.musicOff": "播放音乐",
+      "battle.continue": "继续前进",
+      "battle.heal": "进入下一场战斗前恢复 {amount} 点生命。",
+      "battle.runWon": "雾林征服者",
+      "enemy.sentinel2": "灯岩守卫",
+      "enemy.sentinel3": "缚文巨像",
+      "enemy.sentinel4": "烬崖守护者",
+      "enemy.sentinel5": "山脉之心",
+      "enemy.runeShard": "符文晶核",
+      "enemy.ashRaven": "烬羽鸦",
+      "enemy.forgeSpark": "锻炉火灵",
+      "mechanic.basic": "静默岩心 · 无特殊能力",
+      "mechanic.armor": "岩石皮肤 · 每回合获得 3 点护盾",
+      "mechanic.thorns": "符文反刺 · 攻击会反伤 1 点；优先摧毁辅助晶核",
+      "mechanic.critical": "天火精准 · 每第 3 次攻击造成双倍暴击；烬羽鸦也会攻击",
+      "mechanic.forge": "锻炉过载 · 每回合获得 2 点护盾，攻击逐轮增强，半血后伤害 +2，并指挥两只火灵",
+      "location.1": "月下枫林神社",
+      "location.2": "灯火沼泽",
+      "location.3": "缚文峡谷",
+      "location.4": "余烬悬崖",
+      "location.5": "山脉熔炉",
+      "battle.turn": "第 {turn} 回合",
+      "enemy.name": "空岩守卫",
+      "spirit.fox": "绯狐",
+      "enemy.intent": "下次行动：攻击，造成 {damage} 点伤害",
+      "enemy.intentCritical": "下次行动：暴击，造成 {damage} 点伤害",
+      "enemy.intentEmpowered": "下次行动：过载攻击，造成 {damage} 点伤害",
+      "battle.health": "生命 {current} / {max}",
+      "battle.shield": "护盾 {amount}",
+      "battle.energy": "能量 {amount}",
+      "battle.hand": "手牌",
+      "battle.tap": "轻点卡牌即可打出。",
+      "card.cost": "消耗 {amount} 点能量",
+      "card.exhaust": "消耗：使用后移出本场战斗。",
+      "rarity.Starter": "初始",
+      "battle.endTurn": "结束回合",
+      "battle.restart": "重新战斗",
+      "battle.won": "试炼成功",
+      "battle.lost": "余烬消散",
+      "battle.outcomeDetail": "以重新洗好的牌组开始下一次试炼。",
+      "battle.welcome": "契约已成。以火焰与决心迎战守卫。",
+      "battle.played": "卡牌已结算。请选择下一步行动。",
+      "battle.nextTurn": "守卫已行动。你的能量已恢复。",
+      "battle.rules": "未使用的牌会保留，每回合从固定 25 张牌组补至 5 张。用过的牌本关留在弃牌堆，只有明确写有回收效果的卡可以再次取回。打出 2 张牌后，所有存活敌人攻击。",
+      "pile.draw": "抽牌堆",
+      "pile.discard": "弃牌堆",
+      "pile.exhaust": "消耗堆",
+      "pile.empty": "此牌堆为空。",
+      "pile.orderNote": "卡牌按类型排列，不显示抽牌顺序。",
+      "pile.drawDetail": "本关固定 25 张牌组。回合开始时从这里补牌至五张；本关不会自动把弃牌洗回。",
+      "pile.discardDetail": "本关已打出的牌留在这里，不会再次抽到；只有明确写有回收效果的卡可以取回。未使用的手牌继续保留。",
+      "pile.exhaustDetail": "一次性卡牌会在本场战斗中移出牌组，使用时机很重要。",
+      "action.language": "语言",
+      "action.cancel": "取消",
+      "action.done": "完成",
+      "action.ok": "确定",
+      "restart.title": "开始新的战斗？",
+      "restart.message": "当前战斗将被替换。",
+      "error.title": "无法执行操作",
+      "error.energy": "能量不足。",
+      "error.actions": "本回合已经使用了两张牌。",
+      "error.card": "该卡牌已不在手牌中。",
+      "error.targetMissing": "该目标已经无法选择。",
+      "error.targetSelf": "纯负面卡牌不能对自己的灵兽使用。",
+      "error.targetEnemy": "纯增益卡牌不能对敌人使用。",
+      "error.finished": "本场战斗已结束。",
+      "error.content": "无法加载游戏内容，请重试。",
+      "target.self": "自身",
+      "target.enemy": "敌人",
+      "effect.damage": "对{target}造成 {amount} 点伤害。",
+      "effect.shield": "给予{target} {amount} 点护盾。",
+      "effect.draw": "{target}抽 {amount} 张牌。",
+      "effect.energy": "{target}获得 {amount} 点能量。",
+      "effect.status": "给予{target} {amount} 层{status}。",
+      "effect.heal": "为{target}恢复 {amount} 点生命。",
+      "status.burn": "灼烧",
+      "status.focus": "凝神",
+      "status.burn.detail": "回合结束时受到 {amount} 点伤害，随后减少 {decay} 层灼烧。护盾可吸收此伤害。",
+      "status.focus.detail": "下一张攻击牌的首次伤害增加 {bonus} 点，随后消耗凝神。",
+      "card.moonfang": "月牙",
+      "card.renewal": "翠玉新生",
+      "card.spiritCurrent": "灵流回环",
+      "card.ashRecall": "余烬唤回",
+      "card.special.recycleDiscard": "将弃牌堆中至多 2 张牌洗入抽牌堆。",
+      "card.special.recoverExhaust": "将消耗堆最上方的牌返回手牌。",
+      "rarity.Common": "普通",
+      "rarity.Uncommon": "罕见",
+      "rarity.Rare": "稀有",
+      "pool.Universal": "通用",
+      "pool.CrimsonFox": "绯狐专属",
+      "card.emberClaw": "烬火狐爪",
+      "card.mirrorWard": "月镜灵盾",
+      "card.wildSpark": "双生野火",
+      "card.foxBlessing": "灵狐赐福",
+      "card.stoneBreaker": "碎火岩击",
+      "card.calmWard": "静心大盾",
+      "card.spiritLance": "穿岩灵枪",
+      "card.cinderHex": "无触烬咒",
+      "card.stormArc": "风暴连弧",
+      "card.soulBrand": "灼魂印记",
+      "card.twinMoon": "双月连击",
+      "card.finalFlare": "终焰暴击",
+      "card.mountainSeal": "镇岳封印",
+      "card.worldFlame": "万象天火",
+      "card.special.pierce": "穿透：无视护盾。",
+      "card.special.cleave": "群攻：命中所有存活敌人。",
+      "card.special.critical": "暴击：此卡伤害翻倍。",
+      "card.special.stun": "封印：目标跳过下一次攻击。",
+      "kind.Attack": "攻击",
+      "kind.Skill": "技能",
+      "kind.Power": "能力",
+      "kind.Tactic": "战术",
+      "element.fire": "火",
+      "element.spirit": "灵",
+      "element.stone": "岩",
+      "mechanic.chapter1": "新手试炼 · 学习指定目标与敌人意图。",
+      "mechanic.chapter2": "属性轮转 · 岩克火、火克灵、灵克岩。",
+      "mechanic.chapter3": "暴击节奏 · 敌人每第 3 次攻击造成双倍伤害。",
+      "mechanic.chapter4": "岩甲 · 敌人每回合获得 4 点护盾。",
+      "mechanic.chapter5": "符文反刺 · 直接攻击会受到 1 点反伤。",
+      "mechanic.chapter6": "灵群 · 更多敌人同时加入战场。",
+      "mechanic.chapter7": "复苏 · 敌人在攻击前恢复 3 点生命。",
+      "mechanic.chapter8": "雾步 · 每第 3 次受到的攻击会被闪避。",
+      "mechanic.chapter9": "怒火增长 · 敌人的攻击逐回合提高。",
+      "mechanic.chapter10": "万象熔炉 · 护甲、暴击、属性和过载同时出现。"
+    }
+  }
+}

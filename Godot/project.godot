@@ -1,0 +1,25 @@
+[application]
+config/name="Spiritbound"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.3")
+
+[display]
+window/size/viewport_width=390
+window/size/viewport_height=844
+window/size/window_width_override=390
+window/size/window_height_override=844
+window/stretch/mode="canvas_items"
+window/handheld/orientation=1
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+environment/defaults/default_clear_color=Color(0.025, 0.067, 0.086, 1)
+
+[audio]
+driver/enable_input=false
+
+[input]
+ui_accept={"deadzone":0.5,"events":[Object(InputEventKey,"physical_keycode":4194309),Object(InputEventScreenTouch,"pressed":true)]}
+
