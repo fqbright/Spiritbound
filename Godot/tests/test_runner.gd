@@ -42,8 +42,8 @@ func run() -> void:
 	chain.create(3,encounter(20,0,1),Array(content.raw.startingDeck),60,{},[],{"strike":"chain"})
 	_force_hand(chain,"strike")
 	chain.play(0,0)
-	check(chain.state.enemies[0].health == 11,"Chain keeps full Focus-boosted damage on target")
-	check(chain.state.enemies[1].health == chain.state.enemies[1].max_health - 4,"Chain splashes forty percent")
+	check(chain.state.enemies[0].health == 14,"Chain deals full damage on primary target")
+	check(chain.state.enemies[1].health == chain.state.enemies[1].max_health - 2,"Chain splashes forty percent")
 
 	var cycle := SpiritCombat.new(content)
 	cycle.create(4,encounter(100,0),Array(content.raw.startingDeck),60,{},[],{"ward":"cycle"})
@@ -65,6 +65,24 @@ func run() -> void:
 
 	var profile := SpiritSave.defaults(content)
 	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty(),"new save schema is valid")
+
+	check(content.text("card.strike", "zh-Hans") == "击打" and content.text("card.strike", "en") == "Strike", "bilingual card names work")
+	check(content.ui("ui.battle_won", "zh-Hans") == "战斗胜利" and content.ui("ui.battle_won", "en") == "Victory", "bilingual UI text works")
+	check(content.stage_name(0, "zh-Hans") == "雾林·入口" and content.stage_name(0, "en") == "Mistwood · Trailhead", "bilingual stage names work")
+	check(content.equip_name(content.equipment("emberBlade"), "en") == "Ember Blade", "bilingual equipment works")
+	check(content.rune_name(content.rune("swift"), "en") == "Swift", "bilingual runes work")
+
+	var scn: PackedScene = load("res://Main.tscn")
+	check(scn != null, "Main.tscn scene loads successfully")
+	var game_inst: Control = scn.instantiate()
+	check(game_inst != null, "Main scene instantiates")
+	check(game_inst._get_character_texture("fox") is AtlasTexture, "character atlas texture slicing works for fox")
+	check(game_inst._get_character_texture("sentinel") is AtlasTexture, "character atlas texture slicing works for sentinel")
+	check(game_inst._get_card_texture("moonfang") is AtlasTexture, "card atlas 1 texture slicing works for moonfang")
+	check(game_inst._get_card_texture("emberClaw") is AtlasTexture, "card atlas 2 texture slicing works for emberClaw")
+	check(game_inst._get_card_texture("strike") != null, "card texture strike loads")
+	game_inst.free()
+
 	print("SPIRITBOUND TESTS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 

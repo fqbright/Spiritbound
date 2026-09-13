@@ -1,10 +1,20 @@
 # Spiritbound
 
-## Expo Go version
+## Primary Client: Godot 4 (iOS & Mobile)
 
-The playable React Native port is in `Expo/`. It targets Expo SDK 57 and runs in Expo Go 57.0.0. See `Expo/README.md` for phone setup, commands, and the current file-watcher limitation.
+The complete mobile game client is located in [`Godot/`](file:///Users/xujiacong/Documents/Projects/Spiritbound/Godot/). It features a 50-stage campaign, 12 equipment items, 10 runes, rich audio, custom art, full bilingual support (English + 简体中文), and an exported Xcode project ready to run on physical iPhones.
 
-Milestone 2: a native portrait training battle, built on the tested Swift combat foundation.
+- Quick test runner: `/opt/homebrew/bin/godot --headless --path Godot/ --script res://tests/test_runner.gd`
+- Open in Xcode: `open Godot/build/ios/Spiritbound.xcodeproj`
+- Full setup instructions: [`Godot/README.md`](file:///Users/xujiacong/Documents/Projects/Spiritbound/Godot/README.md)
+
+## Legacy Prototypes
+
+### Expo Go version
+The React Native prototype is in `Expo/`.
+
+### Swift/SwiftUI Prototype
+Milestone 2: a native portrait training battle, built on the tested Swift combat foundation in `Sources/` and `App/`.
 
 ## Open and run on iPhone simulator
 

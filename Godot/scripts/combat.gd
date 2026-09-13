@@ -14,14 +14,14 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	rng.seed = seed
 	var health_scale: float = modifier.get("health_scale", 1.0)
 	var damage_bonus: int = modifier.get("damage_bonus", 0)
-	var enemies: Array = [_enemy("boss", encounter.name, encounter.art, int(round(encounter.health * health_scale)), encounter.damage + damage_bonus, encounter.mechanics)]
+	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), encounter.art, int(round(encounter.health * health_scale)), encounter.damage + damage_bonus, encounter.mechanics)]
 	for add_index in encounter.adds + modifier.get("extra_enemy", 0):
-		enemies.append(_enemy("add-%d" % add_index, "灵迹随从", "ash-raven-v2.jpg" if add_index % 2 == 0 else "rune-shard-v2.jpg", int(round((9 + encounter.chapter) * health_scale)), 2 + encounter.chapter / 3 + damage_bonus, {}))
+		enemies.append(_enemy("add-%d" % add_index, "灵迹随从", "Spirit Minion", "ash-raven-v2.jpg" if add_index % 2 == 0 else "rune-shard-v2.jpg", int(round((9 + encounter.chapter) * health_scale)), 2 + encounter.chapter / 3 + damage_bonus, {}))
 	var draw_pile: Array = []
 	for i in deck.size(): draw_pile.append({"uid":i,"card_id":deck[i]})
 	_shuffle(draw_pile)
 	state = {
-		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":1}, "enemies":enemies,
+		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0}, "enemies":enemies,
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":3,"actions":2,"turn":1,"phase":"player",
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"swift_used":false,"first_attack":false,"moon_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
@@ -96,7 +96,6 @@ func end_turn() -> void:
 	state.turn += 1; state.energy = 3; state.actions = 2; state.player.shield = 0
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.elements = {}
 	_draw(maxi(0,5 - state.hand.size()))
-	if state.hand.is_empty() and state.draw.is_empty(): state.phase = "lost"
 	emit_signal("event","turn",{"turn":state.turn})
 
 func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: float) -> int:
@@ -154,7 +153,12 @@ func _damage_player(amount: int) -> int:
 
 func _draw(count: int) -> void:
 	for i in count:
-		if state.draw.is_empty() or state.hand.size() >= 10: return
+		if state.hand.size() >= 10: return
+		if state.draw.is_empty():
+			if state.discard.is_empty(): return
+			state.draw = state.discard.duplicate()
+			state.discard.clear()
+			_shuffle(state.draw)
 		state.hand.append(state.draw.pop_back())
 
 func _shuffle(cards: Array) -> void:
@@ -162,8 +166,8 @@ func _shuffle(cards: Array) -> void:
 		var j := rng.randi_range(0,i)
 		var value = cards[i]; cards[i] = cards[j]; cards[j] = value
 
-func _enemy(id: String, title: String, art: String, health: int, damage: int, mechanics: Dictionary) -> Dictionary:
-	return {"id":id,"name":title,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"stun":0,"attacks":0,"hits":0,"revived":false,"mechanics":mechanics.duplicate(true)}
+func _enemy(id: String, title: String, title_en: String, art: String, health: int, damage: int, mechanics: Dictionary) -> Dictionary:
+	return {"id":id,"name":title,"name_en":title_en,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"stun":0,"attacks":0,"hits":0,"revived":false,"mechanics":mechanics.duplicate(true)}
 
 func _is_attack(card: Dictionary) -> bool:
 	for effect in card.effects:

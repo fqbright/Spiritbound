@@ -1,7 +1,7 @@
 [application]
 config/name="Spiritbound"
 run/main_scene="res://Main.tscn"
-config/features=PackedStringArray("4.3")
+config/features=PackedStringArray("4.7")
 
 [display]
 window/size/viewport_width=390
@@ -12,6 +12,7 @@ window/stretch/mode="canvas_items"
 window/handheld/orientation=1
 
 [rendering]
+textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/default_filters/use_nearest_mipmap_filter=false
@@ -22,4 +23,12 @@ driver/enable_input=false
 
 [input]
 ui_accept={"deadzone":0.5,"events":[Object(InputEventKey,"physical_keycode":4194309),Object(InputEventScreenTouch,"pressed":true)]}
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/emulate_mouse_from_touch=true
+
+[gui]
+theme/custom_font="res://assets/fonts/NotoSansSC.ttf"
 
