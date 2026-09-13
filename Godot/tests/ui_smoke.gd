@@ -1,6 +1,8 @@
 extends SceneTree
 
 var failures := 0
+var saved_profile := ""
+var had_profile := false
 
 func section(name: String) -> void:
 	print(name)
@@ -27,8 +29,16 @@ func _run() -> void:
 		print("UI SMOKE: game.gd failed to parse")
 		quit(1)
 		return
+	# This walk grants relics and buys cards, and the game writes those through to the real
+	# save. Borrow the file and start from a clean profile, or a previous run's rewards leak
+	# into this one — a run that had collected foxCharm reported three opening plays, not two.
+	had_profile = FileAccess.file_exists(SpiritSave.PATH)
+	if had_profile: saved_profile = FileAccess.open(SpiritSave.PATH, FileAccess.READ).get_as_text()
+
 	root.add_child(game)
 	await process_frame
+	game.profile = SpiritSave.defaults(game.content)
+	game.lang = "zh-Hans"
 	await process_frame
 
 	section("== account ==")
@@ -47,6 +57,26 @@ func _run() -> void:
 	await process_frame
 	check(game.map_canvas != null, "map canvas built")
 	check(game.map_canvas.custom_minimum_size.y > 4000.0, "map canvas spans all chapters")
+
+	# The map's bar and dock float over a full-screen scroller, so they are positioned by
+	# hand. Getting that wrong collapses them to zero height: invisible, but not an error.
+	await process_frame
+	await process_frame
+	var dock_btn := _find_button_containing(game.root, game.content.ui("ui.deck_btn", game.lang))
+	check(dock_btn != null, "map dock buttons exist")
+	if dock_btn != null:
+		check(dock_btn.size.y > 20.0, "dock button has real height (%.1f)" % dock_btn.size.y)
+		check(dock_btn.size.x > 40.0, "dock button has real width (%.1f)" % dock_btn.size.x)
+		check(dock_btn.global_position.y > 400.0, "dock sits at the bottom of the screen (y=%.0f)" % dock_btn.global_position.y)
+	var lang_btn := _find_button_containing(game.root, game.content.ui("ui.lang_toggle", game.lang))
+	check(lang_btn != null and lang_btn.size.y > 20.0, "map header is laid out too")
+
+	# Map pins set their own z_index, which beats tree order, so the floating bars have to
+	# outrank them or the dock draws underneath the stages it is supposed to sit over.
+	if dock_btn != null:
+		var dock_z := _effective_z(dock_btn)
+		var pin_z := _max_z(game.map_canvas)
+		check(dock_z > pin_z, "dock draws above the map (dock z=%d, highest map z=%d)" % [dock_z, pin_z])
 
 	section("== deck ==")
 	game.show_deck()
@@ -130,6 +160,108 @@ func _run() -> void:
 	var found_end_turn := _find_text(game.root, game.content.ui("ui.end_turn", game.lang))
 	check(not found_end_turn, "End Turn button is gone")
 
+	section("== tap targeting ==")
+	game.selected_card = -1
+	game.begin_battle(29)   # a stage with adds, so more than one enemy is alive
+	await process_frame
+	var waited_t := 0.0
+	while game.resolving and waited_t < 8.0:
+		await create_timer(0.1).timeout
+		waited_t += 0.1
+	var many: bool = game._living_enemies().size() > 1
+	check(many, "picked a stage with multiple enemies (%d)" % game._living_enemies().size())
+	var attack_slot := -1
+	for i in game.combat.state.hand.size():
+		if game._card_is_attack(game.content.card(game.combat.state.hand[i].card_id)):
+			attack_slot = i
+			break
+	if attack_slot >= 0 and many:
+		var hand_before: int = game.combat.state.hand.size()
+		game._tap_card(attack_slot)
+		await process_frame
+		check(game.selected_card == attack_slot, "tapping an attack card arms targeting instead of playing")
+		check(game.combat.state.hand.size() == hand_before, "no card was played yet")
+		game._tap_card(attack_slot)
+		await process_frame
+		check(game.selected_card == -1, "tapping the same card again cancels")
+
+	var skill_slot := -1
+	for i in game.combat.state.hand.size():
+		var c: Dictionary = game.content.card(game.combat.state.hand[i].card_id)
+		if not game._card_is_attack(c) and int(c.cost) <= int(game.combat.state.energy):
+			skill_slot = i
+			break
+	if skill_slot >= 0:
+		var before_hand: int = game.combat.state.hand.size()
+		game._tap_card(skill_slot)
+		await process_frame
+		check(game.combat.state.hand.size() == before_hand - 1, "non-targeted cards still play on a single tap")
+		var w := 0.0
+		while game.resolving and w < 10.0:
+			await create_timer(0.1).timeout
+			w += 0.1
+
+	section("== victory goes straight to the chest ==")
+	game.begin_battle(0)
+	await process_frame
+	var vw := 0.0
+	while game.resolving and vw < 8.0:
+		await create_timer(0.1).timeout
+		vw += 0.1
+	for enemy in game.combat.state.enemies: enemy.health = 0
+	game.combat.state.phase = "won"
+	game.show_battle()
+	await process_frame
+	var open_label: String = game.content.ui("ui.open_chest", game.lang)
+	check(_find_button_containing(game.root, open_label) == null, "the victory screen no longer repeats the open-chest button")
+	var vwait := 0.0
+	while vwait < 3.0 and _find_button_containing(game.root, open_label) == null:
+		await create_timer(0.1).timeout
+		vwait += 0.1
+	check(_find_button_containing(game.root, open_label) != null, "victory hands off to the chest screen on its own")
+
+	section("== reward flow ==")
+	game.current_stage = 4
+	game.begin_battle(4)
+	await process_frame
+	var w2 := 0.0
+	while game.resolving and w2 < 8.0:
+		await create_timer(0.1).timeout
+		w2 += 0.1
+	game._grant_stage_rewards()
+	game.show_reward_details()
+	await process_frame
+	check(game.root.get_child_count() > 0, "reward details page builds")
+	var has_skip := _find_text(game.root, game.content.ui("ui.skip_card", game.lang))
+	check(not has_skip, "the skip-card option is gone")
+
+	var target_card: Dictionary = game.content.card("moonfang")
+	game.profile.deck = []
+	for i in 25: game.profile.deck.append("strike")
+	game.profile.collection["strike"] = 25
+	var owned_before: int = int(game.profile.collection.get("moonfang", 0))
+	game._smart_add_card(target_card)
+	await process_frame
+	check(game.profile.deck.size() == 25, "smart add keeps the deck at 25, got %d" % game.profile.deck.size())
+	check(game.profile.deck.has("moonfang"), "smart add put the new card in the deck")
+	check(int(game.profile.collection.get("moonfang", 0)) == owned_before + 1, "smart add also records the copy owned")
+
+	game.profile.deck = []
+	for i in 24: game.profile.deck.append("strike")
+	game._collect_card(target_card)
+	await process_frame
+	check(game.profile.deck.size() == 24, "collect-only leaves the deck untouched")
+
+	section("== shop buy button ==")
+	game.profile.gold = 500
+	game.show_shop()
+	await process_frame
+	var tile: Control = _find_shop_tile(game.root)
+	check(tile != null, "shop renders card tiles")
+	if tile != null:
+		check(not (tile is Button), "shop tile itself is not a button, so touching a card cannot buy it")
+		check(_find_button_containing(tile, game.content.ui("ui.shop_buy", game.lang)) != null, "each tile carries an explicit buy button")
+
 	section("== enemy intents ==")
 	var fresh := SpiritCombat.new(game.content)
 	fresh.create(7, game.content.encounters[24], game.content.raw.startingDeck, 60)
@@ -199,10 +331,46 @@ func _run() -> void:
 		else: print("    mismatch: predicted %d, actual %d (card %s)" % [int(predicted.damage), actual, chosen.id])
 	check(compared > 0 and matched == compared, "preview equals dealt damage (%d/%d)" % [matched, compared])
 
+	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
 	else: print("UI SMOKE: %d FAILURES" % failures)
 	quit(1 if failures > 0 else 0)
+
+func _restore_save() -> void:
+	if had_profile: FileAccess.open(SpiritSave.PATH, FileAccess.WRITE).store_string(saved_profile)
+	else: SpiritSave.reset()
+
+# Walks up summing z_index, since z_as_relative makes a node's depth depend on its parents.
+func _effective_z(node: Node) -> int:
+	var total := 0
+	var current := node
+	while current != null:
+		if current is CanvasItem: total += (current as CanvasItem).z_index
+		current = current.get_parent()
+	return total
+
+func _max_z(node: Node) -> int:
+	var best := _effective_z(node)
+	for child in node.get_children():
+		best = maxi(best, _max_z(child))
+	return best
+
+func _find_shop_tile(node: Node) -> Control:
+	# Shop tiles are the fixed-width panels the grid lays out.
+	if node is Control and (node as Control).custom_minimum_size.x == 176.0 and (node as Control).custom_minimum_size.y >= 200.0:
+		return node as Control
+	for child in node.get_children():
+		var found := _find_shop_tile(child)
+		if found != null: return found
+	return null
+
+func _find_button_containing(node: Node, needle: String) -> Button:
+	if node is Button and needle in (node as Button).text: return node as Button
+	for child in node.get_children():
+		var found := _find_button_containing(child, needle)
+		if found != null: return found
+	return null
 
 func _find_text(node: Node, needle: String) -> bool:
 	if node is Button and (node as Button).text == needle: return true
