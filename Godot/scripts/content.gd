@@ -32,6 +32,17 @@ const EQUIPMENT = [
 	{"id":"focusCharm","slot":"charm","icon":"◉","zh":"凝神灵镜","en":"Focus Charm","detail":"战斗开始时获得 1 层凝神。","detail_en":"Start battle with 1 Focus."},
 ]
 
+const RELICS = [
+	{"id":"foxCharm","icon":"✦","color":"ffb765","zh":"绯狐护符","en":"Fox Charm","detail":"战斗首回合额外获得 1 次出牌。","detail_en":"Gain 1 extra play on the first turn."},
+	{"id":"starShard","icon":"✧","color":"a2d9ff","zh":"碎星石","en":"Star Shard","detail":"每回合第一张攻击牌额外造成 2 点伤害。","detail_en":"First attack each turn deals +2 damage."},
+	{"id":"ancientSeed","icon":"❦","color":"8ff5cf","zh":"古树之种","en":"Ancient Seed","detail":"每回合开始回复 2 点生命。","detail_en":"Restore 2 HP at the start of each turn."},
+	{"id":"windChime","icon":"≋","color":"78e9ff","zh":"引灵风铃","en":"Spirit Chime","detail":"战斗开始时额外抽 2 张牌。","detail_en":"Draw 2 extra cards at battle start."},
+	{"id":"bloodJade","icon":"❥","color":"ff7373","zh":"饮血玉","en":"Blood Jade","detail":"击败敌人回复 3 点生命。","detail_en":"Restore 3 HP when an enemy dies."},
+	{"id":"thunderSeal","icon":"ϟ","color":"ffe08a","zh":"雷纹印","en":"Thunder Seal","detail":"每 3 回合开始时获得 2 点能量。","detail_en":"Gain 2 Energy every third turn."},
+	{"id":"mirrorScale","icon":"◈","color":"b9a2ff","zh":"镜鳞甲","en":"Mirror Scale","detail":"回合结束时保留一半护盾。","detail_en":"Keep half of your Shield at end of turn."},
+	{"id":"emberCore","icon":"♨","color":"ff9868","zh":"烬心","en":"Ember Core","detail":"燃烧每层额外造成 1 点伤害。","detail_en":"Burn deals 1 extra damage per stack."},
+]
+
 const RUNES = [
 	{"id":"swift","icon":"»","zh":"迅捷","en":"Swift","detail":"每回合第一次使用不消耗出牌次数。","detail_en":"First play each turn spends no action.","color":"78e9ff"},
 	{"id":"chain","icon":"⌁","zh":"连锁","en":"Chain","detail":"40% 单体伤害传递给另一名敌人。","detail_en":"40% single-target damage splashes to another enemy.","color":"a2d9ff"},
@@ -65,6 +76,16 @@ func stage_name(index: int, language := "zh-Hans") -> String:
 	if language == "zh-Hans": return "%s·%s" % [CHAPTER_NAMES_ZH[chapter], WAYPOINT_ZH[level]]
 	return "%s · %s" % [CHAPTER_NAMES_EN[chapter], WAYPOINT_EN[level]]
 
+func chapter_name(chapter: int, language := "zh-Hans") -> String:
+	var index: int = clampi(chapter, 0, CHAPTER_NAMES_ZH.size() - 1)
+	if language == "zh-Hans": return CHAPTER_NAMES_ZH[index]
+	return CHAPTER_NAMES_EN[index]
+
+func waypoint_name(level: int, language := "zh-Hans") -> String:
+	var index: int = clampi(level, 0, WAYPOINT_ZH.size() - 1)
+	if language == "zh-Hans": return WAYPOINT_ZH[index]
+	return WAYPOINT_EN[index]
+
 func node_kind(index: int) -> String:
 	var level := index % 5 + 1
 	if level == 5: return "boss"
@@ -82,6 +103,19 @@ func rune(id: String) -> Dictionary:
 	for item in RUNES:
 		if item.id == id: return item
 	return {}
+
+func relic(id: String) -> Dictionary:
+	for item in RELICS:
+		if item.id == id: return item
+	return {}
+
+func relic_name(item: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return item.get("en", item.get("zh", ""))
+	return item.get("zh", "")
+
+func relic_detail(item: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return item.get("detail_en", item.get("detail", ""))
+	return item.get("detail", "")
 
 func _build_encounters() -> void:
 	for index in 50:
@@ -152,7 +186,7 @@ const UI_TEXT = {
 	"ui.event_opt_direct": {"zh-Hans":"直接进入战斗", "en":"Enter battle directly"},
 	"ui.shop_title": {"zh-Hans":"灵契商店", "en":"Spirit Shop"},
 	"ui.shop_sub": {"zh-Hans":"购买卡牌与生命药剂", "en":"Buy cards & health potions"},
-	"ui.shop_potion": {"zh-Hans":"✚ 生命药剂 · 恢复20生命 · ◆30", "en":"✚ Health Potion · Restore 20 HP · ◆30"},
+	"ui.shop_potion": {"zh-Hans":"生命药剂 · 恢复 20 点生命", "en":"Health Potion · Restore 20 HP"},
 	"ui.shop_no_gold": {"zh-Hans":"金币不足", "en":"Not enough gold"},
 	"ui.shop_card_fmt": {"zh-Hans":"%s   ◆%d   拥有%d", "en":"%s   ◆%d   Owned %d"},
 	"ui.deck_title": {"zh-Hans":"牌组构筑", "en":"Deck Builder"},
@@ -178,6 +212,60 @@ const UI_TEXT = {
 	"ui.camp_tier": {"zh-Hans":"挑战等级 A%d", "en":"Challenge Tier A%d"},
 	"ui.camp_relics": {"zh-Hans":"已获得遗物 %d/5", "en":"Relics collected %d/5"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
+	"ui.account_welcome": {"zh-Hans":"踏入灵界", "en":"Enter the Spirit Realm"},
+	"ui.account_prompt": {"zh-Hans":"为你的驭灵者取个名字", "en":"Name your spirit tamer"},
+	"ui.account_placeholder": {"zh-Hans":"输入名字", "en":"Enter a name"},
+	"ui.account_start": {"zh-Hans":"开始远征", "en":"Begin Expedition"},
+	"ui.account_need_name": {"zh-Hans":"请先输入名字", "en":"Please enter a name first"},
+	"ui.account_title": {"zh-Hans":"账号", "en":"Account"},
+	"ui.account_local": {"zh-Hans":"本地账号", "en":"Local account"},
+	"ui.account_id": {"zh-Hans":"存档 ID", "en":"Save ID"},
+	"ui.account_created": {"zh-Hans":"创建于 %s", "en":"Created %s"},
+	"ui.account_rename": {"zh-Hans":"改名", "en":"Rename"},
+	"ui.account_cloud": {"zh-Hans":"云端同步（即将支持）", "en":"Cloud sync (coming soon)"},
+	"ui.account_cloud_hint": {"zh-Hans":"存档已按云同步格式保存，接入 Apple / Google 登录后可直接上传。", "en":"Saves already use the cloud-sync format; Apple / Google sign-in can upload them as-is."},
+	"ui.intent_attack": {"zh-Hans":"⚔ %d", "en":"⚔ %d"},
+	"ui.intent_critical": {"zh-Hans":"✹ %d", "en":"✹ %d"},
+	"ui.intent_defend": {"zh-Hans":"⬢ %d", "en":"⬢ %d"},
+	"ui.intent_empower": {"zh-Hans":"▲ +%d", "en":"▲ +%d"},
+	"ui.intent_curse": {"zh-Hans":"☣ %d", "en":"☣ %d"},
+	"ui.intent_attack_defend": {"zh-Hans":"⚔%d ⬢%d", "en":"⚔%d ⬢%d"},
+	"ui.intent_tip_attack": {"zh-Hans":"准备攻击", "en":"Preparing to attack"},
+	"ui.intent_tip_defend": {"zh-Hans":"准备防御", "en":"Preparing to defend"},
+	"ui.intent_tip_empower": {"zh-Hans":"准备强化", "en":"Preparing to empower"},
+	"ui.intent_tip_curse": {"zh-Hans":"准备施加燃烧", "en":"Preparing to inflict Burn"},
+	"ui.preview_lethal": {"zh-Hans":"致命", "en":"LETHAL"},
+	"ui.preview_blocked": {"zh-Hans":"盾挡%d", "en":"%d blocked"},
+	"ui.relic_title": {"zh-Hans":"遗物", "en":"Relics"},
+	"ui.relic_reward_title": {"zh-Hans":"%s 遗物 · %s", "en":"%s Relic · %s"},
+	"ui.relic_none": {"zh-Hans":"尚未获得遗物", "en":"No relics yet"},
+	"ui.node_boss": {"zh-Hans":"首领", "en":"Boss"},
+	"ui.node_elite": {"zh-Hans":"精英", "en":"Elite"},
+	"ui.node_event": {"zh-Hans":"事件", "en":"Event"},
+	"ui.node_merchant": {"zh-Hans":"行商", "en":"Merchant"},
+	"ui.node_rest": {"zh-Hans":"营地", "en":"Camp"},
+	"ui.node_battle": {"zh-Hans":"战斗", "en":"Battle"},
+	"ui.locked": {"zh-Hans":"未解锁", "en":"Locked"},
+	"ui.energy_label": {"zh-Hans":"能量", "en":"Energy"},
+	"ui.actions_label": {"zh-Hans":"出牌", "en":"Plays"},
+	"ui.auto_end_turn": {"zh-Hans":"回合结束", "en":"Turn over"},
+	"ui.no_playable": {"zh-Hans":"无可出之牌 · 回合结束", "en":"No playable cards · turn ends"},
+	"ui.deck_auto_build": {"zh-Hans":"✦ 智能构筑", "en":"✦ Auto-Build"},
+	"ui.deck_confirm": {"zh-Hans":"确认牌组", "en":"Confirm Deck"},
+	"ui.deck_in_deck": {"zh-Hans":"入组", "en":"In deck"},
+	"ui.deck_owned_short": {"zh-Hans":"拥有", "en":"Owned"},
+	"ui.deck_auto_done": {"zh-Hans":"已按属性均衡自动构筑", "en":"Auto-built a balanced deck"},
+	"ui.deck_need_cards": {"zh-Hans":"卡牌收藏不足 25 张", "en":"Fewer than 25 cards owned"},
+	"ui.deck_full": {"zh-Hans":"牌组已满 25 张", "en":"Deck is full at 25"},
+	"ui.tab_equipment": {"zh-Hans":"装备", "en":"Equipment"},
+	"ui.tab_runes": {"zh-Hans":"符文", "en":"Runes"},
+	"ui.slot_weapon": {"zh-Hans":"武器", "en":"Weapon"},
+	"ui.slot_armor": {"zh-Hans":"护甲", "en":"Armor"},
+	"ui.slot_charm": {"zh-Hans":"灵佩", "en":"Charm"},
+	"ui.shop_buy": {"zh-Hans":"购买", "en":"Buy"},
+	"ui.shop_gold": {"zh-Hans":"◆ %d", "en":"◆ %d"},
+	"ui.shop_bought": {"zh-Hans":"已购入 %s", "en":"Bought %s"},
+	"ui.rune_none_selected": {"zh-Hans":"点击符文选中，再点卡牌镶嵌", "en":"Tap a rune, then tap a card to socket"},
 	"desc.damage": {"zh-Hans":"造成%d点伤害", "en":"Deal %d damage"},
 	"desc.shield": {"zh-Hans":"获得%d点护盾", "en":"Gain %d Shield"},
 	"desc.heal": {"zh-Hans":"回复%d点生命", "en":"Restore %d HP"},

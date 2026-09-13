@@ -16,6 +16,12 @@ func check(condition: bool, message: String) -> void:
 func encounter(health := 40, damage := 7, adds := 0) -> Dictionary:
 	return {"chapter":1,"level":1,"health":health,"damage":damage,"reward":20,"name":"测试守卫","art":"sentinel-v1.jpg","mechanics":{},"adds":adds,"background":0}
 
+# Enemies now telegraph varied intents, so tests about what happens when the player is hit
+# have to pin the intent instead of assuming every turn is an attack.
+func force_attack(combat: SpiritCombat) -> void:
+	for enemy in combat.state.enemies:
+		if enemy.health > 0: enemy.intent = {"kind":"attack","amount":int(enemy.damage)}
+
 func run() -> void:
 	content = SpiritContent.new()
 	check(content.cards.size() >= 20,"all card definitions load")
@@ -55,13 +61,31 @@ func run() -> void:
 	var gear := SpiritCombat.new(content)
 	gear.create(5,encounter(100,5),content.raw.startingDeck,60,{},["jadePlate","mistCloak"])
 	check(gear.state.player.shield == 8,"Jade Plate grants opening shield")
-	gear.end_turn(); gear.end_turn(); gear.end_turn()
+	force_attack(gear); gear.end_turn()
+	force_attack(gear); gear.end_turn()
+	force_attack(gear); gear.end_turn()
 	check(gear.state.player.health == 55,"Jade shield absorbs the first hit and Mist Cloak negates the third")
 
 	var phoenix := SpiritCombat.new(content)
 	phoenix.create(6,encounter(100,100),content.raw.startingDeck,60,{},["phoenixMail"])
+	force_attack(phoenix)
 	phoenix.end_turn()
 	check(phoenix.state.player.health == 15 and phoenix.state.phase == "player","Phoenix Mail prevents one defeat")
+
+	var intents := SpiritCombat.new(content)
+	intents.create(9,encounter(90,6),content.raw.startingDeck,60)
+	check(not intents.state.enemies[0].intent.is_empty(),"enemies telegraph an intent before the player acts")
+	var planned: Dictionary = intents.state.enemies[0].intent.duplicate()
+	var hp_before: int = int(intents.state.player.health)
+	intents.end_turn()
+	if str(planned.kind) == "attack":
+		check(hp_before - int(intents.state.player.health) == int(planned.amount),"attack intents deal exactly the telegraphed damage")
+	else:
+		check(int(intents.state.player.health) == hp_before,"non-attack intents deal no damage")
+
+	var relic_run := SpiritCombat.new(content)
+	relic_run.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["windChime","foxCharm"])
+	check(relic_run.state.hand.size() == 7 and int(relic_run.state.actions) == 3,"relics apply at battle start")
 
 	var profile := SpiritSave.defaults(content)
 	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty(),"new save schema is valid")
