@@ -677,6 +677,13 @@ var _hit_flash_shader: Shader = null
 var _ember_texture: GradientTexture2D = null
 var _terrain_grain_texture: NoiseTexture2D = null
 var _terrain_wash_cache: Dictionary = {}
+var _card_frame_golden_tex: Texture2D = null
+var _card_frame_baroque_tex: Texture2D = null
+var _map_pin_rune_tex: Texture2D = null
+var _map_tile_forest_tex: Texture2D = null
+var _biome_textures: Array = []
+var _chapter_map_cache: Dictionary = {}
+var _icon_textures: Dictionary = {}
 # Chapter waypoints are deterministic but not cheap to compute (a seeded RNG walk); they
 # never change once generated, so cache per chapter for the life of the app.
 var _map_waypoint_cache: Dictionary = {}
@@ -788,7 +795,9 @@ func _art_key_for_enemy(enemy: Dictionary) -> String:
 	return "sentinel"
 
 func _get_card_texture(card_id: String) -> Texture2D:
-	if CARD_ATLAS_1_POS.has(card_id):
+	if card_id in ["strike", "ward", "foxfire", "focus", "spiritCurrent"]:
+		return load("res://assets/cards/%s.jpg" % card_id)
+	elif CARD_ATLAS_1_POS.has(card_id):
 		if _card_atlas_1 == null: _card_atlas_1 = load("res://assets/cards/new-cards-atlas.jpg")
 		var coord: Vector2i = CARD_ATLAS_1_POS[card_id]
 		var atlas := AtlasTexture.new()
@@ -812,6 +821,33 @@ func _get_card_texture(card_id: String) -> Texture2D:
 		atlas.atlas = _card_atlas_1
 		atlas.region = Rect2(0, 0, float(_card_atlas_1.get_width()) / 2.0, float(_card_atlas_1.get_height()) / 2.0)
 		return atlas
+
+func _get_chapter_map_texture(chapter: int) -> Texture2D:
+	if _chapter_map_cache.has(chapter):
+		return _chapter_map_cache[chapter]
+	var specific_path := "res://assets/chapters/chapter_%d.png" % chapter
+	if ResourceLoader.exists(specific_path):
+		var tex: Texture2D = load(specific_path)
+		if tex != null:
+			_chapter_map_cache[chapter] = tex
+			return tex
+	if _biome_textures.is_empty():
+		var biome_files := [
+			"res://assets/biomes/biome_0_forest.png",
+			"res://assets/biomes/biome_1_autumn.png",
+			"res://assets/biomes/biome_2_glacier.png",
+			"res://assets/biomes/biome_3_ember.png",
+			"res://assets/biomes/biome_4_swamp.png",
+			"res://assets/biomes/biome_5_ruins.png"
+		]
+		for f in biome_files:
+			if ResourceLoader.exists(f):
+				_biome_textures.append(load(f))
+	if not _biome_textures.is_empty():
+		var fallback_tex: Texture2D = _biome_textures[chapter % _biome_textures.size()]
+		_chapter_map_cache[chapter] = fallback_tex
+		return fallback_tex
+	return null
 
 func t(key: String) -> String:
 	return content.ui(key, lang)
@@ -1519,6 +1555,19 @@ func _add_map_chapter(chapter: int) -> void:
 	grain.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	band.add_child(grain)
 
+	var biome_tex: Texture2D = _get_chapter_map_texture(chapter)
+	if biome_tex != null:
+		var painted_tile := TextureRect.new()
+		painted_tile.texture = biome_tex
+		painted_tile.size = Vector2(MAP_WIDTH, BAND_HEIGHT)
+		painted_tile.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		painted_tile.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		# Apply chapter-specific regional atmospheric tint and alternating flip for unique visual identity
+		painted_tile.modulate = Color.WHITE.lerp(tint, 0.35)
+		painted_tile.flip_h = ((chapter / 6) % 2 == 1)
+		painted_tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		band.add_child(painted_tile)
+
 	_add_terrain_dressing(band, chapter, tint)
 
 	# Fade both seams into the page colour so consecutive chapters read as one continuous world.
@@ -1611,7 +1660,7 @@ func _add_terrain_dressing(band: Control, chapter: int, tint: Color) -> void:
 		deco.pivot_offset = deco.size / 2.0
 		deco.position = p - deco.size / 2.0
 		deco.rotation = rng.randf_range(-0.12, 0.12)
-		deco.modulate.a = rng.randf_range(0.45, 0.8)
+		deco.modulate.a = rng.randf_range(0.2, 0.35)
 		deco.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		band.add_child(deco)
 		placed += 1
@@ -1662,13 +1711,18 @@ func _chapter_thumb_tile(chapter: int) -> Button:
 	tile.pressed.connect(_jump_to_chapter.bind(chapter))
 
 	var preview := TextureRect.new()
-	preview.texture = _get_terrain_wash_texture(chapter % CHAPTER_TINTS.size())
+	preview.texture = _get_chapter_map_texture(chapter)
+	if preview.texture == null:
+		preview.texture = _get_terrain_wash_texture(chapter % CHAPTER_TINTS.size())
 	preview.custom_minimum_size = Vector2(84.0, 42.0)
 	preview.size = preview.custom_minimum_size
 	preview.position = Vector2(4.0, 4.0)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	preview.stretch_mode = TextureRect.STRETCH_SCALE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var chapter_tint: Color = CHAPTER_TINTS[chapter % CHAPTER_TINTS.size()]
+	preview.modulate = Color.WHITE.lerp(chapter_tint, 0.35)
+	preview.flip_h = ((chapter / 6) % 2 == 1)
 	tile.add_child(preview)
 
 	if cleared:
@@ -1809,6 +1863,16 @@ func _add_stage_pin(index: int) -> void:
 	pin.add_theme_stylebox_override("disabled", _panel(bg_color, 16, Color("2b393d")))
 	pin.pressed.connect(func(): _travel_to(index))
 	map_canvas.add_child(pin)
+
+	if _map_pin_rune_tex == null: _map_pin_rune_tex = load("res://assets/map_pin_rune.png")
+	var rune_overlay := TextureRect.new()
+	rune_overlay.texture = _map_pin_rune_tex
+	rune_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rune_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rune_overlay.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rune_overlay.modulate = Color(border_color.r, border_color.g, border_color.b, 0.75 if not locked else 0.35)
+	rune_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pin.add_child(rune_overlay)
 
 	var pin_stack := VBoxContainer.new()
 	pin_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2401,7 +2465,13 @@ func _tap_card(hand_index: int) -> void:
 		selected_card = -1
 		show_battle()
 		return
-	_show_card_preview(hand_index)
+	var card := content.card(combat.state.hand[hand_index].card_id)
+	if _card_is_attack(card) and _living_enemies().size() > 1:
+		selected_card = hand_index
+		show_battle()
+		return
+	selected_card = -1
+	_attempt_play_card(hand_index, -1)
 
 # Shared dim, tap-outside-to-dismiss backdrop for any full-screen modal (card preview,
 # equipment/relic/modifier info) — one node name per caller so only that caller's _clear_*
@@ -2572,6 +2642,16 @@ func _big_card_face(card: Dictionary, rune_id: String) -> PanelContainer:
 	art_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	art_clip.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, 8))
 	art_clip.add_child(art)
+	
+	if _card_frame_baroque_tex == null: _card_frame_baroque_tex = load("res://assets/card_frame_baroque.png")
+	var big_frame := TextureRect.new()
+	big_frame.texture = _card_frame_baroque_tex
+	big_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	big_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	big_frame.stretch_mode = TextureRect.STRETCH_SCALE
+	big_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art_clip.add_child(big_frame)
+	
 	art_frame.add_child(art_clip)
 	stack.add_child(art_frame)
 
@@ -2645,46 +2725,77 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var rune_id: String = profile.card_runes.get(card.id, "")
 	var border_col: Color = _rune_color(rune_id, accent)
 
-	var frame := PanelContainer.new()
-	frame.name = "CardFrame"
-	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	frame.add_theme_stylebox_override("panel", _panel(Color("15262b"), 12, border_col))
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tile.add_child(frame)
+	# 1. Base card container with clipping
+	var card_clip := PanelContainer.new()
+	card_clip.name = "CardFrame"
+	card_clip.clip_contents = true
+	card_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card_clip.add_theme_stylebox_override("panel", _panel(Color("0a171b"), 12, border_col))
+	card_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(card_clip)
 
-	var stack := VBoxContainer.new()
-	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stack.add_theme_constant_override("separation", 2)
-	frame.add_child(stack)
-
-	var art_frame := PanelContainer.new()
-	art_frame.custom_minimum_size.y = 82.0
-	art_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	art_frame.add_theme_stylebox_override("panel", _panel(Color("0a171b"), 6))
-	art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
+	# 2. Illustration covers the ENTIRE card
 	var art := TextureRect.new()
 	art.texture = _get_card_texture(card.id)
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	# Card artwork is portrait-oriented; preserve the full illustration instead of cropping it.
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	var art_clip := PanelContainer.new()
-	art_clip.clip_contents = true
-	art_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	art_clip.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, 6))
-	art_clip.add_child(art)
-	art_frame.add_child(art_clip)
-	stack.add_child(art_frame)
-	
+	card_clip.add_child(art)
+
+	# 3. Ornate gold frame across the entire card perimeter
+	if _card_frame_golden_tex == null: _card_frame_golden_tex = load("res://assets/card_frame_golden.png")
+	var hand_frame := TextureRect.new()
+	hand_frame.texture = _card_frame_golden_tex
+	hand_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hand_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hand_frame.stretch_mode = TextureRect.STRETCH_SCALE
+	hand_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_clip.add_child(hand_frame)
+
+	# 4. Carved-out space in the lower-middle portion for card info
+	var info_box := PanelContainer.new()
+	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	info_box.anchor_left = 0.05
+	info_box.anchor_right = 0.95
+	info_box.anchor_top = 0.50
+	info_box.anchor_bottom = 0.96
+	info_box.offset_left = 0
+	info_box.offset_right = 0
+	info_box.offset_top = 0
+	info_box.offset_bottom = 0
+	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var info_style := _panel(Color(0.06, 0.12, 0.16, 0.88), 6, border_col.lerp(Color.WHITE, 0.2))
+	info_style.content_margin_left = 4; info_style.content_margin_right = 4
+	info_style.content_margin_top = 3; info_style.content_margin_bottom = 3
+	info_box.add_theme_stylebox_override("panel", info_style)
+	card_clip.add_child(info_box)
+
+	var info_stack := VBoxContainer.new()
+	info_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info_stack.add_theme_constant_override("separation", 1)
+	info_box.add_child(info_stack)
+
+	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
+	var name_text: String = content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else "")
+	var name_lbl := _label(name_text, 10, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info_stack.add_child(name_lbl)
+
+	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 7, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	kind_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info_stack.add_child(kind_lbl)
+
+	var desc_lbl := _label(_card_description(card), 7, Color("d2ded7"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	info_stack.add_child(desc_lbl)
+
+	# 5. Top badges (cost & rune)
 	var cost_badge := PanelContainer.new()
 	cost_badge.custom_minimum_size = Vector2(26, 26)
 	cost_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cost_badge.position = Vector2(-8, -8)
+	cost_badge.position = Vector2(-6, -6)
 	cost_badge.add_theme_stylebox_override("panel", _panel(accent, 13, Color("2b1a10")))
 	var cost_lbl := _label(str(card.cost), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
 	cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -2696,20 +2807,6 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 		var r_lbl := _label(rune_info.icon, 16, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
 		r_lbl.position = Vector2(116.0 - 24.0, -6.0)
 		tile.add_child(r_lbl)
-
-	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
-	var name_text: String = content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else "")
-	var name_lbl := _label(name_text, 10, Color("23150d"), HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.add_theme_stylebox_override("normal", _panel(Color("ead6a9"), 4))
-	stack.add_child(name_lbl)
-
-	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 7, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	stack.add_child(kind_lbl)
-
-	var desc_lbl := _label(_card_description(card), 7, Color("2b241b"), HORIZONTAL_ALIGNMENT_CENTER, true)
-	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	desc_lbl.add_theme_stylebox_override("normal", _panel(Color("f3e8cf"), 4))
-	stack.add_child(desc_lbl)
 
 	var center_idx: float = (count - 1) / 2.0
 	var distance: float = float(index) - center_idx
@@ -2723,7 +2820,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 
 	# The armed card lifts clear of the fan so it is obvious which one is waiting on a target.
 	if index == selected_card:
-		frame.add_theme_stylebox_override("panel", _panel(Color("1d3a35"), 12, GOLD))
+		card_clip.add_theme_stylebox_override("panel", _panel(Color("1d3a35"), 12, GOLD))
 		tile.position = tile.home_pos - Vector2(0, 30)
 		tile.rotation = 0.0
 		tile.z_index = 80
@@ -3405,13 +3502,36 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	# The tile is inert; only the price button below buys, so brushing a card cannot spend gold.
 	var btn := Panel.new()
 	btn.name = "ShopTile_%s" % card.id
-	btn.custom_minimum_size = Vector2(176, 228)
-	btn.pivot_offset = Vector2(88, 114)
+	btn.custom_minimum_size = Vector2(176, 232)
+	btn.size = btn.custom_minimum_size
+	btn.pivot_offset = Vector2(88, 116)
 	var border_color: Color = GOLD if on_sale else (accent if can_afford else Color("24373d"))
 	var tile_style := _panel(Color("1d1a10") if on_sale else Color("11242a"), 12, border_color)
 	if on_sale: tile_style.border_width_left = 2; tile_style.border_width_right = 2; tile_style.border_width_top = 2; tile_style.border_width_bottom = 2
 	btn.add_theme_stylebox_override("panel", tile_style)
+	btn.clip_contents = true
+
+	# 1. Full-bleed card illustration covering the entire tile
+	var art := TextureRect.new()
+	art.texture = _get_card_texture(card.id)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(art)
+
+	# 2. Ornate frame around the entire card perimeter
 	_add_ornate_frame(btn, btn.custom_minimum_size, border_color)
+
+	# 3. Top elements (Cost badge, Rarity stars, Sale tag)
+	var badge := _cost_badge(int(card.cost), accent)
+	badge.position = Vector2(8, 8)
+	btn.add_child(badge)
+
+	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
+	rarity_row.position = Vector2(88, 10)
+	rarity_row.size = Vector2(76, 16)
+	btn.add_child(rarity_row)
 
 	if on_sale:
 		var sale_tag := _label(t("ui.shop_sale"), 9, Color("2b1a05"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -3423,44 +3543,36 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 		sale_tag.z_index = 5
 		btn.add_child(sale_tag)
 
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 6)
-	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(pad)
+	# 4. Carved-out space in the lower-middle portion for card info
+	var info_box := PanelContainer.new()
+	info_box.position = Vector2(8, 86)
+	info_box.custom_minimum_size = Vector2(160, 138)
+	info_box.size = info_box.custom_minimum_size
+	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
+	box_style.content_margin_left = 6; box_style.content_margin_right = 6
+	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
+	info_box.add_theme_stylebox_override("panel", box_style)
+	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
+	btn.add_child(info_box)
 
 	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 3)
-	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pad.add_child(stack)
+	stack.add_theme_constant_override("separation", 2)
+	stack.mouse_filter = Control.MOUSE_FILTER_PASS
+	info_box.add_child(stack)
 
-	var art_row := Control.new()
-	art_row.custom_minimum_size = Vector2(164, 90)
-	art_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stack.add_child(art_row)
-	art_row.add_child(_card_art_panel(card.id, Vector2(164, 90)))
-	var badge := _cost_badge(int(card.cost), accent)
-	badge.position = Vector2(4, 4)
-	art_row.add_child(badge)
-	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
-	rarity_row.position = Vector2(88, 70)
-	rarity_row.size = Vector2(72, 16)
-	art_row.add_child(rarity_row)
-
-	stack.add_child(_label(content.text(card.nameKey, lang), 13, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 9, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
-	var desc := _label(_card_description(card), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
-	desc.custom_minimum_size.y = 30
+	stack.add_child(_label(content.text(card.nameKey, lang), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var desc := _label(_card_description(card), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc.custom_minimum_size.y = 24
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc)
+
 	var owned_row := HBoxContainer.new()
 	owned_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	owned_row.add_theme_constant_override("separation", 4)
 	owned_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stack.add_child(owned_row)
 	if owned > 0:
-		# A filled dot per copy owned reads faster than the same text every visit, and each
-		# purchase escalating the price is right there next to the count that explains why.
 		var dots := HBoxContainer.new()
 		dots.add_theme_constant_override("separation", 2)
 		dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3481,17 +3593,17 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 
 	var buy := Button.new()
 	buy.name = "BuyButton"
-	buy.custom_minimum_size.y = 38
+	buy.custom_minimum_size.y = 32
 	buy.focus_mode = Control.FOCUS_NONE
 	buy.text = "%s  ◆%d" % [t("ui.shop_buy"), price]
 	if font_cjk: buy.add_theme_font_override("font", font_cjk)
-	buy.add_theme_font_size_override("font_size", 13)
+	buy.add_theme_font_size_override("font_size", 12)
 	buy.add_theme_color_override("font_color", Color("0f1d10") if can_afford else Color("c78b7f"))
 	buy.add_theme_color_override("font_hover_color", Color("0f1d10"))
-	buy.add_theme_stylebox_override("normal", _panel(GOLD if can_afford else Color("3a2723"), 9, GOLD if can_afford else Color("6b4038")))
-	buy.add_theme_stylebox_override("hover", _panel(GOLD.lightened(0.15) if can_afford else Color("46302b"), 9, Color.WHITE))
-	buy.add_theme_stylebox_override("pressed", _panel(GOLD.darkened(0.2), 9, EMBER))
-	buy.add_theme_stylebox_override("disabled", _panel(Color("2a2320"), 9, Color("53403a")))
+	buy.add_theme_stylebox_override("normal", _panel(GOLD if can_afford else Color("3a2723"), 8, GOLD if can_afford else Color("6b4038")))
+	buy.add_theme_stylebox_override("hover", _panel(GOLD.lightened(0.15) if can_afford else Color("46302b"), 8, Color.WHITE))
+	buy.add_theme_stylebox_override("pressed", _panel(GOLD.darkened(0.2), 8, EMBER))
+	buy.add_theme_stylebox_override("disabled", _panel(Color("2a2320"), 8, Color("53403a")))
 	buy.disabled = not can_afford
 	buy.pressed.connect(func(): _buy_card_with_feedback(btn, card, price))
 	price_row.add_child(buy)
@@ -3548,6 +3660,16 @@ func _card_art_panel(card_id: String, art_size: Vector2, radius := 8) -> Control
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	clip.add_child(art)
+
+	if _card_frame_golden_tex == null: _card_frame_golden_tex = load("res://assets/card_frame_golden.png")
+	var frame_overlay := TextureRect.new()
+	frame_overlay.texture = _card_frame_golden_tex
+	frame_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame_overlay.stretch_mode = TextureRect.STRETCH_SCALE
+	frame_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.add_child(frame_overlay)
+
 	return clip
 
 func _cost_badge(cost: int, accent: Color, diameter := 26) -> Panel:
@@ -3580,6 +3702,17 @@ func _add_ornate_frame(tile: Control, size: Vector2, accent: Color) -> void:
 	inset_style.border_color = Color(accent.r, accent.g, accent.b, 0.55)
 	inset.add_theme_stylebox_override("panel", inset_style)
 	tile.add_child(inset)
+
+	if _card_frame_golden_tex == null: _card_frame_golden_tex = load("res://assets/card_frame_golden.png")
+	var frame_underlay := TextureRect.new()
+	frame_underlay.texture = _card_frame_golden_tex
+	frame_underlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame_underlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame_underlay.stretch_mode = TextureRect.STRETCH_SCALE
+	frame_underlay.modulate = Color.WHITE
+	frame_underlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame_underlay.z_index = 0
+	tile.add_child(frame_underlay)
 
 	var corners := [[Vector2(3, 3), 0.0], [Vector2(size.x - 17, 3), 90.0],
 		[Vector2(size.x - 17, size.y - 17), 180.0], [Vector2(3, size.y - 17), 270.0]]
@@ -3679,47 +3812,63 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 
 	var border_color: Color = accent if in_deck > 0 else Color("24373d")
 	var tile := Panel.new()
-	tile.custom_minimum_size = Vector2(176, 226)
+	tile.custom_minimum_size = Vector2(176, 232)
+	tile.size = tile.custom_minimum_size
 	tile.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, border_color))
+	tile.clip_contents = true
+
+	# 1. Full-bleed card illustration covering the entire tile
+	var art := TextureRect.new()
+	art.texture = _get_card_texture(card.id)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(art)
+
+	# 2. Ornate frame around the entire card perimeter
 	_add_ornate_frame(tile, tile.custom_minimum_size, border_color)
 
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 6)
-	pad.mouse_filter = Control.MOUSE_FILTER_PASS
-	tile.add_child(pad)
-
-	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 3)
-	stack.mouse_filter = Control.MOUSE_FILTER_PASS
-	pad.add_child(stack)
-
-	var art_row := Control.new()
-	art_row.custom_minimum_size = Vector2(164, 88)
-	art_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stack.add_child(art_row)
-	var art := _card_art_panel(card.id, Vector2(164, 88))
-	art_row.add_child(art)
+	# 3. Top elements (Cost badge, Rune icon, Rarity stars)
 	var badge := _cost_badge(int(card.cost), accent)
-	badge.position = Vector2(4, 4)
-	art_row.add_child(badge)
+	badge.position = Vector2(8, 8)
+	tile.add_child(badge)
+
 	if not rune_id.is_empty():
 		var rune_info := content.rune(rune_id)
 		var rune_lbl := _label(rune_info.icon, 15, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
-		rune_lbl.position = Vector2(140, 4)
+		rune_lbl.position = Vector2(40, 8)
 		rune_lbl.size = Vector2(20, 20)
-		art_row.add_child(rune_lbl)
+		tile.add_child(rune_lbl)
+
 	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
-	rarity_row.position = Vector2(84, 68)
+	rarity_row.position = Vector2(88, 10)
 	rarity_row.size = Vector2(76, 16)
-	art_row.add_child(rarity_row)
+	tile.add_child(rarity_row)
+
+	# 4. Carved-out space in the lower-middle portion for card info
+	var info_box := PanelContainer.new()
+	info_box.position = Vector2(8, 86)
+	info_box.custom_minimum_size = Vector2(160, 138)
+	info_box.size = info_box.custom_minimum_size
+	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
+	box_style.content_margin_left = 6; box_style.content_margin_right = 6
+	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
+	info_box.add_theme_stylebox_override("panel", box_style)
+	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
+	tile.add_child(info_box)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 2)
+	stack.mouse_filter = Control.MOUSE_FILTER_PASS
+	info_box.add_child(stack)
 
 	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
-	stack.add_child(_label(content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else ""), 13, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 9, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else ""), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
-	var desc := _label(_card_description(card), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
-	desc.custom_minimum_size.y = 32
+	var desc := _label(_card_description(card), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc.custom_minimum_size.y = 24
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc)
 
@@ -3730,10 +3879,10 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	controls.add_theme_constant_override("separation", 6)
 	controls.alignment = BoxContainer.ALIGNMENT_CENTER
 	stack.add_child(controls)
-	var minus := _button("−", func(): _deck_change(card.id, -1), Color("593b32"), Vector2(50, 34))
+	var minus := _button("−", func(): _deck_change(card.id, -1), Color("593b32"), Vector2(50, 30))
 	minus.disabled = in_deck <= 0
 	controls.add_child(minus)
-	var plus := _button("+", func(): _deck_change(card.id, 1), Color("245247"), Vector2(50, 34))
+	var plus := _button("+", func(): _deck_change(card.id, 1), Color("245247"), Vector2(50, 30))
 	plus.disabled = in_deck >= owned or profile.deck.size() >= 25
 	controls.add_child(plus)
 

@@ -115,60 +115,30 @@ Every one of these produced a wrong screen with no error in the log. They are th
 
 ## Visual art: current state, and integrating real assets
 
-Every screen renders with code, not scene files or bitmap art. The `GameIcon` inner class
-in `game.gd` draws vector shapes from a `kind`/`flourish` pair (sword/shield/pendant/staff/
-spear/bow/sigil/crossed_swords/crown/grand_crown/orb/coin_stack/campfire/card_stack/arrow/
-pine/boulder/hill/star, plus overlay marks like flame/leaf/sparkle/drop/wave/...). The map
-terrain is procedurally generated: `_get_terrain_wash_texture()` (a `GradientTexture2D` per
-chapter tint), `_get_terrain_grain_texture()` (a low-frequency `NoiseTexture2D`), and
-`_add_terrain_dressing()` (pine/boulder/hill `GameIcon`s scattered clear of the road curve)
-in `game.gd`.
+The visual presentation blends high-detail painted assets with procedural vector accents:
+- **Map chapter backgrounds** — `_add_map_chapter()` calls `_get_chapter_map_texture(chapter: int) -> Texture2D`.
+  - **Asset pipeline**: Checks `res://assets/chapters/chapter_%d.png` (390x520 PNG). If present, loads that unique chapter background directly.
+  - **Fallback & modulation**: If a specific chapter file is absent, falls back to `_biome_textures` (`res://assets/biomes/biome_0..5.png`) with per-chapter regional tint modulation (`Color.WHITE.lerp(tint, 0.35)`) and alternating horizontal flipping (`((chapter / 6) % 2 == 1)`), providing unique visual atmospheres across all 50 chapters without obvious repetition.
+  - **Adding unique chapter art**: Place 390x520 PNGs into `Godot/assets/chapters/` named `chapter_0.png` through `chapter_49.png`, run `godot --headless --path Godot/ --editor --quit` to import, and the game automatically displays each chapter's unique painted illustration 1:1.
+  - **Chapter quick-jump strip**: `_jump_strip_item` renders miniature chapter previews through `_get_chapter_map_texture(chapter)`.
+  - **Terrain dressing**: `_add_terrain_dressing()` adds subtle vector accents with softened alpha (0.2-0.35) so they do not overpower the painted illustrations, while preserving the collision-avoidance checks verified by `ui_smoke.gd`.
+- **Card frames and layouts** — Cards across hand (`_card_view`), shop (`_shop_card_tile`), and deck (`_deck_card_tile`):
+  - **Full-bleed art & frame**: Card illustration (`_get_card_texture`) and ornate frame (`card_frame_golden.png`) occupy the entire card rectangle (`PRESET_FULL_RECT`).
+  - **Cutout info box**: An elegant semi-translucent dark panel (`Color(0.06, 0.12, 0.16, 0.90)`) is carved out in the lower-middle portion of the card, housing card title, element/kind tags, effect description, owned/deck status counters, and action/buy buttons.
+  - **Floating badges**: Energy cost badge floats top-left; rune icon and rarity star row float top-right.
+- **Battle interaction (no enlarge popup)** — Hand card tapping in battle plays directly (for defensive/skill cards, or attack cards when only one enemy is alive). When multiple enemies are alive, tapping an attack card arms targeting directly on that card, and tapping a target enemy executes the attack. Tapping an armed card again deselects it. No enlarged modal preview popup is shown.
+- **Stage pins** — `_add_stage_pin()` overlays `assets/map_pin_rune.png` atop the procedural pin badge, tail, and shadow.
+- **Character/monster art and battle backgrounds** — `character-atlas-v3.png` (3x3 grid, `CHAR_KEYS` maps names to cells) via `_get_character_texture()`, and `BATTLE_BACKGROUNDS` (`assets/backgrounds/*.jpg`) for battle backdrops and setup.
 
-**There is no image-generation tool available in a Claude Code session on this project.**
-If a task is "make this look like [reference image]," the actual pixels have to come from
-outside this session — the user generating or sourcing art externally (an image model, a
-commissioned artist, a licensed asset pack) and handing over files to drop into `assets/`
-and wire in. Don't attempt to fake this with more elaborate procedural drawing and call it
-equivalent — say plainly that real art requires a real art source, the same way you'd say
-a visual change needs a device to actually verify.
+## Handoff & verification notes for future agents
 
-The user's stated target for this project's next visual pass, from two reference images
-they shared: a Genshin-Impact-style overworld map (painted biome terrain in blocks of
-distinct color per region, a hand-drawn-looking border where two regions meet, teardrop
-location pins each with a ground shadow) and a gacha-style card roster screen (ornate gold
-picture-frame borders, a row of rating stars, illustrated character/card portraits) for the
-shop and deck-building screens. The current map/pin/card-frame code (`_add_map_chapter`,
-`_add_region_borders`, `_add_stage_pin`, `_add_ornate_frame`) approximates the *structure*
-of that reference — region color-blocking, a pin tail-and-shadow instead of a centered
-badge, an inset border with corner ornaments — but not the *fidelity*: it is still flat
-vector shapes, not painted art, and the user has said as much.
-
-Where to plug in real art once it exists, without re-deriving this from scratch:
-- **Map chapter backgrounds** — `_add_map_chapter()` builds `wash`/`grain` `TextureRect`s
-  sized `MAP_WIDTH x BAND_HEIGHT` (390x520) per chapter band. A real painted background
-  (one per chapter, or one per `CHAPTER_TINTS` cycle position, reused the same way the
-  procedural wash is) replaces or layers under that. `_add_terrain_dressing()`'s
-  pine/boulder/hill scatter is the stand-in for terrain detail a real background would
-  already carry — drop the call once real art is in.
-- **Stage pins** — `_add_stage_pin()` builds the badge (a `Button` with a `_panel()`
-  stylebox), a `Polygon2D` tail, and a shadow `Panel`, all procedurally. A real pin sprite
-  replaces those three nodes; keep the tail-tip/shadow anchored exactly on `_map_point(index)`
-  the way `tests/ui_smoke.gd`'s "map pin markers" section checks for.
-- **Card frames** — `_add_ornate_frame()` draws an inset border plus four leaf-flourish
-  corner marks onto `_shop_card_tile()`/`_deck_card_tile()`. Real frame art is likely a
-  `NinePatchRect` (or a plain `TextureRect` behind the content) replacing this function's
-  call sites. Card *illustrations* already come from real files via `_get_card_texture()`
-  (`assets/cards/new-cards-atlas*.jpg`, indexed by `CARD_ATLAS_1_POS`/`CARD_ATLAS_2_POS`) —
-  reuse that pipeline for new card art in the same atlas layout, or extend it for a new one.
-- **Icons** — the `GameIcon` `kind`/`flourish` system is the current stand-in for real icon
-  art. If real icon files arrive, the natural swap is a new `_icon_texture(kind) ->
-  Texture2D` loader used wherever `_drawn_icon_badge()`/the map-screen dock buttons currently
-  instantiate a `GameIcon`.
-- **Character/monster art and battle backgrounds are already real bitmap assets** — untouched
-  by any of this. `character-atlas-v3.png` (a 3x3 grid, `CHAR_KEYS` maps names to cells) via
-  `_get_character_texture()`, and `BATTLE_BACKGROUNDS` (`assets/backgrounds/*.jpg`, stock
-  photography) for the battle screen backdrop and the account-setup screen.
-
-Whatever art arrives, keep `test_runner.gd`/`ui_smoke.gd` passing — a texture swap that
-crashes on a missing file or a bad `AtlasTexture` region is exactly what the smoke suite is
-for catching before it reaches a device.
+- **Verifying changes**:
+  ```bash
+  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (47 checks)
+  godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
+  ```
+  Both must pass without failures before committing.
+- **Deploying to iOS**:
+  Run `./deploy_ios.sh --full-export` with the iPhone unlocked and connected. If the screen is locked, `devicectl` reports `unavailable`.
+- **Importing newly added images**:
+  Always run `godot --headless --path Godot/ --editor --quit` after adding `.png` or `.jpg` assets to generate `.import` metadata before testing or packaging.

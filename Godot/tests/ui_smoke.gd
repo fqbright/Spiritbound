@@ -367,18 +367,7 @@ func _run() -> void:
 		var hand_before: int = game.combat.state.hand.size()
 		game._tap_card(attack_slot)
 		await process_frame
-		check(game.overlay.get_node_or_null("CardPreview") != null, "tapping a card opens the enlarge preview")
-		check(game.selected_card == -1, "the preview alone does not arm targeting")
-		check(game.combat.state.hand.size() == hand_before, "no card was played by opening the preview")
-		game._clear_card_preview()
-		await process_frame
-		check(game.overlay.get_node_or_null("CardPreview") == null, "tapping outside the card dismisses the preview")
-
-		game._tap_card(attack_slot)
-		await process_frame
-		game._confirm_card_preview(attack_slot)
-		await process_frame
-		check(game.selected_card == attack_slot, "confirming an attack card's preview arms targeting instead of playing")
+		check(game.selected_card == attack_slot, "tapping an attack card with multiple enemies arms targeting directly")
 		check(game.combat.state.hand.size() == hand_before, "no card was played yet")
 		game._tap_card(attack_slot)
 		await process_frame
@@ -394,11 +383,7 @@ func _run() -> void:
 		var before_hand: int = game.combat.state.hand.size()
 		game._tap_card(skill_slot)
 		await process_frame
-		check(game.overlay.get_node_or_null("CardPreview") != null, "self-target cards also open the preview on tap")
-		check(game.combat.state.hand.size() == before_hand, "the card is not played until the preview is confirmed")
-		game._confirm_card_preview(skill_slot)
-		await process_frame
-		check(game.combat.state.hand.size() == before_hand - 1, "confirming a non-targeted card's preview plays it")
+		check(game.combat.state.hand.size() == before_hand - 1, "tapping a non-targeted card plays it directly")
 		var w := 0.0
 		while game.resolving and w < 10.0:
 			await create_timer(0.1).timeout
