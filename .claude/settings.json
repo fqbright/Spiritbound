@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(godot --headless --path Godot/ --script res://tests/*)",
+      "Bash(/opt/homebrew/bin/godot --headless --path Godot/ --script res://tests/*)",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)"
+    ]
+  }
+}

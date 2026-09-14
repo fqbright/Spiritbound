@@ -3,7 +3,7 @@ class_name SpiritSave
 
 const PATH := "user://spiritbound-save.json"
 # Bump when the save shape changes; the sync layer will use it to decide on migration.
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 
 static func new_account() -> Dictionary:
 	return {
@@ -24,7 +24,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans"}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -34,9 +34,10 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not parsed is Dictionary: return base
 	for key in parsed: base[key] = parsed[key]
 	if not base.deck is Array or base.deck.size() != 25: base.deck = content.raw.startingDeck.duplicate()
+	var last_stage: int = content.encounters.size() - 1
 	base.health = clampi(int(base.health),1,60)
-	base.unlocked = clampi(int(base.unlocked),0,49)
-	base.position = clampi(int(base.position),0,49)
+	base.unlocked = clampi(int(base.unlocked),0,last_stage)
+	base.position = clampi(int(base.position),0,last_stage)
 	# Saves written before accounts existed get one on load rather than on next write.
 	if not base.get("account") is Dictionary or not base.account.has("id"): base.account = new_account()
 	base.schema_version = SCHEMA_VERSION

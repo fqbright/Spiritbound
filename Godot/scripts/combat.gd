@@ -21,8 +21,8 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	for i in deck.size(): draw_pile.append({"uid":i,"card_id":deck[i]})
 	_shuffle(draw_pile)
 	state = {
-		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0}, "enemies":enemies,
-		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":3,"actions":2,"turn":1,"phase":"player",
+		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
+		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":3,"turn":1,"phase":"player",
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
 		"swift_used":false,"first_attack":false,"moon_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
@@ -30,7 +30,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	}
 	if equipment.has("jadePlate"): state.player.shield += 8
 	if equipment.has("focusCharm"): state.player.focus += 1
-	if _has_relic("foxCharm"): state.actions += 1
+	# There is no play-count cap any more (see play()) — the fox charm's tempo bonus is
+	# expressed as energy instead of an extra play, so it stays a real turn-one boost.
+	if _has_relic("foxCharm"): state.energy += 1
 	_draw(5 + (1 if equipment.has("tideCharm") else 0) + (2 if _has_relic("windChime") else 0))
 	_plan_intents()
 	return state
@@ -89,6 +91,9 @@ func _execute_intent(enemy_index: int) -> void:
 		_:
 			var amount := int(intent.amount)
 			if kind == "attack_defend": enemy.shield += int(intent.get("shield", 0))
+			# Weak is the counterplay to enrage/damage-scaling mechanics: without it a late
+			# stage's damage growth is unstoppable, no matter how good the deck is.
+			if int(enemy.get("weak", 0)) > 0: amount = maxi(1, int(round(amount * 0.75)))
 			state.mist_hits += 1
 			if state.equipment.has("mistCloak") and state.mist_hits % 3 == 0:
 				amount = 0
@@ -103,22 +108,28 @@ func play(hand_index: int, target_index := -1) -> bool:
 	if state.phase != "player" or hand_index < 0 or hand_index >= state.hand.size(): return false
 	var instance: Dictionary = state.hand[hand_index]
 	var card := content.card(instance.card_id)
-	if card.is_empty() or card.cost > state.energy or state.actions <= 0: return false
+	if card.is_empty() or card.cost > state.energy: return false
+	# harmful drives the damage bonuses; needs_enemy drives targeting. A pure debuff needs a
+	# target but must not burn Focus or the first-attack bonuses.
 	var harmful := _is_attack(card)
-	if harmful:
+	if _targets_opponent(card):
 		target_index = _smart_target() if target_index < 0 else target_index
 		if target_index < 0 or target_index >= state.enemies.size() or state.enemies[target_index].health <= 0: return false
 	else: target_index = -1
 	var rune: String = state.runes.get(card.id, "")
 	state.energy -= card.cost
-	state.actions -= 1
-	if rune == "swift" and not state.swift_used: state.actions += 1; state.swift_used = true
+	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
+	# that play's own cost rather than an action slot that no longer exists.
+	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true
 	if card.get("kind","") == "Tactic" and state.equipment.has("moonStaff") and not state.moon_used: state.energy += 1; state.moon_used = true
 	state.hand.remove_at(hand_index)
 	if rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
 	elif card.exhaust: state.exhaust.append(instance)
 	else: state.discard.append(instance)
 	var bonus := int(state.upgrades.get(card.id,0))
+	# Strength is the permanent counterpart to Focus's one-shot burst: it never resets, so
+	# a Power card that grants it pays off over the whole fight rather than a single hit.
+	if harmful: bonus += int(state.player.get("strength", 0))
 	if harmful and state.player.focus > 0: bonus += 3 * state.player.focus; state.player.focus = 0
 	if harmful and not state.first_attack:
 		if state.equipment.has("emberBlade"): bonus += 3
@@ -156,6 +167,8 @@ func end_turn() -> void:
 			var burn_damage: int = enemy.burn + (1 if _has_relic("emberCore") else 0)
 			_damage_enemy(enemy_index,burn_damage,false)
 			enemy.burn = maxi(0,enemy.burn - 1)
+		if int(enemy.get("vulnerable",0)) > 0: enemy.vulnerable = maxi(0, int(enemy.vulnerable) - 1)
+		if int(enemy.get("weak",0)) > 0: enemy.weak = maxi(0, int(enemy.weak) - 1)
 		if state.phase != "player": return
 		enemy.damage += enemy.mechanics.get("enrage",0)
 
@@ -170,7 +183,6 @@ func end_turn() -> void:
 
 	state.turn += 1
 	state.energy = 3
-	state.actions = 2
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
@@ -206,10 +218,18 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if enemy.health <= 0: return 0
 	enemy.hits += 1
 	if enemy.mechanics.get("dodge_every",0) > 0 and enemy.hits % enemy.mechanics.dodge_every == 0: emit_signal("event","dodge",{"enemy":index}); return 0
+	# Vulnerable is the counterplay to armor-heavy late enemies: raw damage scales up before
+	# shield absorption, same slot in the pipeline pierce and Stone Spear already use.
+	if int(enemy.get("vulnerable", 0)) > 0: amount = int(round(amount * 1.5))
 	var absorbed := 0 if pierce else mini(enemy.shield,amount)
 	enemy.shield -= absorbed
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
+	# Thorns was carried as encounter data since the 50-stage version but never actually
+	# consulted anywhere — every "thorns" enemy fought identically to one with no mechanic.
+	if dealt > 0 and int(enemy.mechanics.get("thorns", 0)) > 0:
+		_damage_player(int(enemy.mechanics.thorns))
+		emit_signal("event","thorns",{"enemy":index,"amount":int(enemy.mechanics.thorns)})
 	if enemy.health <= 0:
 		if not enemy.revived and state.revives > 0 and rng.randf() < state.revive_chance:
 			enemy.health = maxi(1,int(ceil(enemy.max_health * .35))); enemy.revived = true; state.revives -= 1
@@ -249,11 +269,19 @@ func _shuffle(cards: Array) -> void:
 		var value = cards[i]; cards[i] = cards[j]; cards[j] = value
 
 func _enemy(id: String, title: String, title_en: String, art: String, health: int, damage: int, mechanics: Dictionary) -> Dictionary:
-	return {"id":id,"name":title,"name_en":title_en,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"stun":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
+	return {"id":id,"name":title,"name_en":title_en,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
 
 func _is_attack(card: Dictionary) -> bool:
 	for effect in card.effects:
 		if effect.operation == "damage" and effect.target == "opponent": return true
+	return false
+
+# Whether the card needs an enemy at all. Wider than _is_attack, which only counts damage:
+# a card that only applies Burn was being played with no target, and _resolve_effects drops
+# opponent statuses when target_index is -1, so those cards silently did nothing.
+func _targets_opponent(card: Dictionary) -> bool:
+	for effect in card.effects:
+		if effect.get("target", "") == "opponent": return true
 	return false
 
 func _base_damage(card: Dictionary, bonus: int) -> int:

@@ -52,11 +52,111 @@ func _run() -> void:
 	check(str(game.profile.account.name) == "测试驭灵者", "account name persists")
 	check(int(game.profile.get("updated_at", 0)) > 0, "write stamps updated_at for cloud sync")
 
+	section("== quests ==")
+	game.profile.daily_reset_at = 0
+	game.profile.weekly_reset_at = 0
+	game._ensure_quests_current()
+	check(game.profile.daily_quests.size() == 3, "three daily quests roll on reset, got %d" % game.profile.daily_quests.size())
+	check(game.profile.weekly_quests.size() == 3, "three weekly quests roll on reset, got %d" % game.profile.weekly_quests.size())
+	var reset_at_before: int = int(game.profile.daily_reset_at)
+	game._ensure_quests_current()
+	check(int(game.profile.daily_reset_at) == reset_at_before, "calling ensure_quests_current again this period does not reroll")
+
+	var win_quest: Dictionary = game.profile.daily_quests[0]
+	win_quest.type = "win_battles"
+	win_quest.progress = 0
+	win_quest.target = 2
+	win_quest.claimed = false
+	game._advance_quest("win_battles", 1)
+	check(int(win_quest.progress) == 1, "advance_quest bumps matching quests")
+	game._advance_quest("shop_purchase", 5)
+	check(int(win_quest.progress) == 1, "advance_quest leaves non-matching quests alone")
+	game._advance_quest("win_battles", 1)
+	check(int(win_quest.progress) == 2, "quest reaches its target")
+
+	var gold_before: int = int(game.profile.gold)
+	game._claim_quest("daily_quests", str(win_quest.id))
+	check(bool(win_quest.claimed), "claiming marks the quest claimed")
+	check(int(game.profile.gold) == gold_before + int(win_quest.reward), "claiming grants its gold reward (%d)" % int(win_quest.reward))
+	var gold_after_claim: int = int(game.profile.gold)
+	game._claim_quest("daily_quests", str(win_quest.id))
+	check(int(game.profile.gold) == gold_after_claim, "claiming an already-claimed quest does not pay out twice")
+
+	game.show_camp()
+	await process_frame
+	check(game.root.get_child_count() > 0, "camp screen builds with quest sections")
+	var quest_bar := _find_progress_bar(game.root)
+	check(quest_bar != null and quest_bar.size.x > 20.0, "quest progress bar has real width, not collapsed to zero")
+
 	section("== map ==")
 	game.show_map()
 	await process_frame
 	check(game.map_canvas != null, "map canvas built")
 	check(game.map_canvas.custom_minimum_size.y > 4000.0, "map canvas spans all chapters")
+
+	section("== organic map path ==")
+	var wp0: Array = game._chapter_waypoints(0)
+	var wp1: Array = game._chapter_waypoints(1)
+	check(wp0.size() == 5 and wp1.size() == 5, "each chapter still has exactly 5 stage slots")
+	var differs := false
+	for i in 5:
+		if not (wp0[i] as Vector2).is_equal_approx(wp1[i]): differs = true
+	check(differs, "chapters no longer reuse the exact same five pixel offsets")
+	var wp0_again: Array = game._chapter_waypoints(0)
+	check(wp0[0].is_equal_approx(wp0_again[0]), "the same chapter's waypoints are deterministic across calls (cached)")
+	for p in wp0:
+		var v: Vector2 = p
+		check(v.x >= game.ROAD_MARGIN_X - 0.01 and v.x <= game.MAP_WIDTH - game.ROAD_MARGIN_X + 0.01, "waypoint stays clear of the screen edge (x=%.1f)" % v.x)
+
+	var raw_points := PackedVector2Array()
+	for i in 5: raw_points.append(wp0[i])
+	var baked: PackedVector2Array = game._build_road_curve(raw_points).get_baked_points()
+	check(baked.size() > raw_points.size() * 3, "the curve is densely tessellated, not just the five raw waypoints (%d points)" % baked.size())
+	check(baked[0].is_equal_approx(raw_points[0]) and baked[baked.size() - 1].is_equal_approx(raw_points[raw_points.size() - 1]), "the curve still starts and ends exactly on the first and last stage")
+	var any_off_segment := false
+	for bp in baked:
+		var v: Vector2 = bp
+		var nearest_seg_dist := INF
+		for i in raw_points.size() - 1:
+			var a: Vector2 = raw_points[i]; var b: Vector2 = raw_points[i + 1]
+			var ab: Vector2 = b - a
+			var t: float = clampf((v - a).dot(ab) / maxf(0.001, ab.length_squared()), 0.0, 1.0)
+			nearest_seg_dist = minf(nearest_seg_dist, v.distance_to(a + ab * t))
+		if nearest_seg_dist > 4.0: any_off_segment = true
+	check(any_off_segment, "the baked path curves away from the straight-line zigzag, not just following it")
+
+	var road_tex: NoiseTexture2D = game._get_road_texture()
+	check(road_tex is NoiseTexture2D and road_tex.seamless, "the road uses a seamless procedural texture")
+
+	# The map background used to be a stretched stock photo per chapter, independent of where
+	# the road actually ran — "forced in", per feedback. It is now a procedural gradient wash
+	# with vector terrain dressing that is generated FROM the same curve as the road, so it
+	# cannot help but stay clear of it.
+	var wash_tex: GradientTexture2D = game._get_terrain_wash_texture(0)
+	check(wash_tex is GradientTexture2D, "the map terrain is a procedural gradient wash, not a stock photo")
+	check(not _find_jpg_texture_rect(game.map_canvas), "no stock JPG art remains anywhere on the map")
+
+	var band0: Node = game.map_canvas.get_child(0)
+	var band0_decos: Array = []
+	_find_all_by_script(band0, game.GameIcon, band0_decos)
+	var terrain_decos: Array = []
+	for d in band0_decos:
+		if str(d.kind) in ["pine", "boulder", "hill"]: terrain_decos.append(d)
+	check(terrain_decos.size() > 0, "chapter 0's background is dressed with procedural terrain silhouettes (%d placed)" % terrain_decos.size())
+	var all_clear := true
+	for d in terrain_decos:
+		var center: Vector2 = d.position + d.size / 2.0
+		for bp in baked:
+			var v: Vector2 = bp
+			if center.distance_to(v) < 30.0: all_clear = false
+	check(all_clear, "terrain decorations stay clear of the actual road curve, not just visually near it")
+
+	var found_particles := false
+	for child in game.root.get_children():
+		if child is CPUParticles2D:
+			found_particles = true
+			check(bool(child.emitting) and int(child.amount) > 0, "map ambience particles are emitting")
+	check(found_particles, "map ambience (CPUParticles2D) is present")
 
 	# The map's bar and dock float over a full-screen scroller, so they are positioned by
 	# hand. Getting that wrong collapses them to zero height: invisible, but not an error.
@@ -77,11 +177,65 @@ func _run() -> void:
 		var dock_z := _effective_z(dock_btn)
 		var pin_z := _max_z(game.map_canvas)
 		check(dock_z > pin_z, "dock draws above the map (dock z=%d, highest map z=%d)" % [dock_z, pin_z])
+		var dock_icon := _find_by_script(dock_btn, game.GameIcon)
+		check(dock_icon != null, "dock button carries a drawn GameIcon, not just a text glyph")
+
+	section("== map pin markers ==")
+	# A pin used to just be a badge centred on its road point. It is now a badge floating
+	# above the point with a tail pointing straight down at it and a shadow cast on the
+	# ground there — check the tail's tip and the shadow are both exactly at that point,
+	# not just "somewhere near" it.
+	var stage0_point: Vector2 = game._map_point(0)
+	var found_tail := false
+	for child in game.map_canvas.get_children():
+		if child is Polygon2D:
+			var poly: PackedVector2Array = (child as Polygon2D).polygon
+			if poly.size() == 3 and poly[2].is_equal_approx(stage0_point):
+				found_tail = true
+				break
+	check(found_tail, "stage 0's pin has a tail pointing exactly at its road point")
+	var found_shadow := false
+	for child in game.map_canvas.get_children():
+		if child is Panel:
+			var pnl := child as Panel
+			if pnl.size.x > 20.0 and pnl.size.x < 40.0 and pnl.size.y < 12.0:
+				var shadow_center: Vector2 = pnl.position + pnl.size / 2.0
+				if shadow_center.is_equal_approx(stage0_point):
+					found_shadow = true
+					break
+	check(found_shadow, "stage 0's pin casts a ground shadow at its road point")
+
+	section("== chapter quick-jump strip ==")
+	# Fifty chapters is too many to scroll through blind, so a row of small chapter previews
+	# floats above the dock; tapping one should jump the main map straight to that band.
+	var tile5: Node = game.root.find_child("ChapterTile_5", true, false)
+	check(tile5 != null, "the quick-jump strip renders a tile for a distant chapter")
+	var tile49: Node = game.root.find_child("ChapterTile_49", true, false)
+	check(tile49 != null, "the strip covers every chapter, including the last one")
+	game.map_scroll.scroll_vertical = 0
+	game._jump_to_chapter(5)
+	await process_frame
+	var expected_y: int = int(maxf(0.0, 5.0 * game.BAND_HEIGHT - 40.0))
+	check(game.map_scroll.scroll_vertical == expected_y, "jumping to a chapter scrolls the map to its band (got %d, want %d)" % [game.map_scroll.scroll_vertical, expected_y])
 
 	section("== deck ==")
 	game.show_deck()
 	await process_frame
 	check(game.root.get_child_count() > 0, "deck page built")
+	# Cards used to sit in one undivided grid; they are now grouped under a rarity header
+	# with its own star row, whichever rarities the starting collection actually contains.
+	var found_rarity_header := false
+	for r in ["Rare", "Uncommon", "Common", "Starter"]:
+		if _find_label_text(game.root, game.content.ui("rarity.%s" % r, game.lang)):
+			found_rarity_header = true
+			break
+	check(found_rarity_header, "the deck screen groups cards under a rarity section header")
+	var deck_stars: Array = []
+	_find_all_by_script(game.root, game.GameIcon, deck_stars)
+	var deck_star_kind_found := false
+	for s in deck_stars:
+		if str(s.kind) == "star": deck_star_kind_found = true; break
+	check(deck_star_kind_found, "deck card tiles show a drawn rarity star row")
 
 	section("== auto build ==")
 	game.profile.deck = []
@@ -118,7 +272,7 @@ func _run() -> void:
 	await process_frame
 	check(game.combat != null, "combat created")
 	check(game.combat.state.phase == "player", "battle starts on player phase")
-	check(int(game.combat.state.actions) == 2, "two plays available")
+	check(int(game.combat.state.energy) == 3, "battle starts with three energy")
 
 	# Health bar must actually shrink with the enemy's health.
 	var enemy_box: Control = game.enemy_boxes[0]
@@ -136,29 +290,63 @@ func _run() -> void:
 
 	section("== auto end turn ==")
 	var turn_before: int = int(game.combat.state.turn)
+	var start_energy: int = int(game.combat.state.energy)
+	var play_cost: int = int(game.content.card(game.combat.state.hand[0].card_id).cost)
 	game._attempt_play_card(0, -1)
 	await process_frame
-	check(int(game.combat.state.actions) == 1, "first play consumed one action, left %d" % int(game.combat.state.actions))
+	check(int(game.combat.state.energy) == start_energy - play_cost, "playing a card spends its energy cost, left %d" % int(game.combat.state.energy))
 	# Give the resolve coroutine (animations + enemy turn) time to finish.
 	var waited := 0.0
 	while game.resolving and waited < 8.0:
 		await create_timer(0.1).timeout
 		waited += 0.1
-	game._attempt_play_card(0, -1)
-	waited = 0.0
-	while game.resolving and waited < 12.0:
-		await create_timer(0.1).timeout
-		waited += 0.1
+	# Drain energy directly so nothing in hand is affordable any more, then let the turn
+	# hand itself over — there is no play-count cap left to exhaust instead.
+	if game.combat.state.phase == "player":
+		game.combat.state.energy = 0
+		await game._maybe_end_turn()
 	check(not game.resolving, "resolve finished")
 	if game.combat.state.phase == "player":
-		check(int(game.combat.state.turn) > turn_before, "turn advanced automatically after two plays (turn %d -> %d)" % [turn_before, int(game.combat.state.turn)])
-		check(int(game.combat.state.actions) == 2, "plays refilled for the new turn")
+		check(int(game.combat.state.turn) > turn_before, "turn advanced automatically once nothing was affordable (turn %d -> %d)" % [turn_before, int(game.combat.state.turn)])
+		check(int(game.combat.state.energy) == 3, "energy refilled for the new turn")
 	else:
 		print("  note: battle ended during the test (phase %s), turn handoff not observable" % game.combat.state.phase)
 
 	section("== no End Turn button ==")
 	var found_end_turn := _find_text(game.root, game.content.ui("ui.end_turn", game.lang))
 	check(not found_end_turn, "End Turn button is gone")
+
+	section("== enemy depth formation ==")
+	# Three or more enemies used to sit in a flat row (HBoxContainer). Force a synthetic
+	# 3-enemy fight and check they now form a wedge: the middle slot stays at full scale
+	# and lowest position, the two flanking slots sit higher up and a touch smaller.
+	var template: Dictionary = game.combat.state.enemies[0].duplicate(true)
+	template.health = template.max_health
+	game.combat.state.enemies = [template.duplicate(true), template.duplicate(true), template.duplicate(true)]
+	game.show_battle()
+	await process_frame
+	check(game.enemy_boxes.size() == 3, "all three synthetic enemies rendered")
+	if game.enemy_boxes.size() == 3:
+		var front: Control = game.enemy_boxes[1]
+		var left: Control = game.enemy_boxes[0]
+		var right: Control = game.enemy_boxes[2]
+		check(is_equal_approx(front.position.y, 0.0), "the middle enemy stays at the front (y=%f)" % front.position.y)
+		check(left.position.y < -0.01 and right.position.y < -0.01, "the flanking enemies are pushed back (y=%f, %f)" % [left.position.y, right.position.y])
+		check(is_equal_approx(left.position.y, right.position.y), "the two flanks sit at the same depth (symmetric wedge)")
+		var front_sprite: Sprite2D = front.get_node_or_null("MonsterSprite") as Sprite2D
+		var left_sprite: Sprite2D = left.get_node_or_null("MonsterSprite") as Sprite2D
+		check(front_sprite != null and left_sprite != null and float(front_sprite.get_meta("base_scale")) > float(left_sprite.get_meta("base_scale")), "the front enemy's sprite is drawn larger than a flanking one")
+
+	section("== compact info popup ==")
+	# The modifier banner and equipment/relic row used to spell their full text out on
+	# screen; now they're a tap target that opens this shared popup instead.
+	check(game.overlay.get_node_or_null("InfoPopup") == null, "no info popup up front")
+	game._show_info_popup(game._icon_badge("✥", Color("ffe2b0"), 60, 26), "Test Modifier", "Some detail text.", Color("c0392b"))
+	await process_frame
+	check(game.overlay.get_node_or_null("InfoPopup") != null, "tapping a compact badge opens the info popup")
+	game._clear_info_popup()
+	await process_frame
+	check(game.overlay.get_node_or_null("InfoPopup") == null, "tapping outside the popup dismisses it")
 
 	section("== tap targeting ==")
 	game.selected_card = -1
@@ -179,11 +367,22 @@ func _run() -> void:
 		var hand_before: int = game.combat.state.hand.size()
 		game._tap_card(attack_slot)
 		await process_frame
-		check(game.selected_card == attack_slot, "tapping an attack card arms targeting instead of playing")
+		check(game.overlay.get_node_or_null("CardPreview") != null, "tapping a card opens the enlarge preview")
+		check(game.selected_card == -1, "the preview alone does not arm targeting")
+		check(game.combat.state.hand.size() == hand_before, "no card was played by opening the preview")
+		game._clear_card_preview()
+		await process_frame
+		check(game.overlay.get_node_or_null("CardPreview") == null, "tapping outside the card dismisses the preview")
+
+		game._tap_card(attack_slot)
+		await process_frame
+		game._confirm_card_preview(attack_slot)
+		await process_frame
+		check(game.selected_card == attack_slot, "confirming an attack card's preview arms targeting instead of playing")
 		check(game.combat.state.hand.size() == hand_before, "no card was played yet")
 		game._tap_card(attack_slot)
 		await process_frame
-		check(game.selected_card == -1, "tapping the same card again cancels")
+		check(game.selected_card == -1, "tapping the same armed card again cancels")
 
 	var skill_slot := -1
 	for i in game.combat.state.hand.size():
@@ -195,11 +394,159 @@ func _run() -> void:
 		var before_hand: int = game.combat.state.hand.size()
 		game._tap_card(skill_slot)
 		await process_frame
-		check(game.combat.state.hand.size() == before_hand - 1, "non-targeted cards still play on a single tap")
+		check(game.overlay.get_node_or_null("CardPreview") != null, "self-target cards also open the preview on tap")
+		check(game.combat.state.hand.size() == before_hand, "the card is not played until the preview is confirmed")
+		game._confirm_card_preview(skill_slot)
+		await process_frame
+		check(game.combat.state.hand.size() == before_hand - 1, "confirming a non-targeted card's preview plays it")
 		var w := 0.0
 		while game.resolving and w < 10.0:
 			await create_timer(0.1).timeout
 			w += 0.1
+
+	section("== drawn icons render without crashing ==")
+	# _draw() only runs through Godot's own dispatch (add to the tree, queue_redraw, let a
+	# frame pass) — calling it directly raises "Drawing is only allowed inside _draw()",
+	# since draw_* calls check that flag. Route every combination through a real frame so a
+	# bad polygon index or div-by-zero in the vector math surfaces here, not just as a
+	# warped icon discovered later on a real screen.
+	var icon_kinds := ["sword", "shield", "pendant", "staff", "spear", "bow", "sigil",
+		"crossed_swords", "crown", "grand_crown", "orb", "coin_stack", "campfire",
+		"card_stack", "arrow", "pine", "boulder", "hill", "star", "none"]
+	var icon_marks := ["", "flame", "drop", "wave", "spike", "wing", "eye", "coin", "spiral",
+		"crescent", "rings", "shield_mark", "cycle_arrows", "sparkle", "cross_blade", "bolt", "leaf"]
+	var sweep_holder := Control.new()
+	game.root.add_child(sweep_holder)
+	var drawn := 0
+	for k in icon_kinds:
+		for m in icon_marks:
+			var probe: Control = game.GameIcon.new()
+			probe.kind = k
+			probe.flourish = m
+			probe.icon_color = Color("83e4c1")
+			probe.frame_color = Color("dab56e")
+			probe.size = Vector2(32, 32)
+			sweep_holder.add_child(probe)
+			drawn += 1
+	await process_frame
+	check(drawn == icon_kinds.size() * icon_marks.size(), "every icon kind/flourish combination is in the tree to draw (%d combinations)" % drawn)
+	sweep_holder.queue_free()
+
+	# Every equipment/rune/relic's actual configured kind+flourish/mark — catches a typo'd
+	# kind string in content.gd that the generic sweep above cannot.
+	var data_holder := Control.new()
+	game.root.add_child(data_holder)
+	for item in SpiritContent.EQUIPMENT:
+		var probe: Control = game.GameIcon.new()
+		probe.kind = str(item.get("icon_kind", "sword"))
+		probe.flourish = str(item.get("icon_flourish", ""))
+		probe.icon_color = Color("dab56e")
+		probe.size = Vector2(32, 32)
+		data_holder.add_child(probe)
+	for rune in SpiritContent.RUNES:
+		var probe: Control = game.GameIcon.new()
+		probe.kind = "sigil"
+		probe.flourish = str(rune.get("icon_mark", ""))
+		probe.icon_color = Color(rune.color)
+		probe.size = Vector2(32, 32)
+		data_holder.add_child(probe)
+	for relic in SpiritContent.RELICS:
+		var probe: Control = game.GameIcon.new()
+		probe.kind = "sigil"
+		probe.flourish = str(relic.get("icon_mark", ""))
+		probe.icon_color = Color(relic.color)
+		probe.size = Vector2(32, 32)
+		data_holder.add_child(probe)
+	var dizzy: Control = game.DizzyStars.new()
+	dizzy.size = Vector2(24, 24)
+	data_holder.add_child(dizzy)
+	await process_frame
+	check(true, "every equipment/rune/relic's configured icon, and the dizzy-stun stars, drew without raising")
+	data_holder.queue_free()
+
+	section("== hit-flash shader and status effects ==")
+	game.begin_battle(0)
+	await process_frame
+	var wm := 0.0
+	while game.resolving and wm < 8.0:
+		await create_timer(0.1).timeout
+		wm += 0.1
+	var monster_sprite: CanvasItem = game.enemy_boxes[0].get_node("MonsterSprite") as CanvasItem
+	check(monster_sprite.material is ShaderMaterial, "enemy sprite has the hit-flash shader installed")
+	game._flash_hit(monster_sprite, Color.WHITE, 0.2)
+	var mat: ShaderMaterial = monster_sprite.material
+	check(is_equal_approx(float(mat.get_shader_parameter("flash_amount")), 1.0), "flashing sets the shader to fully white immediately")
+	await create_timer(0.35).timeout
+	check(float(mat.get_shader_parameter("flash_amount")) < 0.1, "the flash fades back out on its own")
+
+	var player_sprite: CanvasItem = game.root.find_child("PlayerSprite", true, false) as CanvasItem
+	check(player_sprite != null and player_sprite.material is ShaderMaterial, "player sprite also carries the hit-flash shader")
+
+	var fx_holder := Control.new()
+	game.root.add_child(fx_holder)
+	var fx_sprite := Sprite2D.new()
+	fx_holder.add_child(fx_sprite)
+	var buffed_state := {"shield": 5, "burn": 2, "vulnerable": 2, "weak": 2, "stun": 1}
+	game._apply_status_fx(fx_holder, fx_sprite, Vector2(40, 40), 30.0, buffed_state)
+	await process_frame
+	var found_ember := false
+	var found_dizzy := false
+	var halo_count := 0
+	for child in fx_holder.get_children():
+		if child is CPUParticles2D: found_ember = true
+		if child.get_script() == game.DizzyStars: found_dizzy = true
+		if child is Panel and child != fx_sprite: halo_count += 1
+	check(found_ember, "burn attaches an ember particle effect to the sprite")
+	check(found_dizzy, "stun attaches the dizzy-stars spinner")
+	check(halo_count >= 2, "shield and vulnerable each attach a halo (found %d)" % halo_count)
+	check(fx_sprite.modulate.r < 0.9, "weak visibly desaturates the sprite")
+	fx_holder.queue_free()
+
+	section("== card polarity and target rings ==")
+	var harmful_card: Dictionary = game.content.card("strike")
+	var helpful_card: Dictionary = game.content.card("ward")
+	var debuff_card: Dictionary = game.content.card("cinderHex")
+	check(game._card_target_mode(harmful_card) == "enemy", "damage cards aim at enemies")
+	check(game._card_target_mode(helpful_card) == "self", "defensive cards aim at you")
+	check(game._card_target_mode(debuff_card) == "enemy", "pure debuffs aim at enemies too")
+
+	# A burn-only card has no damage effect. It used to be played with no target at all, and
+	# opponent statuses are dropped when the target index is -1, so the card did nothing.
+	var hex := SpiritCombat.new(game.content)
+	hex.create(77, game.content.encounters[3], game.content.raw.startingDeck, 60)
+	hex.state.hand = [{"uid": 901, "card_id": "cinderHex"}]
+	var burn_before: int = int(hex.state.enemies[0].burn)
+	check(hex.play(0, -1), "a burn-only card can be played")
+	check(int(hex.state.enemies[0].burn) > burn_before, "burn-only card actually applies burn (%d -> %d)" % [burn_before, int(hex.state.enemies[0].burn)])
+
+	game.begin_battle(29)
+	await process_frame
+	var pw := 0.0
+	while game.resolving and pw < 8.0:
+		await create_timer(0.1).timeout
+		pw += 0.1
+	var enemy_ring: Control = game.enemy_boxes[0].get_node_or_null("TargetGlow") as Control
+	var player_ring: Control = game.root.find_child("PlayerTargetGlow", true, false) as Control
+	check(enemy_ring != null and player_ring != null, "both target rings exist")
+	if enemy_ring != null and player_ring != null:
+		check(not enemy_ring.visible and not player_ring.visible, "no rings before a card is picked up")
+		game._show_valid_targets("enemy")
+		check(enemy_ring.visible and not player_ring.visible, "an attack lights enemies only")
+		game._show_valid_targets("self")
+		check(player_ring.visible and not enemy_ring.visible, "a defensive card lights you only")
+		game._clear_valid_targets()
+		check(not enemy_ring.visible and not player_ring.visible, "rings clear when the card is released")
+
+	# Enemy sprites restore their scale from a meta; without it they reset to 1.0, which is
+	# roughly three times their real size.
+	var monster: Node2D = game.enemy_boxes[0].get_node_or_null("MonsterSprite") as Node2D
+	check(monster != null and monster.has_meta("base_scale"), "enemy sprite records its base scale")
+	if monster != null and monster.has_meta("base_scale"):
+		var recorded: float = float(monster.get_meta("base_scale"))
+		check(is_equal_approx(recorded, monster.scale.x), "recorded scale matches the sprite (%.3f)" % recorded)
+		check(recorded < 1.0, "base scale is the real shrunk value, not the 1.0 fallback")
+		await game._animate_enemy_action(game.enemy_boxes[0], "empower", game.combat.state.enemies[0])
+		check(is_equal_approx(game.enemy_boxes[0].get_node("MonsterSprite").scale.x, recorded), "enemy returns to its own size after acting")
 
 	section("== victory goes straight to the chest ==")
 	game.begin_battle(0)
@@ -261,6 +608,35 @@ func _run() -> void:
 	if tile != null:
 		check(not (tile is Button), "shop tile itself is not a button, so touching a card cannot buy it")
 		check(_find_button_containing(tile, game.content.ui("ui.shop_buy", game.lang)) != null, "each tile carries an explicit buy button")
+		# The tile border used to be a single rounded rectangle; it now carries a leaf ornament
+		# at each of its four corners plus a drawn rarity star row, per the ornate-frame redesign.
+		var frame_marks: Array = []
+		_find_all_by_script(tile, game.GameIcon, frame_marks)
+		var leaf_count := 0
+		var star_count := 0
+		for m in frame_marks:
+			if str(m.flourish) == "leaf": leaf_count += 1
+			if str(m.kind) == "star": star_count += 1
+		check(leaf_count == 4, "the shop tile has an ornate frame with four corner ornaments, got %d" % leaf_count)
+		check(star_count >= 1 and star_count <= 3, "the shop tile shows a rarity star row (%d stars)" % star_count)
+
+	section("== shop rotation and escalating price ==")
+	var stock_a: Dictionary = game._shop_period()
+	var stock_b: Dictionary = game._shop_period()
+	check(stock_a.cards.size() == game.SHOP_STOCK_COUNT, "shop offers a limited daily selection (%d), not the whole catalog" % stock_a.cards.size())
+	check(stock_a.cards.size() < game.content.cards.size(), "the daily stock is smaller than the full card pool")
+	var ids_a: Array = stock_a.cards.map(func(c): return c.id)
+	var ids_b: Array = stock_b.cards.map(func(c): return c.id)
+	check(ids_a == ids_b, "stock is deterministic within the same day, not reshuffled every visit")
+	check(int(stock_a.sale_index) >= 0 and int(stock_a.sale_index) < stock_a.cards.size(), "exactly one stock slot is marked as today's sale")
+
+	# This is the reported issue: buying the same card over and over cost the same every
+	# time, so gold alone could stack unlimited copies of one card with no friction.
+	var probe_card: Dictionary = game.content.card("moonfang")
+	var price0: int = game._shop_price(probe_card, 0)
+	var price1: int = game._shop_price(probe_card, 1)
+	var price2: int = game._shop_price(probe_card, 2)
+	check(price0 < price1 and price1 < price2, "each owned copy raises the price of the next (%d -> %d -> %d)" % [price0, price1, price2])
 
 	section("== enemy intents ==")
 	var fresh := SpiritCombat.new(game.content)
@@ -305,7 +681,7 @@ func _run() -> void:
 	check(chimed.state.hand.size() == plain.state.hand.size() + 2, "windChime draws 2 extra (%d vs %d)" % [chimed.state.hand.size(), plain.state.hand.size()])
 	var charmed := SpiritCombat.new(game.content)
 	charmed.create(11, game.content.encounters[0], game.content.raw.startingDeck, 60, {}, [], {}, {}, ["foxCharm"])
-	check(int(charmed.state.actions) == 3, "foxCharm grants a third opening play, got %d" % int(charmed.state.actions))
+	check(int(charmed.state.energy) == 4, "foxCharm grants 1 extra opening energy, got %d" % int(charmed.state.energy))
 
 	section("== damage preview matches reality ==")
 	var matched := 0
@@ -356,6 +732,13 @@ func _max_z(node: Node) -> int:
 		best = maxi(best, _max_z(child))
 	return best
 
+func _find_progress_bar(node: Node) -> Control:
+	if node is ProgressBar: return node as Control
+	for child in node.get_children():
+		var found := _find_progress_bar(child)
+		if found != null: return found
+	return null
+
 func _find_shop_tile(node: Node) -> Control:
 	# Shop tiles are the fixed-width panels the grid lays out.
 	if node is Control and (node as Control).custom_minimum_size.x == 176.0 and (node as Control).custom_minimum_size.y >= 200.0:
@@ -376,4 +759,32 @@ func _find_text(node: Node, needle: String) -> bool:
 	if node is Button and (node as Button).text == needle: return true
 	for child in node.get_children():
 		if _find_text(child, needle): return true
+	return false
+
+func _find_label_text(node: Node, needle: String) -> bool:
+	if node is Label and (node as Label).text == needle: return true
+	for child in node.get_children():
+		if _find_label_text(child, needle): return true
+	return false
+
+# `is GameIcon` doesn't work through a base-typed `game: Control` reference (GDScript needs
+# a compile-time type expression), so identity is checked via the script resource instead.
+func _find_by_script(node: Node, script: Script) -> Node:
+	if node.get_script() == script: return node
+	for child in node.get_children():
+		var found := _find_by_script(child, script)
+		if found != null: return found
+	return null
+
+func _find_all_by_script(node: Node, script: Script, out: Array) -> void:
+	if node.get_script() == script: out.append(node)
+	for child in node.get_children():
+		_find_all_by_script(child, script, out)
+
+func _find_jpg_texture_rect(node: Node) -> bool:
+	if node is TextureRect:
+		var tex: Texture2D = (node as TextureRect).texture
+		if tex != null and str(tex.resource_path).ends_with(".jpg"): return true
+	for child in node.get_children():
+		if _find_jpg_texture_rect(child): return true
 	return false

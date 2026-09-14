@@ -1,8 +1,10 @@
 # Spiritbound
 
 A portrait mobile card-battler built in Godot 4. You play a spirit tamer working
-up a 50-stage campaign across ten chapters, building a 25-card deck and fitting
-it with equipment, runes and relics along the way.
+up a 250-stage campaign across 50 chapters, building a 25-card deck from a pool of
+36 and fitting it with equipment, runes and relics along the way. Difficulty runs
+in four bands — see [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md#the-250-stage-difficulty-curve)
+for the curve and how it was tuned.
 
 Fully bilingual — English and 简体中文 — switchable at any time from the map.
 

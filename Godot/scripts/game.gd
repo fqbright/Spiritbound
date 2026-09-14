@@ -151,6 +151,8 @@ class HandCard extends Control:
 		drag_start = global_position + local_pos
 		z_index = 60
 		Input.vibrate_handheld(15)
+		# Light up what this card may hit as soon as it leaves the hand.
+		if game: game._show_valid_targets(game._card_target_mode(card_data))
 		if current_tween: current_tween.kill()
 		current_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		current_tween.tween_property(self, "position:y", home_pos.y - 32.0, 0.18)
@@ -168,7 +170,8 @@ class HandCard extends Control:
 			rotation = 0.0
 			scale = Vector2(1.12, 1.12)
 			target_enemy_idx = -1
-			if game:
+			# A card that acts on you cannot be aimed at an enemy, so it never hovers one.
+			if game and game._card_target_mode(card_data) == "enemy":
 				for box in game.enemy_boxes:
 					if box and is_instance_valid(box):
 						var rect: Rect2 = box.get_global_rect()
@@ -189,9 +192,7 @@ class HandCard extends Control:
 		preview_index = -1
 		if game:
 			game._clear_damage_preview()
-			for box in game.enemy_boxes:
-				if box and is_instance_valid(box):
-					game._set_enemy_targeted(int(box.get_meta("enemy_index")), false)
+			game._clear_valid_targets()
 
 		var played := false
 		if not is_dragging:
@@ -203,13 +204,10 @@ class HandCard extends Control:
 
 		if is_dragging and (position.y < home_pos.y - 60.0 or global_position.y < 580.0):
 			var final_target := target_enemy_idx
-			if final_target < 0 and card_data.get("kind", "Skill") == "Attack":
-				var alive_indices := []
-				for i in game.combat.state.enemies.size():
-					if game.combat.state.enemies[i].health > 0:
-						alive_indices.append(i)
-				if alive_indices.size() == 1:
-					final_target = alive_indices[0]
+			if final_target < 0 and game._card_target_mode(card_data) == "enemy":
+				# Dropped short of any enemy: with one left there is no ambiguity to resolve.
+				var alive_indices: Array = game._living_enemies()
+				if alive_indices.size() == 1: final_target = alive_indices[0]
 			played = game._attempt_play_card(hand_index, final_target)
 
 		if not played:
@@ -223,6 +221,424 @@ class HandCard extends Control:
 		current_tween.tween_property(self, "position", home_pos, 0.4)
 		current_tween.tween_property(self, "rotation", home_rot, 0.3)
 		current_tween.tween_property(self, "scale", Vector2.ONE, 0.3)
+
+
+# Drawn rather than glyph text: no bitmap art exists for these, and a real icon reads
+# faster than a character from a font at combat-banner size.
+class IntentIcon extends Control:
+	var kind := "attack"
+	var icon_color := Color.WHITE
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var s: float = size.x
+		match kind:
+			"defend": _draw_shield(s)
+			"empower": _draw_chevrons(s)
+			"curse": _draw_drop(s)
+			"attack_defend":
+				_draw_sword(s, 0.62, -0.12)
+				_draw_shield(s * 0.56, Vector2(s * 0.58, s * 0.46))
+			"critical":
+				_draw_sword(s, 1.0, 0.0)
+				_draw_sword(s, 1.0, 0.0, true)
+				_draw_burst(s)
+			_:
+				_draw_sword(s, 1.0, 0.0)
+				_draw_sword(s, 1.0, 0.0, true)
+
+	func _blade(length: float, mirrored: bool) -> PackedVector2Array:
+		# One blade pointing from lower-left to upper-right, as a thin hexagon with a
+		# crossguard notch, built in a unit square then scaled by `length`.
+		var pts := PackedVector2Array([
+			Vector2(0.06, 0.94), Vector2(0.16, 0.94), Vector2(0.72, 0.38),
+			Vector2(0.94, 0.16), Vector2(0.94, 0.06), Vector2(0.84, 0.06),
+			Vector2(0.28, 0.62), Vector2(0.16, 0.84),
+		])
+		var out := PackedVector2Array()
+		for p in pts:
+			var q := p * length
+			if mirrored: q.x = length - q.x
+			out.append(q)
+		return out
+
+	func _draw_sword(s: float, scale_amt: float, rot_offset: float, mirrored := false) -> void:
+		var blade := _blade(s, mirrored)
+		var centered := PackedVector2Array()
+		var center := Vector2(s, s) / 2.0
+		for p in blade: centered.append((p - center) * scale_amt + center)
+		draw_colored_polygon(centered, icon_color)
+		# Hilt: a short perpendicular tick near the lower blade end.
+		var hilt_center: Vector2 = centered[6].lerp(centered[7], 0.5)
+		var dir: Vector2 = (centered[2] - centered[6]).normalized()
+		var perp := Vector2(-dir.y, dir.x) * s * 0.09
+		draw_line(hilt_center - perp, hilt_center + perp, icon_color, s * 0.05)
+
+	func _draw_shield(s: float, offset := Vector2.ZERO) -> void:
+		var pts := PackedVector2Array([
+			Vector2(0.5, 0.04), Vector2(0.88, 0.18), Vector2(0.88, 0.5),
+			Vector2(0.5, 0.96), Vector2(0.12, 0.5), Vector2(0.12, 0.18),
+		])
+		var out := PackedVector2Array()
+		for p in pts: out.append(p * s + offset)
+		draw_colored_polygon(out, Color(icon_color, 0.28))
+		out.append(out[0])
+		draw_polyline(out, icon_color, s * 0.07, true)
+
+	func _draw_chevrons(s: float) -> void:
+		for row in 2:
+			var y: float = s * (0.68 - row * 0.32)
+			var pts := PackedVector2Array([
+				Vector2(s * 0.2, y), Vector2(s * 0.5, y - s * 0.28), Vector2(s * 0.8, y),
+			])
+			draw_polyline(pts, icon_color, s * 0.11, true)
+
+	func _draw_drop(s: float) -> void:
+		var pts := PackedVector2Array()
+		var steps := 16
+		for i in steps + 1:
+			var t: float = float(i) / float(steps) * TAU
+			var r: float = 0.34 * (1.0 - 0.35 * cos(t))
+			pts.append(Vector2(0.5 + r * sin(t), 0.42 + r * -cos(t) + 0.16) * s)
+		draw_colored_polygon(pts, icon_color)
+
+	func _draw_burst(s: float) -> void:
+		var center := Vector2(s, s) / 2.0
+		for i in 6:
+			var a: float = TAU * float(i) / 6.0
+			var dir := Vector2(cos(a), sin(a))
+			draw_line(center + dir * s * 0.42, center + dir * s * 0.54, icon_color, s * 0.05)
+
+
+# Every equipment/rune/relic/stage badge used to be one Unicode glyph in a coloured circle —
+# readable, but flat, and no two items looked like they belonged to the same visual system.
+# This draws an actual small icon instead: a base silhouette (sword/shield/pendant/staff/
+# spear/bow for gear, a hexagon sigil frame for runes and relics) plus an optional flourish
+# that carries the item's specific flavour, all vector shapes so no bitmap art is needed.
+class GameIcon extends Control:
+	var kind := "sword"      # base silhouette
+	var flourish := ""       # small overlay mark, meaning depends on kind
+	var icon_color := Color.WHITE
+	var frame_color := Color.TRANSPARENT  # sigil ring colour for rune/relic marks; falls back to icon_color
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _frame() -> Color:
+		return icon_color if frame_color == Color.TRANSPARENT else frame_color
+
+	func _draw() -> void:
+		var s: float = size.x
+		match kind:
+			"none": pass
+			"shield": _draw_shield_body(s)
+			"pendant": _draw_pendant_body(s)
+			"staff": _draw_staff_body(s)
+			"spear": _draw_spear_body(s)
+			"bow": _draw_bow_body(s)
+			"sigil": _draw_sigil_frame(s)
+			"crossed_swords": _draw_crossed(s)
+			"crown": _draw_crown(s, false)
+			"grand_crown": _draw_crown(s, true)
+			"orb": _draw_orb(s)
+			"coin_stack": _draw_coin_stack(s)
+			"campfire": _draw_campfire(s)
+			"card_stack": _draw_card_stack_body(s)
+			"arrow": _draw_arrow_body(s)
+			"pine": _draw_pine_body(s)
+			"boulder": _draw_boulder_body(s)
+			"hill": _draw_hill_body(s)
+			"star": _draw_star_body(s)
+			_: _draw_sword_body(s)
+		if not flourish.is_empty(): _draw_mark(flourish, s, Vector2(s, s) / 2.0, s * 0.34)
+
+	# ---- polygon helpers ----
+	func _regular_polygon(center: Vector2, radius: float, sides: int, rot := 0.0) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for i in sides:
+			var a: float = rot + TAU * float(i) / float(sides)
+			pts.append(center + Vector2(cos(a), sin(a)) * radius)
+		return pts
+
+	func _star_points(center: Vector2, outer: float, inner: float, points: int, rot := -PI / 2.0) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for i in points * 2:
+			var r := outer if i % 2 == 0 else inner
+			var a: float = rot + PI * float(i) / float(points)
+			pts.append(center + Vector2(cos(a), sin(a)) * r)
+		return pts
+
+	func _ring(center: Vector2, radius: float, width: float, color: Color) -> void:
+		var pts := _regular_polygon(center, radius, 28)
+		pts.append(pts[0])
+		draw_polyline(pts, color, width, true)
+
+	# ---- base silhouettes (drawn centred in the s x s square) ----
+	func _draw_sword_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var blade := PackedVector2Array([
+			c + Vector2(-0.05, -0.42) * s, c + Vector2(0.05, -0.42) * s,
+			c + Vector2(0.08, 0.14) * s, c + Vector2(0.0, 0.22) * s, c + Vector2(-0.08, 0.14) * s,
+		])
+		draw_colored_polygon(blade, icon_color)
+		draw_line(c + Vector2(-0.19, 0.12) * s, c + Vector2(0.19, 0.12) * s, icon_color, s * 0.07)
+		var grip := Rect2(c + Vector2(-0.035, 0.14) * s, Vector2(0.07, 0.24) * s)
+		draw_rect(grip, icon_color)
+
+	func _draw_shield_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var pts := PackedVector2Array([
+			c + Vector2(0.0, -0.40) * s, c + Vector2(0.32, -0.26) * s, c + Vector2(0.32, 0.06) * s,
+			c + Vector2(0.0, 0.42) * s, c + Vector2(-0.32, 0.06) * s, c + Vector2(-0.32, -0.26) * s,
+		])
+		draw_colored_polygon(pts, Color(icon_color, 0.85))
+		pts.append(pts[0])
+		draw_polyline(pts, icon_color.lightened(0.25), s * 0.045, true)
+
+	func _draw_pendant_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_line(c + Vector2(0, -0.44) * s, c + Vector2(0, -0.2) * s, icon_color, s * 0.05)
+		var gem := _regular_polygon(c + Vector2(0, 0.06) * s, s * 0.24, 6, -PI / 2.0)
+		draw_colored_polygon(gem, icon_color)
+		_ring(c + Vector2(0, -0.2) * s, s * 0.09, s * 0.035, icon_color)
+
+	func _draw_staff_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_line(c + Vector2(0, -0.3) * s, c + Vector2(0, 0.44) * s, icon_color, s * 0.06)
+		_ring(c + Vector2(0, -0.36) * s, s * 0.11, s * 0.045, icon_color)
+
+	func _draw_spear_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_line(c + Vector2(0, -0.2) * s, c + Vector2(0, 0.44) * s, icon_color, s * 0.055)
+		var tip := PackedVector2Array([c + Vector2(0, -0.46) * s, c + Vector2(0.1, -0.14) * s, c + Vector2(-0.1, -0.14) * s])
+		draw_colored_polygon(tip, icon_color)
+
+	func _draw_bow_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var arc := PackedVector2Array()
+		for i in 13:
+			var t: float = float(i) / 12.0
+			var a: float = lerp(-PI * 0.36, PI * 0.36, t)
+			arc.append(c + Vector2(cos(a), sin(a)) * s * 0.42)
+		draw_polyline(arc, icon_color, s * 0.06, true)
+		draw_line(arc[0], arc[arc.size() - 1], icon_color.darkened(0.1), s * 0.025)
+
+	func _draw_crossed(s: float) -> void:
+		var pivot := pivot_offset
+		pivot_offset = Vector2(s, s) / 2.0
+		rotation = deg_to_rad(-22)
+		_draw_sword_body(s)
+		rotation = deg_to_rad(22)
+		_draw_sword_body(s)
+		rotation = 0.0
+		pivot_offset = pivot
+
+	func _draw_crown(s: float, grand: bool) -> void:
+		var c := Vector2(s, s) / 2.0
+		var base_y := 0.16
+		var peaks := PackedVector2Array([
+			c + Vector2(-0.34, base_y) * s, c + Vector2(-0.34, -0.02) * s, c + Vector2(-0.17, 0.1) * s,
+			c + Vector2(0.0, -0.34) * s, c + Vector2(0.17, 0.1) * s, c + Vector2(0.34, -0.02) * s,
+			c + Vector2(0.34, base_y) * s,
+		])
+		draw_colored_polygon(peaks, icon_color)
+		draw_rect(Rect2(c + Vector2(-0.34, base_y) * s, Vector2(0.68, 0.1) * s), icon_color.darkened(0.1))
+		if grand:
+			draw_colored_polygon(_regular_polygon(c + Vector2(0, -0.3) * s, s * 0.06, 6), Color.WHITE)
+
+	func _draw_orb(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_circle(c, s * 0.4, Color(icon_color, 0.35))
+		draw_circle(c, s * 0.24, icon_color)
+		draw_circle(c - Vector2(0.08, 0.08) * s, s * 0.08, Color(1, 1, 1, 0.8))
+
+	func _draw_coin_stack(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		for i in 3:
+			var oy := 0.18 - float(i) * 0.14
+			_ring(c + Vector2(0, oy) * s, s * 0.24, s * 0.05, icon_color)
+			draw_colored_polygon(_regular_polygon(c + Vector2(0, oy) * s, s * 0.19, 16), Color(icon_color, 0.5))
+
+	func _draw_campfire(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_line(c + Vector2(-0.28, 0.3) * s, c + Vector2(0.24, -0.02) * s, icon_color.darkened(0.2), s * 0.06)
+		draw_line(c + Vector2(0.28, 0.3) * s, c + Vector2(-0.24, -0.02) * s, icon_color.darkened(0.2), s * 0.06)
+		_draw_mark("flame", s, c + Vector2(0, -0.16) * s, s * 0.28)
+
+	func _draw_sigil_frame(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var hex := _regular_polygon(c, s * 0.46, 6, -PI / 2.0)
+		draw_colored_polygon(hex, Color(_frame(), 0.14))
+		hex.append(hex[0])
+		draw_polyline(hex, _frame(), s * 0.045, true)
+
+	# A small fanned hand of three cards — the deck tab's icon.
+	func _draw_card_stack_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var half := Vector2(0.16, 0.22) * s
+		for i in 3:
+			var rot: float = deg_to_rad(-14.0 + float(i) * 14.0)
+			var offset := Vector2(float(i - 1) * 0.05, float(i - 1) * -0.02) * s
+			var corners := [Vector2(-half.x, -half.y), Vector2(half.x, -half.y), Vector2(half.x, half.y), Vector2(-half.x, half.y)]
+			var pts := PackedVector2Array()
+			for corner in corners: pts.append(corner.rotated(rot) + c + offset)
+			draw_colored_polygon(pts, Color(icon_color, 0.4 + float(i) * 0.2))
+			pts.append(pts[0])
+			draw_polyline(pts, icon_color, s * 0.028, true)
+
+	# A single decisive chevron pointing onward — the "next stage" icon.
+	func _draw_arrow_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var pts := PackedVector2Array([
+			c + Vector2(-0.32, -0.2) * s, c + Vector2(0.06, -0.2) * s, c + Vector2(0.06, -0.38) * s,
+			c + Vector2(0.4, 0.0) * s, c + Vector2(0.06, 0.38) * s, c + Vector2(0.06, 0.2) * s,
+			c + Vector2(-0.32, 0.2) * s,
+		])
+		draw_colored_polygon(pts, icon_color)
+
+	# ---- terrain dressing (scattered on the map background, not badge icons) ----
+	func _draw_pine_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_rect(Rect2(c + Vector2(-0.04, 0.26) * s, Vector2(0.08, 0.16) * s), icon_color.darkened(0.35))
+		for i in 3:
+			var w: float = 0.4 - float(i) * 0.1
+			var y: float = 0.2 - float(i) * 0.2
+			var tri := PackedVector2Array([
+				c + Vector2(0, y - 0.18) * s, c + Vector2(w, y + 0.08) * s, c + Vector2(-w, y + 0.08) * s,
+			])
+			draw_colored_polygon(tri, icon_color)
+
+	func _draw_boulder_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var pts := PackedVector2Array([
+			c + Vector2(-0.38, 0.22) * s, c + Vector2(-0.3, -0.08) * s, c + Vector2(-0.08, -0.28) * s,
+			c + Vector2(0.2, -0.22) * s, c + Vector2(0.38, 0.04) * s, c + Vector2(0.26, 0.26) * s,
+			c + Vector2(-0.1, 0.3) * s,
+		])
+		draw_colored_polygon(pts, icon_color)
+		var facet := PackedVector2Array([
+			c + Vector2(-0.08, -0.24) * s, c + Vector2(0.16, -0.18) * s, c + Vector2(0.06, -0.02) * s, c + Vector2(-0.2, -0.02) * s,
+		])
+		draw_colored_polygon(facet, icon_color.lightened(0.18))
+
+	func _draw_hill_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		for i in 2:
+			var cx: float = -0.16 + float(i) * 0.3
+			var pts := PackedVector2Array()
+			var steps := 12
+			for j in steps + 1:
+				var t: float = float(j) / float(steps)
+				var a: float = lerp(PI, 0.0, t)
+				pts.append(c + Vector2(cx + cos(a) * 0.34, 0.14 - sin(a) * 0.3) * s)
+			pts.append(c + Vector2(cx + 0.34, 0.32) * s)
+			pts.append(c + Vector2(cx - 0.34, 0.32) * s)
+			draw_colored_polygon(pts, Color(icon_color, 0.5 + float(i) * 0.2))
+
+	# A classic 5-point rating star, filled solid — for rarity rows on shop/deck cards, not
+	# the 4-point "sparkle" flourish used elsewhere for a magical glint.
+	func _draw_star_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		draw_colored_polygon(_star_points(c, s * 0.46, s * 0.19, 5), icon_color)
+
+	# ---- flourishes / marks, drawn as a small overlay centred at `center` with radius `r` ----
+	func _draw_mark(mark: String, s: float, center: Vector2, r: float) -> void:
+		match mark:
+			"flame":
+				var pts := PackedVector2Array()
+				for i in 17:
+					var t: float = float(i) / 16.0 * TAU
+					var rad: float = r * (1.0 - 0.35 * cos(t))
+					pts.append(center + Vector2(rad * sin(t), rad * -cos(t) * 1.15 + r * 0.18))
+				draw_colored_polygon(pts, icon_color)
+			"drop":
+				var pts := PackedVector2Array()
+				for i in 17:
+					var t: float = float(i) / 16.0 * TAU
+					var rad: float = r * (1.0 - 0.35 * cos(t))
+					pts.append(center + Vector2(rad * sin(t), rad * -cos(t) + r * 0.3))
+				draw_colored_polygon(pts, icon_color)
+			"wave":
+				var pts := PackedVector2Array()
+				for i in 13:
+					var t: float = float(i) / 12.0
+					pts.append(center + Vector2((t - 0.5) * r * 2.4, sin(t * TAU) * r * 0.4))
+				draw_polyline(pts, icon_color, s * 0.05, true)
+			"spike":
+				for k in 3:
+					var a: float = -PI / 2.0 + (float(k) - 1.0) * 0.7
+					var dir := Vector2(cos(a), sin(a))
+					draw_colored_polygon(PackedVector2Array([
+						center - dir.orthogonal() * r * 0.18, center + dir * r * 1.3, center + dir.orthogonal() * r * 0.18,
+					]), icon_color)
+			"wing":
+				for side in [-1.0, 1.0]:
+					var pts := PackedVector2Array([center, center + Vector2(side * r * 1.2, -r * 0.5), center + Vector2(side * r * 1.3, r * 0.15), center + Vector2(side * r * 0.5, r * 0.1)])
+					draw_colored_polygon(pts, Color(icon_color, 0.85))
+			"eye":
+				var pts := PackedVector2Array()
+				for i in 13:
+					var t: float = float(i) / 12.0 * TAU
+					pts.append(center + Vector2(cos(t) * r, sin(t) * r * 0.5))
+				draw_colored_polygon(pts, Color(icon_color, 0.3))
+				draw_circle(center, r * 0.32, icon_color)
+			"coin":
+				_ring(center, r * 0.8, r * 0.18, icon_color)
+			"spiral":
+				var pts := PackedVector2Array()
+				for i in 24:
+					var t: float = float(i) / 23.0
+					var a: float = t * TAU * 1.6
+					pts.append(center + Vector2(cos(a), sin(a)) * r * t)
+				draw_polyline(pts, icon_color, s * 0.045, true)
+			"crescent":
+				# True subtraction needs a stencil Godot's 2D canvas API doesn't expose here;
+				# a dark offset overlay reads as a moon's shadow against this game's panels,
+				# which are consistently dark, without one.
+				draw_circle(center, r, icon_color)
+				draw_circle(center + Vector2(r * 0.45, -r * 0.08), r * 0.86, Color(0.02, 0.05, 0.07, 0.92))
+			"rings":
+				_ring(center, r * 0.5, r * 0.1, icon_color)
+				_ring(center, r, r * 0.1, Color(icon_color, 0.6))
+			"shield_mark":
+				var pts := PackedVector2Array([
+					center + Vector2(0, -r), center + Vector2(r * 0.75, -r * 0.55), center + Vector2(r * 0.75, r * 0.15),
+					center + Vector2(0, r), center + Vector2(-r * 0.75, r * 0.15), center + Vector2(-r * 0.75, -r * 0.55),
+				])
+				pts.append(pts[0])
+				draw_polyline(pts, icon_color, r * 0.16, true)
+			"cycle_arrows":
+				var pts := PackedVector2Array()
+				for i in 20:
+					var t: float = float(i) / 19.0
+					var a: float = lerp(-PI * 0.2, PI * 1.5, t)
+					pts.append(center + Vector2(cos(a), sin(a)) * r)
+				draw_polyline(pts, icon_color, r * 0.14, true)
+				var head := pts[pts.size() - 1]
+				var tang := (pts[pts.size() - 1] - pts[pts.size() - 3]).normalized()
+				var perp := tang.orthogonal()
+				draw_colored_polygon(PackedVector2Array([head + tang * r * 0.32, head + perp * r * 0.22, head - perp * r * 0.22]), icon_color)
+			"sparkle":
+				draw_colored_polygon(_star_points(center, r, r * 0.32, 4), icon_color)
+			"cross_blade":
+				for ang in [PI / 4.0, -PI / 4.0]:
+					var dir := Vector2(cos(ang), sin(ang))
+					draw_line(center - dir * r, center + dir * r, icon_color, r * 0.16)
+			"bolt":
+				var pts := PackedVector2Array([
+					center + Vector2(0.12, -1.0) * r, center + Vector2(-0.35, 0.05) * r, center + Vector2(0.05, 0.05) * r,
+					center + Vector2(-0.12, 1.0) * r, center + Vector2(0.35, -0.15) * r, center + Vector2(-0.05, -0.15) * r,
+				])
+				draw_colored_polygon(pts, icon_color)
+			"leaf":
+				var pts := PackedVector2Array()
+				for i in 17:
+					var t: float = float(i) / 16.0 * TAU
+					pts.append(center + Vector2(sin(t) * r * 0.55, -cos(t) * r))
+				draw_colored_polygon(pts, icon_color)
+				draw_line(center + Vector2(0, r * 0.85), center + Vector2(0, -r * 0.85), icon_color.darkened(0.25), r * 0.08)
 
 
 var content := SpiritContent.new()
@@ -244,6 +660,7 @@ var loadout_tab := "equipment"
 var pending_rewards: Dictionary = {}
 var selected_card := -1
 var advancing_to_reward := false
+var pre_battle_health := 60
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
@@ -254,6 +671,15 @@ var font_cjk: Font = load("res://assets/fonts/NotoSansSC.ttf")
 var _char_atlas_tex: Texture2D = null
 var _card_atlas_1: Texture2D = null
 var _card_atlas_2: Texture2D = null
+var _road_texture: NoiseTexture2D = null
+var _mote_texture: GradientTexture2D = null
+var _hit_flash_shader: Shader = null
+var _ember_texture: GradientTexture2D = null
+var _terrain_grain_texture: NoiseTexture2D = null
+var _terrain_wash_cache: Dictionary = {}
+# Chapter waypoints are deterministic but not cheap to compute (a seeded RNG walk); they
+# never change once generated, so cache per chapter for the life of the app.
+var _map_waypoint_cache: Dictionary = {}
 
 const BG = Color("071116")
 const PANEL = Color("10242b")
@@ -268,13 +694,10 @@ const BATTLE_BACKGROUNDS = ["battlefield-v1.jpg","lantern-marsh-v1.jpg","rune-ra
 # page margins every other screen uses.
 const MAP_WIDTH = 390.0
 const BAND_HEIGHT = 520.0
-# Serpentine trail inside one chapter band, walked top to bottom as the stage index grows.
-const BAND_NODES = [Vector2(84,118), Vector2(228,196), Vector2(120,286), Vector2(268,368), Vector2(178,456)]
-const CHAPTER_BACKGROUNDS = [
-	"spirit-world-map-v1.jpg","lantern-marsh-v1.jpg","rune-ravine-v1.jpg","ember-cliff-v1.jpg","mountain-forge-v1.jpg",
-	"battlefield-v1.jpg","lantern-marsh-v1.jpg","spirit-world-map-v1.jpg","ember-cliff-v1.jpg","mountain-forge-v1.jpg",
-]
-# Each chapter gets its own wash of colour so repeated art still reads as a distinct region.
+# Keeps every stage pin clear of the screen edge and of the chapter plaque/fade at the top.
+const ROAD_MARGIN_X = 62.0
+const ROAD_TOP_CLEAR = 100.0
+# Each chapter gets its own wash of colour so the terrain still reads as a distinct region.
 const CHAPTER_TINTS = [
 	Color(0.72,0.88,0.86), Color(0.95,0.78,0.55), Color(0.72,0.80,1.00), Color(0.80,0.86,0.92), Color(0.74,0.92,0.72),
 	Color(0.68,0.90,0.95), Color(0.70,0.96,0.80), Color(0.88,0.82,0.98), Color(1.00,0.72,0.56), Color(0.98,0.86,0.62),
@@ -297,6 +720,15 @@ const CARD_ATLAS_1_POS = {
 	"renewal": Vector2i(1, 0),
 	"spiritCurrent": Vector2i(0, 1),
 	"ashRecall": Vector2i(1, 1),
+	# No new bitmap art exists for these — reused slots follow the same pattern the rest
+	# of the deck already uses (several cards already share one atlas cell).
+	"ironHide": Vector2i(0, 0),
+	"steadyPulse": Vector2i(1, 0),
+	"shatterGuard": Vector2i(0, 1),
+	"ironWill": Vector2i(1, 1),
+	"wardBreaker": Vector2i(0, 0),
+	"stormcaller": Vector2i(1, 0),
+	"spiritNova": Vector2i(0, 1),
 }
 
 const CARD_ATLAS_2_POS = {
@@ -314,6 +746,13 @@ const CARD_ATLAS_2_POS = {
 	"finalFlare": Vector2i(1, 1),
 	"mountainSeal": Vector2i(1, 0),
 	"worldFlame": Vector2i(0, 0),
+	"embercoal": Vector2i(0, 0),
+	"emberVow": Vector2i(1, 0),
+	"mendingWard": Vector2i(0, 1),
+	"piercingBolt": Vector2i(1, 1),
+	"phoenixEdge": Vector2i(0, 0),
+	"titanForm": Vector2i(1, 0),
+	"moltenCore": Vector2i(0, 1),
 }
 
 func _get_character_texture(key: String) -> Texture2D:
@@ -416,8 +855,61 @@ func _ready() -> void:
 	profile = SpiritSave.load_profile(content)
 	lang = str(profile.get("language", "zh-Hans"))
 	_build_audio()
+	_ensure_quests_current()
 	if SpiritSave.has_account_name(profile): show_map()
 	else: show_account_setup()
+
+const DAY_SECONDS := 86400
+const WEEK_SECONDS := 604800
+
+# Rerolls whichever list has aged past its period. period_seed is the period index itself
+# (today's day number, this week's week number) so every reroll for the same period is
+# identical — rerolling never happens more than once per period no matter how often this
+# is called, since the new reset_at always lands in the future until the period elapses.
+func _ensure_quests_current() -> void:
+	var now := int(Time.get_unix_time_from_system())
+	var changed := false
+	if now >= int(profile.get("daily_reset_at", 0)):
+		var day: int = now / DAY_SECONDS
+		profile.daily_quests = content.roll_quests(SpiritContent.DAILY_QUESTS, 3, day)
+		profile.daily_reset_at = (day + 1) * DAY_SECONDS
+		changed = true
+	if now >= int(profile.get("weekly_reset_at", 0)):
+		var week: int = now / WEEK_SECONDS
+		profile.weekly_quests = content.roll_quests(SpiritContent.WEEKLY_QUESTS, 3, 1000000 + week)
+		profile.weekly_reset_at = (week + 1) * WEEK_SECONDS
+		changed = true
+	if changed: SpiritSave.write(profile)
+
+# Bumps progress on every not-yet-complete quest of this type in both lists. Called from
+# the same real signals the rest of the game already fires — a card played, a chest
+# opened, a purchase made — rather than anything invented just for quests.
+func _advance_quest(quest_type: String, amount: int) -> void:
+	if amount <= 0: return
+	var any_completed := false
+	for list_name in ["daily_quests", "weekly_quests"]:
+		var list: Array = profile.get(list_name, [])
+		for q in list:
+			if str(q.get("type", "")) != quest_type or bool(q.get("claimed", false)): continue
+			var target := int(q.get("target", 0))
+			var before := int(q.get("progress", 0))
+			if before >= target: continue
+			q.progress = mini(target, before + amount)
+			if int(q.progress) >= target and before < target: any_completed = true
+	SpiritSave.write(profile)
+	if any_completed: _toast(t("ui.quest_ready_toast"), GOLD)
+
+func _claim_quest(list_name: String, quest_id: String) -> void:
+	var list: Array = profile.get(list_name, [])
+	for q in list:
+		if str(q.get("id", "")) != quest_id: continue
+		if bool(q.get("claimed", false)) or int(q.get("progress", 0)) < int(q.get("target", 0)): return
+		q.claimed = true
+		profile.gold += int(q.get("reward", 0))
+		SpiritSave.write(profile)
+		_toast(tf("ui.quest_claimed_toast", int(q.get("reward", 0))), GOLD)
+		show_camp()
+		return
 
 func show_account_setup() -> void:
 	_clear(); _play_music(false)
@@ -541,6 +1033,24 @@ func _stat_bar(bar_width: float, bar_height: float, value: int, max_value: int, 
 		bar.add_child(lbl)
 	return bar
 
+# Status readout as a coloured chip rather than loose text, so shield/burn/focus are
+# distinguishable at a glance during a turn instead of needing to be read.
+func _status_chip(glyph: String, amount: int, color: Color, height := 19.0) -> Panel:
+	var chip := Panel.new()
+	chip.custom_minimum_size = Vector2(38.0, height)
+	chip.size = chip.custom_minimum_size
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _panel(Color(color.r * 0.32, color.g * 0.32, color.b * 0.32, 0.94), int(height / 2.0), color)
+	style.border_width_left = 1; style.border_width_right = 1
+	style.border_width_top = 1; style.border_width_bottom = 1
+	chip.add_theme_stylebox_override("panel", style)
+	var lbl := _label("%s%d" % [glyph, amount], int(height * 0.58), color, HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_child(lbl)
+	return chip
+
 func _icon_badge(glyph: String, color: Color, diameter := 42, glyph_size := 20) -> Panel:
 	# Equipment and runes ship as glyphs rather than art, so give each one a coloured medallion.
 	var badge := Panel.new()
@@ -556,6 +1066,33 @@ func _icon_badge(glyph: String, color: Color, diameter := 42, glyph_size := 20) 
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.add_child(lbl)
 	return badge
+
+# Same medallion frame as _icon_badge, but drawing a GameIcon (a real little sword/shield/
+# pendant silhouette) instead of a Unicode glyph in a label.
+func _drawn_icon_badge(kind: String, flourish: String, color: Color, diameter := 44, frame_color := Color.TRANSPARENT) -> Panel:
+	var badge := Panel.new()
+	badge.custom_minimum_size = Vector2(diameter, diameter)
+	badge.size = badge.custom_minimum_size
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
+	style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+	badge.add_theme_stylebox_override("panel", style)
+	var icon := GameIcon.new()
+	icon.kind = kind
+	icon.flourish = flourish
+	icon.icon_color = color
+	icon.frame_color = frame_color
+	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var inset := diameter * 0.16
+	icon.offset_left += inset; icon.offset_top += inset; icon.offset_right -= inset; icon.offset_bottom -= inset
+	badge.add_child(icon)
+	return badge
+
+func _equip_icon_badge(item: Dictionary, color: Color, diameter := 44) -> Panel:
+	return _drawn_icon_badge(str(item.get("icon_kind", "sword")), str(item.get("icon_flourish", "")), color, diameter)
+
+func _sigil_icon_badge(mark: String, color: Color, diameter := 44) -> Panel:
+	return _drawn_icon_badge("sigil", mark, color, diameter, color)
 
 func _create_page(separation := 6) -> VBoxContainer:
 	var margin := MarginContainer.new()
@@ -700,13 +1237,17 @@ func show_map() -> void:
 	header.add_child(btn_music)
 	header_holder.add_child(header)
 
+	var stage_count: int = content.encounters.size()
+	var chapter_count: int = stage_count / 5
 	map_canvas = Control.new()
-	map_canvas.custom_minimum_size = Vector2(MAP_WIDTH, BAND_HEIGHT * 10.0)
+	map_canvas.custom_minimum_size = Vector2(MAP_WIDTH, BAND_HEIGHT * float(chapter_count))
 	map_canvas.mouse_filter = Control.MOUSE_FILTER_PASS
 	map_scroll.add_child(map_canvas)
-	for chapter in 10: _add_map_chapter(chapter)
+	for chapter in chapter_count: _add_map_chapter(chapter)
+	_add_region_borders(chapter_count)
 	_add_routes()
-	for index in 50: _add_stage_pin(index)
+	for index in stage_count: _add_stage_pin(index)
+	_add_map_ambience()
 
 	traveler = Sprite2D.new()
 	traveler.texture = _get_character_texture("fox")
@@ -744,17 +1285,20 @@ func show_map() -> void:
 	dock.alignment = BoxContainer.ALIGNMENT_CENTER
 	dock_bg.add_child(dock)
 
+	# Each dock slot pairs a drawn GameIcon (a real little glyph, not a font character doing
+	# double duty) with the button's own text label pushed onto a second line beneath it —
+	# the leading "\n" reserves that top line for the icon instead of drawing over it.
 	var items = [
-		["▤\n" + t("ui.deck_btn").replace("▤\n", ""), show_deck],
-		["⚔\n" + t("ui.equip_btn").replace("⚔\n", ""), show_loadout],
-		["◆\n" + t("ui.shop_btn").replace("◆\n", ""), show_shop],
-		["➜\n" + t("ui.next_btn").replace("➜\n", ""), _next_stage]
+		["card_stack", "ui.deck_btn", show_deck],
+		["shield", "ui.equip_btn", show_loadout],
+		["coin_stack", "ui.shop_btn", show_shop],
+		["arrow", "ui.next_btn", _next_stage]
 	]
-	
+
 	for i in items.size():
 		var item = items[i]
 		var btn := Button.new()
-		btn.text = item[0]
+		btn.text = "\n" + t(item[1])
 		btn.custom_minimum_size = Vector2(0, 52)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if font_cjk: btn.add_theme_font_override("font", font_cjk)
@@ -767,14 +1311,165 @@ func show_map() -> void:
 		btn.add_theme_stylebox_override("hover", h)
 		btn.add_theme_stylebox_override("pressed", p)
 		btn.add_theme_stylebox_override("focus", s)
-		btn.pressed.connect(item[1])
+		btn.pressed.connect(item[2])
+
+		var icon := GameIcon.new()
+		icon.kind = str(item[0])
+		icon.icon_color = GOLD
+		icon.custom_minimum_size = Vector2(20, 20)
+		icon.size = icon.custom_minimum_size
+		icon.anchor_left = 0.5; icon.anchor_right = 0.5
+		icon.offset_left = -10.0; icon.offset_right = 10.0
+		icon.offset_top = 8.0; icon.offset_bottom = 28.0
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn.add_child(icon)
+
 		dock.add_child(btn)
+
+	# A quick-jump strip: fifty chapters is too many to eyeball while scrolling a single long
+	# column, so a row of small chapter previews — each one showing that chapter's own
+	# terrain wash, the same art used on the full map, not a generic placeholder — sits just
+	# above the dock and scrolls the map to whichever one is tapped.
+	var strip_holder := MarginContainer.new()
+	strip_holder.anchor_left = 0.0
+	strip_holder.anchor_right = 1.0
+	strip_holder.anchor_top = 1.0
+	strip_holder.anchor_bottom = 1.0
+	strip_holder.offset_left = 0.0
+	strip_holder.offset_right = 0.0
+	strip_holder.offset_top = -(float(_safe_bottom()) + 60.0 + 8.0 + 74.0)
+	strip_holder.offset_bottom = -(float(_safe_bottom()) + 60.0 + 8.0)
+	strip_holder.add_theme_constant_override("margin_left", 12)
+	strip_holder.add_theme_constant_override("margin_right", 12)
+	strip_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_page.add_child(strip_holder)
+
+	var chapter_strip := TouchScrollContainer.new()
+	chapter_strip.allow_horizontal = true
+	chapter_strip.allow_vertical = false
+	chapter_strip.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	chapter_strip.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	chapter_strip.custom_minimum_size = Vector2(0, 74)
+	strip_holder.add_child(chapter_strip)
+
+	var strip_row := HBoxContainer.new()
+	strip_row.add_theme_constant_override("separation", 8)
+	chapter_strip.add_child(strip_row)
+	for chapter in chapter_count:
+		strip_row.add_child(_chapter_thumb_tile(chapter))
+
 	await get_tree().process_frame
 	if map_scroll: map_scroll.scroll_vertical = int(maxi(0, int(_map_point(profile.position).y - 360)))
+	var current_chapter: int = int(profile.position) / 5
+	chapter_strip.scroll_horizontal = int(maxf(0.0, float(current_chapter) * 100.0 - 140.0))
+
+# Every chapter used to reuse the exact same five pixel offsets, so the trail looked like a
+# mechanical zigzag repeated 50 times. This walks a seeded random x each chapter instead —
+# deterministic (same shape every time you view that chapter, no state to save) but no
+# longer identical band to band.
+func _chapter_waypoints(chapter: int) -> Array:
+	if _map_waypoint_cache.has(chapter): return _map_waypoint_cache[chapter]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = chapter * 92821 + 17
+	var base_y := [112.0, 208.0, 304.0, 396.0, 480.0]
+	var min_x: float = ROAD_MARGIN_X
+	var max_x: float = MAP_WIDTH - ROAD_MARGIN_X
+	var points: Array = []
+	var prev_x: float = rng.randf_range(min_x, max_x)
+	for i in 5:
+		var x: float = clampf(prev_x + rng.randf_range(-100.0, 100.0), min_x, max_x)
+		var y: float = base_y[i] + rng.randf_range(-16.0, 16.0)
+		points.append(Vector2(x, y))
+		prev_x = x
+	_map_waypoint_cache[chapter] = points
+	return points
 
 func _map_point(index: int) -> Vector2:
-	var node: Vector2 = BAND_NODES[index % 5]
+	var waypoints: Array = _chapter_waypoints(index / 5)
+	var node: Vector2 = waypoints[index % 5]
 	return Vector2(node.x, float(index / 5) * BAND_HEIGHT + node.y)
+
+# Fits a smooth curve through exact waypoints (a Catmull-Rom-style spline expressed as
+# per-point cubic Bezier handles) rather than the straight segments Line2D draws by default
+# between raw points — this is what turns the trail from a zigzag into something that reads
+# as a wandering path.
+func _build_road_curve(points: PackedVector2Array) -> Curve2D:
+	var curve := Curve2D.new()
+	curve.bake_interval = 6.0
+	var n := points.size()
+	for i in n:
+		var prev: Vector2 = points[maxi(0, i - 1)]
+		var next: Vector2 = points[mini(n - 1, i + 1)]
+		var tangent: Vector2 = (next - prev) / 6.0
+		var handle_in: Vector2 = Vector2.ZERO if i == 0 else -tangent
+		var handle_out: Vector2 = Vector2.ZERO if i == n - 1 else tangent
+		curve.add_point(points[i], handle_in, handle_out)
+	return curve
+
+# A small tileable dirt-road pattern generated at runtime — there is no bitmap art for a
+# road, and FastNoiseLite's seamless output tiles along a Line2D's length for free.
+func _get_road_texture() -> NoiseTexture2D:
+	if _road_texture != null: return _road_texture
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	noise.frequency = 0.12
+	var tex := NoiseTexture2D.new()
+	tex.seamless = true
+	tex.generate_mipmaps = false
+	tex.width = 64
+	tex.height = 16
+	tex.noise = noise
+	_road_texture = tex
+	return tex
+
+# A soft radial glow for the ambient particles — GradientTexture2D's radial fill gives a
+# clean falloff with no bitmap asset.
+func _get_mote_texture() -> GradientTexture2D:
+	if _mote_texture != null: return _mote_texture
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(1, 1, 1, 0.9))
+	gradient.set_color(1, Color(1, 1, 1, 0.0))
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 24
+	tex.height = 24
+	_mote_texture = tex
+	return tex
+
+# Fixed to the screen rather than the scrolling map canvas, so the atmosphere reads as
+# weather over the whole view instead of specks pinned to particular map coordinates.
+func _add_map_ambience() -> void:
+	var motes := CPUParticles2D.new()
+	motes.texture = _get_mote_texture()
+	motes.position = Vector2(MAP_WIDTH / 2.0, 844.0 / 2.0)
+	motes.amount = 22
+	motes.lifetime = 7.0
+	motes.preprocess = 7.0
+	motes.emitting = true
+	motes.z_index = 90
+	motes.local_coords = true
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(MAP_WIDTH / 2.0, 844.0 / 2.0)
+	motes.direction = Vector2(0, -1)
+	motes.spread = 25.0
+	motes.gravity = Vector2.ZERO
+	motes.initial_velocity_min = 6.0
+	motes.initial_velocity_max = 14.0
+	motes.scale_amount_min = 0.5
+	motes.scale_amount_max = 1.4
+	motes.color = Color(0.75, 0.95, 0.85, 0.55)
+	# CPUParticles2D.color_ramp takes a Gradient directly, unlike GPUParticles2D's
+	# ParticleProcessMaterial which wants a texture — fades each mote in, then back out.
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.0))
+	ramp.add_point(0.15, Color(1, 1, 1, 1.0))
+	ramp.add_point(0.85, Color(1, 1, 1, 1.0))
+	ramp.set_color(ramp.get_point_count() - 1, Color(1, 1, 1, 0.0))
+	motes.color_ramp = ramp
+	root.add_child(motes)
 
 func _fade_strip(height: float, flipped: bool) -> TextureRect:
 	var gradient := Gradient.new()
@@ -804,14 +1499,27 @@ func _add_map_chapter(chapter: int) -> void:
 	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_canvas.add_child(band)
 
-	var art := TextureRect.new()
-	art.texture = _texture("backgrounds/%s" % CHAPTER_BACKGROUNDS[chapter % CHAPTER_BACKGROUNDS.size()])
-	art.size = Vector2(MAP_WIDTH, BAND_HEIGHT)
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	art.modulate = Color(tint.r, tint.g, tint.b, 0.62)
-	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	band.add_child(art)
+	# A painted gradient wash stands in for the old stock photography: it can never look
+	# "pasted on" over the vector road, because it is built from the same vector language as
+	# everything drawn on top of it, instead of a rectangle of unrelated pixels underneath it.
+	var wash := TextureRect.new()
+	wash.texture = _get_terrain_wash_texture(chapter % CHAPTER_TINTS.size())
+	wash.size = Vector2(MAP_WIDTH, BAND_HEIGHT)
+	wash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	wash.stretch_mode = TextureRect.STRETCH_SCALE
+	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.add_child(wash)
+
+	var grain := TextureRect.new()
+	grain.texture = _get_terrain_grain_texture()
+	grain.size = Vector2(MAP_WIDTH, BAND_HEIGHT)
+	grain.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	grain.stretch_mode = TextureRect.STRETCH_TILE
+	grain.modulate = Color(1, 1, 1, 0.14)
+	grain.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.add_child(grain)
+
+	_add_terrain_dressing(band, chapter, tint)
 
 	# Fade both seams into the page colour so consecutive chapters read as one continuous world.
 	var top_fade := _fade_strip(84.0, false)
@@ -837,39 +1545,203 @@ func _add_map_chapter(chapter: int) -> void:
 	plaque_stack.add_child(_label(tf("ui.chapter_title", chapter + 1), 11, tint if not locked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	plaque_stack.add_child(_label(content.chapter_name(chapter, lang), 17, TEXT if not locked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
-func _add_routes() -> void:
-	var shadow := Line2D.new()
-	shadow.width = 9.0
-	shadow.default_color = Color(0.02, 0.05, 0.07, 0.55)
-	shadow.z_index = 2
-	shadow.joint_mode = Line2D.LINE_JOINT_ROUND
-	var trail := Line2D.new()
-	trail.width = 4.0
-	trail.default_color = Color(1.0, 0.84, 0.48, 0.5)
-	trail.z_index = 3
-	trail.joint_mode = Line2D.LINE_JOINT_ROUND
-	var walked := Line2D.new()
-	walked.width = 4.0
-	walked.default_color = Color(0.55, 0.93, 0.79, 0.9)
-	walked.z_index = 4
-	walked.joint_mode = Line2D.LINE_JOINT_ROUND
-	for index in 50:
-		var point := _map_point(index)
-		shadow.add_point(point)
-		trail.add_point(point)
-		if index <= int(profile.unlocked): walked.add_point(point)
-	map_canvas.add_child(shadow)
-	map_canvas.add_child(trail)
-	if walked.get_point_count() > 1: map_canvas.add_child(walked)
+# A soft vertical gradient in the chapter's own tint, darker at the seams than in the middle —
+# cached per tint index since there are only ten tints shared across fifty chapters.
+func _get_terrain_wash_texture(tint_index: int) -> GradientTexture2D:
+	if _terrain_wash_cache.has(tint_index): return _terrain_wash_cache[tint_index]
+	var tint: Color = CHAPTER_TINTS[tint_index]
+	var gradient := Gradient.new()
+	gradient.set_color(0, tint.darkened(0.55))
+	gradient.add_point(0.45, tint.darkened(0.2))
+	gradient.add_point(0.55, tint.darkened(0.2))
+	gradient.set_color(gradient.get_point_count() - 1, tint.darkened(0.55))
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.fill = GradientTexture2D.FILL_LINEAR
+	tex.fill_from = Vector2(0, 0)
+	tex.fill_to = Vector2(0, 1)
+	tex.width = 8
+	tex.height = 128
+	_terrain_wash_cache[tint_index] = tex
+	return tex
 
-func _stage_glyph(index: int) -> String:
+# Low-frequency seamless noise, tiled at very low opacity over the wash so a band reads as
+# painted terrain instead of a flat colour swatch. One instance is shared by every chapter.
+func _get_terrain_grain_texture() -> NoiseTexture2D:
+	if _terrain_grain_texture != null: return _terrain_grain_texture
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	noise.frequency = 0.015
+	var tex := NoiseTexture2D.new()
+	tex.seamless = true
+	tex.generate_mipmaps = false
+	tex.width = 128
+	tex.height = 128
+	tex.noise = noise
+	_terrain_grain_texture = tex
+	return tex
+
+# Scatters a handful of small vector pine/boulder/hill silhouettes across the band, testing
+# each candidate spot against the chapter's own baked road curve so nothing is ever placed on
+# or overlapping the path — this is what makes the terrain read as belonging to the road
+# instead of a picture that happens to have a line drawn over it.
+func _add_terrain_dressing(band: Control, chapter: int, tint: Color) -> void:
+	var waypoints: Array = _chapter_waypoints(chapter)
+	var curve := _build_road_curve(PackedVector2Array(waypoints))
+	var baked: PackedVector2Array = curve.get_baked_points()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = chapter * 51797 + 5
+	var deco_color: Color = tint.darkened(0.1)
+	var kinds := ["pine", "boulder", "hill"]
+	var placed := 0
+	var attempts := 0
+	while placed < 9 and attempts < 60:
+		attempts += 1
+		var p := Vector2(rng.randf_range(20.0, MAP_WIDTH - 20.0), rng.randf_range(ROAD_TOP_CLEAR, BAND_HEIGHT - 40.0))
+		var clear := true
+		for bp in baked:
+			if p.distance_to(bp) < 32.0: clear = false; break
+		if not clear: continue
+		var deco := GameIcon.new()
+		deco.kind = kinds[rng.randi_range(0, kinds.size() - 1)]
+		deco.icon_color = deco_color
+		var deco_size: float = rng.randf_range(26.0, 46.0)
+		deco.custom_minimum_size = Vector2(deco_size, deco_size)
+		deco.size = deco.custom_minimum_size
+		deco.pivot_offset = deco.size / 2.0
+		deco.position = p - deco.size / 2.0
+		deco.rotation = rng.randf_range(-0.12, 0.12)
+		deco.modulate.a = rng.randf_range(0.45, 0.8)
+		deco.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		band.add_child(deco)
+		placed += 1
+
+# A hand-drawn-looking jagged seam between every pair of consecutive chapters, on top of the
+# soft fade already blending them — the reference art reads as distinct territories meeting
+# at a border, not one image dissolving into the next.
+func _add_region_borders(chapter_count: int) -> void:
+	for chapter in chapter_count - 1:
+		var y := float(chapter + 1) * BAND_HEIGHT
+		var tint_a: Color = CHAPTER_TINTS[chapter % CHAPTER_TINTS.size()]
+		var tint_b: Color = CHAPTER_TINTS[(chapter + 1) % CHAPTER_TINTS.size()]
+		var rng := RandomNumberGenerator.new()
+		rng.seed = chapter * 7307 + 3
+		var pts := PackedVector2Array()
+		var steps := 10
+		for i in steps + 1:
+			var x: float = MAP_WIDTH * float(i) / float(steps)
+			var jitter: float = 0.0 if i == 0 or i == steps else rng.randf_range(-16.0, 16.0)
+			pts.append(Vector2(x, y + jitter))
+		var border := Line2D.new()
+		border.points = pts
+		border.width = 2.5
+		border.default_color = tint_a.lerp(tint_b, 0.5).darkened(0.55)
+		border.default_color.a = 0.6
+		border.z_index = 0
+		border.antialiased = true
+		map_canvas.add_child(border)
+
+# One tile in the bottom quick-jump strip: the chapter's own terrain wash as a live preview
+# (not a placeholder swatch), a checkmark once every stage in it is cleared, and a border that
+# marks whichever chapter the player is actually standing in right now.
+func _chapter_thumb_tile(chapter: int) -> Button:
+	var current_chapter: int = int(profile.position) / 5
+	var cleared: bool = int(profile.unlocked) > chapter * 5 + 4
+	var is_current: bool = chapter == current_chapter
+	var border_col: Color = GOLD if is_current else (JADE if cleared else Color("2b393d"))
+
+	var tile := Button.new()
+	tile.name = "ChapterTile_%d" % chapter
+	tile.custom_minimum_size = Vector2(92.0, 70.0)
+	tile.size = tile.custom_minimum_size
+	tile.focus_mode = Control.FOCUS_NONE
+	tile.add_theme_stylebox_override("normal", _panel(Color("0c1a1f"), 10, border_col))
+	tile.add_theme_stylebox_override("hover", _panel(Color("13262c"), 10, border_col))
+	tile.add_theme_stylebox_override("pressed", _panel(Color("081216"), 10, border_col))
+	tile.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	tile.pressed.connect(_jump_to_chapter.bind(chapter))
+
+	var preview := TextureRect.new()
+	preview.texture = _get_terrain_wash_texture(chapter % CHAPTER_TINTS.size())
+	preview.custom_minimum_size = Vector2(84.0, 42.0)
+	preview.size = preview.custom_minimum_size
+	preview.position = Vector2(4.0, 4.0)
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_SCALE
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(preview)
+
+	if cleared:
+		var check := _label("✓", 13, JADE, HORIZONTAL_ALIGNMENT_CENTER)
+		check.position = Vector2(68.0, 2.0)
+		check.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tile.add_child(check)
+
+	var name_lbl := _label(content.chapter_name(chapter, lang), 9, TEXT if not cleared and not is_current else border_col, HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.position = Vector2(2.0, 48.0)
+	name_lbl.size = Vector2(88.0, 18.0)
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(name_lbl)
+
+	return tile
+
+func _jump_to_chapter(chapter: int) -> void:
+	if map_scroll: map_scroll.scroll_vertical = int(maxf(0.0, float(chapter) * BAND_HEIGHT - 40.0))
+
+# Straight segments between waypoints read as a mechanical zigzag; baking a Catmull-Rom
+# curve through the exact same points gives a road that curves the way a real trail would,
+# without moving where any stage pin actually sits.
+func _add_routes() -> void:
+	var all_points := PackedVector2Array()
+	var walked_points := PackedVector2Array()
+	for index in content.encounters.size():
+		var point := _map_point(index)
+		all_points.append(point)
+		if index <= int(profile.unlocked): walked_points.append(point)
+
+	var road_bed := Line2D.new()
+	road_bed.width = 22.0
+	road_bed.default_color = Color(0.16, 0.11, 0.07, 0.5)
+	road_bed.z_index = 1
+	road_bed.joint_mode = Line2D.LINE_JOINT_ROUND
+	road_bed.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	road_bed.end_cap_mode = Line2D.LINE_CAP_ROUND
+	road_bed.points = _build_road_curve(all_points).get_baked_points()
+	map_canvas.add_child(road_bed)
+
+	var trail := Line2D.new()
+	trail.width = 10.0
+	trail.default_color = Color(0.62, 0.5, 0.34, 0.62)
+	trail.texture = _get_road_texture()
+	trail.texture_mode = Line2D.LINE_TEXTURE_TILE
+	trail.z_index = 2
+	trail.joint_mode = Line2D.LINE_JOINT_ROUND
+	trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	trail.end_cap_mode = Line2D.LINE_CAP_ROUND
+	trail.points = road_bed.points
+	map_canvas.add_child(trail)
+
+	if walked_points.size() > 1:
+		var walked := Line2D.new()
+		walked.width = 6.0
+		walked.default_color = Color(0.55, 0.93, 0.79, 0.85)
+		walked.z_index = 3
+		walked.joint_mode = Line2D.LINE_JOINT_ROUND
+		walked.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		walked.end_cap_mode = Line2D.LINE_CAP_ROUND
+		walked.points = _build_road_curve(walked_points).get_baked_points()
+		map_canvas.add_child(walked)
+
+# (kind, flourish) for the drawn GameIcon on a map pin, keyed by node_kind().
+func _stage_icon_shape(index: int) -> Array:
 	match content.node_kind(index):
-		"boss": return "★"
-		"elite": return "✦"
-		"event": return "?"
-		"merchant": return "◆"
-		"rest": return "♨"
-		_: return "⚔"
+		"greatboss": return ["grand_crown", ""]
+		"boss": return ["crown", ""]
+		"elite": return ["none", "sparkle"]
+		"event": return ["orb", ""]
+		"merchant": return ["coin_stack", ""]
+		"rest": return ["campfire", ""]
+		_: return ["crossed_swords", ""]
 
 func _add_stage_pin(index: int) -> void:
 	var encounter: Dictionary = content.encounters[index]
@@ -877,12 +1749,15 @@ func _add_stage_pin(index: int) -> void:
 	var locked := index > int(profile.unlocked)
 	var is_current := index == int(profile.position)
 	var kind := content.node_kind(index)
-	var is_boss := kind == "boss"
+	var is_boss := content.is_boss_kind(kind)
+	var is_great: bool = kind == "greatboss"
 
-	var pin_size := Vector2(62.0, 54.0) if not is_boss else Vector2(70.0, 60.0)
+	var pin_size := Vector2(62.0, 54.0)
+	if is_boss: pin_size = Vector2(84.0, 72.0) if is_great else Vector2(72.0, 62.0)
 	var bg_color := Color("18414a")
 	var border_color := JADE
 	match kind:
+		"greatboss": bg_color = Color("6b1f1f"); border_color = Color("ff5a4a")
 		"boss": bg_color = Color("5d2f1c"); border_color = GOLD
 		"elite": bg_color = Color("46265c"); border_color = Color("c79bff")
 		"merchant": bg_color = Color("21484f"); border_color = Color("7fd8e8")
@@ -895,10 +1770,36 @@ func _add_stage_pin(index: int) -> void:
 		bg_color = Color("8c542a")
 		border_color = EMBER
 
+	# A map-marker reads as "planted at this exact spot" through a shadow on the ground and a
+	# tail pointing down at it, not by centering a badge on the point — so the badge sits
+	# above `point` and only the tail's tip actually touches it.
+	var tail_height := 11.0
+	var badge_bottom_y := point.y - tail_height
+
+	var shadow := Panel.new()
+	shadow.custom_minimum_size = Vector2(30.0, 9.0)
+	shadow.size = shadow.custom_minimum_size
+	shadow.position = point - shadow.size / 2.0
+	shadow.z_index = 1
+	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shadow.add_theme_stylebox_override("panel", _panel(Color(0, 0, 0, 0.4), 5))
+	map_canvas.add_child(shadow)
+
+	var tail := Polygon2D.new()
+	var tail_half_w: float = pin_size.x * 0.15
+	tail.polygon = PackedVector2Array([
+		Vector2(point.x - tail_half_w, badge_bottom_y - 2.0),
+		Vector2(point.x + tail_half_w, badge_bottom_y - 2.0),
+		Vector2(point.x, point.y),
+	])
+	tail.color = bg_color
+	tail.z_index = 9
+	map_canvas.add_child(tail)
+
 	var pin := Button.new()
 	pin.custom_minimum_size = pin_size
 	pin.size = pin_size
-	pin.position = point - pin_size / 2.0
+	pin.position = Vector2(point.x - pin_size.x / 2.0, badge_bottom_y - pin_size.y)
 	pin.disabled = locked
 	pin.z_index = 10
 	pin.focus_mode = Control.FOCUS_NONE
@@ -915,8 +1816,25 @@ func _add_stage_pin(index: int) -> void:
 	pin_stack.alignment = BoxContainer.ALIGNMENT_CENTER
 	pin_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pin.add_child(pin_stack)
-	pin_stack.add_child(_label("🔒" if locked else _stage_glyph(index), 15 if not locked else 12, border_color if not locked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-	pin_stack.add_child(_label("%d-%d" % [encounter.chapter, encounter.level], 13 if is_boss else 12, TEXT if not locked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	if locked:
+		pin_stack.add_child(_label("🔒", 12, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	else:
+		var icon_size := 26.0
+		if is_boss: icon_size = 38.0 if is_great else 30.0
+		var shape: Array = _stage_icon_shape(index)
+		var stage_icon := GameIcon.new()
+		stage_icon.kind = str(shape[0])
+		stage_icon.flourish = str(shape[1])
+		stage_icon.icon_color = border_color
+		stage_icon.custom_minimum_size = Vector2(icon_size, icon_size)
+		stage_icon.size = stage_icon.custom_minimum_size
+		var icon_holder := CenterContainer.new()
+		icon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_holder.add_child(stage_icon)
+		pin_stack.add_child(icon_holder)
+	pin_stack.add_child(_label("%d-%d" % [encounter.chapter, encounter.level], 14 if is_boss else 12, TEXT if not locked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	if is_boss and not locked:
+		pin_stack.add_child(_label(t("ui.node_greatboss") if is_great else t("ui.node_boss"), 9, border_color, HORIZONTAL_ALIGNMENT_CENTER))
 
 	if is_current and not locked:
 		var halo := pin.create_tween().set_loops()
@@ -927,7 +1845,7 @@ func _add_stage_pin(index: int) -> void:
 	caption.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
 	caption.add_theme_constant_override("shadow_offset_y", 1)
 	caption.size = Vector2(112.0, 16.0)
-	caption.position = Vector2(point.x - 56.0, point.y + pin_size.y / 2.0 + 3.0)
+	caption.position = Vector2(point.x - 56.0, point.y + 6.0)
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_canvas.add_child(caption)
 
@@ -965,6 +1883,7 @@ func begin_battle(index: int) -> void:
 	var equipped: Array = profile.equipment_slots.values()
 	combat.create(seed,content.encounters[index],profile.deck,int(profile.health),profile.upgrades,equipped,profile.card_runes,active_modifier,profile.relics)
 	combat.event.connect(_combat_event)
+	pre_battle_health = int(profile.health)
 	advancing_to_reward = false
 	selected_card = -1
 	show_battle()
@@ -984,34 +1903,62 @@ func show_battle() -> void:
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(leave_btn); page.add_child(top)
 
-	if not active_modifier.is_empty():
-		var m_name = active_modifier.name_en if lang == "en" else active_modifier.name
-		var m_det = active_modifier.detail_en if lang == "en" else active_modifier.detail
-		var modifier := _label("✥ %s  ·  %s" % [m_name, m_det], 10, Color("ffe2b0"), HORIZONTAL_ALIGNMENT_CENTER)
-		modifier.custom_minimum_size.y = 28
-		modifier.add_theme_stylebox_override("normal", _panel(Color("54261f"), 9, EMBER))
-		page.add_child(modifier)
+	if not active_modifier.is_empty() or not combat.state.equipment.is_empty() or not profile.relics.is_empty():
+		var badge_row := HBoxContainer.new()
+		badge_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		badge_row.add_theme_constant_override("separation", 8)
+		page.add_child(badge_row)
 
-	if not combat.state.equipment.is_empty() or not profile.relics.is_empty():
-		var gear := HBoxContainer.new()
-		gear.alignment = BoxContainer.ALIGNMENT_CENTER
-		gear.add_theme_constant_override("separation", 8)
+		if not active_modifier.is_empty():
+			var m_name: String = active_modifier.name_en if lang == "en" else active_modifier.name
+			var m_det: String = active_modifier.detail_en if lang == "en" else active_modifier.detail
+			var mod_badge := _icon_badge("✥", Color("ffe2b0"), 34, 16)
+			badge_row.add_child(_tap_wrap(mod_badge, func(): _show_info_popup(_icon_badge("✥", Color("ffe2b0"), 60, 26), m_name, m_det, EMBER)))
+
 		for id in combat.state.equipment:
 			var item := content.equipment(id)
-			if not item.is_empty(): gear.add_child(_label("%s %s" % [item.icon, _equip_name(item)], 9, GOLD))
+			if item.is_empty(): continue
+			var e_name: String = _equip_name(item)
+			var e_det: String = _equip_detail(item)
+			var e_badge := _equip_icon_badge(item, GOLD, 34)
+			badge_row.add_child(_tap_wrap(e_badge, func(): _show_info_popup(_equip_icon_badge(item, GOLD, 60), e_name, e_det, GOLD)))
+
 		for id in profile.relics:
 			var relic := content.relic(id)
-			if not relic.is_empty(): gear.add_child(_label("%s %s" % [relic.icon, _relic_name(relic)], 9, Color(relic.color)))
-		page.add_child(gear)
+			if relic.is_empty(): continue
+			var r_color := Color(relic.color)
+			var r_name: String = _relic_name(relic)
+			var r_det: String = _relic_detail(relic)
+			var r_badge := _sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), r_color, 34)
+			badge_row.add_child(_tap_wrap(r_badge, func(): _show_info_popup(_sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), r_color, 60), r_name, r_det, r_color)))
 
-	var enemy_area := HBoxContainer.new()
-	enemy_area.custom_minimum_size.y = 205.0
-	enemy_area.alignment = BoxContainer.ALIGNMENT_CENTER
-	enemy_area.add_theme_constant_override("separation", 10)
+	var enemy_area := Control.new()
+	enemy_area.custom_minimum_size = Vector2(366.0, 205.0)
+	enemy_area.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	enemy_area.mouse_filter = Control.MOUSE_FILTER_PASS
 	page.add_child(enemy_area)
+
+	# A flat row reads fine for one or two enemies, but three or more in a straight line
+	# looks like a spreadsheet. Fan them out around the centre instead: the middle slot is
+	# "front" (full size, lowest), and slots further from centre step back and up, like a
+	# loose wedge formation instead of a queue.
+	var living_indices: Array = []
 	for index in combat.state.enemies.size():
-		if combat.state.enemies[index].health <= 0: continue
-		var box := _enemy_view(index)
+		if combat.state.enemies[index].health > 0: living_indices.append(index)
+	var slot_count: int = maxi(1, combat.state.enemies.size())
+	var u_width: float = minf(112.0, (366.0 - 10.0 * float(slot_count - 1)) / float(slot_count))
+	var gap := 10.0
+	var living_n := living_indices.size()
+	var total_w: float = float(living_n) * u_width + float(maxi(0, living_n - 1)) * gap
+	var start_x: float = (366.0 - total_w) / 2.0
+	var center_slot: float = float(living_n - 1) / 2.0
+	for order in living_n:
+		var enemy_index: int = living_indices[order]
+		var dist: float = absf(float(order) - center_slot)
+		var depth_t: float = 0.0 if center_slot <= 0.0 else dist / center_slot
+		var box := _enemy_view(enemy_index, depth_t)
+		box.position = Vector2(start_x + float(order) * (u_width + gap), -depth_t * 26.0)
+		box.z_index = 20 - int(round(depth_t * 8.0))
 		enemy_area.add_child(box)
 		enemy_boxes.append(box)
 
@@ -1039,21 +1986,151 @@ func show_battle() -> void:
 func _intent_style(intent: Dictionary) -> Dictionary:
 	var kind := str(intent.get("kind", "attack"))
 	var amount := int(intent.get("amount", 0))
+	# "text" (with its symbol) still goes into toasts, which have no room for a drawn icon;
+	# "amount_text" is the plain number the banner shows next to the icon instead.
 	match kind:
 		"critical":
-			return {"text": tf("ui.intent_critical", amount), "caption": t("ui.intent_name_critical"), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
+			return {"text": tf("ui.intent_critical", amount), "amount_text": str(amount), "caption": t("ui.intent_name_critical"), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
 		"defend":
-			return {"text": tf("ui.intent_defend", amount), "caption": t("ui.intent_name_defend"), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
+			return {"text": tf("ui.intent_defend", amount), "amount_text": str(amount), "caption": t("ui.intent_name_defend"), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
 		"empower":
-			return {"text": tf("ui.intent_empower", amount), "caption": t("ui.intent_name_empower"), "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
+			return {"text": tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "caption": t("ui.intent_name_empower"), "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
 		"curse":
-			return {"text": tf("ui.intent_curse", amount), "caption": t("ui.intent_name_curse"), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
+			return {"text": tf("ui.intent_curse", amount), "amount_text": str(amount), "caption": t("ui.intent_name_curse"), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
 		"attack_defend":
-			return {"text": tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "caption": t("ui.intent_name_attack_defend"), "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
+			return {"text": tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "caption": t("ui.intent_name_attack_defend"), "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
 		_:
-			return {"text": tf("ui.intent_attack", amount), "caption": t("ui.intent_name_attack"), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
+			return {"text": tf("ui.intent_attack", amount), "amount_text": str(amount), "caption": t("ui.intent_name_attack"), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
 
-func _enemy_view(index: int) -> Control:
+func _get_hit_flash_shader() -> Shader:
+	if _hit_flash_shader == null: _hit_flash_shader = load("res://assets/shaders/hit_flash.gdshader")
+	return _hit_flash_shader
+
+# One shader material per sprite so a mid-flash overlap on one enemy never disturbs another.
+func _install_hit_flash(sprite: CanvasItem) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = _get_hit_flash_shader()
+	sprite.material = mat
+	return mat
+
+func _flash_hit(sprite: CanvasItem, color := Color.WHITE, duration := 0.22) -> void:
+	if sprite.material == null or not (sprite.material is ShaderMaterial): _install_hit_flash(sprite)
+	var mat: ShaderMaterial = sprite.material
+	mat.set_shader_parameter("flash_color", Vector3(color.r, color.g, color.b))
+	mat.set_shader_parameter("flash_amount", 1.0)
+	var tween := sprite.create_tween()
+	tween.tween_method(func(v): mat.set_shader_parameter("flash_amount", v), 1.0, 0.0, duration).set_trans(Tween.TRANS_QUAD)
+
+# Squash-and-stretch impact: a fast non-uniform scale punch (wide+short) rather than a
+# uniform scale bump — this is the single technique animation references cite most often
+# for making a static sprite read as reacting to a hit instead of just wobbling.
+func _squash_impact(sprite: Node2D, base_scale: float, strength := 0.22, duration := 0.22) -> void:
+	var tween := sprite.create_tween()
+	tween.tween_property(sprite, "scale", Vector2(base_scale * (1.0 + strength), base_scale * (1.0 - strength)), duration * 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite, "scale", Vector2(base_scale * (1.0 - strength * 0.4), base_scale * (1.0 + strength * 0.4)), duration * 0.32).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, duration * 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+# A soft halo behind a sprite for a status that has no natural "shape" of its own — shield
+# and vulnerable both read as an aura, just in different colours and animation.
+func _status_halo(size: Vector2, color: Color, pulsing: bool) -> Panel:
+	var halo := Panel.new()
+	halo.custom_minimum_size = size
+	halo.size = size
+	halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _panel(Color(color.r, color.g, color.b, 0.16), int(size.y / 2.0), Color(color, 0.75))
+	style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+	halo.add_theme_stylebox_override("panel", style)
+	if pulsing:
+		var pulse := halo.create_tween().set_loops()
+		pulse.tween_property(halo, "modulate:a", 0.45, 0.6).set_trans(Tween.TRANS_SINE)
+		pulse.tween_property(halo, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)
+	return halo
+
+func _get_ember_texture() -> GradientTexture2D:
+	if _ember_texture != null: return _ember_texture
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(1, 0.85, 0.4, 0.95))
+	gradient.set_color(1, Color(1, 0.3, 0.1, 0.0))
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 16
+	tex.height = 16
+	_ember_texture = tex
+	return tex
+
+func _burn_embers(size: Vector2) -> CPUParticles2D:
+	var embers := CPUParticles2D.new()
+	embers.name = "BurnFx"
+	embers.texture = _get_ember_texture()
+	embers.position = size / 2.0
+	embers.amount = 8
+	embers.lifetime = 1.1
+	embers.emitting = true
+	embers.local_coords = true
+	embers.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	embers.emission_rect_extents = Vector2(size.x * 0.35, size.y * 0.15)
+	embers.direction = Vector2(0, -1)
+	embers.spread = 20.0
+	embers.gravity = Vector2(0, -18)
+	embers.initial_velocity_min = 14.0
+	embers.initial_velocity_max = 26.0
+	embers.scale_amount_min = 0.5
+	embers.scale_amount_max = 1.0
+	return embers
+
+# Three small sparks orbiting the head — the classic "seeing stars" stun read, drawn rather
+# than requiring an animated sprite sheet.
+class DizzyStars extends Control:
+	var t := 0.0
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_process(true)
+	func _process(delta: float) -> void:
+		t += delta * 3.2
+		queue_redraw()
+	func _draw() -> void:
+		var c := Vector2(size.x, size.y) / 2.0
+		var r := size.x * 0.42
+		for i in 3:
+			var a: float = t + TAU * float(i) / 3.0
+			var p := c + Vector2(cos(a), sin(a) * 0.5) * r
+			var pts := PackedVector2Array()
+			for k in 8:
+				var rad := r * 0.16 if k % 2 == 0 else r * 0.32
+				var aa: float = TAU * float(k) / 8.0
+				pts.append(p + Vector2(cos(aa), sin(aa)) * rad)
+			draw_colored_polygon(pts, Color(1.0, 0.9, 0.5, 0.9))
+
+# Reads the current status values straight off the enemy/player dict and attaches whichever
+# visual effects apply — called once per rebuild, so no state to track between frames.
+func _apply_status_fx(unit: Control, sprite: Node2D, sprite_center: Vector2, sprite_radius: float, state: Dictionary) -> void:
+	if int(state.get("shield", 0)) > 0:
+		var halo := _status_halo(Vector2.ONE * sprite_radius * 2.3, Color("6fc7ff"), false)
+		halo.position = sprite_center - Vector2.ONE * sprite_radius * 1.15
+		unit.add_child(halo)
+		unit.move_child(halo, 0)
+	if int(state.get("vulnerable", 0)) > 0:
+		var halo := _status_halo(Vector2.ONE * sprite_radius * 2.2, Color("ff6a5c"), true)
+		halo.position = sprite_center - Vector2.ONE * sprite_radius * 1.1
+		unit.add_child(halo)
+		unit.move_child(halo, 0)
+	if int(state.get("burn", 0)) > 0:
+		var embers := _burn_embers(Vector2.ONE * sprite_radius * 2.0)
+		embers.position = sprite_center
+		unit.add_child(embers)
+	if int(state.get("weak", 0)) > 0:
+		sprite.modulate = Color(0.72, 0.72, 0.78, 1.0)
+	if int(state.get("stun", 0)) > 0:
+		var stars := DizzyStars.new()
+		stars.custom_minimum_size = Vector2.ONE * sprite_radius * 1.6
+		stars.size = stars.custom_minimum_size
+		stars.position = sprite_center - Vector2(stars.size.x / 2.0, sprite_radius * 1.9)
+		unit.add_child(stars)
+
+func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	var enemy: Dictionary = combat.state.enemies[index]
 	var unit := Control.new()
 	unit.name = "Enemy_%d" % index
@@ -1067,38 +2144,46 @@ func _enemy_view(index: int) -> Control:
 	var center_x := u_width / 2.0
 
 	# A ring around the whole unit reads as "selectable" far better than scaling the sprite.
-	var selectable: bool = selected_card >= 0 and enemy.health > 0
+	# It is shown whenever a card that needs an enemy is in hand-play, not only on hover.
 	var glow := Panel.new()
 	glow.name = "TargetGlow"
 	glow.custom_minimum_size = Vector2(u_width - 4.0, 150.0)
 	glow.size = glow.custom_minimum_size
 	glow.position = Vector2(2.0, 16.0)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var ring := _panel(Color(1.0, 0.86, 0.42, 0.10), 14, Color(1.0, 0.86, 0.42, 0.95))
-	ring.border_width_left = 2; ring.border_width_right = 2; ring.border_width_top = 2; ring.border_width_bottom = 2
-	glow.add_theme_stylebox_override("panel", ring)
-	glow.modulate.a = 0.85 if selectable else 0.0
+	glow.add_theme_stylebox_override("panel", _target_ring(false))
+	glow.visible = selected_card >= 0 and enemy.health > 0
 	unit.add_child(glow)
-	if selectable:
-		var pulse := glow.create_tween().set_loops()
-		pulse.tween_property(glow, "modulate:a", 0.35, 0.55).set_trans(Tween.TRANS_SINE)
-		pulse.tween_property(glow, "modulate:a", 0.9, 0.55).set_trans(Tween.TRANS_SINE)
 
 	var art_key := _art_key_for_enemy(enemy)
 	var sprite := Sprite2D.new()
 	sprite.name = "MonsterSprite"
 	sprite.texture = _get_character_texture(art_key)
-	var sprite_side := clampf(u_width - 16.0, 70.0, 96.0)
+	# Depth reads through scale and tone, not through the hit box: the unit's own size/position
+	# (used for taps and drag-targeting) stays exactly what _enemy_view always computed, only
+	# the sprite drawn inside it shrinks and dims a touch for the "further back" slots.
+	var sprite_side := clampf(u_width - 16.0, 70.0, 96.0) * lerpf(1.0, 0.82, depth_t)
 	var spr_size := Vector2(sprite_side, sprite_side)
 	var cell_w := float(_char_atlas_tex.get_width()) / 3.0
 	var scale_factor: float = minf(spr_size.x / cell_w, spr_size.y / cell_w)
 	sprite.scale = Vector2(scale_factor, scale_factor)
+	# Animations restore scale from this meta. Without it they fell back to 1.0 and left the
+	# enemy roughly three times its intended size after any action.
+	sprite.set_meta("base_scale", scale_factor)
 	sprite.position = Vector2(center_x, 26.0 + spr_size.y / 2.0)
+	_install_hit_flash(sprite)
 	unit.add_child(sprite)
 
+	var weakened: bool = int(enemy.get("weak", 0)) > 0
 	var idle := sprite.create_tween().set_loops()
-	idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
-	idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+	# Weak visibly saps the enemy's energy: a slower, shallower bob instead of the usual bounce.
+	if weakened:
+		idle.tween_property(sprite, "position:y", sprite.position.y - 2.0, 1.6).set_trans(Tween.TRANS_SINE)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 1.0, 1.8).set_trans(Tween.TRANS_SINE)
+	else:
+		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+	_apply_status_fx(unit, sprite, sprite.position, spr_size.x / 2.0, enemy)
 
 	# Intent banner: the icon and number alone read as an unexplained box, so it names the
 	# action too and sits on a card the same colour as the effect it is promising.
@@ -1119,10 +2204,23 @@ func _enemy_view(index: int) -> Control:
 	var intent_stack := VBoxContainer.new()
 	intent_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	intent_stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	intent_stack.add_theme_constant_override("separation", -2)
+	intent_stack.add_theme_constant_override("separation", 0)
 	intent_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	intent_bg.add_child(intent_stack)
-	intent_stack.add_child(_label(intent_style.text, 15, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var intent_row := HBoxContainer.new()
+	intent_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	intent_row.add_theme_constant_override("separation", 4)
+	intent_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	intent_stack.add_child(intent_row)
+	var icon := IntentIcon.new()
+	icon.kind = str(intent.get("kind", "attack"))
+	icon.icon_color = intent_style.text_color
+	icon.custom_minimum_size = Vector2(20, 20)
+	icon.size = icon.custom_minimum_size
+	intent_row.add_child(icon)
+	intent_row.add_child(_label(intent_style.amount_text, 15, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
+
 	intent_stack.add_child(_label(intent_style.caption, 8, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var telegraph := intent_bg.create_tween().set_loops()
@@ -1153,9 +2251,11 @@ func _enemy_view(index: int) -> Control:
 	badges.add_theme_constant_override("separation", 5)
 	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	unit.add_child(badges)
-	if int(enemy.shield) > 0: badges.add_child(_label("◆%d" % enemy.shield, 10, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER))
-	if int(enemy.burn) > 0: badges.add_child(_label("♨%d" % enemy.burn, 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER))
-	if int(enemy.stun) > 0: badges.add_child(_label("✸%d" % enemy.stun, 10, Color("ffe08a"), HORIZONTAL_ALIGNMENT_CENTER))
+	if int(enemy.shield) > 0: badges.add_child(_status_chip("⬢", int(enemy.shield), Color("9fd8ff")))
+	if int(enemy.burn) > 0: badges.add_child(_status_chip("♨", int(enemy.burn), Color("ff9868")))
+	if int(enemy.stun) > 0: badges.add_child(_status_chip("✸", int(enemy.stun), Color("ffe08a")))
+	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip("◎", int(enemy.vulnerable), Color("ff8a8a")))
+	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip("↓", int(enemy.weak), Color("b8c4c8")))
 
 	return unit
 
@@ -1166,6 +2266,17 @@ func _build_player_stage() -> Control:
 
 	var center_x := 366.0 / 2.0
 
+	# Mirror of the enemy ring, lit when a card that acts on you is in play.
+	var glow := Panel.new()
+	glow.name = "PlayerTargetGlow"
+	glow.custom_minimum_size = Vector2(200.0, 112.0)
+	glow.size = glow.custom_minimum_size
+	glow.position = Vector2(center_x - 100.0, 2.0)
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glow.add_theme_stylebox_override("panel", _target_ring(false))
+	glow.visible = false
+	stage.add_child(glow)
+
 	var sprite := Sprite2D.new()
 	sprite.name = "PlayerSprite"
 	sprite.texture = _get_character_texture("fox")
@@ -1175,11 +2286,13 @@ func _build_player_stage() -> Control:
 	sprite.scale = Vector2(scale_factor, scale_factor)
 	sprite.set_meta("base_scale", scale_factor)
 	sprite.position = Vector2(center_x, 37.0)
+	_install_hit_flash(sprite)
 	stage.add_child(sprite)
 
 	var idle := sprite.create_tween().set_loops()
 	idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
 	idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+	_apply_status_fx(stage, sprite, sprite.position, spr_size.x / 2.0, combat.state.player)
 
 	var max_hp: int = int(combat.state.player.get("max_health", 60))
 	var hp_bar := _stat_bar(168.0, 18.0, int(combat.state.player.health), max_hp, EMBER, "%s  ♥ %d/%d" % [t("ui.spirit_name"), combat.state.player.health, max_hp], 10)
@@ -1193,9 +2306,9 @@ func _build_player_stage() -> Control:
 	badges.add_theme_constant_override("separation", 8)
 	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stage.add_child(badges)
-	if int(combat.state.player.shield) > 0: badges.add_child(_label("◆ %d" % combat.state.player.shield, 11, Color("9fd8ff")))
-	if int(combat.state.player.focus) > 0: badges.add_child(_label("◉ %d" % combat.state.player.focus, 11, Color("ffe08a")))
-	if int(combat.state.player.burn) > 0: badges.add_child(_label("♨ %d" % combat.state.player.burn, 11, Color("ff9868")))
+	if int(combat.state.player.shield) > 0: badges.add_child(_status_chip("⬢", int(combat.state.player.shield), Color("9fd8ff"), 22.0))
+	if int(combat.state.player.focus) > 0: badges.add_child(_status_chip("◉", int(combat.state.player.focus), Color("ffe08a"), 22.0))
+	if int(combat.state.player.burn) > 0: badges.add_child(_status_chip("♨", int(combat.state.player.burn), Color("ff9868"), 22.0))
 
 	return stage
 
@@ -1229,33 +2342,23 @@ func _add_hand(page: VBoxContainer) -> void:
 
 	status.add_child(_pile_chip(combat.state.draw.size(), t("ui.draw_pile"), Color("f3e8cf")))
 
-	# Energy reads as compact text; the big countdown disc it replaces was mistaken for a timer.
-	var energy_lbl := _label("⚡ %d" % combat.state.energy, 14, Color("9fe4ff"), HORIZONTAL_ALIGNMENT_CENTER)
-	energy_lbl.custom_minimum_size = Vector2(46, 0)
-	energy_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	energy_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	status.add_child(energy_lbl)
-
-	# Remaining plays as pips: the turn ends by itself once they run out, so there is no End Turn button.
-	var plays := VBoxContainer.new()
-	plays.alignment = BoxContainer.ALIGNMENT_CENTER
-	plays.add_theme_constant_override("separation", 1)
-	plays.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	status.add_child(plays)
-	var pips := HBoxContainer.new()
-	pips.alignment = BoxContainer.ALIGNMENT_CENTER
-	pips.add_theme_constant_override("separation", 4)
-	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plays.add_child(pips)
-	var total_plays: int = maxi(2, int(combat.state.actions))
-	for i in total_plays:
-		var pip := Panel.new()
-		pip.custom_minimum_size = Vector2(14, 14)
-		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var lit: bool = i < int(combat.state.actions)
-		pip.add_theme_stylebox_override("panel", _panel(GOLD if lit else Color("23383d"), 7, GOLD if lit else Color("32474c")))
-		pips.add_child(pip)
-	plays.add_child(_label(t("ui.actions_label"), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	# Energy is the only thing that gates a play now — there is no play-count limit, so this
+	# orb (not a row of used-up pips) is the one number that actually matters each turn.
+	var orb := Panel.new()
+	orb.custom_minimum_size = Vector2(52, 52)
+	orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var orb_style := _panel(Color("0d3a4a"), 26, Color("6fd8ff"))
+	orb_style.border_width_left = 2; orb_style.border_width_right = 2; orb_style.border_width_top = 2; orb_style.border_width_bottom = 2
+	orb.add_theme_stylebox_override("panel", orb_style)
+	var orb_stack := VBoxContainer.new()
+	orb_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	orb_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	orb_stack.add_theme_constant_override("separation", -3)
+	orb_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	orb.add_child(orb_stack)
+	orb_stack.add_child(_label(str(int(combat.state.energy)), 20, Color("cdf1ff"), HORIZONTAL_ALIGNMENT_CENTER))
+	orb_stack.add_child(_label(t("ui.energy_label"), 8, Color("8fd9f2"), HORIZONTAL_ALIGNMENT_CENTER))
+	status.add_child(orb)
 
 	status.add_child(_pile_chip(combat.state.discard.size(), t("ui.discard_pile"), Color("a8b2b5")))
 
@@ -1275,6 +2378,13 @@ func _card_is_attack(card: Dictionary) -> bool:
 		if effect.operation == "damage" and effect.target == "opponent": return true
 	return false
 
+# A card either acts on an enemy or on you — never both, and never a choice between them.
+# Anything with an opponent-facing effect aims at enemies; everything else aims at you.
+func _card_target_mode(card: Dictionary) -> String:
+	for effect in card.effects:
+		if effect.get("target", "") == "opponent": return "enemy"
+	return "self"
+
 func _living_enemies() -> Array:
 	var living: Array = []
 	if combat == null: return living
@@ -1291,13 +2401,210 @@ func _tap_card(hand_index: int) -> void:
 		selected_card = -1
 		show_battle()
 		return
+	_show_card_preview(hand_index)
+
+# Shared dim, tap-outside-to-dismiss backdrop for any full-screen modal (card preview,
+# equipment/relic/modifier info) — one node name per caller so only that caller's _clear_*
+# needs to know about it, and two modals can never stack on top of each other by accident.
+func _modal_backdrop(node_name: String, on_dismiss: Callable) -> Button:
+	var dim := Color("040a0c"); dim.a = 0.72
+	var backdrop := Button.new()
+	backdrop.name = node_name
+	backdrop.flat = true
+	backdrop.focus_mode = Control.FOCUS_NONE
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.z_index = 300
+	backdrop.add_theme_stylebox_override("normal", _panel(dim, 0))
+	backdrop.add_theme_stylebox_override("hover", _panel(dim, 0))
+	backdrop.add_theme_stylebox_override("pressed", _panel(dim, 0))
+	backdrop.add_theme_stylebox_override("focus", _panel(dim, 0))
+	if on_dismiss.is_valid(): backdrop.pressed.connect(on_dismiss)
+	overlay.add_child(backdrop)
+	return backdrop
+
+# Wraps a non-interactive badge/icon Control (built with MOUSE_FILTER_IGNORE) in an
+# invisible button so a whole row of small icons can each be tapped for detail, without
+# every icon-drawing call site needing to know about buttons.
+func _tap_wrap(control: Control, on_tap: Callable) -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = control.custom_minimum_size
+	btn.flat = true
+	btn.focus_mode = Control.FOCUS_NONE
+	var empty := StyleBoxEmpty.new()
+	btn.add_theme_stylebox_override("normal", empty)
+	btn.add_theme_stylebox_override("hover", empty)
+	btn.add_theme_stylebox_override("pressed", empty)
+	btn.add_theme_stylebox_override("focus", empty)
+	control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	control.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	btn.add_child(control)
+	if on_tap.is_valid(): btn.pressed.connect(on_tap)
+	return btn
+
+# A small centered card (icon + name + full detail text) for anything that used to be an
+# inline text label — the modifier banner and the equipment/relic row both used to spell
+# their full description out on screen; now they're a badge you tap for the same information.
+func _show_info_popup(icon: Control, title: String, detail: String, accent: Color) -> void:
+	if overlay == null: return
+	_clear_info_popup()
+	var backdrop := _modal_backdrop("InfoPopup", _clear_info_popup)
+
+	var center := VBoxContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_theme_constant_override("separation", 10)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(center)
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(220, 0)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var card_style := _panel(Color("15262b"), 14, accent)
+	card_style.content_margin_left = 18; card_style.content_margin_right = 18
+	card_style.content_margin_top = 18; card_style.content_margin_bottom = 18
+	card.add_theme_stylebox_override("panel", card_style)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(card)
+
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 8)
+	card.add_child(inner)
+
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	inner.add_child(icon)
+	inner.add_child(_label(title, 15, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER))
+	var det_lbl := _label(detail, 12, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
+	det_lbl.custom_minimum_size.x = 200
+	inner.add_child(det_lbl)
+
+	center.add_child(_label(t("ui.tap_to_dismiss"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+func _clear_info_popup() -> void:
+	if overlay == null: return
+	var existing := overlay.get_node_or_null("InfoPopup")
+	if existing: existing.queue_free()
+
+# A tap always opens a big, readable copy of the card first — the hand fan is too small to
+# read effect text at a glance. Dragging still plays a card directly without this stop.
+func _show_card_preview(hand_index: int) -> void:
+	if combat == null or overlay == null: return
+	if hand_index < 0 or hand_index >= combat.state.hand.size(): return
 	var card := content.card(combat.state.hand[hand_index].card_id)
-	if _card_is_attack(card) and _living_enemies().size() > 1:
+	if card.is_empty(): return
+	_clear_card_preview()
+
+	var backdrop := _modal_backdrop("CardPreview", _clear_card_preview)
+
+	var center := VBoxContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_theme_constant_override("separation", 18)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(center)
+
+	var rune_id: String = profile.card_runes.get(card.id, "")
+	var face := _big_card_face(card, rune_id)
+	face.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	face.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(face)
+
+	var can_target: bool = _card_target_mode(card) == "enemy" and _living_enemies().size() > 1
+	var affordable: bool = int(card.cost) <= int(combat.state.energy)
+	var action_label: String = (t("ui.tap_to_target") if can_target else t("ui.play_card")) if affordable else t("ui.target_invalid")
+	var play_btn := _button(action_label, _confirm_card_preview.bind(hand_index), Color("1d3a35"), Vector2(200, 48))
+	play_btn.disabled = not affordable
+	play_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(play_btn)
+	center.add_child(_label(t("ui.tap_to_dismiss"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	face.pivot_offset = face.custom_minimum_size / 2.0
+	face.scale = Vector2(0.72, 0.72)
+	face.modulate.a = 0.0
+	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(face, "scale", Vector2.ONE, 0.22)
+	tw.tween_property(face, "modulate:a", 1.0, 0.16)
+
+func _clear_card_preview() -> void:
+	if overlay == null: return
+	var existing := overlay.get_node_or_null("CardPreview")
+	if existing: existing.queue_free()
+
+func _confirm_card_preview(hand_index: int) -> void:
+	_clear_card_preview()
+	if combat == null or hand_index < 0 or hand_index >= combat.state.hand.size(): return
+	var card := content.card(combat.state.hand[hand_index].card_id)
+	if card.is_empty() or int(card.cost) > int(combat.state.energy): return
+	if _card_target_mode(card) == "enemy" and _living_enemies().size() > 1:
 		selected_card = hand_index
 		show_battle()
-		return
-	selected_card = -1
-	_attempt_play_card(hand_index, -1)
+	else:
+		_attempt_play_card(hand_index, -1)
+
+# A bigger, static twin of the HandCard face in _card_view: same frame/art/cost/rune
+# language, scaled up with room for the full effect text instead of a 7pt sliver of it.
+func _big_card_face(card: Dictionary, rune_id: String) -> PanelContainer:
+	var accent: Color = _card_color(card)
+	var border_col: Color = _rune_color(rune_id, accent)
+	var size := Vector2(230.0, 320.0)
+
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = size
+	frame.size = size
+	frame.add_theme_stylebox_override("panel", _panel(Color("15262b"), 16, border_col))
+
+	var stack := VBoxContainer.new()
+	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stack.add_theme_constant_override("separation", 4)
+	frame.add_child(stack)
+
+	var art_frame := PanelContainer.new()
+	art_frame.custom_minimum_size.y = 150.0
+	art_frame.add_theme_stylebox_override("panel", _panel(Color("0a171b"), 8))
+
+	var art := TextureRect.new()
+	art.texture = _get_card_texture(card.id)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+
+	var art_clip := PanelContainer.new()
+	art_clip.clip_contents = true
+	art_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art_clip.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, 8))
+	art_clip.add_child(art)
+	art_frame.add_child(art_clip)
+	stack.add_child(art_frame)
+
+	var cost_badge := PanelContainer.new()
+	cost_badge.custom_minimum_size = Vector2(38, 38)
+	cost_badge.position = Vector2(-10, -10)
+	cost_badge.add_theme_stylebox_override("panel", _panel(accent, 19, Color("2b1a10")))
+	var cost_lbl := _label(str(card.cost), 22, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
+	cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	cost_badge.add_child(cost_lbl)
+	frame.add_child(cost_badge)
+
+	var rune_info: Dictionary = content.rune(rune_id)
+	if not rune_info.is_empty():
+		var r_lbl := _label(rune_info.icon, 22, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
+		r_lbl.position = Vector2(size.x - 34.0, -8.0)
+		frame.add_child(r_lbl)
+
+	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
+	var name_text: String = content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else "")
+	var name_lbl := _label(name_text, 16, Color("23150d"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_stylebox_override("normal", _panel(Color("ead6a9"), 6))
+	stack.add_child(name_lbl)
+
+	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	stack.add_child(kind_lbl)
+
+	var desc_lbl := _label(_card_description(card), 13, Color("2b241b"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc_lbl.add_theme_stylebox_override("normal", _panel(Color("f3e8cf"), 6))
+	stack.add_child(desc_lbl)
+
+	return frame
 
 func _handle_targeting(event: InputEvent) -> bool:
 	if selected_card < 0 or combat == null or combat.state.phase != "player" or resolving: return false
@@ -1434,6 +2741,7 @@ func _predict_damage(card: Dictionary, enemy_index: int) -> Dictionary:
 	result.is_attack = true
 
 	var bonus := int(combat.state.upgrades.get(card.id, 0))
+	bonus += int(combat.state.player.get("strength", 0))
 	if int(combat.state.player.focus) > 0: bonus += 3 * int(combat.state.player.focus)
 	if not bool(combat.state.first_attack):
 		if combat.state.equipment.has("emberBlade"): bonus += 3
@@ -1448,6 +2756,7 @@ func _predict_damage(card: Dictionary, enemy_index: int) -> Dictionary:
 		var amount: int = maxi(1, int(effect.amount) + bonus)
 		if rune == "execute" and enemy.health <= enemy.max_health * 0.25: amount = int(round(amount * 1.5))
 		if card.get("special", "") == "critical": amount *= 2
+		if int(enemy.get("vulnerable", 0)) > 0: amount = int(round(amount * 1.5))
 		total += amount
 	if rune == "echo": total += int(round(total * 0.5))
 
@@ -1502,16 +2811,38 @@ func _shake_screen(intensity: float, duration := 0.24) -> void:
 		shake.tween_property(root, "position", origin + offset, duration / float(steps))
 	shake.tween_property(root, "position", origin, duration / float(steps))
 
+func _target_ring(hot: bool) -> StyleBoxFlat:
+	var ring := _panel(Color(1.0, 0.86, 0.42, 0.22 if hot else 0.08), 14, Color(1.0, 0.92, 0.55, 1.0) if hot else Color(1.0, 0.86, 0.42, 0.7))
+	var width := 3 if hot else 2
+	ring.border_width_left = width; ring.border_width_right = width
+	ring.border_width_top = width; ring.border_width_bottom = width
+	return ring
+
+# Shows every legal target for the card currently in play, so you can see what you may aim
+# at before you get there rather than discovering it by dragging over each enemy.
+func _show_valid_targets(mode: String) -> void:
+	for box in enemy_boxes:
+		if box == null or not is_instance_valid(box): continue
+		var glow: Control = box.get_node_or_null("TargetGlow")
+		if glow == null: continue
+		var alive: bool = combat != null and combat.state.enemies[int(box.get_meta("enemy_index"))].health > 0
+		glow.visible = mode == "enemy" and alive
+		glow.add_theme_stylebox_override("panel", _target_ring(false))
+	var player_glow: Control = root.find_child("PlayerTargetGlow", true, false) as Control
+	if player_glow: player_glow.visible = mode == "self"
+
+func _clear_valid_targets() -> void:
+	_show_valid_targets("")
+	for box in enemy_boxes:
+		if box and is_instance_valid(box):
+			var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
+			if sprite: sprite.modulate = Color.WHITE
+
 func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 	for box in enemy_boxes:
 		if box and is_instance_valid(box) and int(box.get_meta("enemy_index")) == enemy_index:
 			var glow: Control = box.get_node_or_null("TargetGlow")
-			if glow:
-				if targeted:
-					var tween := glow.create_tween()
-					tween.tween_property(glow, "modulate:a", 1.0, 0.08)
-				else:
-					glow.modulate.a = 0.85 if selected_card >= 0 else 0.0
+			if glow and glow.visible: glow.add_theme_stylebox_override("panel", _target_ring(targeted))
 			# Brighten rather than enlarge: the old 1.08x jump read as the model popping.
 			var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 			if sprite: sprite.modulate = Color(1.35, 1.3, 1.15) if targeted else Color.WHITE
@@ -1537,16 +2868,14 @@ func _resolve_play(before: Array) -> void:
 	await _maybe_end_turn()
 	resolving = false
 
-# There is no End Turn button, so the turn has to hand itself over: when the plays run out,
-# and also when plays remain but nothing in hand is affordable, which would otherwise soft-lock.
+# There is no End Turn button, so the turn has to hand itself over once nothing in hand is
+# affordable any more (either the hand is empty or every card costs more than remaining energy).
 func _maybe_end_turn() -> void:
 	var guard := 0
 	while combat != null and combat.state.phase == "player" and guard < 12:
 		guard += 1
-		var out_of_plays: bool = int(combat.state.actions) <= 0
-		var nothing_playable := not _has_playable_card()
-		if not out_of_plays and not nothing_playable: return
-		if nothing_playable and not out_of_plays: _toast(t("ui.no_playable"))
+		if _has_playable_card(): return
+		if combat.state.hand.size() > 0: _toast(t("ui.no_playable"))
 		await get_tree().create_timer(0.28).timeout
 		if combat == null or combat.state.phase != "player": return
 		await _enemy_turn()
@@ -1576,13 +2905,8 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 	var tween := create_tween().set_parallel(true)
 	if sprite:
-		var orig_x := sprite.position.x
-		var shake := create_tween()
-		shake.tween_property(sprite, "position:x", orig_x - 8.0, 0.05)
-		shake.tween_property(sprite, "position:x", orig_x + 8.0, 0.05)
-		shake.tween_property(sprite, "position:x", orig_x, 0.06)
-		shake.parallel().tween_property(sprite, "modulate", Color(2.0, 0.4, 0.4), 0.08)
-		shake.tween_property(sprite, "modulate", Color.WHITE, 0.12)
+		_flash_hit(sprite, Color("ff5c4a"))
+		_squash_impact(sprite, float(sprite.get_meta("base_scale", 1.0)), 0.28 if defeated else 0.18)
 	tween.tween_property(popup, "position:y", popup.position.y - 45.0, 0.45)
 	tween.tween_property(popup, "modulate:a", 0.0, 0.45)
 	if defeated:
@@ -1610,7 +2934,7 @@ func _enemy_turn() -> void:
 		if box == null or not is_instance_valid(box): continue
 		var index := int(box.get_meta("enemy_index"))
 		if index >= planned.size() or str(planned[index]).is_empty(): continue
-		await _animate_enemy_action(box, str(planned[index]))
+		await _animate_enemy_action(box, str(planned[index]), combat.state.enemies[index])
 
 	var before_health: int = combat.state.player.health
 	combat.end_turn()
@@ -1619,40 +2943,61 @@ func _enemy_turn() -> void:
 		await _animate_player_hit(before_health - combat.state.player.health)
 	show_battle()
 
-func _animate_enemy_action(box: Control, kind: String) -> void:
+# The tint a sprite should rest at once its action animation finishes — plain white unless
+# a persistent status (currently just Weak) is dulling it, in which case resetting to pure
+# white would erase that status's own visual cue.
+func _resting_modulate(state: Dictionary) -> Color:
+	return Color(0.72, 0.72, 0.78, 1.0) if int(state.get("weak", 0)) > 0 else Color.WHITE
+
+func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) -> void:
 	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 	if sprite == null: return
 	var origin: Vector2 = sprite.position
 	var base_scale: float = float(sprite.get_meta("base_scale", 1.0))
+	var rest_tint := _resting_modulate(enemy_state)
 	var tween := sprite.create_tween()
 	match kind:
 		"defend":
-			tween.tween_property(sprite, "modulate", Color(0.75, 0.95, 1.6), 0.12)
+			# Anticipation (crouch/squash) then a small rise, like drawing a shield up.
+			tween.tween_property(sprite, "modulate", Color(0.75, 0.95, 1.6), 0.1)
+			tween.tween_property(sprite, "scale", Vector2(base_scale * 1.14, base_scale * 0.88), 0.12).set_trans(Tween.TRANS_QUAD)
 			tween.tween_property(sprite, "position:y", origin.y - 10.0, 0.12).set_trans(Tween.TRANS_SINE)
+			tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.16).set_trans(Tween.TRANS_BACK)
 			tween.tween_property(sprite, "position:y", origin.y, 0.14)
-			tween.tween_property(sprite, "modulate", Color.WHITE, 0.14)
+			tween.tween_property(sprite, "modulate", rest_tint, 0.14)
 		"empower":
-			tween.tween_property(sprite, "modulate", Color(1.6, 0.9, 1.8), 0.14)
-			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.16, 0.16).set_trans(Tween.TRANS_BACK)
-			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.16)
-			tween.tween_property(sprite, "modulate", Color.WHITE, 0.14)
+			# A single decisive stretch-up "power surge" rather than a repeated wobble.
+			tween.tween_property(sprite, "modulate", Color(1.6, 0.9, 1.8), 0.1)
+			tween.tween_property(sprite, "scale", Vector2(base_scale * 0.9, base_scale * 1.22), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.08, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.14).set_trans(Tween.TRANS_ELASTIC)
+			tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.2)
 		"curse":
-			tween.tween_property(sprite, "modulate", Color(0.9, 1.6, 0.7), 0.14)
-			tween.tween_property(sprite, "position:x", origin.x + 7.0, 0.07)
-			tween.tween_property(sprite, "position:x", origin.x - 7.0, 0.07)
-			tween.tween_property(sprite, "position:x", origin.x, 0.07)
-			tween.tween_property(sprite, "modulate", Color.WHITE, 0.14)
+			tween.tween_property(sprite, "modulate", Color(0.9, 1.6, 0.7), 0.12)
+			tween.tween_property(sprite, "position:x", origin.x + 7.0, 0.06)
+			tween.tween_property(sprite, "position:x", origin.x - 7.0, 0.06)
+			tween.tween_property(sprite, "position:x", origin.x, 0.06)
+			tween.tween_property(sprite, "modulate", rest_tint, 0.14)
 		_:
-			# Wind up away from the player, then drive down onto them.
-			tween.tween_property(sprite, "position:y", origin.y - 18.0, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			tween.tween_property(sprite, "position:y", origin.y + 50.0, 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-			tween.parallel().tween_property(sprite, "modulate", Color(1.9, 1.1, 0.9), 0.1)
-			tween.tween_property(sprite, "position:y", origin.y, 0.24).set_trans(Tween.TRANS_SINE)
-			tween.parallel().tween_property(sprite, "modulate", Color.WHITE, 0.22)
+			# Anticipation (rise + squash back), action (fast lunge down + stretch), impact
+			# (squash flat + hit-flash + screen shake), recovery (elastic settle).
+			tween.tween_property(sprite, "position:y", origin.y - 16.0, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.12, base_scale * 0.86), 0.16).set_trans(Tween.TRANS_QUAD)
+			tween.tween_property(sprite, "position:y", origin.y + 48.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.82, base_scale * 1.28), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tween.parallel().tween_property(sprite, "modulate", Color(1.9, 1.1, 0.9), 0.09)
+			tween.tween_callback(func():
+				_flash_hit(sprite, Color(1.0, 0.75, 0.55), 0.14)
+				_shake_screen(4.0)
+				Input.vibrate_handheld(12))
+			tween.tween_property(sprite, "scale", Vector2(base_scale * 1.1, base_scale * 0.9), 0.05).set_trans(Tween.TRANS_QUAD)
+			tween.tween_property(sprite, "position:y", origin.y, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.22)
 	await tween.finished
 	sprite.position = origin
 	sprite.scale = Vector2.ONE * base_scale
-	sprite.modulate = Color.WHITE
+	sprite.modulate = rest_tint
 
 func _animate_player_hit(amount: int) -> void:
 	var popup := _label("−%d" % amount, 38, Color("ff786a"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1684,14 +3029,9 @@ func _animate_player_hit(amount: int) -> void:
 	
 	var player_node: Sprite2D = get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node:
-		var orig_x: float = player_node.position.x
-		var shake := create_tween()
-		shake.tween_property(player_node, "position:x", orig_x - 12.0, 0.05)
-		shake.tween_property(player_node, "position:x", orig_x + 12.0, 0.05)
-		shake.tween_property(player_node, "position:x", orig_x, 0.06)
-		shake.parallel().tween_property(player_node, "modulate", Color(2.0, 0.4, 0.4), 0.08)
-		shake.tween_property(player_node, "modulate", Color.WHITE, 0.12)
-		
+		_flash_hit(player_node, Color("ff5c4a"))
+		_squash_impact(player_node, float(player_node.get_meta("base_scale", 1.0)), 0.24)
+
 	await tween.finished
 	popup.queue_free()
 
@@ -1701,11 +3041,15 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		var tip: String = {"defend": "ui.intent_tip_defend", "empower": "ui.intent_tip_empower", "curse": "ui.intent_tip_curse"}.get(str(payload.kind), "")
 		if not tip.is_empty(): _toast("%s %s" % [t(tip), style.text], style.border)
 	elif kind == "player_burn": _toast("♨ −%d" % payload.amount, Color("ff9868"))
+	elif kind == "thorns": _toast(tf("ui.thorns_toast", payload.amount), Color("ff8a8a"))
 	elif kind == "revive": _toast(tf("ui.revive_toast", payload.amount),Color("9bffd3"))
 	elif kind == "equipment":
 		var item := content.equipment(payload.id); if not item.is_empty(): _toast("%s %s" % [item.icon, _equip_name(item)],GOLD)
-	elif kind == "card" and not str(payload.rune).is_empty():
-		var rune := content.rune(payload.rune); _toast("%s %s" % [rune.icon, _rune_name(rune)],Color(rune.color))
+	elif kind == "card":
+		if int(payload.get("damage", 0)) > 0: _advance_quest("deal_damage", int(payload.damage))
+		if not str(payload.rune).is_empty():
+			_advance_quest("play_runed_cards", 1)
+			var rune := content.rune(payload.rune); _toast("%s %s" % [rune.icon, _rune_name(rune)],Color(rune.color))
 
 func _toast(message: String, color := TEXT) -> void:
 	if overlay == null: return
@@ -1717,8 +3061,13 @@ func _toast(message: String, color := TEXT) -> void:
 
 func _leave_battle() -> void:
 	selected_card = -1
-	if combat != null: profile.health = maxi(1,int(combat.state.player.health))
-	SpiritSave.write(profile); show_map()
+	if combat != null:
+		# A defeat costs you the attempt, not the run: health returns to what you entered with.
+		# Retreating mid-battle still keeps the damage you took.
+		if combat.state.phase == "lost": profile.health = maxi(1, pre_battle_health)
+		else: profile.health = maxi(1, int(combat.state.player.health))
+	SpiritSave.write(profile)
+	show_map()
 
 func show_reward() -> void:
 	_clear(); _play_music(false)
@@ -1762,22 +3111,40 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 	await get_tree().create_timer(0.25).timeout
 
 	_grant_stage_rewards()
+	_advance_quest("open_chest", 1)
 	# The chest and its button have done their job; rebuild the page so only the
 	# rewards and the card choice remain on screen.
 	show_reward_details()
+
+# A stage below the unlock frontier has been cleared before. Stages cannot be skipped, so
+# this is a reliable "have I already beaten it" test without tracking a separate set.
+func _is_replay(index: int) -> bool:
+	return index < int(profile.unlocked)
 
 func _grant_stage_rewards() -> void:
 	var encounter: Dictionary = content.encounters[current_stage]
 	var multiplier: float = active_modifier.get("reward_scale", 1.0)
 	if profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
-	pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": ""}
+	var replay := _is_replay(current_stage)
+	# Farming an old stage pays half and drops no items, so grinding gold stays possible
+	# while re-collecting cards and gear does not.
+	if replay: multiplier *= 0.5
+	pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay}
 	profile.gold += int(pending_rewards.gold)
 	profile.health = mini(60, int(combat.state.player.health) + 10)
-	profile.unlocked = maxi(int(profile.unlocked), mini(49, current_stage + 1))
+	profile.unlocked = maxi(int(profile.unlocked), mini(content.encounters.size() - 1, current_stage + 1))
 	profile.position = current_stage
 
 	var kind := content.node_kind(current_stage)
-	if kind == "boss":
+	_advance_quest("win_battles", 1)
+	_advance_quest("earn_gold", int(pending_rewards.gold))
+	if content.is_boss_kind(kind) or kind == "elite": _advance_quest("clear_elite_or_boss", 1)
+	if kind == "greatboss": _advance_quest("defeat_great_boss", 1)
+	if replay:
+		SpiritSave.write(profile)
+		return
+
+	if content.is_boss_kind(kind):
 		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
 		var id: String = order[(current_stage / 5 + int(profile.difficulty) * 2) % order.size()]
 		if not profile.equipment_owned.has(id): profile.equipment_owned.append(id)
@@ -1825,6 +3192,11 @@ func show_reward_details() -> void:
 	if not rune_id.is_empty():
 		var rune := content.rune(rune_id)
 		list.add_child(_reward_item(tf("ui.elite_rune_title", [rune.icon, _rune_name(rune)]), _rune_detail(rune), Color(rune.color)))
+
+	if bool(pending_rewards.get("replay", false)):
+		list.add_child(_label(t("ui.reward_replay_note"), 12, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		page.add_child(_button(t("ui.return_map"), _finish_reward, EMBER, Vector2(0, 50)))
+		return
 
 	list.add_child(_label(t("ui.reward_choose"), 13, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var options: Array = content.cards.filter(func(card): return card.rarity != "Starter")
@@ -1884,6 +3256,7 @@ func _reward_card_row(card: Dictionary) -> Control:
 	return panel
 
 func _collect_card(card: Dictionary) -> void:
+	if int(profile.collection.get(card.id, 0)) == 0: _advance_quest("collect_cards", 1)
 	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
 	SpiritSave.write(profile)
 	_toast(tf("ui.reward_collected", content.text(card.nameKey, lang)), JADE)
@@ -1892,6 +3265,7 @@ func _collect_card(card: Dictionary) -> void:
 # Adds the card to the deck, and when the deck is already at 25 drops the weakest card
 # to make room — starters first, then whatever scores lowest.
 func _smart_add_card(card: Dictionary) -> void:
+	if int(profile.collection.get(card.id, 0)) == 0: _advance_quest("collect_cards", 1)
 	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
 	if profile.deck.size() < 25:
 		profile.deck.append(card.id)
@@ -1937,7 +3311,7 @@ func show_event(index: int, kind: String) -> void:
 	else: title = t("ui.event_default")
 	page.add_child(_label("✦", 48, GOLD, HORIZONTAL_ALIGNMENT_CENTER)); page.add_child(_label(title, 21, TEXT, HORIZONTAL_ALIGNMENT_CENTER)); page.add_child(_label(t("ui.event_prompt"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	if kind == "event":
-		page.add_child(_button(t("ui.event_opt_gold"), func(): profile.gold += 25; SpiritSave.write(profile); begin_battle(index), EMBER, Vector2(280,48)))
+		page.add_child(_button(t("ui.event_opt_gold"), func(): profile.gold += 25; _advance_quest("earn_gold", 25); SpiritSave.write(profile); begin_battle(index), EMBER, Vector2(280,48)))
 		page.add_child(_button(t("ui.event_opt_heal"), func(): profile.health = mini(60,profile.health+15); SpiritSave.write(profile); begin_battle(index), Color("21594e"), Vector2(280,48)))
 	elif kind == "rest":
 		page.add_child(_button(t("ui.event_opt_rest_heal"), func(): profile.health = mini(60,profile.health+12); SpiritSave.write(profile); begin_battle(index), Color("21594e"), Vector2(280,48)))
@@ -1947,12 +3321,32 @@ func show_event(index: int, kind: String) -> void:
 		page.add_child(_button(t("ui.event_opt_direct"), func(): begin_battle(index), Color("21594e"), Vector2(280,48)))
 	page.add_child(_button(t("ui.return_map"), show_map, Color("17363e"), Vector2(170,42)))
 
+const SHOP_STOCK_COUNT := 6
+
+# Stock and the day's sale slot are derived from the day number rather than stored, so
+# they need no save-file field and can't drift out of sync with the daily quest reset.
+func _shop_period() -> Dictionary:
+	var day: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	return content.roll_shop_stock(day, SHOP_STOCK_COUNT)
+
+func _shop_reset_at() -> int:
+	var day: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	return (day + 1) * DAY_SECONDS
+
+# Escalating cost is the direct fix for "just buy the same card forever": each copy already
+# owned raises the price of the next one, the same shape as Slay the Spire's card-removal
+# cost climbing with each use, rather than a flat price with no friction on repeat buys.
+func _shop_price(card: Dictionary, owned: int) -> int:
+	var base := 90 if card.rarity == "Rare" else 60 if card.rarity == "Uncommon" else 40
+	return int(round(float(base) * (1.0 + float(owned) * 0.35) / 5.0)) * 5
+
 func show_shop() -> void:
 	_clear(); _play_music(false)
 	_back_action = show_map
 	var backdrop := _background("lantern-marsh-v1.jpg", .18); root.add_child(backdrop); root.move_child(backdrop, 0)
 	var page := _create_page(8)
 	page.add_child(_header(t("ui.shop_title"), t("ui.shop_sub"), show_map))
+	page.add_child(_label(tf("ui.shop_refresh", _format_countdown(_shop_reset_at())), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var potion := Button.new()
 	potion.custom_minimum_size.y = 62
@@ -1993,20 +3387,41 @@ func show_shop() -> void:
 	grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(grid)
 
-	for card in content.cards:
-		if card.rarity == "Starter": continue
-		var price := 90 if card.rarity == "Rare" else 60 if card.rarity == "Uncommon" else 40
-		grid.add_child(_shop_card_tile(card, price))
+	var stock: Dictionary = _shop_period()
+	var stock_cards: Array = stock.cards
+	for i in stock_cards.size():
+		var card: Dictionary = stock_cards[i]
+		var owned: int = int(profile.collection.get(card.id, 0))
+		var price := _shop_price(card, owned)
+		var on_sale: bool = i == int(stock.sale_index)
+		if on_sale: price = maxi(5, int(round(float(price) * 0.7 / 5.0)) * 5)
+		grid.add_child(_shop_card_tile(card, price, on_sale))
 
-func _shop_card_tile(card: Dictionary, price: int) -> Control:
+func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	var accent := _card_color(card)
 	var can_afford: bool = int(profile.gold) >= price
 	var owned: int = int(profile.collection.get(card.id, 0))
 
 	# The tile is inert; only the price button below buys, so brushing a card cannot spend gold.
 	var btn := Panel.new()
+	btn.name = "ShopTile_%s" % card.id
 	btn.custom_minimum_size = Vector2(176, 228)
-	btn.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, accent if can_afford else Color("24373d")))
+	btn.pivot_offset = Vector2(88, 114)
+	var border_color: Color = GOLD if on_sale else (accent if can_afford else Color("24373d"))
+	var tile_style := _panel(Color("1d1a10") if on_sale else Color("11242a"), 12, border_color)
+	if on_sale: tile_style.border_width_left = 2; tile_style.border_width_right = 2; tile_style.border_width_top = 2; tile_style.border_width_bottom = 2
+	btn.add_theme_stylebox_override("panel", tile_style)
+	_add_ornate_frame(btn, btn.custom_minimum_size, border_color)
+
+	if on_sale:
+		var sale_tag := _label(t("ui.shop_sale"), 9, Color("2b1a05"), HORIZONTAL_ALIGNMENT_CENTER)
+		sale_tag.add_theme_stylebox_override("normal", _panel(GOLD, 6))
+		sale_tag.custom_minimum_size = Vector2(70, 18)
+		sale_tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		sale_tag.position = Vector2(53, -9)
+		sale_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sale_tag.z_index = 5
+		btn.add_child(sale_tag)
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2027,12 +3442,10 @@ func _shop_card_tile(card: Dictionary, price: int) -> Control:
 	var badge := _cost_badge(int(card.cost), accent)
 	badge.position = Vector2(4, 4)
 	art_row.add_child(badge)
-	var rarity_lbl := _label(card.rarity, 8, GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
-	rarity_lbl.position = Vector2(88, 70)
-	rarity_lbl.size = Vector2(72, 16)
-	rarity_lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-	rarity_lbl.add_theme_constant_override("shadow_offset_y", 1)
-	art_row.add_child(rarity_lbl)
+	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
+	rarity_row.position = Vector2(88, 70)
+	rarity_row.size = Vector2(72, 16)
+	art_row.add_child(rarity_row)
 
 	stack.add_child(_label(content.text(card.nameKey, lang), 13, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 9, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
@@ -2040,9 +3453,34 @@ func _shop_card_tile(card: Dictionary, price: int) -> Control:
 	desc.custom_minimum_size.y = 30
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc)
-	stack.add_child(_label("%s %d" % [t("ui.deck_owned_short"), owned], 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var owned_row := HBoxContainer.new()
+	owned_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	owned_row.add_theme_constant_override("separation", 4)
+	owned_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.add_child(owned_row)
+	if owned > 0:
+		# A filled dot per copy owned reads faster than the same text every visit, and each
+		# purchase escalating the price is right there next to the count that explains why.
+		var dots := HBoxContainer.new()
+		dots.add_theme_constant_override("separation", 2)
+		dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		owned_row.add_child(dots)
+		for i in mini(owned, 6):
+			var dot := Panel.new()
+			dot.custom_minimum_size = Vector2(6, 6)
+			dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			dot.add_theme_stylebox_override("panel", _panel(JADE, 3))
+			dots.add_child(dot)
+		if owned > 6: owned_row.add_child(_label("+%d" % (owned - 6), 8, JADE))
+	else:
+		owned_row.add_child(_label(t("ui.loadout_unobtained"), 9, MUTED))
+
+	var price_row := VBoxContainer.new()
+	price_row.add_theme_constant_override("separation", 1)
+	stack.add_child(price_row)
 
 	var buy := Button.new()
+	buy.name = "BuyButton"
 	buy.custom_minimum_size.y = 38
 	buy.focus_mode = Control.FOCUS_NONE
 	buy.text = "%s  ◆%d" % [t("ui.shop_buy"), price]
@@ -2055,8 +3493,10 @@ func _shop_card_tile(card: Dictionary, price: int) -> Control:
 	buy.add_theme_stylebox_override("pressed", _panel(GOLD.darkened(0.2), 9, EMBER))
 	buy.add_theme_stylebox_override("disabled", _panel(Color("2a2320"), 9, Color("53403a")))
 	buy.disabled = not can_afford
-	buy.pressed.connect(func(): _buy_card(card, price))
-	stack.add_child(buy)
+	buy.pressed.connect(func(): _buy_card_with_feedback(btn, card, price))
+	price_row.add_child(buy)
+	if owned > 0 and not on_sale:
+		price_row.add_child(_label(tf("ui.shop_next_price", _shop_price(card, owned + 1)), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_CENTER))
 
 	return btn
 
@@ -2065,15 +3505,34 @@ func _buy_potion() -> void:
 	profile.gold -= 30
 	profile.health = mini(60, int(profile.health) + 20)
 	SpiritSave.write(profile)
+	_advance_quest("shop_purchase", 1)
 	show_shop()
 
 func _buy_card(card: Dictionary, price: int) -> void:
 	if profile.gold < price: _toast(t("ui.shop_no_gold")); return
 	profile.gold -= price
+	if int(profile.collection.get(card.id, 0)) == 0: _advance_quest("collect_cards", 1)
 	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
 	SpiritSave.write(profile)
+	_advance_quest("shop_purchase", 1)
 	show_shop()
 	_toast(tf("ui.shop_bought", content.text(card.nameKey, lang)), JADE)
+
+# A purchase is deliberate and infrequent, unlike a card tap in battle, so it earns a
+# synced haptic + flash rather than the plain instant rebuild _buy_card used to do alone —
+# haptic timing should land on the visual peak, not fire blind before anything is on screen.
+func _buy_card_with_feedback(tile: Panel, card: Dictionary, price: int) -> void:
+	if int(profile.gold) < price:
+		_toast(t("ui.shop_no_gold"))
+		return
+	var buy_btn: Button = tile.get_node_or_null("BuyButton") as Button
+	if buy_btn: buy_btn.disabled = true
+	var pop := tile.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(tile, "scale", Vector2(1.06, 1.06), 0.09)
+	pop.tween_property(tile, "scale", Vector2.ONE, 0.14)
+	Input.vibrate_handheld(22)
+	await pop.finished
+	_buy_card(card, price)
 
 func _card_art_panel(card_id: String, art_size: Vector2, radius := 8) -> Control:
 	var clip := Panel.new()
@@ -2104,6 +3563,57 @@ func _cost_badge(cost: int, accent: Color, diameter := 26) -> Panel:
 	badge.add_child(lbl)
 	return badge
 
+# A single rounded border reads as a plain panel; a thin inset accent line plus a small leaf
+# ornament at each corner is what turns it into something that reads as a picture frame,
+# matching the ornate-border reference for the shop and deck-building screens.
+func _add_ornate_frame(tile: Control, size: Vector2, accent: Color) -> void:
+	var inset := Panel.new()
+	inset.position = Vector2(5, 5)
+	inset.size = size - Vector2(10, 10)
+	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var inset_style := StyleBoxFlat.new()
+	inset_style.bg_color = Color.TRANSPARENT
+	inset_style.corner_radius_top_left = 8; inset_style.corner_radius_top_right = 8
+	inset_style.corner_radius_bottom_left = 8; inset_style.corner_radius_bottom_right = 8
+	inset_style.border_width_left = 1; inset_style.border_width_right = 1
+	inset_style.border_width_top = 1; inset_style.border_width_bottom = 1
+	inset_style.border_color = Color(accent.r, accent.g, accent.b, 0.55)
+	inset.add_theme_stylebox_override("panel", inset_style)
+	tile.add_child(inset)
+
+	var corners := [[Vector2(3, 3), 0.0], [Vector2(size.x - 17, 3), 90.0],
+		[Vector2(size.x - 17, size.y - 17), 180.0], [Vector2(3, size.y - 17), 270.0]]
+	for c in corners:
+		var mark := GameIcon.new()
+		mark.kind = "none"
+		mark.flourish = "leaf"
+		mark.icon_color = accent
+		mark.custom_minimum_size = Vector2(14, 14)
+		mark.size = mark.custom_minimum_size
+		mark.pivot_offset = mark.size / 2.0
+		mark.position = c[0]
+		mark.rotation_degrees = c[1]
+		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tile.add_child(mark)
+
+# Three tiers of the card's own rarity read as a row of small drawn stars instead of a raw
+# English rarity word left untranslated in the Chinese UI.
+func _rarity_star_row(rarity: String, color := GOLD, align := BoxContainer.ALIGNMENT_CENTER) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.alignment = align
+	row.add_theme_constant_override("separation", 2)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var count: int = 3 if rarity == "Rare" else (2 if rarity == "Uncommon" else 1)
+	for i in count:
+		var star := GameIcon.new()
+		star.kind = "star"
+		star.icon_color = color
+		star.custom_minimum_size = Vector2(11, 11)
+		star.size = star.custom_minimum_size
+		star.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(star)
+	return row
+
 func show_deck() -> void:
 	_clear(); _play_music(false)
 	_back_action = show_map
@@ -2115,21 +3625,39 @@ func show_deck() -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(scroll)
 
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_theme_constant_override("h_separation", 10)
-	grid.add_theme_constant_override("v_separation", 10)
-	scroll.add_child(grid)
+	var sections := VBoxContainer.new()
+	sections.add_theme_constant_override("separation", 14)
+	sections.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(sections)
 
+	# Grouped by rarity, richest first — a roster of thirty-some cards read as one undivided
+	# grid before; a section header with its own star row tells you what you're looking at.
 	var shown := 0
-	for card in content.cards:
-		var owned := int(profile.collection.get(card.id, 0))
-		if owned == 0: continue
-		grid.add_child(_deck_card_tile(card, owned))
-		shown += 1
+	for rarity in ["Rare", "Uncommon", "Common", "Starter"]:
+		var group: Array = []
+		for card in content.cards:
+			if str(card.rarity) != rarity: continue
+			if int(profile.collection.get(card.id, 0)) == 0: continue
+			group.append(card)
+		if group.is_empty(): continue
+
+		var header := HBoxContainer.new()
+		header.add_theme_constant_override("separation", 6)
+		header.add_child(_rarity_star_row(rarity))
+		header.add_child(_label(t("rarity.%s" % rarity), 12, GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+		sections.add_child(header)
+
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_theme_constant_override("h_separation", 10)
+		grid.add_theme_constant_override("v_separation", 10)
+		sections.add_child(grid)
+		for card in group:
+			grid.add_child(_deck_card_tile(card, int(profile.collection.get(card.id, 0))))
+			shown += 1
 	if shown == 0:
-		grid.add_child(_label(t("ui.deck_need_cards"), 12, MUTED))
+		sections.add_child(_label(t("ui.deck_need_cards"), 12, MUTED))
 
 	var footer := HBoxContainer.new()
 	footer.add_theme_constant_override("separation", 8)
@@ -2149,9 +3677,11 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	var accent := _card_color(card)
 	var rune_id: String = profile.card_runes.get(card.id, "")
 
+	var border_color: Color = accent if in_deck > 0 else Color("24373d")
 	var tile := Panel.new()
 	tile.custom_minimum_size = Vector2(176, 226)
-	tile.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, accent if in_deck > 0 else Color("24373d")))
+	tile.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, border_color))
+	_add_ornate_frame(tile, tile.custom_minimum_size, border_color)
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2179,6 +3709,10 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 		rune_lbl.position = Vector2(140, 4)
 		rune_lbl.size = Vector2(20, 20)
 		art_row.add_child(rune_lbl)
+	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
+	rarity_row.position = Vector2(84, 68)
+	rarity_row.size = Vector2(76, 16)
+	art_row.add_child(rarity_row)
 
 	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
 	stack.add_child(_label(content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else ""), 13, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
@@ -2222,11 +3756,39 @@ func _deck_change(id: String, amount: int) -> void:
 	SpiritSave.write(profile)
 	show_deck()
 
+# This drives both auto-build and smart-add, so it has to judge what a card actually
+# does. It used to be almost pure rarity (Rare +30 vs Common +12, minus a small cost
+# penalty), which happily filled a deck with every Power/Tactic utility card the shop
+# offered — foxBlessing, soulBrand, mountainSeal, titanForm — while starving it of the
+# reliable single-target damage that closes out fights. On real content that deck lost
+# repeatedly to a chapter-7 boss with two enemies, because nothing in hand ever finished
+# the add before it added up. Rarity now nudges the score instead of dominating it.
 func _card_build_score(card: Dictionary) -> float:
-	var score: float = {"Rare": 30.0, "Uncommon": 20.0, "Common": 12.0, "Starter": 5.0}.get(card.get("rarity", "Common"), 10.0)
+	var score := 0.0
+	var attack_double: float = 2.0 if str(card.get("special", "")) == "critical" else 1.0
+	for effect in card.effects:
+		match effect.operation:
+			"damage": score += float(effect.amount) * 2.2 * attack_double
+			"shield": score += float(effect.amount) * 1.6
+			"heal": score += float(effect.amount) * 1.0
+			"draw": score += float(effect.amount) * 3.0
+			"energy": score += float(effect.amount) * 4.0
+			"status":
+				match str(effect.get("status", "")):
+					"burn": score += float(effect.amount) * 1.3
+					"focus": score += float(effect.amount) * 2.0
+					"strength": score += float(effect.amount) * 3.0
+					"vulnerable", "weak": score += float(effect.amount) * 1.8
+	match str(card.get("special", "")):
+		"cleave": score *= 1.35
+		"pierce": score += 3.0
+		"stun": score += 5.0
+		"recoverExhaust", "recycleDiscard": score += 4.0
+
+	score += {"Rare": 4.0, "Uncommon": 2.0, "Common": 1.0}.get(card.get("rarity", "Common"), 0.0)
 	score += float(int(profile.upgrades.get(card.id, 0))) * 6.0
-	# Prefer cheap cards slightly: with only two plays a turn, expensive cards stall the curve.
-	score -= float(int(card.cost)) * 2.5
+	# With costs now up to 3, an expensive card has to earn a bigger share of a turn.
+	score -= float(int(card.cost)) * 3.0
 	if not str(profile.card_runes.get(card.id, "")).is_empty(): score += 8.0
 	return score
 
@@ -2332,7 +3894,7 @@ func _build_equipment_tab(list: VBoxContainer) -> void:
 		var badge_row := HBoxContainer.new()
 		badge_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		stack.add_child(badge_row)
-		badge_row.add_child(_icon_badge(item.icon if filled else "＋", GOLD if filled else Color("3c5057"), 38, 18))
+		badge_row.add_child(_equip_icon_badge(item, GOLD, 38) if filled else _icon_badge("＋", Color("3c5057"), 38, 18))
 		stack.add_child(_label(t("ui.slot_%s" % slot), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		stack.add_child(_label(_equip_name(item) if filled else t("ui.loadout_empty"), 11, TEXT if filled else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		slots.add_child(card)
@@ -2370,7 +3932,7 @@ func _build_equipment_tab(list: VBoxContainer) -> void:
 
 		var badge_holder := CenterContainer.new()
 		badge_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		badge_holder.add_child(_icon_badge(item.icon, accent, 44, 21))
+		badge_holder.add_child(_equip_icon_badge(item, accent, 44))
 		row.add_child(badge_holder)
 
 		var texts := VBoxContainer.new()
@@ -2425,7 +3987,11 @@ func _build_rune_tab(list: VBoxContainer) -> void:
 		stack.add_theme_constant_override("separation", 1)
 		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(stack)
-		stack.add_child(_label(rune.icon, 20, color if available > 0 else Color("3c5057"), HORIZONTAL_ALIGNMENT_CENTER))
+		var rune_badge := _sigil_icon_badge(str(rune.get("icon_mark", "sparkle")), color if available > 0 else Color("3c5057"), 32)
+		var rune_badge_holder := CenterContainer.new()
+		rune_badge_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rune_badge_holder.add_child(rune_badge)
+		stack.add_child(rune_badge_holder)
 		stack.add_child(_label(_rune_name(rune), 9, TEXT if available > 0 else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		stack.add_child(_label("×%d" % maxi(0, available), 9, GOLD if available > 0 else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
@@ -2493,6 +4059,75 @@ func _socket(card_id: String) -> void:
 	if available <= 0: return
 	profile.card_runes[card_id] = selected_rune; SpiritSave.write(profile); selected_rune=""; show_loadout()
 
+func _format_countdown(target_unix: int) -> String:
+	var remaining: int = maxi(0, target_unix - int(Time.get_unix_time_from_system()))
+	var hours := remaining / 3600
+	if hours >= 24:
+		var days := hours / 24
+		return "%dd" % days if lang == "en" else "%d天" % days
+	var minutes := (remaining % 3600) / 60
+	return "%dh%02dm" % [hours, minutes] if lang == "en" else "%d时%02d分" % [hours, minutes]
+
+func _quest_section(title: String, list_name: String, reset_at: int) -> Control:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 8)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	section.add_child(head)
+	head.add_child(_label(title, 14, JADE))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(spacer)
+	head.add_child(_label(tf("ui.quests_daily_reset", _format_countdown(reset_at)), 9, MUTED))
+
+	var quests: Array = profile.get(list_name, [])
+	for entry in quests:
+		var quest := content.quest_by_id(str(entry.get("id", "")))
+		if quest.is_empty(): continue
+		var progress := int(entry.get("progress", 0))
+		var target := int(entry.get("target", 1))
+		var claimed := bool(entry.get("claimed", false))
+		var done := progress >= target
+
+		var row := Panel.new()
+		row.custom_minimum_size.y = 60
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_stylebox_override("panel", _panel(Color("12262b"), 12, JADE if done and not claimed else Color("28393e")))
+		section.add_child(row)
+
+		var pad := MarginContainer.new()
+		pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+		row.add_child(pad)
+
+		var hrow := HBoxContainer.new()
+		hrow.add_theme_constant_override("separation", 10)
+		pad.add_child(hrow)
+
+		var texts := VBoxContainer.new()
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.add_theme_constant_override("separation", 3)
+		hrow.add_child(texts)
+		texts.add_child(_label(content.quest_name(quest, lang), 12, TEXT))
+		# _stat_bar sizes itself fixed-width (like the health bars it was built for); give it
+		# a sane floor and let size_flags stretch it across the row, or it renders at 0 width.
+		var bar := _stat_bar(120.0, 16.0, progress, target, JADE if done else GOLD, "%d / %d" % [progress, target], 9)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.add_child(bar)
+
+		var action := VBoxContainer.new()
+		action.alignment = BoxContainer.ALIGNMENT_CENTER
+		hrow.add_child(action)
+		if claimed:
+			action.add_child(_label(t("ui.quest_claimed"), 10, MUTED))
+		else:
+			var claim_btn := _button(t("ui.quest_claim") if done else tf("ui.quest_reward_fmt", int(quest.reward)), func(): _claim_quest(list_name, quest.id), EMBER if done else Color("1a2f36"), Vector2(64, 40))
+			claim_btn.disabled = not done
+			action.add_child(claim_btn)
+	return section
+
 func _account_panel() -> Control:
 	var account: Dictionary = profile.get("account", {})
 	var panel := Panel.new()
@@ -2552,6 +4187,9 @@ func show_camp() -> void:
 	scroll.add_child(list)
 
 	list.add_child(_account_panel())
+	_ensure_quests_current()
+	list.add_child(_quest_section(t("ui.quests_daily"), "daily_quests", int(profile.get("daily_reset_at", 0))))
+	list.add_child(_quest_section(t("ui.quests_weekly"), "weekly_quests", int(profile.get("weekly_reset_at", 0))))
 	list.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
 	for value in 6:
@@ -2579,7 +4217,7 @@ func show_camp() -> void:
 			relic_row.add_theme_constant_override("separation", 10)
 			pad.add_child(relic_row)
 			var holder := CenterContainer.new()
-			holder.add_child(_icon_badge(relic.icon, color, 38, 18))
+			holder.add_child(_sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, 38))
 			relic_row.add_child(holder)
 			var texts := VBoxContainer.new()
 			texts.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -2616,12 +4254,12 @@ func _card_description(card: Dictionary) -> String:
 			"shield": parts.append(content.ui("desc.shield", lang) % effect.amount)
 			"heal": parts.append(content.ui("desc.heal", lang) % effect.amount)
 			"draw": parts.append(content.ui("desc.draw", lang) % effect.amount)
+			"energy": parts.append(content.ui("desc.energy", lang) % effect.amount)
 			"status":
-				var st_name: String
-				if effect.status == "burn":
-					st_name = content.ui("desc.burn", lang) % effect.amount
-				else:
-					st_name = content.ui("desc.focus", lang) % effect.amount
-				parts.append(st_name)
+				# Any status name works here — the effect just needs a matching desc.<status> key.
+				var key := "desc.%s" % str(effect.get("status", ""))
+				parts.append(content.ui(key, lang) % int(effect.amount))
+	var special := str(card.get("special", ""))
+	if not special.is_empty(): parts.append(content.ui("desc.special.%s" % special, lang))
 	var sep := " · " if lang == "en" else "，"
 	return sep.join(parts)

@@ -26,7 +26,7 @@ func run() -> void:
 	content = SpiritContent.new()
 	check(content.cards.size() >= 20,"all card definitions load")
 	check(content.raw.startingDeck.size() == 25,"starting deck contains 25 cards")
-	check(content.encounters.size() == 50,"campaign contains 50 stages")
+	check(content.encounters.size() == 250,"campaign contains 250 stages across 50 chapters")
 	check(SpiritContent.EQUIPMENT.size() == 12,"twelve equipment definitions")
 	check(SpiritContent.RUNES.size() == 10,"ten rune definitions")
 
@@ -34,15 +34,16 @@ func run() -> void:
 	battle.create(42,encounter(),content.raw.startingDeck,60)
 	check(battle.state.hand.size() == 5,"opening hand has five cards")
 	check(battle.state.draw.size() == 20,"twenty cards remain in draw pile")
-	var first_actions: int = battle.state.actions
+	var first_energy: int = battle.state.energy
+	var first_cost: int = int(content.card(battle.state.hand[0].card_id).cost)
 	battle.play(0)
-	check(battle.state.actions == first_actions - 1,"playing a card spends one action")
+	check(battle.state.energy == first_energy - first_cost,"playing a card spends its energy cost")
 
 	var swift := SpiritCombat.new(content)
 	swift.create(2,encounter(100,0),Array(content.raw.startingDeck),60,{},[],{"strike":"swift"})
 	_force_hand(swift,"strike")
 	swift.play(0,0)
-	check(swift.state.actions == 2,"Swift refunds its first action")
+	check(swift.state.energy == 3,"Swift refunds its first play's energy cost")
 
 	var chain := SpiritCombat.new(content)
 	chain.create(3,encounter(20,0,1),Array(content.raw.startingDeck),60,{},[],{"strike":"chain"})
@@ -85,7 +86,7 @@ func run() -> void:
 
 	var relic_run := SpiritCombat.new(content)
 	relic_run.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["windChime","foxCharm"])
-	check(relic_run.state.hand.size() == 7 and int(relic_run.state.actions) == 3,"relics apply at battle start")
+	check(relic_run.state.hand.size() == 7 and int(relic_run.state.energy) == 4,"relics apply at battle start")
 
 	var profile := SpiritSave.defaults(content)
 	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty(),"new save schema is valid")
@@ -105,7 +106,77 @@ func run() -> void:
 	check(game_inst._get_card_texture("moonfang") is AtlasTexture, "card atlas 1 texture slicing works for moonfang")
 	check(game_inst._get_card_texture("emberClaw") is AtlasTexture, "card atlas 2 texture slicing works for emberClaw")
 	check(game_inst._get_card_texture("strike") != null, "card texture strike loads")
+
+	# _card_build_score used to score almost pure rarity, which let the auto-builder fill a
+	# deck with utility Power/Tactic cards (foxBlessing, soulBrand, mountainSeal) while
+	# starving it of the direct damage that actually ends a fight — confirmed by simulation:
+	# that deck lost repeatedly to a two-enemy chapter 7 boss. A plain attacker must now
+	# outscore a similarly-costed pure-utility card with no direct board impact.
+	game_inst.profile = SpiritSave.defaults(content)
+	var attacker := content.card("moonfang")
+	var utility := content.card("foxBlessing")
+	check(game_inst._card_build_score(attacker) > game_inst._card_build_score(utility), "a reliable attacker outscores a narrow utility card of the same cost")
+
 	game_inst.free()
+
+	# Costs were 1 on every card but two, so 3 energy never bound against the 2-play cap —
+	# the readout was accurate but decorative. Pin the spread so a future data edit can't
+	# quietly collapse it back to "everything costs 1".
+	var by_cost := {1: 0, 2: 0, 3: 0}
+	for c in content.cards: by_cost[int(c.cost)] = by_cost.get(int(c.cost), 0) + 1
+	check(by_cost.get(2, 0) >= 5, "at least five cards cost 2 energy, got %d" % by_cost.get(2, 0))
+	check(by_cost.get(3, 0) >= 1, "at least one card costs the full 3 energy, got %d" % by_cost.get(3, 0))
+
+	# Two of the priciest cards in the same hand should not both fit in 3 energy — that gap
+	# is the whole point of the rework, so assert it directly rather than trusting the spread.
+	var pricey := SpiritCombat.new(content)
+	pricey.create(50, encounter(), content.raw.startingDeck, 60)
+	pricey.state.hand = [{"uid": 910, "card_id": "spiritLance"}, {"uid": 911, "card_id": "calmWard"}]
+	check(pricey.play(0, 0), "first 2-cost card plays")
+	check(not pricey.play(1), "a second 2-cost card cannot also fit in 3 energy (%d left)" % int(pricey.state.energy))
+
+	# Strength: unlike Focus (a one-shot burst that resets to 0 after the next attack),
+	# Strength persists for the whole battle and should still be adding damage two turns later.
+	var strong := SpiritCombat.new(content)
+	strong.create(61, encounter(100, 0), content.raw.startingDeck, 60)
+	strong.state.player.strength = 4
+	strong.state.hand = [{"uid": 920, "card_id": "strike"}]
+	strong.play(0, 0)
+	check(strong.state.enemies[0].health == 100 - 10, "Strength adds flat damage to an attack (6+4)")
+	check(int(strong.state.player.strength) == 4, "Strength is not consumed like Focus")
+
+	# Vulnerable/weak: counterplay debuffs for late-game scaling. Vulnerable raises damage
+	# taken by the player; weak lowers damage the enemy deals. Both decay by one enemy turn.
+	var debuffed := SpiritCombat.new(content)
+	debuffed.create(62, encounter(100, 8), content.raw.startingDeck, 60)
+	debuffed.state.enemies[0].vulnerable = 2
+	debuffed.state.hand = [{"uid": 921, "card_id": "strike"}]
+	debuffed.play(0, 0)
+	check(debuffed.state.enemies[0].health == 100 - 9, "Vulnerable increases damage taken by 50%% (6*1.5=9)")
+
+	var weakened := SpiritCombat.new(content)
+	weakened.create(63, encounter(100, 8), content.raw.startingDeck, 60)
+	weakened.state.enemies[0].weak = 2
+	force_attack(weakened)
+	var hp_before_weak: int = int(weakened.state.player.health)
+	weakened.end_turn()
+	check(hp_before_weak - int(weakened.state.player.health) == 6, "Weak reduces enemy damage by 25%% (8*0.75=6)")
+	check(int(weakened.state.enemies[0].weak) == 1, "Weak decays by one enemy turn")
+
+	# 250-stage difficulty curve: bands should be monotonically harder, chapter 1 should be
+	# trivial and chapter 50 should be a genuine wall. A full Monte Carlo run lives in
+	# balance_probe.gd (deleted after use — see Docs/ARCHITECTURE.md for what it found);
+	# this is the cheap, permanent version that stops the curve from silently flattening.
+	var boss1: Dictionary = content.encounters[4]
+	var boss10: Dictionary = content.encounters[49]
+	var boss20: Dictionary = content.encounters[99]
+	var boss50: Dictionary = content.encounters[249]
+	check(int(boss1.health) < 50 and int(boss1.damage) < 10, "chapter 1 boss is trivial (hp=%d dmg=%d)" % [boss1.health, boss1.damage])
+	check(int(boss10.health) < int(boss20.health) and int(boss20.health) < int(boss50.health), "boss health grows monotonically across chapters 10/20/50")
+	check(int(boss50.health) > int(boss1.health) * 15, "chapter 50 is a different order of magnitude from chapter 1 (%d vs %d)" % [boss50.health, boss1.health])
+	check(int(boss50.mechanics.get("enrage", 0)) > 0, "the final boss escalates during the fight, not just at fight start")
+	for id in ["shatterGuard", "stormcaller"]:
+		check(content.cards.any(func(c): return c.id == id), "%s (vulnerable/weak access point) exists in the card pool" % id)
 
 	print("SPIRITBOUND TESTS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

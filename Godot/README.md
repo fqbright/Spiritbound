@@ -1,6 +1,6 @@
 # Spiritbound — Godot 4
 
-Portrait mobile card-battler engine and complete client, featuring a 50-stage campaign, 12 equipment pieces, 10 card runes, finite deck mechanics, audio, original art, and full bilingual support (English + 简体中文).
+Portrait mobile card-battler engine and complete client, featuring a 250-stage campaign across 50 chapters, a 36-card pool, 12 equipment pieces, 10 card runes, 8 relics, finite deck mechanics, audio, original art, and full bilingual support (English + 简体中文). See the [root README](../README.md) for how it plays and [Docs/ARCHITECTURE.md](../Docs/ARCHITECTURE.md) for the difficulty curve.
 
 ## Requirements
 
@@ -63,23 +63,7 @@ Run the full headless regression test suite:
 godot --headless --path Godot/ --script res://tests/test_runner.gd
 ```
 
-**Status:** 21 checks, 0 failures.
-
-Covers:
-- Card definitions, 25-card starter deck, 50-stage campaign
-- 12 equipment definitions and 10 rune definitions
-- Opening hand drawing and action economy
-- Swift rune action refunding
-- Chain rune single-target and multi-enemy damage
-- Cycle rune draw pile manipulation
-- Opening shield and Mist Cloak damage mitigation
-- Phoenix Mail fatal damage survival
-- Save/profile schema validation
-- Bilingual card, UI, stage, equipment, and rune localization
-
-## Fixes & Improvements Delivered
-
-1. **Fixed Focus Initial Value:** `player.focus` previously started at `1` in combat creation, granting an unintended free +3 damage bonus on the opening strike. Corrected to `0` (focus is only gained by playing Focus cards or through Focus Charm).
-2. **Fixed Discard Reshuffle in Combat:** Drawing from an empty draw pile now reshuffles discard into draw (matching the canonical rules engine). Prevented premature game-over when deck was exhausted.
-3. **Full Bilingual Support:** English and Simplified Chinese strings for all UI views (Map, Battle, Rewards, Camp, Shop, Deck, Loadout, Events) with real-time toggle.
-4. **iOS Export Pipeline:** Configured `export_presets.cfg` with required iOS privacy manifests, app icons (1024x1024), and export templates; exported valid `Spiritbound.xcodeproj` verified with `xcodebuild`.
+Also run `godot --headless --path Godot/ --script res://tests/ui_smoke.gd` — a headless walk
+of every screen plus a full combat turn, which exists because the iOS Simulator cannot run
+this project (see the root README). Both suites must pass; see [AGENTS.md](../AGENTS.md) for
+what to do before touching combat or a screen.
