@@ -15,6 +15,7 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Godot/tests/ui_smoke.gd` | Headless walk over every screen and a full combat turn. |
 | `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them. |
 | `Docs/ARCHITECTURE.md` | Why the code is shaped this way. Read it before a structural change. |
+| `Docs/GROWTH_ROADMAP.md` | Retention/growth feature backlog, ordered by impact. Check this for what's in progress before starting new feature work. |
 
 ## Verifying a change
 
