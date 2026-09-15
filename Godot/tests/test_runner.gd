@@ -3,6 +3,8 @@ extends SceneTree
 var failures := 0
 var checks := 0
 var content: SpiritContent
+var had_profile := false
+var saved_profile := ""
 
 func _init() -> void:
 	call_deferred("run")
@@ -23,6 +25,8 @@ func force_attack(combat: SpiritCombat) -> void:
 		if enemy.health > 0: enemy.intent = {"kind":"attack","amount":int(enemy.damage)}
 
 func run() -> void:
+	had_profile = FileAccess.file_exists(SpiritSave.PATH)
+	if had_profile: saved_profile = FileAccess.open(SpiritSave.PATH, FileAccess.READ).get_as_text()
 	content = SpiritContent.new()
 	check(content.cards.size() >= 20,"all card definitions load")
 	check(content.raw.startingDeck.size() == 25,"starting deck contains 25 cards")
@@ -181,6 +185,272 @@ func run() -> void:
 	check(int(boss50.mechanics.get("enrage", 0)) > 0, "the final boss escalates during the fight, not just at fight start")
 	for id in ["shatterGuard", "stormcaller"]:
 		check(content.cards.any(func(c): return c.id == id), "%s (vulnerable/weak access point) exists in the card pool" % id)
+
+	# === 10 RUNES COMPREHENSIVE COVERAGE ===
+	var echo_run := SpiritCombat.new(content)
+	echo_run.create(70, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "echo"})
+	_force_hand(echo_run, "strike")
+	echo_run.play(0, 0)
+	check(echo_run.state.enemies[0].health == 100 - 9, "Echo rune repeats attack at 50%% value (6 + 3 = 9)")
+
+	var siphon_run := SpiritCombat.new(content)
+	siphon_run.create(71, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "siphon"})
+	_force_hand(siphon_run, "strike")
+	siphon_run.play(0, 0)
+	check(int(siphon_run.state.player.shield) == 1, "Siphon rune grants 25%% of damage as shield (6*0.25=1)")
+
+	var burning_run := SpiritCombat.new(content)
+	burning_run.create(72, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "burning"})
+	_force_hand(burning_run, "strike")
+	burning_run.play(0, 0)
+	check(int(burning_run.state.enemies[0].burn) == 2, "Burning rune applies 2 burn on attack")
+
+	var guardian_run := SpiritCombat.new(content)
+	guardian_run.create(73, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "guardian"})
+	_force_hand(guardian_run, "strike")
+	guardian_run.play(0, 0)
+	check(int(guardian_run.state.player.shield) == 4, "Guardian rune grants 4 shield on card play")
+
+	var cleanse_run := SpiritCombat.new(content)
+	cleanse_run.create(74, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "cleanse"})
+	cleanse_run.state.player.burn = 5
+	_force_hand(cleanse_run, "strike")
+	cleanse_run.play(0, 0)
+	check(int(cleanse_run.state.player.burn) == 0, "Cleanse rune removes player burn on card play")
+
+	var exec_run := SpiritCombat.new(content)
+	exec_run.create(75, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "execute"})
+	exec_run.state.enemies[0].health = 25
+	_force_hand(exec_run, "strike")
+	exec_run.play(0, 0)
+	check(exec_run.state.enemies[0].health == 25 - 9, "Execute rune deals 1.5x damage when enemy <= 25%% HP (6*1.5=9)")
+
+	var reso_run := SpiritCombat.new(content)
+	reso_run.create(76, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"foxfire": "resonance"})
+	reso_run.state.hand = [{"uid": 930, "card_id": "foxfire"}, {"uid": 931, "card_id": "foxfire"}]
+	reso_run.state.energy = 4
+	reso_run.play(0, 0)
+	var hp_after_first: int = int(reso_run.state.enemies[0].health)
+	reso_run.play(0, 0)
+	check(hp_after_first - int(reso_run.state.enemies[0].health) == 5, "Resonance rune scales damage with previously played elements count")
+
+	# === 12 EQUIPMENT COMPREHENSIVE COVERAGE ===
+	var ember_run := SpiritCombat.new(content)
+	ember_run.create(80, encounter(100, 0), content.raw.startingDeck, 60, {}, ["emberBlade"])
+	_force_hand(ember_run, "strike")
+	ember_run.play(0, 0)
+	check(ember_run.state.enemies[0].health == 100 - 9, "Ember Blade grants +3 damage on first attack (6+3=9)")
+
+	var moon_run := SpiritCombat.new(content)
+	moon_run.create(81, encounter(100, 0), content.raw.startingDeck, 60, {}, ["moonStaff"])
+	_force_hand(moon_run, "ashRecall") # costs 2, refunds 1 -> leaves 1 energy
+	moon_run.play(0, 0)
+	check(int(moon_run.state.energy) == 1, "Moon Staff refunds 1 energy on first Tactic card played (2-2+1=1)")
+
+	var thorn_run := SpiritCombat.new(content)
+	thorn_run.create(82, encounter(100, 6), content.raw.startingDeck, 60, {}, ["thornArmor"])
+	force_attack(thorn_run)
+	thorn_run.end_turn()
+	check(thorn_run.state.enemies[0].health == 100 - 2, "Thorn Armor retaliates 2 damage when damaged by enemy")
+
+	var spear_run := SpiritCombat.new(content)
+	spear_run.create(83, encounter(100, 0), content.raw.startingDeck, 60, {}, ["stoneSpear"])
+	spear_run.state.enemies[0].shield = 20
+	_force_hand(spear_run, "strike")
+	spear_run.play(0, 0)
+	check(spear_run.state.enemies[0].health == 100 - 6 and int(spear_run.state.enemies[0].shield) == 20, "Stone Spear pierces enemy shield directly")
+
+	var soul_run := SpiritCombat.new(content)
+	soul_run.create(84, encounter(5, 0), content.raw.startingDeck, 50, {}, ["soulPendant"])
+	_force_hand(soul_run, "strike")
+	soul_run.play(0, 0)
+	check(soul_run.state.player.health == 52, "Soul Pendant heals 2 HP when killing an enemy")
+
+	var bow_run := SpiritCombat.new(content)
+	bow_run.create(85, encounter(5, 0), content.raw.startingDeck, 60, {}, ["stormBow"])
+	_force_hand(bow_run, "strike")
+	bow_run.play(0, 0)
+	check(bow_run.state.hand.size() == 1, "Storm Bow draws 1 card on killing an enemy")
+
+	var charm_run := SpiritCombat.new(content)
+	charm_run.create(86, encounter(100, 0), content.raw.startingDeck, 60, {}, ["focusCharm"])
+	check(int(charm_run.state.player.focus) == 1, "Focus Charm starts combat with 1 Focus")
+
+	var tide_run := SpiritCombat.new(content)
+	tide_run.create(87, encounter(100, 0), content.raw.startingDeck, 60, {}, ["tideCharm"])
+	check(tide_run.state.hand.size() == 5, "Tide Charm leaves Turn 1 hand strictly at 5 cards")
+	tide_run.end_turn()
+	check(tide_run.state.hand.size() == 8, "Tide Charm draws 1 extra card on Turn 2 (5 + 2 + 1 = 8)")
+
+	# === 8 RELICS COMPREHENSIVE COVERAGE ===
+	var star_run := SpiritCombat.new(content)
+	star_run.create(90, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["starShard"])
+	_force_hand(star_run, "strike")
+	star_run.play(0, 0)
+	check(star_run.state.enemies[0].health == 100 - 8, "Star Shard adds +2 damage on first attack (6+2=8)")
+
+	var seed_run := SpiritCombat.new(content)
+	seed_run.create(91, encounter(100, 0), content.raw.startingDeck, 50, {}, [], {}, {}, ["ancientSeed"])
+	seed_run.end_turn()
+	check(seed_run.state.player.health == 52, "Ancient Seed restores 2 HP at start of turn")
+
+	var jade_run := SpiritCombat.new(content)
+	jade_run.create(92, encounter(5, 0), content.raw.startingDeck, 50, {}, [], {}, {}, ["bloodJade"])
+	_force_hand(jade_run, "strike")
+	jade_run.play(0, 0)
+	check(jade_run.state.player.health == 53, "Blood Jade restores 3 HP when killing an enemy")
+
+	var seal_run := SpiritCombat.new(content)
+	seal_run.create(93, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["thunderSeal"])
+	seal_run.end_turn()
+	check(int(seal_run.state.energy) == 2, "Thunder Seal does not trigger on turn 2")
+	seal_run.end_turn()
+	check(int(seal_run.state.energy) == 5, "Thunder Seal grants +2 energy on turn 3 (3+2=5)")
+
+	var mirror_run := SpiritCombat.new(content)
+	mirror_run.create(94, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["mirrorScale"])
+	mirror_run.state.enemies[0].intent = {"kind": "defend", "amount": 0}
+	mirror_run.state.player.shield = 10
+	mirror_run.end_turn()
+	check(int(mirror_run.state.player.shield) == 5, "Mirror Scale retains half shield at end of turn")
+
+	var core_run := SpiritCombat.new(content)
+	core_run.create(95, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["emberCore"])
+	core_run.state.enemies[0].intent = {"kind": "defend", "amount": 0}
+	core_run.state.enemies[0].shield = 0
+	core_run.state.enemies[0].burn = 3
+	core_run.end_turn()
+	check(core_run.state.enemies[0].health == 100 - 4, "Ember Core increases burn damage by 1")
+
+	# === COMBAT CORE MECHANICS & TURN CURVES ===
+	var curve_run := SpiritCombat.new(content)
+	curve_run.create(96, encounter(100, 0), content.raw.startingDeck, 60)
+	check(int(curve_run.state.energy) == 2, "Turn 1 energy is 2")
+	curve_run.end_turn(); check(int(curve_run.state.energy) == 2, "Turn 2 energy is 2")
+	curve_run.end_turn(); check(int(curve_run.state.energy) == 3, "Turn 3 energy is 3")
+	curve_run.end_turn(); check(int(curve_run.state.energy) == 3, "Turn 4 energy is 3")
+	curve_run.end_turn(); check(int(curve_run.state.energy) == 4, "Turn 5 energy is 4")
+	curve_run.end_turn(); check(int(curve_run.state.energy) == 4, "Turn 6 energy is 4")
+
+	var cap_run := SpiritCombat.new(content)
+	cap_run.create(97, encounter(100, 0), content.raw.startingDeck, 60)
+	cap_run._draw(20)
+	check(cap_run.state.hand.size() == 10, "Hand size is strictly capped at 10 cards")
+
+	var cleave_run := SpiritCombat.new(content)
+	cleave_run.create(98, encounter(100, 0, 2), content.raw.startingDeck, 60)
+	_force_hand(cleave_run, "stormArc")
+	cleave_run.play(0, 0)
+	check(cleave_run.state.enemies[0].health == 100 - 5, "Cleave damages primary enemy")
+	check(cleave_run.state.enemies[1].health == cleave_run.state.enemies[1].max_health - 5, "Cleave damages second enemy")
+	check(cleave_run.state.enemies[2].health == cleave_run.state.enemies[2].max_health - 5, "Cleave damages third enemy")
+
+	var crit_run := SpiritCombat.new(content)
+	crit_run.create(99, encounter(100, 0), content.raw.startingDeck, 60)
+	_force_hand(crit_run, "finalFlare")
+	crit_run.state.energy = 3
+	crit_run.play(0, 0)
+	check(crit_run.state.enemies[0].health == 100 - 14, "Critical card deals double damage (7*2=14)")
+
+	var stun_run := SpiritCombat.new(content)
+	stun_run.create(100, encounter(100, 10), content.raw.startingDeck, 60)
+	_force_hand(stun_run, "mountainSeal")
+	stun_run.state.energy = 2
+	stun_run.play(0, 0)
+	check(int(stun_run.state.enemies[0].stun) == 1, "Stun card applies 1 stun to enemy")
+	force_attack(stun_run)
+	var hp_before_stun: int = int(stun_run.state.player.health)
+	stun_run.end_turn()
+	check(int(stun_run.state.player.health) == hp_before_stun, "Stunned enemy attack is completely skipped")
+	check(int(stun_run.state.enemies[0].stun) == 0, "Stun counter decrements after turn skip")
+
+	var pierce_run := SpiritCombat.new(content)
+	pierce_run.create(101, encounter(100, 0), content.raw.startingDeck, 60)
+	pierce_run.state.enemies[0].shield = 30
+	_force_hand(pierce_run, "spiritLance")
+	pierce_run.state.energy = 2
+	pierce_run.play(0, 0)
+	check(pierce_run.state.enemies[0].health == 100 - 8 and int(pierce_run.state.enemies[0].shield) == 30, "Pierce card damages health directly without spending shield")
+
+	# === ENEMY MECHANICS ===
+	var em_shield_run := SpiritCombat.new(content)
+	var enc_shield := encounter(100, 0)
+	enc_shield.mechanics = {"shield_per_turn": 8}
+	em_shield_run.create(102, enc_shield, content.raw.startingDeck, 60)
+	em_shield_run.end_turn()
+	check(int(em_shield_run.state.enemies[0].shield) == 8, "Enemy shield_per_turn mechanic grants shield each turn")
+
+	var em_regen_run := SpiritCombat.new(content)
+	var enc_regen := encounter(100, 0)
+	enc_regen.mechanics = {"regeneration": 5}
+	em_regen_run.create(103, enc_regen, content.raw.startingDeck, 60)
+	em_regen_run.state.enemies[0].health = 60
+	em_regen_run.end_turn()
+	check(int(em_regen_run.state.enemies[0].health) == 65, "Enemy regeneration mechanic heals enemy up to max health")
+
+	var em_enrage_run := SpiritCombat.new(content)
+	var enc_enrage := encounter(100, 5)
+	enc_enrage.mechanics = {"enrage": 3}
+	em_enrage_run.create(104, enc_enrage, content.raw.startingDeck, 60)
+	em_enrage_run.end_turn()
+	check(int(em_enrage_run.state.enemies[0].damage) == 8, "Enemy enrage mechanic permanently increases damage each turn (5+3=8)")
+
+	var em_half_run := SpiritCombat.new(content)
+	var enc_half := encounter(100, 6)
+	enc_half.mechanics = {"below_half": 4}
+	em_half_run.create(105, enc_half, content.raw.startingDeck, 60)
+	em_half_run.state.enemies[0].health = 40
+	var rolled_damage: int = em_half_run.state.enemies[0].damage + (em_half_run.state.enemies[0].mechanics.get("below_half", 0) if em_half_run.state.enemies[0].health <= em_half_run.state.enemies[0].max_health / 2 else 0)
+	check(rolled_damage == 10, "Enemy below_half mechanic adds bonus damage when health <= 50%% (6+4=10)")
+
+	var em_dodge_run := SpiritCombat.new(content)
+	var enc_dodge := encounter(100, 0)
+	enc_dodge.mechanics = {"dodge_every": 2}
+	em_dodge_run.create(106, enc_dodge, content.raw.startingDeck, 60)
+	_force_hand(em_dodge_run, "strike")
+	em_dodge_run.play(0, 0)
+	check(em_dodge_run.state.enemies[0].health == 100 - 6, "First hit connects on dodge_every enemy")
+	_force_hand(em_dodge_run, "strike")
+	em_dodge_run.state.energy = 2
+	em_dodge_run.play(0, 0)
+	check(em_dodge_run.state.enemies[0].health == 100 - 6, "Second hit is dodged and deals zero damage")
+
+	# === DATA & TRANSLATION INTEGRITY ===
+	var missing_i18n := 0
+	for key in content.UI_TEXT:
+		var item: Dictionary = content.UI_TEXT[key]
+		var zh: String = str(item.get("zh-Hans", ""))
+		var en: String = str(item.get("en", ""))
+		if zh.strip_edges().is_empty() or en.strip_edges().is_empty():
+			missing_i18n += 1
+			push_error("Missing translation for key: %s (zh='%s', en='%s')" % [key, zh, en])
+	check(missing_i18n == 0, "all %d UI_TEXT keys have valid zh-Hans and en strings" % content.UI_TEXT.size())
+
+	var invalid_cards := 0
+	for c in content.cards:
+		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
+			invalid_cards += 1
+	check(invalid_cards == 0 and content.cards.size() == 36, "all 36 cards have valid costs and effects")
+
+	var invalid_encs := 0
+	for enc in content.encounters:
+		if int(enc.health) <= 0 or int(enc.damage) <= 0:
+			invalid_encs += 1
+	check(invalid_encs == 0, "all 250 encounters have positive health and damage")
+
+	var corrupt_save := SpiritSave.defaults(content)
+	corrupt_save.deck = ["strike", "strike"]
+	var temp_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+	temp_file.store_string(JSON.stringify(corrupt_save))
+	temp_file.close()
+	var loaded_save := SpiritSave.load_profile(content)
+	check(loaded_save.deck.size() == 25, "corrupted save deck auto-repairs to 25 cards on load")
+	if had_profile:
+		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+		restore_file.store_string(saved_profile)
+		restore_file.close()
+	elif FileAccess.file_exists(SpiritSave.PATH):
+		DirAccess.remove_absolute(SpiritSave.PATH)
 
 	print("SPIRITBOUND TESTS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

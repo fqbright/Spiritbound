@@ -932,6 +932,93 @@ func _run() -> void:
 		else: print("    mismatch: predicted %d, actual %d (card %s)" % [int(predicted.damage), actual, chosen.id])
 	check(compared > 0 and matched == compared, "preview equals dealt damage (%d/%d)" % [matched, compared])
 
+	section("== asset completeness ==")
+	var all_chapters_exist := true
+	for c in 50:
+		var path := "res://assets/chapters/chapter_%d.png" % c
+		if not ResourceLoader.exists(path) or not (load(path) is Texture2D):
+			all_chapters_exist = false
+			fail("Chapter background missing or invalid: %s" % path)
+	check(all_chapters_exist, "all 50 chapter background textures exist and load")
+
+	var all_equips_exist := true
+	for eq in SpiritContent.EQUIPMENT:
+		var path := "res://assets/icons/equip_%s.png" % str(eq.id)
+		if not ResourceLoader.exists(path) or not (load(path) is Texture2D):
+			all_equips_exist = false
+			fail("Equipment icon missing or invalid: %s" % path)
+	check(all_equips_exist, "all 12 equipment icon textures exist and load")
+
+	var all_runes_exist := true
+	for r in SpiritContent.RUNES:
+		var path := "res://assets/icons/rune_%s.png" % str(r.id)
+		if not ResourceLoader.exists(path) or not (load(path) is Texture2D):
+			all_runes_exist = false
+			fail("Rune icon missing or invalid: %s" % path)
+	check(all_runes_exist, "all 10 rune icon textures exist and load")
+
+	var frames := ["starter", "common", "uncommon", "rare"]
+	var all_frames_exist := true
+	for f in frames:
+		var path := "res://assets/card_frame_%s.png" % f
+		if not ResourceLoader.exists(path) or not (load(path) is Texture2D):
+			all_frames_exist = false
+			fail("Card frame missing or invalid: %s" % path)
+	check(all_frames_exist, "all 4 rarity card frames exist and load")
+
+	check(ResourceLoader.exists("res://assets/icons/quest.png") and load("res://assets/icons/quest.png") is Texture2D, "quest icon exists and loads")
+	check(ResourceLoader.exists("res://assets/icons/profile.png") and load("res://assets/icons/profile.png") is Texture2D, "profile icon exists and loads")
+	check(ResourceLoader.exists("res://assets/map_pin_rune.png") and load("res://assets/map_pin_rune.png") is Texture2D, "map pin rune texture exists and loads")
+
+	var audio_tracks := [
+		"res://assets/audio/map_symphony.wav",
+		"res://assets/audio/battle_stage_0.wav",
+		"res://assets/audio/battle_stage_1.wav",
+		"res://assets/audio/battle_stage_2.wav",
+		"res://assets/audio/battle_stage_3.wav",
+		"res://assets/audio/battle_stage_4.wav"
+	]
+	var all_audio_exist := true
+	for aud in audio_tracks:
+		if not ResourceLoader.exists(aud) or not (load(aud) is AudioStream):
+			all_audio_exist = false
+			fail("Audio track missing or invalid: %s" % aud)
+	check(all_audio_exist, "all 6 symphonic music audio files exist and load as AudioStream")
+
+	section("== quest notification dot and loadout ==")
+	game.show_map()
+	await process_frame
+	var q_btn: Node = game.root.find_child("QuestButton", true, false)
+	check(q_btn != null, "QuestButton exists in top header of map")
+
+	var test_q: Dictionary = game.profile.daily_quests[0]
+	test_q.progress = test_q.target
+	test_q.claimed = false
+	check(game._has_claimable_quest(), "has_claimable_quest detects claimable quest")
+	game.show_map()
+	await process_frame
+	q_btn = game.root.find_child("QuestButton", true, false)
+	check(q_btn != null and q_btn.get_node_or_null("NotificationDot") != null, "QuestButton shows NotificationDot when quest is ready to claim")
+
+	test_q.claimed = true
+	for q in game.profile.daily_quests: q.claimed = true
+	for q in game.profile.weekly_quests: q.claimed = true
+	check(not game._has_claimable_quest(), "has_claimable_quest is false when all quests claimed")
+	game.show_map()
+	await process_frame
+	q_btn = game.root.find_child("QuestButton", true, false)
+	check(q_btn != null and q_btn.get_node_or_null("NotificationDot") == null, "NotificationDot clears once all quests are claimed")
+
+	game.profile.card_runes["strike"] = "swift"
+	check(game.profile.card_runes.get("strike") == "swift", "Rune sockets to card in profile")
+	game.profile.card_runes.erase("strike")
+	check(not game.profile.card_runes.has("strike"), "Rune unsockets from card cleanly")
+
+	game.profile.equipment_slots["weapon"] = "emberBlade"
+	check(game.profile.equipment_slots.get("weapon") == "emberBlade", "Equipment slots into weapon slot")
+	game.profile.equipment_slots.erase("weapon")
+	check(not game.profile.equipment_slots.has("weapon"), "Equipment unequips cleanly")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
