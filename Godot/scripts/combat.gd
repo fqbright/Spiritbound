@@ -22,7 +22,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	_shuffle(draw_pile)
 	state = {
 		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
-		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":3,"turn":1,"phase":"player",
+		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
 		"swift_used":false,"first_attack":false,"moon_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
@@ -182,12 +182,17 @@ func end_turn() -> void:
 			return
 
 	state.turn += 1
-	state.energy = 3
+	# Energy opens at 2 and climbs by 1 every two turns (turns 1-2 -> 2, 3-4 -> 3, 5-6 -> 4, ...)
+	# instead of a flat amount, so a long fight gradually loosens up rather than staying as
+	# tight on turn 20 as it was on turn 1.
+	state.energy = 2 + int((state.turn - 1) / 2)
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.elements = {}
-	_draw(maxi(0,5 - state.hand.size()))
+	# A fixed 2-card draw each turn, not a refill back up to some target hand size — the hand
+	# grows if you don't spend it down, capped at 10 by _draw() itself.
+	_draw(2)
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 

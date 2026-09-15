@@ -108,6 +108,23 @@ func _run() -> void:
 		var v: Vector2 = p
 		check(v.x >= game.ROAD_MARGIN_X - 0.01 and v.x <= game.MAP_WIDTH - game.ROAD_MARGIN_X + 0.01, "waypoint stays clear of the screen edge (x=%.1f)" % v.x)
 
+	# The road used to be a seeded random walk with no idea what the background looked like;
+	# now every chapter has a real painted trail baked into its background, so the waypoints
+	# must trace BIOME_PATH_WAYPOINTS's hand-picked points for that biome exactly — mirrored
+	# when _add_map_chapter flips that background horizontally for this cycle through it.
+	var biome_count: int = game.BIOME_PATH_WAYPOINTS.size()
+	var expected_ch0: Array = game.BIOME_PATH_WAYPOINTS[0]
+	var matches_biome := true
+	for i in 5:
+		if not (wp0[i] as Vector2).is_equal_approx(expected_ch0[i]): matches_biome = false
+	check(matches_biome, "chapter 0's road traces its background's own hand-picked path, not a random walk")
+	var wp_flipped: Array = game._chapter_waypoints(biome_count)
+	var mirrors := true
+	for i in 5:
+		var expected_x: float = game.MAP_WIDTH - (expected_ch0[i] as Vector2).x
+		if absf((wp_flipped[i] as Vector2).x - expected_x) > 0.01: mirrors = false
+	check(mirrors, "the road mirrors horizontally on chapter %d, matching its horizontally-flipped background" % biome_count)
+
 	var raw_points := PackedVector2Array()
 	for i in 5: raw_points.append(wp0[i])
 	var baked: PackedVector2Array = game._build_road_curve(raw_points).get_baked_points()
@@ -180,6 +197,47 @@ func _run() -> void:
 		var dock_icon := _find_by_script(dock_btn, game.GameIcon)
 		check(dock_icon != null, "dock button carries a drawn GameIcon, not just a text glyph")
 
+	section("== notification dots ==")
+	# Standard mobile-game language: a small red dot on an entry point means there is
+	# something inside worth checking, rather than making the player guess or stumble onto
+	# it. Force both trigger conditions and confirm the dot actually appears, then force the
+	# cleared conditions and confirm it goes away again.
+	var saved_daily: Array = game.profile.daily_quests.duplicate(true)
+	var saved_weekly: Array = game.profile.weekly_quests.duplicate(true)
+	var saved_deck: Array = game.profile.deck.duplicate()
+	var saved_collection: Dictionary = game.profile.collection.duplicate(true)
+
+	game.profile.daily_quests = [{"id": "test_claimable", "progress": 1, "target": 1, "claimed": false}]
+	game.profile.collection["strike"] = game.profile.deck.count("strike") + 3
+	game.show_map()
+	await process_frame
+	var camp_btn: Node = game.root.find_child("CampButton", true, false)
+	check(camp_btn != null, "the quest/camp entry point button exists")
+	if camp_btn != null:
+		check(camp_btn.get_node_or_null("NotificationDot") != null, "a claimable quest shows a red dot on the quest entry point")
+		var camp_icon := _find_by_script(camp_btn, game.GameIcon)
+		check(camp_icon != null and str(camp_icon.kind) == "scroll", "the quest entry point uses a scroll icon, not an ambiguous glyph")
+	var deck_dock_btn := _find_button_containing(game.root, game.content.ui("ui.deck_btn", game.lang))
+	check(deck_dock_btn != null and deck_dock_btn.get_node_or_null("NotificationDot") != null, "an owned-but-unused card shows a red dot on the deck dock button")
+
+	game.profile.daily_quests = [{"id": "test_not_claimable", "progress": 0, "target": 1, "claimed": false}]
+	game.profile.weekly_quests = [{"id": "test_not_claimable_2", "progress": 0, "target": 1, "claimed": false}]
+	game.profile.collection = {}
+	game.profile.deck = []
+	game.show_map()
+	await process_frame
+	var camp_btn2: Node = game.root.find_child("CampButton", true, false)
+	check(camp_btn2 != null and camp_btn2.get_node_or_null("NotificationDot") == null, "the quest dot goes away once nothing is claimable")
+	var deck_dock_btn2 := _find_button_containing(game.root, game.content.ui("ui.deck_btn", game.lang))
+	check(deck_dock_btn2 != null and deck_dock_btn2.get_node_or_null("NotificationDot") == null, "the deck dot goes away once the collection matches the deck")
+
+	game.profile.daily_quests = saved_daily
+	game.profile.weekly_quests = saved_weekly
+	game.profile.deck = saved_deck
+	game.profile.collection = saved_collection
+	game.show_map()
+	await process_frame
+
 	section("== map pin markers ==")
 	# A pin used to just be a badge centred on its road point. It is now a badge floating
 	# above the point with a tail pointing straight down at it and a shadow cast on the
@@ -205,19 +263,6 @@ func _run() -> void:
 					break
 	check(found_shadow, "stage 0's pin casts a ground shadow at its road point")
 
-	section("== chapter quick-jump strip ==")
-	# Fifty chapters is too many to scroll through blind, so a row of small chapter previews
-	# floats above the dock; tapping one should jump the main map straight to that band.
-	var tile5: Node = game.root.find_child("ChapterTile_5", true, false)
-	check(tile5 != null, "the quick-jump strip renders a tile for a distant chapter")
-	var tile49: Node = game.root.find_child("ChapterTile_49", true, false)
-	check(tile49 != null, "the strip covers every chapter, including the last one")
-	game.map_scroll.scroll_vertical = 0
-	game._jump_to_chapter(5)
-	await process_frame
-	var expected_y: int = int(maxf(0.0, 5.0 * game.BAND_HEIGHT - 40.0))
-	check(game.map_scroll.scroll_vertical == expected_y, "jumping to a chapter scrolls the map to its band (got %d, want %d)" % [game.map_scroll.scroll_vertical, expected_y])
-
 	section("== deck ==")
 	game.show_deck()
 	await process_frame
@@ -236,6 +281,12 @@ func _run() -> void:
 	for s in deck_stars:
 		if str(s.kind) == "star": deck_star_kind_found = true; break
 	check(deck_star_kind_found, "deck card tiles show a drawn rarity star row")
+	check(_find_texture_rect_ending_with(game.root, "card_frame_golden_border.png"), "deck card tiles show the same ornate frame asset as hand cards and the peek")
+	var deck_tile := _find_shop_tile(game.root)
+	if deck_tile != null:
+		var deck_frame_rect: TextureRect = _get_texture_rect_ending_with(deck_tile, "card_frame_golden_border.png")
+		if deck_frame_rect != null:
+			check(deck_frame_rect.size.is_equal_approx(deck_tile.size), "the deck tile's frame overlay is sized to the tile, not the texture's own 728x1006 (got %s, tile is %s)" % [deck_frame_rect.size, deck_tile.size])
 
 	section("== auto build ==")
 	game.profile.deck = []
@@ -272,7 +323,7 @@ func _run() -> void:
 	await process_frame
 	check(game.combat != null, "combat created")
 	check(game.combat.state.phase == "player", "battle starts on player phase")
-	check(int(game.combat.state.energy) == 3, "battle starts with three energy")
+	check(int(game.combat.state.energy) == 2, "battle starts with two energy")
 
 	# Health bar must actually shrink with the enemy's health.
 	var enemy_box: Control = game.enemy_boxes[0]
@@ -308,7 +359,10 @@ func _run() -> void:
 	check(not game.resolving, "resolve finished")
 	if game.combat.state.phase == "player":
 		check(int(game.combat.state.turn) > turn_before, "turn advanced automatically once nothing was affordable (turn %d -> %d)" % [turn_before, int(game.combat.state.turn)])
-		check(int(game.combat.state.energy) == 3, "energy refilled for the new turn")
+		# Energy opens at 2 and climbs by 1 every two turns (see combat.gd end_turn), not a
+		# flat refill — compute the expected value from the actual turn rather than a magic 3.
+		var expected_energy: int = 2 + int((int(game.combat.state.turn) - 1) / 2)
+		check(int(game.combat.state.energy) == expected_energy, "energy set for the new turn (turn %d -> expected %d, got %d)" % [int(game.combat.state.turn), expected_energy, int(game.combat.state.energy)])
 	else:
 		print("  note: battle ended during the test (phase %s), turn handoff not observable" % game.combat.state.phase)
 
@@ -336,6 +390,25 @@ func _run() -> void:
 		var front_sprite: Sprite2D = front.get_node_or_null("MonsterSprite") as Sprite2D
 		var left_sprite: Sprite2D = left.get_node_or_null("MonsterSprite") as Sprite2D
 		check(front_sprite != null and left_sprite != null and float(front_sprite.get_meta("base_scale")) > float(left_sprite.get_meta("base_scale")), "the front enemy's sprite is drawn larger than a flanking one")
+
+		# The intent banner used to sit at a fixed local y=0 inside each enemy's own unit, so
+		# a flanked (staggered-back) enemy's banner drifted up along with its whole box and
+		# could crowd whatever sits above the enemy row. It now compensates for that shift so
+		# every banner lands at the same absolute height regardless of which row it is in.
+		var front_banner: Control = front.get_node_or_null("IntentBanner")
+		var left_banner: Control = left.get_node_or_null("IntentBanner")
+		check(front_banner != null and left_banner != null, "both a front and a flanking enemy have an intent banner")
+		if front_banner != null and left_banner != null:
+			check(is_equal_approx(front_banner.global_position.y, left_banner.global_position.y), "a flanking enemy's banner lands at the same screen height as the front enemy's (got %.1f vs %.1f)" % [front_banner.global_position.y, left_banner.global_position.y])
+			# The banner used to also spell the intent out in a caption line under the
+			# icon+number row ("Attack"/"Defend"/...); that line is gone now that the icon
+			# alone is meant to carry that information, so the banner has exactly one row.
+			var label_count := 0
+			for child in front_banner.get_children():
+				if child is HBoxContainer:
+					for grandchild in (child as HBoxContainer).get_children():
+						if grandchild is Label: label_count += 1
+			check(label_count == 1, "the intent banner shows only the amount, not a redundant caption line (found %d labels)" % label_count)
 
 	section("== compact info popup ==")
 	# The modifier banner and equipment/relic row used to spell their full text out on
@@ -389,6 +462,144 @@ func _run() -> void:
 			await create_timer(0.1).timeout
 			w += 0.1
 
+	section("== hand card art and layout ==")
+	# CardFrame used to be a PanelContainer with the illustration, the info box, and a badge
+	# all added as direct children — a Container force-fits every direct child to its own
+	# full rect, so the last one added (the cost badge) silently painted over the whole card
+	# and the art never showed at all. Pin both children to their real, distinct sizes.
+	var layout_card: Node = _find_by_script(game.root, game.HandCard)
+	if layout_card != null:
+		var frame_node: Node = layout_card.get_node_or_null("CardFrame")
+		check(frame_node != null, "hand card has its CardFrame node")
+		check(frame_node is Panel and not frame_node is PanelContainer, "CardFrame is a plain Panel, not a layout Container that would fight its children's sizes")
+		if frame_node != null:
+			var art_node: TextureRect = null
+			var info_node: Control = null
+			for child in frame_node.get_children():
+				if child is TextureRect and art_node == null: art_node = child
+				elif child is PanelContainer and info_node == null: info_node = child
+			check(art_node != null, "hand card still has an art TextureRect")
+			check(info_node != null, "hand card still has an info box")
+			if art_node != null and info_node != null:
+				check(art_node.size.y > frame_node.size.y * 0.9, "the art covers essentially the whole card (got %.1f of %.1f), not squeezed by a sibling" % [art_node.size.y, frame_node.size.y])
+				check(info_node.size.y < frame_node.size.y * 0.6, "the info box only covers its bottom portion (got %.1f of %.1f), not the entire card" % [info_node.size.y, frame_node.size.y])
+			check(_find_texture_rect_ending_with(frame_node, "card_frame_golden_border.png"), "hand cards show the ornate frame too, not just the enlarged peek")
+			var border_rect: TextureRect = _get_texture_rect_ending_with(frame_node, "card_frame_golden_border.png")
+			if border_rect != null:
+				check(border_rect.position.is_equal_approx(Vector2.ZERO), "the border overlay's own rect starts at the card's top-left corner (got %s)" % border_rect.position)
+				check(border_rect.size.is_equal_approx(frame_node.size), "the border overlay's own rect fills the whole card (got %s, card is %s)" % [border_rect.size, frame_node.size])
+	else:
+		check(false, "found a hand card to check its art/layout on")
+
+	section("== hold-to-peek card preview ==")
+	# MTG Arena style: pressing a card shows it enlarged immediately (no mid-gesture delay —
+	# see HandCard.TAP_THRESHOLD_MS for why); a real drag drops the peek right away, and
+	# _on_touch_up decides afterwards, from how long the touch actually lasted, whether it
+	# was a tap (plays the card) or a hold (just closes the peek without playing).
+	var peek_card: Node = _find_by_script(game.root, game.HandCard)
+	if peek_card != null:
+		peek_card._on_touch_down(Vector2(58, 84))
+		check(bool(peek_card.is_previewing), "pressing a card shows the enlarged peek immediately, no delay")
+		await process_frame
+		check(game.overlay.get_node_or_null("HoldPreview") != null, "the peek overlay is actually in the tree")
+		var peek_holder: Node = game.overlay.get_node_or_null("HoldPreview")
+		check(peek_holder != null and _find_texture_rect_ending_with(peek_holder, "card_frame_golden_border.png"), "the enlarged peek actually shows the generated ornate frame asset")
+		peek_card.is_held = false
+		peek_card.is_previewing = false
+		game._clear_hold_preview()
+	else:
+		check(false, "found a hand card to test the hold-to-peek preview on")
+
+	# An attack card taps into arming a target instead of playing directly whenever more than
+	# one enemy is alive (see _tap_card) — pick a non-attack slot so this test's outcome
+	# isn't at the mercy of whatever card and enemy count happen to be live at this point.
+	var safe_slot := -1
+	for i in game.combat.state.hand.size():
+		if not game._card_is_attack(game.content.card(game.combat.state.hand[i].card_id)):
+			safe_slot = i
+			break
+	var tap_card: Node = null
+	if safe_slot >= 0:
+		var all_hand_cards: Array = []
+		_find_all_by_script(game.root, game.HandCard, all_hand_cards)
+		for c in all_hand_cards:
+			if int(c.hand_index) == safe_slot: tap_card = c; break
+	if tap_card != null:
+		var hand_before_tap: int = game.combat.state.hand.size()
+		tap_card._on_touch_down(Vector2(58, 84))
+		tap_card._on_touch_up()
+		# _end_preview() runs synchronously inside _on_touch_up, but the actual play is
+		# deferred (playing a card rebuilds the battle screen and frees this HandCard) — check
+		# the preview flag before awaiting a frame gives that deferred call a chance to run
+		# and free tap_card out from under this check. queue_free() itself needs that same
+		# frame to actually remove the overlay node, so that check has to wait for it instead.
+		check(not bool(tap_card.is_previewing), "a quick tap closes its own peek again")
+		await process_frame
+		check(game.overlay.get_node_or_null("HoldPreview") == null, "the peek overlay is gone after a quick tap")
+		check(game.combat.state.hand.size() == hand_before_tap - 1, "a quick tap (well under the hold threshold) still plays the card")
+		var w := 0.0
+		while game.resolving and w < 10.0:
+			await create_timer(0.1).timeout
+			w += 0.1
+
+	var hold_card: Node = _find_by_script(game.root, game.HandCard)
+	if hold_card != null:
+		var hand_before_hold: int = game.combat.state.hand.size()
+		hold_card._on_touch_down(Vector2(58, 84))
+		await create_timer(0.28).timeout
+		check(bool(hold_card.is_previewing), "the peek is still showing partway through a hold")
+		hold_card._on_touch_up()
+		await process_frame
+		check(not bool(hold_card.is_previewing), "releasing after a genuine hold closes the peek")
+		check(game.overlay.get_node_or_null("HoldPreview") == null, "the peek overlay is removed on release")
+		check(game.combat.state.hand.size() == hand_before_hold, "releasing after a hold (over the tap threshold) does not play the card")
+	else:
+		check(false, "found a hand card to test the hold-then-release behaviour on")
+
+	var peek_card_2: Node = _find_by_script(game.root, game.HandCard)
+	if peek_card_2 != null:
+		peek_card_2._on_touch_down(Vector2(58, 84))
+		check(bool(peek_card_2.is_previewing), "a second card also peeks on press")
+		peek_card_2._on_drag(Vector2(90, 84))
+		check(not bool(peek_card_2.is_previewing), "starting a real drag drops the peek immediately")
+		await process_frame
+		check(game.overlay.get_node_or_null("HoldPreview") == null, "the peek overlay is gone the instant dragging starts")
+		peek_card_2._on_touch_up()
+		await process_frame
+
+	# A long hold is exactly the gesture iOS's own long-press recognizer watches for, and it
+	# can swallow the matching release before Godot's per-Control _gui_input ever sees a
+	# touch-up — which used to leave the enlarged card stuck on screen forever. _input()
+	# watches the raw event stream instead, so it should notice the release even though
+	# _on_touch_up() is never called at all here.
+	var peek_card_3: Node = _find_by_script(game.root, game.HandCard)
+	if peek_card_3 != null:
+		peek_card_3._on_touch_down(Vector2(58, 84))
+		check(bool(peek_card_3.is_previewing), "a third card also peeks on press")
+		var fake_release := InputEventScreenTouch.new()
+		fake_release.pressed = false
+		peek_card_3._input(fake_release)
+		await process_frame
+		check(not bool(peek_card_3.is_previewing), "a raw release event closes the peek even without _on_touch_up firing")
+		check(game.overlay.get_node_or_null("HoldPreview") == null, "the peek overlay is gone once the raw release is observed")
+		peek_card_3.is_held = false
+
+	# A real hold's own release is not reliably delivered on-device at all (iOS's long-press
+	# gesture recognition can swallow it outright, independent of anything HandCard itself
+	# does) — the dimmed tap-anywhere backdrop is the actual guarantee that the peek can
+	# always be closed, via Godot's own Button.pressed rather than raw touch tracking.
+	var peek_card_4: Node = _find_by_script(game.root, game.HandCard)
+	if peek_card_4 != null:
+		peek_card_4._on_touch_down(Vector2(58, 84))
+		check(bool(peek_card_4.is_previewing), "a fourth card also peeks on press")
+		var backdrop: Node = game.overlay.get_node_or_null("HoldPreview")
+		check(backdrop is Button, "the peek is shown behind a dismissible backdrop button")
+		if backdrop is Button: (backdrop as Button).pressed.emit()
+		await process_frame
+		check(game.overlay.get_node_or_null("HoldPreview") == null, "tapping the backdrop closes the peek regardless of the original touch's own state")
+		peek_card_4.is_held = false
+		peek_card_4.is_previewing = false
+
 	section("== drawn icons render without crashing ==")
 	# _draw() only runs through Godot's own dispatch (add to the tree, queue_redraw, let a
 	# frame pass) — calling it directly raises "Drawing is only allowed inside _draw()",
@@ -397,7 +608,7 @@ func _run() -> void:
 	# warped icon discovered later on a real screen.
 	var icon_kinds := ["sword", "shield", "pendant", "staff", "spear", "bow", "sigil",
 		"crossed_swords", "crown", "grand_crown", "orb", "coin_stack", "campfire",
-		"card_stack", "arrow", "pine", "boulder", "hill", "star", "none"]
+		"card_stack", "arrow", "pine", "boulder", "hill", "star", "scroll", "none"]
 	var icon_marks := ["", "flame", "drop", "wave", "spike", "wing", "eye", "coin", "spiral",
 		"crescent", "rings", "shield_mark", "cycle_arrows", "sparkle", "cross_blade", "bolt", "leaf"]
 	var sweep_holder := Control.new()
@@ -593,16 +804,18 @@ func _run() -> void:
 	if tile != null:
 		check(not (tile is Button), "shop tile itself is not a button, so touching a card cannot buy it")
 		check(_find_button_containing(tile, game.content.ui("ui.shop_buy", game.lang)) != null, "each tile carries an explicit buy button")
-		# The tile border used to be a single rounded rectangle; it now carries a leaf ornament
-		# at each of its four corners plus a drawn rarity star row, per the ornate-frame redesign.
+		# The tile border used to be a single rounded rectangle, then four procedural leaf
+		# corner marks; it now carries the same card_frame_golden_border.png overlay as hand
+		# cards and the enlarged peek, plus a drawn rarity star row.
+		check(_find_texture_rect_ending_with(tile, "card_frame_golden_border.png"), "the shop tile shows the ornate frame asset")
+		var shop_frame_rect: TextureRect = _get_texture_rect_ending_with(tile, "card_frame_golden_border.png")
+		if shop_frame_rect != null:
+			check(shop_frame_rect.size.is_equal_approx(tile.size), "the shop tile's frame overlay is sized to the tile, not the texture's own 728x1006 (got %s, tile is %s)" % [shop_frame_rect.size, tile.size])
 		var frame_marks: Array = []
 		_find_all_by_script(tile, game.GameIcon, frame_marks)
-		var leaf_count := 0
 		var star_count := 0
 		for m in frame_marks:
-			if str(m.flourish) == "leaf": leaf_count += 1
 			if str(m.kind) == "star": star_count += 1
-		check(leaf_count == 4, "the shop tile has an ornate frame with four corner ornaments, got %d" % leaf_count)
 		check(star_count >= 1 and star_count <= 3, "the shop tile shows a rarity star row (%d stars)" % star_count)
 
 	section("== shop rotation and escalating price ==")
@@ -666,7 +879,7 @@ func _run() -> void:
 	check(chimed.state.hand.size() == plain.state.hand.size() + 2, "windChime draws 2 extra (%d vs %d)" % [chimed.state.hand.size(), plain.state.hand.size()])
 	var charmed := SpiritCombat.new(game.content)
 	charmed.create(11, game.content.encounters[0], game.content.raw.startingDeck, 60, {}, [], {}, {}, ["foxCharm"])
-	check(int(charmed.state.energy) == 4, "foxCharm grants 1 extra opening energy, got %d" % int(charmed.state.energy))
+	check(int(charmed.state.energy) == 3, "foxCharm grants 1 extra opening energy, got %d" % int(charmed.state.energy))
 
 	section("== damage preview matches reality ==")
 	var matched := 0
@@ -773,3 +986,15 @@ func _find_jpg_texture_rect(node: Node) -> bool:
 	for child in node.get_children():
 		if _find_jpg_texture_rect(child): return true
 	return false
+
+func _find_texture_rect_ending_with(node: Node, suffix: String) -> bool:
+	return _get_texture_rect_ending_with(node, suffix) != null
+
+func _get_texture_rect_ending_with(node: Node, suffix: String) -> TextureRect:
+	if node is TextureRect:
+		var tex: Texture2D = (node as TextureRect).texture
+		if tex != null and str(tex.resource_path).ends_with(suffix): return node
+	for child in node.get_children():
+		var found := _get_texture_rect_ending_with(child, suffix)
+		if found != null: return found
+	return null

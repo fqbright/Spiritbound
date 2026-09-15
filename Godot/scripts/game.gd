@@ -113,10 +113,42 @@ class HandCard extends Control:
 	var current_tween: Tween = null
 	var target_enemy_idx := -1
 	var preview_index := -1
+	var is_previewing := false
+	var _press_time_ms := 0
+
+	# Below this, a press-then-release-without-dragging counts as a quick tap that plays the
+	# card. At or above it, the same release just closes the peek without playing — press and
+	# hold a card to read it, without that hold accidentally playing it once you let go.
+	const TAP_THRESHOLD_MS := 220
+	# The peek used to appear only after a short delay (waiting to see whether the touch was
+	# a hold, not a tap) — but that delay put Godot's input state in limbo for exactly the
+	# window iOS's own long-press/haptic-touch gesture recognition watches for, and it could
+	# swallow the matching release before Godot's per-Control _gui_input ever saw it, leaving
+	# the card enlarged forever. Showing the peek immediately on every press (this now decides
+	# tap-vs-hold retroactively at release, from _press_time_ms, instead of gating on a
+	# mid-gesture timer) removes that waiting window entirely. _input() below watches the raw
+	# event stream (not hit-tested to this Control) as a second, independent way to notice a
+	# release, and this cap is the last-resort backstop if even that never arrives.
+	const PREVIEW_MAX_DURATION := 1.2
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		pivot_offset = Vector2(custom_minimum_size.x / 2.0, custom_minimum_size.y)
+
+	# Runs for every input event regardless of which Control it hit-tests to, unlike
+	# _gui_input — the one path that still notices a release even if the OS intercepted the
+	# gesture before Godot's normal GUI dispatch got a matching touch-up for this Control.
+	func _input(event: InputEvent) -> void:
+		if not is_previewing: return
+		var released := false
+		if event is InputEventScreenTouch and not event.pressed: released = true
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed: released = true
+		if released: _end_preview()
+
+	func _end_preview() -> void:
+		if not is_previewing: return
+		is_previewing = false
+		if game: game._clear_hold_preview()
 
 	func _gui_input(event: InputEvent) -> void:
 		if game == null or game.combat == null or game.combat.state.phase != "player" or game.resolving: return
@@ -148,6 +180,7 @@ class HandCard extends Control:
 	func _on_touch_down(local_pos: Vector2) -> void:
 		is_held = true
 		is_dragging = false
+		_press_time_ms = Time.get_ticks_msec()
 		drag_start = global_position + local_pos
 		z_index = 60
 		Input.vibrate_handheld(15)
@@ -159,11 +192,24 @@ class HandCard extends Control:
 		current_tween.tween_property(self, "rotation", 0.0, 0.18)
 		current_tween.tween_property(self, "scale", Vector2(1.1, 1.1), 0.18)
 
+		# Show the peek right away (see the const comment above for why there is no delay
+		# here any more) — _on_touch_up decides afterwards, from how long it was actually
+		# held, whether this was a tap that plays the card or a hold that just closes it.
+		is_previewing = true
+		if game: game._show_hold_preview(card_data)
+		var cap := get_tree().create_timer(PREVIEW_MAX_DURATION)
+		cap.timeout.connect(func():
+			if is_instance_valid(self): _end_preview()
+		)
+
 	func _on_drag(local_pos: Vector2) -> void:
 		var cur_global := global_position + local_pos
 		var delta: Vector2 = cur_global - drag_start
 		if not is_dragging and delta.length() > 6.0:
 			is_dragging = true
+			# A peek is "let me read this," not a drag — the instant a real drag starts,
+			# drop the peek and fall straight into the normal drag-to-target flow.
+			_end_preview()
 		if is_dragging:
 			if current_tween: current_tween.kill()
 			global_position = cur_global - Vector2(custom_minimum_size.x / 2.0, custom_minimum_size.y / 2.0)
@@ -194,11 +240,20 @@ class HandCard extends Control:
 			game._clear_damage_preview()
 			game._clear_valid_targets()
 
+		# The peek has been showing since the moment this touch began; decide now, from how
+		# long that actually was, whether this reads as a tap (plays the card) or a hold
+		# (just closes the peek — holding a card to read it should never also play it).
+		var was_quick_tap: bool = Time.get_ticks_msec() - _press_time_ms < TAP_THRESHOLD_MS
+		_end_preview()
+
 		var played := false
 		if not is_dragging:
-			# Defer the rebuild until this input callback has returned; playing a card
-			# recreates the battle view and frees the current hand nodes.
-			game.call_deferred("_tap_card", hand_index)
+			if was_quick_tap:
+				# Defer the rebuild until this input callback has returned; playing a card
+				# recreates the battle view and frees the current hand nodes.
+				game.call_deferred("_tap_card", hand_index)
+			else:
+				_spring_back()
 			is_dragging = false
 			return
 
@@ -351,6 +406,7 @@ class GameIcon extends Control:
 			"boulder": _draw_boulder_body(s)
 			"hill": _draw_hill_body(s)
 			"star": _draw_star_body(s)
+			"scroll": _draw_scroll_body(s)
 			_: _draw_sword_body(s)
 		if not flourish.is_empty(): _draw_mark(flourish, s, Vector2(s, s) / 2.0, s * 0.34)
 
@@ -543,6 +599,23 @@ class GameIcon extends Control:
 		var c := Vector2(s, s) / 2.0
 		draw_colored_polygon(_star_points(c, s * 0.46, s * 0.19, 5), icon_color)
 
+	# A rolled quest scroll: a body rectangle with a rolled cylinder cap at top and bottom,
+	# plus two ribbon lines standing in for its own text — for the quest-log entry point.
+	func _draw_scroll_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var w: float = s * 0.62
+		var body_top: float = s * 0.28
+		var body_bottom: float = s * 0.72
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(c.x - w / 2.0, body_top), Vector2(c.x + w / 2.0, body_top),
+			Vector2(c.x + w / 2.0, body_bottom), Vector2(c.x - w / 2.0, body_bottom),
+		]), icon_color)
+		draw_rect(Rect2(c.x - w / 2.0 - s * 0.05, body_top - s * 0.05, w + s * 0.1, s * 0.1), icon_color)
+		draw_rect(Rect2(c.x - w / 2.0 - s * 0.05, body_bottom - s * 0.05, w + s * 0.1, s * 0.1), icon_color)
+		var ink := icon_color.darkened(0.45)
+		draw_line(Vector2(c.x - w * 0.3, c.y - s * 0.06), Vector2(c.x + w * 0.3, c.y - s * 0.06), ink, s * 0.045)
+		draw_line(Vector2(c.x - w * 0.3, c.y + s * 0.08), Vector2(c.x + w * 0.15, c.y + s * 0.08), ink, s * 0.045)
+
 	# ---- flourishes / marks, drawn as a small overlay centred at `center` with radius `r` ----
 	func _draw_mark(mark: String, s: float, center: Vector2, r: float) -> void:
 		match mark:
@@ -677,9 +750,8 @@ var _hit_flash_shader: Shader = null
 var _ember_texture: GradientTexture2D = null
 var _terrain_grain_texture: NoiseTexture2D = null
 var _terrain_wash_cache: Dictionary = {}
-var _card_frame_golden_tex: Texture2D = null
-var _card_frame_baroque_tex: Texture2D = null
 var _map_pin_rune_tex: Texture2D = null
+var _card_frame_border_tex: Texture2D = null
 var _map_tile_forest_tex: Texture2D = null
 var _biome_textures: Array = []
 var _chapter_map_cache: Dictionary = {}
@@ -708,6 +780,21 @@ const ROAD_TOP_CLEAR = 100.0
 const CHAPTER_TINTS = [
 	Color(0.72,0.88,0.86), Color(0.95,0.78,0.55), Color(0.72,0.80,1.00), Color(0.80,0.86,0.92), Color(0.74,0.92,0.72),
 	Color(0.68,0.90,0.95), Color(0.70,0.96,0.80), Color(0.88,0.82,0.98), Color(1.00,0.72,0.56), Color(0.98,0.86,0.62),
+]
+
+# Hand-picked to trace the actual painted trail/river/canyon-floor in each of the six
+# chapter/biome backgrounds (assets/chapters/chapter_0..5.png, each exactly MAP_WIDTHxBAND_HEIGHT)
+# at the five fixed stage heights below — a seeded random walk drew a nice-looking curve
+# before there was real art to match, but it wandered wherever it liked, so pins and the
+# drawn road sat over rocks and treetops instead of the actual path in the image. One entry
+# per biome, indexed by chapter % 6 to match _get_chapter_map_texture's own cycling.
+const BIOME_PATH_WAYPOINTS = [
+	[Vector2(210, 112), Vector2(185, 208), Vector2(145, 304), Vector2(85, 396), Vector2(140, 480)],  # forest
+	[Vector2(250, 112), Vector2(240, 208), Vector2(255, 304), Vector2(250, 396), Vector2(275, 480)],  # autumn plains
+	[Vector2(200, 112), Vector2(190, 208), Vector2(185, 304), Vector2(180, 396), Vector2(165, 480)],  # glacier
+	[Vector2(210, 112), Vector2(195, 208), Vector2(205, 304), Vector2(210, 396), Vector2(225, 480)],  # ember canyon
+	[Vector2(200, 112), Vector2(190, 208), Vector2(220, 304), Vector2(205, 396), Vector2(240, 480)],  # mystic swamp
+	[Vector2(200, 112), Vector2(180, 208), Vector2(210, 304), Vector2(190, 396), Vector2(200, 480)],  # sunlit ruins
 ]
 
 const CHAR_KEYS = {
@@ -916,6 +1003,37 @@ func _ensure_quests_current() -> void:
 		profile.weekly_reset_at = (week + 1) * WEEK_SECONDS
 		changed = true
 	if changed: SpiritSave.write(profile)
+
+# Drives the red notification dot on the camp/quest entry point — true the moment any daily
+# or weekly quest is complete and waiting on its reward, same as the claim button inside.
+func _has_claimable_quest() -> bool:
+	_ensure_quests_current()
+	for list_name in ["daily_quests", "weekly_quests"]:
+		for entry in profile.get(list_name, []):
+			if int(entry.get("progress", 0)) >= int(entry.get("target", 1)) and not bool(entry.get("claimed", false)):
+				return true
+	return false
+
+# Drives the deck dock button's red dot — true whenever a card sits in the collection with
+# more owned copies than are actually placed in the 25-card deck (a shop buy or a chest
+# reward that never made it in).
+func _has_unused_cards() -> bool:
+	for id in profile.collection:
+		if int(profile.collection[id]) > profile.deck.count(str(id)): return true
+	return false
+
+# A small red dot for "there is something to check in here" — the same language most mobile
+# games use for unclaimed rewards or unseen content, so tapping in isn't a guess.
+func _add_notification_dot(anchor: Control, btn_size: Vector2) -> void:
+	var dot := Panel.new()
+	dot.name = "NotificationDot"
+	dot.custom_minimum_size = Vector2(13, 13)
+	dot.size = dot.custom_minimum_size
+	dot.position = Vector2(btn_size.x - 10.0, -3.0)
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dot.z_index = 5
+	dot.add_theme_stylebox_override("panel", _panel(EMBER, 7, Color("2b0a08")))
+	anchor.add_child(dot)
 
 # Bumps progress on every not-yet-complete quest of this type in both lists. Called from
 # the same real signals the rest of the game already fires — a card played, a chest
@@ -1265,8 +1383,23 @@ func show_map() -> void:
 	var btn_lang := _button(t("ui.lang_toggle"), _toggle_language, Color("17363e"), Vector2(50,34))
 	btn_lang.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_lang)
-	var btn_camp := _button("✧%d" % profile.relics.size(), show_camp, Color("17363e"), Vector2(38,34))
+	# A scroll icon reads as "quest log" at a glance — the old "✧3" relic-count glyph gave no
+	# hint that daily/weekly quests (the one thing here with a claim timer) lived behind it
+	# too. The red dot is the same "something to check in here" language most mobile games
+	# use for unclaimed rewards, so this button doesn't have to be guessed at either.
+	var camp_size := Vector2(40, 34)
+	var btn_camp := _button("", show_camp, Color("17363e"), camp_size)
+	btn_camp.name = "CampButton"
 	btn_camp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var camp_icon := GameIcon.new()
+	camp_icon.kind = "scroll"
+	camp_icon.icon_color = GOLD
+	camp_icon.custom_minimum_size = Vector2(20, 20)
+	camp_icon.size = camp_icon.custom_minimum_size
+	camp_icon.position = (camp_size - camp_icon.size) / 2.0
+	camp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn_camp.add_child(camp_icon)
+	if _has_claimable_quest(): _add_notification_dot(btn_camp, camp_size)
 	header.add_child(btn_camp)
 	var btn_music := _button("♫" if not muted else "♩", _toggle_music, Color("17363e"), Vector2(34,34))
 	btn_music.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1360,44 +1493,25 @@ func show_map() -> void:
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(icon)
 
+		# The deck slot gets the same "something to check in here" red dot whenever the
+		# player owns a card copy that isn't in their current deck — cards obtained from a
+		# reward chest or bought in the shop used to just sit in the collection unannounced.
+		if str(item[0]) == "card_stack" and _has_unused_cards():
+			var dot := Panel.new()
+			dot.name = "NotificationDot"
+			dot.anchor_left = 1.0; dot.anchor_right = 1.0
+			dot.anchor_top = 0.0; dot.anchor_bottom = 0.0
+			dot.offset_left = -20.0; dot.offset_right = -7.0
+			dot.offset_top = 6.0; dot.offset_bottom = 19.0
+			dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			dot.z_index = 5
+			dot.add_theme_stylebox_override("panel", _panel(EMBER, 7, Color("2b0a08")))
+			btn.add_child(dot)
+
 		dock.add_child(btn)
-
-	# A quick-jump strip: fifty chapters is too many to eyeball while scrolling a single long
-	# column, so a row of small chapter previews — each one showing that chapter's own
-	# terrain wash, the same art used on the full map, not a generic placeholder — sits just
-	# above the dock and scrolls the map to whichever one is tapped.
-	var strip_holder := MarginContainer.new()
-	strip_holder.anchor_left = 0.0
-	strip_holder.anchor_right = 1.0
-	strip_holder.anchor_top = 1.0
-	strip_holder.anchor_bottom = 1.0
-	strip_holder.offset_left = 0.0
-	strip_holder.offset_right = 0.0
-	strip_holder.offset_top = -(float(_safe_bottom()) + 60.0 + 8.0 + 74.0)
-	strip_holder.offset_bottom = -(float(_safe_bottom()) + 60.0 + 8.0)
-	strip_holder.add_theme_constant_override("margin_left", 12)
-	strip_holder.add_theme_constant_override("margin_right", 12)
-	strip_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	overlay_page.add_child(strip_holder)
-
-	var chapter_strip := TouchScrollContainer.new()
-	chapter_strip.allow_horizontal = true
-	chapter_strip.allow_vertical = false
-	chapter_strip.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	chapter_strip.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	chapter_strip.custom_minimum_size = Vector2(0, 74)
-	strip_holder.add_child(chapter_strip)
-
-	var strip_row := HBoxContainer.new()
-	strip_row.add_theme_constant_override("separation", 8)
-	chapter_strip.add_child(strip_row)
-	for chapter in chapter_count:
-		strip_row.add_child(_chapter_thumb_tile(chapter))
 
 	await get_tree().process_frame
 	if map_scroll: map_scroll.scroll_vertical = int(maxi(0, int(_map_point(profile.position).y - 360)))
-	var current_chapter: int = int(profile.position) / 5
-	chapter_strip.scroll_horizontal = int(maxf(0.0, float(current_chapter) * 100.0 - 140.0))
 
 # Every chapter used to reuse the exact same five pixel offsets, so the trail looked like a
 # mechanical zigzag repeated 50 times. This walks a seeded random x each chapter instead —
@@ -1405,18 +1519,17 @@ func show_map() -> void:
 # longer identical band to band.
 func _chapter_waypoints(chapter: int) -> Array:
 	if _map_waypoint_cache.has(chapter): return _map_waypoint_cache[chapter]
-	var rng := RandomNumberGenerator.new()
-	rng.seed = chapter * 92821 + 17
-	var base_y := [112.0, 208.0, 304.0, 396.0, 480.0]
-	var min_x: float = ROAD_MARGIN_X
-	var max_x: float = MAP_WIDTH - ROAD_MARGIN_X
+	# The road has to trace the trail actually painted into this chapter's background, not a
+	# random walk — see BIOME_PATH_WAYPOINTS. _add_map_chapter flips the same background
+	# horizontally every second time a biome repeats (chapter/6 odd); mirror the path to
+	# match or the road runs straight over rocks and trees instead of the trail.
+	var biome_idx: int = chapter % BIOME_PATH_WAYPOINTS.size()
+	var flipped: bool = (chapter / BIOME_PATH_WAYPOINTS.size()) % 2 == 1
+	var base_points: Array = BIOME_PATH_WAYPOINTS[biome_idx]
 	var points: Array = []
-	var prev_x: float = rng.randf_range(min_x, max_x)
-	for i in 5:
-		var x: float = clampf(prev_x + rng.randf_range(-100.0, 100.0), min_x, max_x)
-		var y: float = base_y[i] + rng.randf_range(-16.0, 16.0)
-		points.append(Vector2(x, y))
-		prev_x = x
+	for p in base_points:
+		var x: float = (MAP_WIDTH - p.x) if flipped else p.x
+		points.append(Vector2(x, p.y))
 	_map_waypoint_cache[chapter] = points
 	return points
 
@@ -1689,58 +1802,6 @@ func _add_region_borders(chapter_count: int) -> void:
 		border.z_index = 0
 		border.antialiased = true
 		map_canvas.add_child(border)
-
-# One tile in the bottom quick-jump strip: the chapter's own terrain wash as a live preview
-# (not a placeholder swatch), a checkmark once every stage in it is cleared, and a border that
-# marks whichever chapter the player is actually standing in right now.
-func _chapter_thumb_tile(chapter: int) -> Button:
-	var current_chapter: int = int(profile.position) / 5
-	var cleared: bool = int(profile.unlocked) > chapter * 5 + 4
-	var is_current: bool = chapter == current_chapter
-	var border_col: Color = GOLD if is_current else (JADE if cleared else Color("2b393d"))
-
-	var tile := Button.new()
-	tile.name = "ChapterTile_%d" % chapter
-	tile.custom_minimum_size = Vector2(92.0, 70.0)
-	tile.size = tile.custom_minimum_size
-	tile.focus_mode = Control.FOCUS_NONE
-	tile.add_theme_stylebox_override("normal", _panel(Color("0c1a1f"), 10, border_col))
-	tile.add_theme_stylebox_override("hover", _panel(Color("13262c"), 10, border_col))
-	tile.add_theme_stylebox_override("pressed", _panel(Color("081216"), 10, border_col))
-	tile.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	tile.pressed.connect(_jump_to_chapter.bind(chapter))
-
-	var preview := TextureRect.new()
-	preview.texture = _get_chapter_map_texture(chapter)
-	if preview.texture == null:
-		preview.texture = _get_terrain_wash_texture(chapter % CHAPTER_TINTS.size())
-	preview.custom_minimum_size = Vector2(84.0, 42.0)
-	preview.size = preview.custom_minimum_size
-	preview.position = Vector2(4.0, 4.0)
-	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var chapter_tint: Color = CHAPTER_TINTS[chapter % CHAPTER_TINTS.size()]
-	preview.modulate = Color.WHITE.lerp(chapter_tint, 0.35)
-	preview.flip_h = ((chapter / 6) % 2 == 1)
-	tile.add_child(preview)
-
-	if cleared:
-		var check := _label("✓", 13, JADE, HORIZONTAL_ALIGNMENT_CENTER)
-		check.position = Vector2(68.0, 2.0)
-		check.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tile.add_child(check)
-
-	var name_lbl := _label(content.chapter_name(chapter, lang), 9, TEXT if not cleared and not is_current else border_col, HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.position = Vector2(2.0, 48.0)
-	name_lbl.size = Vector2(88.0, 18.0)
-	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tile.add_child(name_lbl)
-
-	return tile
-
-func _jump_to_chapter(chapter: int) -> void:
-	if map_scroll: map_scroll.scroll_vertical = int(maxf(0.0, float(chapter) * BAND_HEIGHT - 40.0))
 
 # Straight segments between waypoints read as a mechanical zigzag; baking a Catmull-Rom
 # curve through the exact same points gives a road that curves the way a real trail would,
@@ -2054,17 +2115,17 @@ func _intent_style(intent: Dictionary) -> Dictionary:
 	# "amount_text" is the plain number the banner shows next to the icon instead.
 	match kind:
 		"critical":
-			return {"text": tf("ui.intent_critical", amount), "amount_text": str(amount), "caption": t("ui.intent_name_critical"), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
+			return {"text": tf("ui.intent_critical", amount), "amount_text": str(amount), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
 		"defend":
-			return {"text": tf("ui.intent_defend", amount), "amount_text": str(amount), "caption": t("ui.intent_name_defend"), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
+			return {"text": tf("ui.intent_defend", amount), "amount_text": str(amount), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
 		"empower":
-			return {"text": tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "caption": t("ui.intent_name_empower"), "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
+			return {"text": tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
 		"curse":
-			return {"text": tf("ui.intent_curse", amount), "amount_text": str(amount), "caption": t("ui.intent_name_curse"), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
+			return {"text": tf("ui.intent_curse", amount), "amount_text": str(amount), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
 		"attack_defend":
-			return {"text": tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "caption": t("ui.intent_name_attack_defend"), "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
+			return {"text": tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
 		_:
-			return {"text": tf("ui.intent_attack", amount), "amount_text": str(amount), "caption": t("ui.intent_name_attack"), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
+			return {"text": tf("ui.intent_attack", amount), "amount_text": str(amount), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
 
 func _get_hit_flash_shader() -> Shader:
 	if _hit_flash_shader == null: _hit_flash_shader = load("res://assets/shaders/hit_flash.gdshader")
@@ -2249,15 +2310,23 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
 	_apply_status_fx(unit, sprite, sprite.position, spr_size.x / 2.0, enemy)
 
-	# Intent banner: the icon and number alone read as an unexplained box, so it names the
-	# action too and sits on a card the same colour as the effect it is promising.
+	# Intent banner: just the drawn icon (already distinct per intent kind — shield for
+	# defend, crossed blades for attack, etc.) plus the number it promises. It used to also
+	# spell the intent out in a caption line ("Attack"), which was redundant once the icon
+	# actually reads on its own, and the extra line pushed the banner tall enough to crowd
+	# whatever sits above the enemy row (the equipment/relic badges).
 	var intent: Dictionary = enemy.get("intent", {})
 	var intent_style := _intent_style(intent)
 	var intent_w: float = minf(u_width, 104.0)
 	var intent_bg := Panel.new()
-	intent_bg.custom_minimum_size = Vector2(intent_w, 38.0)
+	intent_bg.name = "IntentBanner"
+	intent_bg.custom_minimum_size = Vector2(intent_w, 26.0)
 	intent_bg.size = intent_bg.custom_minimum_size
-	intent_bg.position = Vector2(center_x - intent_w / 2.0, 0.0)
+	# Depth-staggered (flanking) enemies have their whole unit shifted up by depth_t*26 for
+	# the wedge formation; add that back here so every enemy's banner lands at the same
+	# screen height regardless of which row it is in, instead of a back-row banner drifting
+	# higher and overlapping the row above the whole enemy area.
+	intent_bg.position = Vector2(center_x - intent_w / 2.0, depth_t * 26.0)
 	intent_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var intent_box := _panel(intent_style.bg, 11, intent_style.border)
 	intent_box.border_width_left = 2; intent_box.border_width_right = 2
@@ -2265,18 +2334,12 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	intent_bg.add_theme_stylebox_override("panel", intent_box)
 	unit.add_child(intent_bg)
 
-	var intent_stack := VBoxContainer.new()
-	intent_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	intent_stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	intent_stack.add_theme_constant_override("separation", 0)
-	intent_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	intent_bg.add_child(intent_stack)
-
 	var intent_row := HBoxContainer.new()
+	intent_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	intent_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	intent_row.add_theme_constant_override("separation", 4)
 	intent_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	intent_stack.add_child(intent_row)
+	intent_bg.add_child(intent_row)
 	var icon := IntentIcon.new()
 	icon.kind = str(intent.get("kind", "attack"))
 	icon.icon_color = intent_style.text_color
@@ -2284,8 +2347,6 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	icon.size = icon.custom_minimum_size
 	intent_row.add_child(icon)
 	intent_row.add_child(_label(intent_style.amount_text, 15, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
-
-	intent_stack.add_child(_label(intent_style.caption, 8, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var telegraph := intent_bg.create_tween().set_loops()
 	telegraph.tween_property(intent_bg, "modulate", Color(1.18, 1.18, 1.18), 0.9).set_trans(Tween.TRANS_SINE)
@@ -2554,112 +2615,135 @@ func _clear_info_popup() -> void:
 	var existing := overlay.get_node_or_null("InfoPopup")
 	if existing: existing.queue_free()
 
-# A tap always opens a big, readable copy of the card first — the hand fan is too small to
-# read effect text at a glance. Dragging still plays a card directly without this stop.
-func _show_card_preview(hand_index: int) -> void:
-	if combat == null or overlay == null: return
-	if hand_index < 0 or hand_index >= combat.state.hand.size(): return
-	var card := content.card(combat.state.hand[hand_index].card_id)
-	if card.is_empty(): return
-	_clear_card_preview()
+# MTG Arena's hold-to-peek: press and hold a card in hand and an enlarged copy floats up so
+# you can actually read it; the moment you drag (HandCard._on_drag) or lift your finger
+# (HandCard._on_touch_up), it drops away again — never a modal, never a button, never a
+# stop that has to be dismissed on its own. See HandCard.PREVIEW_HOLD_DELAY for the hold time.
+func _show_hold_preview(card: Dictionary) -> void:
+	if overlay == null: return
+	_clear_hold_preview()
 
-	var backdrop := _modal_backdrop("CardPreview", _clear_card_preview)
+	# A held touch's own release is not reliably delivered after a long-enough hold — iOS's
+	# own long-press/haptic-touch gesture recognition can swallow it before Godot ever sees a
+	# touch-up, no matter how quickly Godot itself reacts to the press. HandCard still tries
+	# the direct route (its own touch-up, a raw _input() watcher, dragging away, a flat
+	# timeout), but this dimmed tap-anywhere backdrop — Godot's own proven Button.pressed,
+	# not raw touch-sequence tracking — is what actually guarantees the peek can be closed.
+	var backdrop := _modal_backdrop("HoldPreview", _clear_hold_preview)
+	backdrop.z_index = 400
 
-	var center := VBoxContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.alignment = BoxContainer.ALIGNMENT_CENTER
-	center.add_theme_constant_override("separation", 18)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	backdrop.add_child(center)
+	var holder := CenterContainer.new()
+	holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(holder)
 
 	var rune_id: String = profile.card_runes.get(card.id, "")
 	var face := _big_card_face(card, rune_id)
-	face.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	face.mouse_filter = Control.MOUSE_FILTER_STOP
-	center.add_child(face)
-
-	var can_target: bool = _card_target_mode(card) == "enemy" and _living_enemies().size() > 1
-	var affordable: bool = int(card.cost) <= int(combat.state.energy)
-	var action_label: String = (t("ui.tap_to_target") if can_target else t("ui.play_card")) if affordable else t("ui.target_invalid")
-	var play_btn := _button(action_label, _confirm_card_preview.bind(hand_index), Color("1d3a35"), Vector2(200, 48))
-	play_btn.disabled = not affordable
-	play_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	center.add_child(play_btn)
-	center.add_child(_label(t("ui.tap_to_dismiss"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(face)
 
 	face.pivot_offset = face.custom_minimum_size / 2.0
-	face.scale = Vector2(0.72, 0.72)
+	face.scale = Vector2(0.7, 0.7)
 	face.modulate.a = 0.0
 	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(face, "scale", Vector2.ONE, 0.22)
-	tw.tween_property(face, "modulate:a", 1.0, 0.16)
+	tw.tween_property(face, "scale", Vector2(1.2, 1.2), 0.16)
+	tw.tween_property(face, "modulate:a", 1.0, 0.12)
 
-func _clear_card_preview() -> void:
+func _clear_hold_preview() -> void:
 	if overlay == null: return
-	var existing := overlay.get_node_or_null("CardPreview")
+	var existing := overlay.get_node_or_null("HoldPreview")
 	if existing: existing.queue_free()
-
-func _confirm_card_preview(hand_index: int) -> void:
-	_clear_card_preview()
-	if combat == null or hand_index < 0 or hand_index >= combat.state.hand.size(): return
-	var card := content.card(combat.state.hand[hand_index].card_id)
-	if card.is_empty() or int(card.cost) > int(combat.state.energy): return
-	if _card_target_mode(card) == "enemy" and _living_enemies().size() > 1:
-		selected_card = hand_index
-		show_battle()
-	else:
-		_attempt_play_card(hand_index, -1)
 
 # A bigger, static twin of the HandCard face in _card_view: same frame/art/cost/rune
 # language, scaled up with room for the full effect text instead of a 7pt sliver of it.
-func _big_card_face(card: Dictionary, rune_id: String) -> PanelContainer:
+func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	var accent: Color = _card_color(card)
 	var border_col: Color = _rune_color(rune_id, accent)
 	var size := Vector2(230.0, 320.0)
 
-	var frame := PanelContainer.new()
+	# Same full-bleed-art-plus-rules-box language as _card_view's hand cards, just at a size
+	# where the description reads comfortably — this is what a held-down peek shows enlarged,
+	# so it should look like a bigger version of the same card, not a different template.
+	# Plain Panel, not PanelContainer: a Container force-fits EVERY direct child to its own
+	# rect, which is exactly what turned this into a solid block showing only the last child
+	# added (the cost badge) — art, the info box, and the badges all need to keep their own
+	# size and position instead of being fought over by auto-layout.
+	var frame := Panel.new()
+	frame.clip_contents = true
 	frame.custom_minimum_size = size
 	frame.size = size
-	frame.add_theme_stylebox_override("panel", _panel(Color("15262b"), 16, border_col))
-
-	var stack := VBoxContainer.new()
-	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stack.add_theme_constant_override("separation", 4)
-	frame.add_child(stack)
-
-	var art_frame := PanelContainer.new()
-	art_frame.custom_minimum_size.y = 150.0
-	art_frame.add_theme_stylebox_override("panel", _panel(Color("0a171b"), 8))
+	var frame_style := _panel(Color("0a171b"), 16, border_col)
+	frame_style.border_width_left = 4; frame_style.border_width_right = 4
+	frame_style.border_width_top = 4; frame_style.border_width_bottom = 4
+	frame.add_theme_stylebox_override("panel", frame_style)
 
 	var art := TextureRect.new()
 	art.texture = _get_card_texture(card.id)
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(art)
 
-	var art_clip := PanelContainer.new()
-	art_clip.clip_contents = true
-	art_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	art_clip.add_theme_stylebox_override("panel", _panel(Color.TRANSPARENT, 8))
-	art_clip.add_child(art)
-	
-	if _card_frame_baroque_tex == null: _card_frame_baroque_tex = load("res://assets/card_frame_baroque.png")
-	var big_frame := TextureRect.new()
-	big_frame.texture = _card_frame_baroque_tex
-	big_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	big_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	big_frame.stretch_mode = TextureRect.STRETCH_SCALE
-	big_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art_clip.add_child(big_frame)
-	
-	art_frame.add_child(art_clip)
-	stack.add_child(art_frame)
+	var info_box := PanelContainer.new()
+	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	info_box.anchor_left = 0.0; info_box.anchor_right = 1.0
+	info_box.anchor_top = 0.52; info_box.anchor_bottom = 1.0
+	info_box.offset_left = 0; info_box.offset_right = 0
+	info_box.offset_top = 0; info_box.offset_bottom = 0
+	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var info_style := _panel(Color(0.05, 0.09, 0.11, 0.97), 0)
+	info_style.corner_radius_top_left = 8; info_style.corner_radius_top_right = 8
+	info_style.border_width_top = 3; info_style.border_color = border_col
+	# ~16% of the card width, clearing the ornate border overlay added below so its
+	# left/right bands never run through the description text.
+	info_style.content_margin_left = 37; info_style.content_margin_right = 37
+	info_style.content_margin_top = 8; info_style.content_margin_bottom = 8
+	info_box.add_theme_stylebox_override("panel", info_style)
+	frame.add_child(info_box)
+
+	var stack := VBoxContainer.new()
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.add_theme_constant_override("separation", 4)
+	info_box.add_child(stack)
+
+	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
+	var name_text: String = content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else "")
+	var name_lbl := _label(name_text, 16, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	stack.add_child(name_lbl)
+
+	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	stack.add_child(kind_lbl)
+
+	var desc_lbl := _label(_card_description(card), 13, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stack.add_child(desc_lbl)
+
+	# card_frame_golden.png's own transparent "window" only covers the middle ~half of the
+	# image, with a wide ornate border and a bottom medallion around it — fine for framing a
+	# small photo, but it either blurs to a haze when shrunk small or, at this size, covers
+	# the full-bleed art and blocks the rules text underneath it. card_frame_golden_border.png
+	# is a derived asset: first cropped to the ornament's own content bounding box (the source
+	# has ~8-10% of transparent padding baked in around it — keeping that padding left a
+	# visible gap between the card edge and the ornament even after widening the kept band,
+	# which read as "floating in the middle" rather than a border), then keeping only the
+	# outer ~16% ring of THAT cropped image. The medallion is left in rather than punched
+	# out — clearing it where it crosses this kept band left a gap in the border instead —
+	# so it just merges into the bottom band.
+	if _card_frame_border_tex == null: _card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
+	var border_overlay := TextureRect.new()
+	border_overlay.texture = _card_frame_border_tex
+	border_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	border_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	border_overlay.stretch_mode = TextureRect.STRETCH_SCALE
+	border_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(border_overlay)
 
 	var cost_badge := PanelContainer.new()
 	cost_badge.custom_minimum_size = Vector2(38, 38)
 	cost_badge.position = Vector2(-10, -10)
 	cost_badge.add_theme_stylebox_override("panel", _panel(accent, 19, Color("2b1a10")))
-	var cost_lbl := _label(str(card.cost), 22, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
+	var cost_lbl := _label(str(int(card.cost)), 22, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
 	cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	cost_badge.add_child(cost_lbl)
 	frame.add_child(cost_badge)
@@ -2669,20 +2753,6 @@ func _big_card_face(card: Dictionary, rune_id: String) -> PanelContainer:
 		var r_lbl := _label(rune_info.icon, 22, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
 		r_lbl.position = Vector2(size.x - 34.0, -8.0)
 		frame.add_child(r_lbl)
-
-	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
-	var name_text: String = content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else "")
-	var name_lbl := _label(name_text, 16, Color("23150d"), HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.add_theme_stylebox_override("normal", _panel(Color("ead6a9"), 6))
-	stack.add_child(name_lbl)
-
-	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
-	stack.add_child(kind_lbl)
-
-	var desc_lbl := _label(_card_description(card), 13, Color("2b241b"), HORIZONTAL_ALIGNMENT_CENTER, true)
-	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	desc_lbl.add_theme_stylebox_override("normal", _panel(Color("f3e8cf"), 6))
-	stack.add_child(desc_lbl)
 
 	return frame
 
@@ -2725,16 +2795,27 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var rune_id: String = profile.card_runes.get(card.id, "")
 	var border_col: Color = _rune_color(rune_id, accent)
 
-	# 1. Base card container with clipping
-	var card_clip := PanelContainer.new()
+	# 1. Base card container with clipping. Plain Panel, not PanelContainer — a Container
+	# force-fits every direct child (art, the bottom info box, badges) to its own full rect,
+	# which is what silently turned the whole card into a solid block showing only whichever
+	# child got laid out last. A Panel just paints its stylebox and leaves children alone.
+	# Note: the FULL ornate filigree texture (card_frame_golden.png) turns to a translucent
+	# gold haze over the art when shrunk ~7.7x onto this 116x168 tile (fine scrollwork + lots
+	# of transparent gaps average out under minification) — card_frame_golden_border.png (the
+	# thin outer-ring derivative added below) keeps enough of that detail concentrated in a
+	# narrower band to stay legible even at this size.
+	var card_clip := Panel.new()
 	card_clip.name = "CardFrame"
 	card_clip.clip_contents = true
 	card_clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	card_clip.add_theme_stylebox_override("panel", _panel(Color("0a171b"), 12, border_col))
+	var clip_style := _panel(Color("0a171b"), 10, border_col)
+	clip_style.border_width_left = 3; clip_style.border_width_right = 3
+	clip_style.border_width_top = 3; clip_style.border_width_bottom = 3
+	card_clip.add_theme_stylebox_override("panel", clip_style)
 	card_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tile.add_child(card_clip)
 
-	# 2. Illustration covers the ENTIRE card
+	# 2. Illustration covers the ENTIRE card, full colour, nothing drawn over it.
 	var art := TextureRect.new()
 	art.texture = _get_card_texture(card.id)
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2743,33 +2824,38 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card_clip.add_child(art)
 
-	# 3. Ornate gold frame across the entire card perimeter
-	if _card_frame_golden_tex == null: _card_frame_golden_tex = load("res://assets/card_frame_golden.png")
-	var hand_frame := TextureRect.new()
-	hand_frame.texture = _card_frame_golden_tex
-	hand_frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hand_frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	hand_frame.stretch_mode = TextureRect.STRETCH_SCALE
-	hand_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card_clip.add_child(hand_frame)
-
-	# 4. Carved-out space in the lower-middle portion for card info
+	# 3. A solid text box from the middle down, like a normal trading card's rules box —
+	# a name/type bar over a dark, near-opaque description panel, not a floating translucent
+	# island in the middle of the art.
 	var info_box := PanelContainer.new()
 	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	info_box.anchor_left = 0.05
-	info_box.anchor_right = 0.95
-	info_box.anchor_top = 0.50
-	info_box.anchor_bottom = 0.96
+	info_box.anchor_left = 0.0
+	info_box.anchor_right = 1.0
+	info_box.anchor_top = 0.52
+	info_box.anchor_bottom = 1.0
 	info_box.offset_left = 0
 	info_box.offset_right = 0
 	info_box.offset_top = 0
 	info_box.offset_bottom = 0
 	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var info_style := _panel(Color(0.06, 0.12, 0.16, 0.88), 6, border_col.lerp(Color.WHITE, 0.2))
-	info_style.content_margin_left = 4; info_style.content_margin_right = 4
+	var info_style := _panel(Color(0.05, 0.09, 0.11, 0.97), 0)
+	info_style.corner_radius_top_left = 6; info_style.corner_radius_top_right = 6
+	info_style.border_width_top = 2; info_style.border_color = border_col
+	# ~16% of the card width, clearing the ornate border overlay added below so its
+	# left/right bands never run through the description text.
+	info_style.content_margin_left = 19; info_style.content_margin_right = 19
 	info_style.content_margin_top = 3; info_style.content_margin_bottom = 3
 	info_box.add_theme_stylebox_override("panel", info_style)
 	card_clip.add_child(info_box)
+
+	if _card_frame_border_tex == null: _card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
+	var hand_border := TextureRect.new()
+	hand_border.texture = _card_frame_border_tex
+	hand_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hand_border.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hand_border.stretch_mode = TextureRect.STRETCH_SCALE
+	hand_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_clip.add_child(hand_border)
 
 	var info_stack := VBoxContainer.new()
 	info_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2786,7 +2872,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	kind_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(kind_lbl)
 
-	var desc_lbl := _label(_card_description(card), 7, Color("d2ded7"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	var desc_lbl := _label(_card_description(card), 8, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
 	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	info_stack.add_child(desc_lbl)
@@ -2797,7 +2883,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	cost_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cost_badge.position = Vector2(-6, -6)
 	cost_badge.add_theme_stylebox_override("panel", _panel(accent, 13, Color("2b1a10")))
-	var cost_lbl := _label(str(card.cost), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
+	var cost_lbl := _label(str(int(card.cost)), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
 	cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	cost_badge.add_child(cost_lbl)
 	tile.add_child(cost_badge)
@@ -3549,7 +3635,9 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	info_box.custom_minimum_size = Vector2(160, 138)
 	info_box.size = info_box.custom_minimum_size
 	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
-	box_style.content_margin_left = 6; box_style.content_margin_right = 6
+	# 22 clears the ornate frame overlay's ~16%-of-176px border band (this box already starts
+	# 8px in from the tile edge, so it only needs to clear the remaining ~20px of overlap).
+	box_style.content_margin_left = 22; box_style.content_margin_right = 22
 	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -3661,15 +3749,10 @@ func _card_art_panel(card_id: String, art_size: Vector2, radius := 8) -> Control
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	clip.add_child(art)
 
-	if _card_frame_golden_tex == null: _card_frame_golden_tex = load("res://assets/card_frame_golden.png")
-	var frame_overlay := TextureRect.new()
-	frame_overlay.texture = _card_frame_golden_tex
-	frame_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	frame_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	frame_overlay.stretch_mode = TextureRect.STRETCH_SCALE
-	frame_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	clip.add_child(frame_overlay)
-
+	# No frame texture here on purpose: this panel is used at thumbnail sizes down to 34x46,
+	# and the ornate filigree frame (native 896x1200) turns into a solid muddy smear at that
+	# scale — the same "washed out" failure the full-size hand card had, just worse. A plain
+	# border reads correctly at any size.
 	return clip
 
 func _cost_badge(cost: int, accent: Color, diameter := 26) -> Panel:
@@ -3703,31 +3786,24 @@ func _add_ornate_frame(tile: Control, size: Vector2, accent: Color) -> void:
 	inset.add_theme_stylebox_override("panel", inset_style)
 	tile.add_child(inset)
 
-	if _card_frame_golden_tex == null: _card_frame_golden_tex = load("res://assets/card_frame_golden.png")
-	var frame_underlay := TextureRect.new()
-	frame_underlay.texture = _card_frame_golden_tex
-	frame_underlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	frame_underlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	frame_underlay.stretch_mode = TextureRect.STRETCH_SCALE
-	frame_underlay.modulate = Color.WHITE
-	frame_underlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame_underlay.z_index = 0
-	tile.add_child(frame_underlay)
-
-	var corners := [[Vector2(3, 3), 0.0], [Vector2(size.x - 17, 3), 90.0],
-		[Vector2(size.x - 17, size.y - 17), 180.0], [Vector2(3, size.y - 17), 270.0]]
-	for c in corners:
-		var mark := GameIcon.new()
-		mark.kind = "none"
-		mark.flourish = "leaf"
-		mark.icon_color = accent
-		mark.custom_minimum_size = Vector2(14, 14)
-		mark.size = mark.custom_minimum_size
-		mark.pivot_offset = mark.size / 2.0
-		mark.position = c[0]
-		mark.rotation_degrees = c[1]
-		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		tile.add_child(mark)
+	# card_frame_golden_border.png (cropped to its own content bounding box, then only the
+	# outer ~16% ring kept — see _big_card_face for why the raw asset can't be used directly)
+	# reads cleanly at this tile size too, so shop and deck cards now share the exact same
+	# ornate frame as hand cards and the enlarged peek instead of a separate procedural one.
+	if _card_frame_border_tex == null: _card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
+	var frame_overlay := TextureRect.new()
+	frame_overlay.texture = _card_frame_border_tex
+	# An explicit position/size here (instead of anchors) silently reverted to the texture's
+	# own native 728x1006 by the time this actually rendered — a plain Control's manually-set
+	# size does not survive being layered with expand_mode/stretch_mode assignment order the
+	# way TextureRect wants it to. PRESET_FULL_RECT anchors track the parent's actual size
+	# continuously instead of relying on a one-time size assignment, which is what already
+	# works correctly for this same texture on hand cards and the enlarged peek.
+	frame_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame_overlay.stretch_mode = TextureRect.STRETCH_SCALE
+	frame_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(frame_overlay)
 
 # Three tiers of the card's own rarity read as a row of small drawn stars instead of a raw
 # English rarity word left untranslated in the Chinese UI.
@@ -3852,7 +3928,9 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	info_box.custom_minimum_size = Vector2(160, 138)
 	info_box.size = info_box.custom_minimum_size
 	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
-	box_style.content_margin_left = 6; box_style.content_margin_right = 6
+	# 22 clears the ornate frame overlay's ~16%-of-176px border band (this box already starts
+	# 8px in from the tile edge, so it only needs to clear the remaining ~20px of overlap).
+	box_style.content_margin_left = 22; box_style.content_margin_right = 22
 	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS

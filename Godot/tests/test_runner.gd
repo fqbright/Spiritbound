@@ -43,7 +43,7 @@ func run() -> void:
 	swift.create(2,encounter(100,0),Array(content.raw.startingDeck),60,{},[],{"strike":"swift"})
 	_force_hand(swift,"strike")
 	swift.play(0,0)
-	check(swift.state.energy == 3,"Swift refunds its first play's energy cost")
+	check(swift.state.energy == 2,"Swift refunds its first play's energy cost")
 
 	var chain := SpiritCombat.new(content)
 	chain.create(3,encounter(20,0,1),Array(content.raw.startingDeck),60,{},[],{"strike":"chain"})
@@ -86,7 +86,7 @@ func run() -> void:
 
 	var relic_run := SpiritCombat.new(content)
 	relic_run.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["windChime","foxCharm"])
-	check(relic_run.state.hand.size() == 7 and int(relic_run.state.energy) == 4,"relics apply at battle start")
+	check(relic_run.state.hand.size() == 7 and int(relic_run.state.energy) == 3,"relics apply at battle start")
 
 	var profile := SpiritSave.defaults(content)
 	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty(),"new save schema is valid")
@@ -127,13 +127,15 @@ func run() -> void:
 	check(by_cost.get(2, 0) >= 5, "at least five cards cost 2 energy, got %d" % by_cost.get(2, 0))
 	check(by_cost.get(3, 0) >= 1, "at least one card costs the full 3 energy, got %d" % by_cost.get(3, 0))
 
-	# Two of the priciest cards in the same hand should not both fit in 3 energy — that gap
-	# is the whole point of the rework, so assert it directly rather than trusting the spread.
+	# Two of the priciest cards in the same hand should not both fit in a turn-one energy
+	# pool — that gap is the whole point of the rework, so assert it directly rather than
+	# trusting the spread. Energy opens at 2 (see combat.gd end_turn), so even one 2-cost
+	# card already spends the whole pool.
 	var pricey := SpiritCombat.new(content)
 	pricey.create(50, encounter(), content.raw.startingDeck, 60)
 	pricey.state.hand = [{"uid": 910, "card_id": "spiritLance"}, {"uid": 911, "card_id": "calmWard"}]
 	check(pricey.play(0, 0), "first 2-cost card plays")
-	check(not pricey.play(1), "a second 2-cost card cannot also fit in 3 energy (%d left)" % int(pricey.state.energy))
+	check(not pricey.play(1), "a second 2-cost card cannot also fit in the turn's remaining energy (%d left)" % int(pricey.state.energy))
 
 	# Strength: unlike Focus (a one-shot burst that resets to 0 after the next attack),
 	# Strength persists for the whole battle and should still be adding damage two turns later.
