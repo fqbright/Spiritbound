@@ -72,12 +72,41 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   updated to set `camp_tab` before checking (a label/button that used to always be on screen
   is now on exactly one of 3 tabs) — see the progress log for the one this would have silently
   broken if missed. +5 new checks, 0 failures.
-- `[ ]` **D3 — 第四英雄流派 (4th hero archetype)**
-  A "持续伤害/资源循环" (DoT-stacking / resource-banking) archetype to sit alongside Fox
-  Spirit (burst), Stone Sentinel (defense), Shadow Stalker (crit/vulnerable). Needs a full
-  25-card starting deck (all 1-cost per the existing invariant), 1-2 signature cards with new
-  mechanics if the DoT hook needs one, and a `HERO_MASTERY_PERKS` row.
-  *Builds on:* `content.HERO_CLASSES` data shape, `content.HERO_MASTERY_PERKS`.
+- `[x]` **D3 — 第四英雄流派 (4th hero archetype)** — done 2026-09-15, with one known gap
+  **瘴气巫女 / Miasma Witch** (`miasma_witch`): an attrition archetype built around a new
+  status, **Poison** (`enemy.poison`) — ticks like Burn (deals its stack count as damage every
+  turn) but, unlike Burn, **never decays on its own**; only a heal or a kill clears it. Applied
+  via 2 new signature cards (`toxinDart`: 3 damage + 2 poison; `witherTouch`: 4 poison, no
+  direct damage) plus a resource-cycling `miasmaBrew` (shield + `recycleDiscard`, an existing
+  generic special, not a new one). 25-card starting deck (11 strike/8 ward/3 toxinDart/2
+  witherTouch/1 miasmaBrew), 5-level mastery track mirroring fox_spirit's shape (`max_hp` →
+  `poison_start` → `first_attack_bonus` → `poison_start` → `first_attack_bonus`), starting
+  relic `bloodJade`.
+  **Known gap, not fixed in this pass:** no unique painted portrait. `character-atlas-v3.png`
+  is a fixed 3x3 grid and all 9 cells are already claimed (3 heroes + the shared 5-enemy pool
+  + 1 spare). This hero borrows Stone Sentinel's sprite, deliberately dimmed
+  (`modulate = Color(0.6,0.6,0.6,0.55)`), with an explicit "美术资源开发中 / Art Coming Soon"
+  badge in `_hero_archetypes_section()` — chosen over either (a) silently reusing another
+  hero's face with no indication, which reads as a real bug, or (b) blocking all of D3's
+  mechanical work on an asset dependency no agent can resolve. **To actually finish this**:
+  someone needs to either commission/paint a new portrait and expand the atlas past 3x3 (or
+  add it as a standalone image + a new texture-loading path alongside `_get_character_texture`),
+  then remove `"art_pending": true` and the dimming/badge code once a real `sprite` key exists
+  for it. The map traveler avatar (`show_map()`'s `traveler.texture` line) was left un-dimmed
+  since a moving map icon has no adjacent text to explain a visual change — same caveat
+  applies there without one.
+  *Built on:* `content.HERO_CLASSES`/`HERO_MASTERY_PERKS` data shape; `_resolve_effects()`'s
+  already-fully-generic `"status"` operation needed zero changes to apply Poison — only the
+  non-decaying tick line in `combat.gd`'s `end_turn()` and a `poison_start` hero-bonus hook
+  (mirroring `burn_start`/`vulnerable_start` exactly) were new. 226/0 rules (+34, mostly a
+  per-card 1-cost loop over the new 25-card deck), UI smoke +6 checks, both suites 0 failures.
+  **Also found and spun off separately** (not fixed here, tracked as its own session): while
+  auditing the card pool, `decay_blight`/`void_curse` (the Milestone-3 curse cards) turned out
+  to live only in core.json's dead `"statuses"` array, never in `"cards"` — meaning
+  `content.card("decay_blight")` has always silently returned `{}`, so a curse card drawn into
+  a real hand would render with the wrong color and no description. Combat math is unaffected
+  (combat.gd checks card_id strings directly, never `content.card()`), which is why no test
+  caught it. Out of scope for D3; a separate task was spawned for it.
 
 ## Medium-high impact
 
@@ -187,6 +216,30 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — D3 fourth hero archetype (Miasma Witch) shipped, portrait deferred
+This is the first item on this roadmap that shipped with a **known, deliberate, documented
+gap** rather than fully finished — see the checklist entry above for the full reasoning. Short
+version: the hero-portrait pipeline (`character-atlas-v3.png`, a fixed 3x3 grid,
+`_get_character_texture()`) has no spare cell, and I have no way to generate new painted art.
+Rather than block the whole feature or silently ship a hero that looks exactly like Stone
+Sentinel, it borrows that sprite dimmed with an explicit "art coming soon" badge. If you're
+picking this up to add the real portrait: the atlas math is `cell_w = atlas.width/3`,
+`cell_h = atlas.height/3`, `Rect2(coord.x*cell_w, coord.y*cell_h, cell_w, cell_h)` — either the
+source PNG needs a 4th column/row (changing that divisor and every existing `CHAR_KEYS`
+coordinate along with it — risky, touches all 3 existing heroes and 5 enemies), or simpler:
+give Miasma Witch its own separate texture file and a small branch in
+`_get_character_texture()`/the two call sites (`show_map()`'s traveler, `_hero_archetypes_
+section()`) that checks for it before falling into the atlas path. The second option is much
+lower-risk.
+Also spun off a real, unrelated bug found while auditing the card pool (decay_blight/void_curse
+invisible to `content.card()`) as its own spawned task rather than fixing it inline — see that
+task's own commit when it lands, and check whether `ACHIEVEMENTS`' `collect_all` target (see
+the code comment right above it) needs to drop by 2 once it does.
+While building Poison, discovered `content.cards.size()` had been hardcoded to 36 in two
+places (a `test_runner.gd` assertion, and this file's D1/AGENTS.md's card-count mentions) that
+don't automatically track reality — every future card addition should grep for the literal
+count rather than assume nothing references it.
 
 ### 2026-09-15 — F1 Camp tabs shipped
 The real risk in this change wasn't the game.gd rewrite — it was that `ui_smoke.gd` had

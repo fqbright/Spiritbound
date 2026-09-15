@@ -116,13 +116,17 @@ Every one of these produced a wrong screen with no error in the log. They are th
 - A card with any `target: "opponent"` effect aims at enemies; everything else aims at the
   player. `_is_attack` (damage only) drives damage bonuses; `_targets_opponent` drives
   targeting. Conflating them either loses pure-debuff cards or wastes Focus on them.
-- 36 cards, 250 stages across 50 chapters, a four-band difficulty curve (see
-  Docs/ARCHITECTURE.md), and two enemy debuffs beyond burn/stun: `vulnerable` (+50% damage
-  taken) and `weak` (-25% damage dealt), both decaying by one enemy turn. `strength` is the
-  player-side counterpart to Focus — permanent for the battle instead of a one-shot burst —
-  and both live as generic dictionary fields (`enemy.vulnerable`, `player.strength`), not
-  special-cased branches, so a new status is usually a `desc.<name>` string plus one read
-  site, not an engine rewrite.
+- 39 cards, 250 stages across 50 chapters, a four-band difficulty curve (see
+  Docs/ARCHITECTURE.md), and three enemy debuffs beyond burn/stun: `vulnerable` (+50% damage
+  taken) and `weak` (-25% damage dealt), both decaying by one enemy turn; `poison`
+  (`enemy.poison`), Miasma Witch's signature status, deals its stack count as damage every
+  turn like Burn but — unlike Burn — never decays on its own, only clearing on a heal or a
+  kill. `strength` is the player-side counterpart to Focus — permanent for the battle instead
+  of a one-shot burst — and all of these live as generic dictionary fields (`enemy.vulnerable`,
+  `enemy.poison`, `player.strength`), not special-cased branches, so a new status is usually a
+  `desc.<name>` string plus one read site, not an engine rewrite (poison itself was exactly
+  that: one non-decaying tick line in `end_turn()`, reusing the fully generic `status` effect
+  operation for the apply side — see `_resolve_effects()`'s `"status"` case, unchanged).
 - `_card_build_score` in `game.gd` drives both "smart-build" and "smart-add" and has to
   reflect what a card's effects are actually worth, not just its rarity — see the
   "250-stage difficulty curve" section in Docs/ARCHITECTURE.md for what went wrong the one
@@ -183,11 +187,20 @@ The visual presentation blends high-detail painted assets with procedural vector
     - `rest_smith`: Spirit Smith (`show_deck_upgrade`) — permanently upgrade a selected card to `+1`.
   - **Shop Oblivion Service (`ShopPurgeBtn`)**: Card removal service available for ◆50 gold in town.
   - **Holographic Card Foil Shader (`assets/shaders/card_foil.gdshader`)**: Real-time GLSL CanvasItem shader rendering iridescent sweeping rainbow foil reflection across Rare and Upgraded (`+1`) cards.
-  - **3 Hero Archetypes / Classes (`content.HERO_CLASSES`)**:
+  - **4 Hero Archetypes / Classes (`content.HERO_CLASSES`)**:
     - **Fox Spirit Master (灵狐行者 / `fox_spirit`)**: Agile fire/gale caster with `foxCharm` and `foxfire` combos.
     - **Stone Sentinel (岩铠卫士 / `stone_sentinel`)**: Immovable fortress with `ancientSeed`, heavy armor, and `stoneBreaker` shield conversion.
     - **Shadow Stalker (夜影刺客 / `shadow_stalker`)**: Lethal critical assassin with `starShard`, `moonfang`, and `cinderHex`.
-    - All 3 class starting decks strictly follow the 25-card, all 1-cost balance rule.
+    - **Miasma Witch (瘴气巫女 / `miasma_witch`)**: Attrition mage built around Poison — a
+      non-decaying DoT status (`enemy.poison`, ticks every turn until healed or the target
+      dies, unlike Burn's 1/turn decay) applied via `toxinDart`/`witherTouch`. Has no unique
+      painted portrait yet — the character atlas is a fixed 3x3 grid and all 9 cells are
+      already claimed by the other 3 heroes and the shared enemy pool, so it borrows Stone
+      Sentinel's sprite, dimmed, with an explicit "美术资源开发中" badge in the hero-select
+      panel (`_hero_archetypes_section()`) rather than silently pretending to be finished. A
+      real portrait needs either a new atlas cell (expanding past 3x3) or a standalone image
+      asset before that placeholder can go away — see Docs/GROWTH_ROADMAP.md's D3 entry.
+    - All 4 class starting decks strictly follow the 25-card, all 1-cost balance rule.
     - Selecting a hero class in Camp updates the traveler map avatar and loadout.
   - **Endless Abyss Mode (`show_abyss` / `begin_abyss_battle`)**: Infinite gauntlet where enemies and gold rewards scale by floor (`content.abyss_encounter(floor)`). Tracks `profile.abyss_floor` and `profile.abyss_record`.
 

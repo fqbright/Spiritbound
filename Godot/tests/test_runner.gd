@@ -450,7 +450,7 @@ func run() -> void:
 	for c in content.cards:
 		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
 			invalid_cards += 1
-	check(invalid_cards == 0 and content.cards.size() == 36, "all 36 cards have valid costs and effects")
+	check(invalid_cards == 0 and content.cards.size() == 39, "all 39 cards have valid costs and effects")
 
 	var invalid_encs := 0
 	for enc in content.encounters:
@@ -519,8 +519,8 @@ func run() -> void:
 	check(missing_p2_strings == 0, "all Phase 2 UI strings have bilingual translations")
 
 	# Phase 3 checks: Hero Archetypes / Classes
-	check(content.HERO_CLASSES.size() == 3, "three hero archetype classes defined")
-	var class_ids := ["fox_spirit", "stone_sentinel", "shadow_stalker"]
+	check(content.HERO_CLASSES.size() == 4, "four hero archetype classes defined")
+	var class_ids := ["fox_spirit", "stone_sentinel", "shadow_stalker", "miasma_witch"]
 	for cid in class_ids:
 		var hero: Dictionary = content.hero_class(cid)
 		check(hero.id == cid, "hero class %s is accessible" % cid)
@@ -800,6 +800,42 @@ func run() -> void:
 	check(same_ids, "the same day seed always rolls the identical 3-tag trio")
 	var modifier_a := content.daily_trial_modifier(777)
 	check(not str(modifier_a.get("name", "")).is_empty() and not str(modifier_a.get("detail", "")).is_empty(), "daily_trial_modifier carries display text so show_battle()'s modifier badge doesn't read a missing property")
+
+	# Growth roadmap D3: Miasma Witch and the Poison status. Poison ticks like Burn (deals its
+	# stack count at turn start) but deliberately never decays on its own — that's the entire
+	# point of the archetype, so it gets its own dedicated coverage rather than piggybacking on
+	# the existing burn tests.
+	var miasma := content.hero_class("miasma_witch")
+	check(miasma.id == "miasma_witch", "miasma_witch hero class is accessible")
+	check(miasma.deck.size() == 25, "miasma_witch starting deck has exactly 25 cards")
+	for card_id in miasma.deck:
+		check(int(content.card(card_id).cost) == 1, "miasma_witch starting card %s is 1-cost" % card_id)
+
+	var poison_battle := SpiritCombat.new(content)
+	poison_battle.create(400, encounter(100, 0), Array(content.raw.startingDeck), 60)
+	force_attack(poison_battle)
+	poison_battle.state.enemies[0].poison = 3
+	var poison_hp_before: int = int(poison_battle.state.enemies[0].health)
+	poison_battle.end_turn()
+	check(int(poison_battle.state.enemies[0].health) == poison_hp_before - 3, "poison deals its stack count as damage at turn end")
+	check(int(poison_battle.state.enemies[0].poison) == 3, "poison does not decay on its own, unlike burn")
+
+	# toxinDart: 3 damage + 2 poison in one card.
+	var toxin_battle := SpiritCombat.new(content)
+	toxin_battle.create(401, encounter(100, 0), Array(content.raw.startingDeck), 60)
+	_force_hand(toxin_battle, "toxinDart")
+	var toxin_amount: int = int(content.card("toxinDart").effects[0].amount)
+	toxin_battle.play(0, 0)
+	check(int(toxin_battle.state.enemies[0].health) == 100 - toxin_amount, "toxinDart deals its direct damage")
+	check(int(toxin_battle.state.enemies[0].poison) == 2, "toxinDart also applies 2 poison")
+
+	# Mastery: poison_start applies to all enemies at battle create(), including adds.
+	var miasma_bonuses := content.mastery_bonuses("miasma_witch", 4)
+	check(int(miasma_bonuses.get("poison_start", 0)) == 2, "miasma_witch level 4 sums both poison_start perks (1 + 1 = 2)")
+	var poison_start_battle := SpiritCombat.new(content)
+	poison_start_battle.create(402, encounter(100, 0, 1), Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"poison_start": 2})
+	check(int(poison_start_battle.state.enemies[0].poison) == 2, "poison_start hero bonus applies to the boss at battle start")
+	check(int(poison_start_battle.state.enemies[1].poison) == 2, "poison_start hero bonus applies to adds too")
 
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)

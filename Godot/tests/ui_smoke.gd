@@ -1254,6 +1254,25 @@ func _run() -> void:
 	game.show_map()
 	check(game.traveler != null, "traveler exists on map with new hero class")
 
+	section("== growth roadmap D3: miasma witch (4th hero) ==")
+	game.camp_tab = "character"
+	game.show_camp()
+	await process_frame
+	check(_find_label_text(game.root, game.content.hero_name(game.content.hero_class("miasma_witch"), game.lang)), "Miasma Witch's name renders in the hero archetypes list")
+	check(_find_label_text(game.root, game.content.ui("ui.hero_art_pending", game.lang)), "the art-pending badge renders for the hero borrowing a placeholder sprite")
+	var miasma: Dictionary = game.content.hero_class("miasma_witch")
+	game.profile.hero_class = "miasma_witch"
+	game.profile.deck = miasma.deck.duplicate()
+	for cid in miasma.deck:
+		game.profile.collection[cid] = maxi(int(game.profile.collection.get(cid, 0)), miasma.deck.count(cid))
+	SpiritSave.write(game.profile)
+	check(game.profile.hero_class == "miasma_witch", "switched hero class to miasma_witch")
+	game.begin_battle(0)
+	await process_frame
+	check(game.combat.state.energy == 2, "a fresh battle with miasma_witch at mastery level 0 still starts with two energy (no free perks)")
+	game._grant_mastery_xp(800)
+	check(game.content.mastery_level_for_xp(int(game.profile.hero_masteries.miasma_witch.xp)) == 5, "miasma_witch can reach mastery level 5 like any other hero")
+
 	section("== repeated stage rewards & event claiming ==")
 	check(not game._is_stage_event_claimed(42), "unvisited stage 42 event is not claimed")
 	game._mark_stage_event_claimed(42)

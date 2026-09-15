@@ -1193,7 +1193,7 @@ func _pass_turn() -> void:
 const KEYWORD_KEYS: Array[String] = [
 	"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
 	"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
-	"echo", "siphon", "resonance",
+	"echo", "siphon", "resonance", "poison",
 ]
 
 # Bumps progress on every not-yet-complete quest of this type in both lists. Called from
@@ -6031,8 +6031,9 @@ func _hero_archetypes_section() -> Control:
 	var current_class_id: String = str(profile.get("hero_class", "fox_spirit"))
 	for h in content.HERO_CLASSES:
 		var is_selected: bool = h.id == current_class_id
+		var art_pending: bool = bool(h.get("art_pending", false))
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(340, 104)
+		panel.custom_minimum_size = Vector2(340, 116 if art_pending else 104)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var border_col: Color = GOLD if is_selected else Color("1a3d44")
 		panel.add_theme_stylebox_override("panel", _panel(Color("10242b") if not is_selected else Color("153038"), 12, border_col))
@@ -6053,6 +6054,10 @@ func _hero_archetypes_section() -> Control:
 		spr.custom_minimum_size = Vector2(44, 44)
 		spr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		spr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		# A borrowed portrait (see art_pending below) is deliberately desaturated/dimmed so it
+		# never reads as "this new hero secretly looks like Stone Sentinel" — it reads as
+		# "placeholder," which is what it is.
+		if art_pending: spr.modulate = Color(0.6, 0.6, 0.6, 0.55)
 		portrait.add_child(spr)
 		row.add_child(portrait)
 
@@ -6065,6 +6070,13 @@ func _hero_archetypes_section() -> Control:
 		var name_str: String = content.hero_name(h, lang)
 		texts.add_child(_label(name_str + ("  ✓" if is_selected else ""), 13, JADE if is_selected else TEXT))
 		texts.add_child(_label(content.hero_desc(h, lang), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		# This hero's mechanics and deck are fully implemented; only a unique painted portrait
+		# is missing (the character atlas is a fixed 3x3 grid and all 9 cells are already
+		# spoken for by the other 3 heroes and their shared enemy pool — see
+		# Docs/GROWTH_ROADMAP.md's D3 note for what a real fix needs). Surfacing that honestly
+		# in the UI beats silently reusing another hero's face and hoping nobody notices.
+		if art_pending:
+			texts.add_child(_label(t("ui.hero_art_pending"), 8, Color("ff9868")))
 
 		var hero_xp: int = int(profile.get("hero_masteries", {}).get(h.id, {}).get("xp", 0))
 		var hero_level: int = content.mastery_level_for_xp(hero_xp)

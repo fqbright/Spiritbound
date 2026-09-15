@@ -57,6 +57,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	for enemy in state.enemies:
 		if int(hero_bonuses.get("burn_start", 0)) > 0: enemy.burn += int(hero_bonuses.burn_start)
 		if int(hero_bonuses.get("vulnerable_start", 0)) > 0: enemy.vulnerable += int(hero_bonuses.vulnerable_start)
+		if int(hero_bonuses.get("poison_start", 0)) > 0: enemy.poison = int(enemy.get("poison", 0)) + int(hero_bonuses.poison_start)
 	# Turn 1 is strictly 2 energy and 5 cards under all conditions, except cursedTome's own
 	# explicit "+1 draw / -2 HP every turn" — that trade applies from turn 1 onward, same as
 	# titanBell's and chaosPrism's battle-start effects above.
@@ -202,6 +203,11 @@ func end_turn() -> void:
 			var burn_damage: int = enemy.burn + (1 if _has_relic("emberCore") else 0)
 			_damage_enemy(enemy_index,burn_damage,false)
 			enemy.burn = maxi(0,enemy.burn - 1)
+		# Poison is Burn's non-decaying counterpart — Miasma Witch's whole identity is that it
+		# keeps ticking every turn until the target is healed or dies, not worn down by 1 each
+		# turn the way Burn is. Deliberately no "poison = maxi(0, poison - 1)" line here.
+		if int(enemy.get("poison", 0)) > 0 and enemy.health > 0:
+			_damage_enemy(enemy_index, int(enemy.poison), false)
 		if int(enemy.get("vulnerable",0)) > 0: enemy.vulnerable = maxi(0, int(enemy.vulnerable) - 1)
 		if int(enemy.get("weak",0)) > 0: enemy.weak = maxi(0, int(enemy.weak) - 1)
 		if state.phase != "player": return
@@ -367,7 +373,7 @@ func _shuffle(cards: Array) -> void:
 		var value = cards[i]; cards[i] = cards[j]; cards[j] = value
 
 func _enemy(id: String, title: String, title_en: String, art: String, health: int, damage: int, mechanics: Dictionary) -> Dictionary:
-	return {"id":id,"name":title,"name_en":title_en,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
+	return {"id":id,"name":title,"name_en":title_en,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"poison":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
 
 func _is_attack(card: Dictionary) -> bool:
 	for effect in card.effects:

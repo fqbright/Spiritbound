@@ -242,6 +242,23 @@ const HERO_CLASSES = [
 			"moonfang", "moonfang",
 			"cinderHex"
 		]
+	},
+	{
+		"id": "miasma_witch",
+		"name": "瘴气巫女",
+		"name_en": "Miasma Witch",
+		"desc": "操控剧毒瘴气的诡异法师，让敌人在持续侵蚀中衰竭。擅长毒素叠加与资源回收。",
+		"desc_en": "An eerie mage who commands toxic miasma, wearing enemies down through relentless decay. Specializes in stacking Poison and recycling resources.",
+		"sprite": "sentinel",
+		"art_pending": true,
+		"relic": "bloodJade",
+		"deck": [
+			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
+			"toxinDart", "toxinDart", "toxinDart",
+			"witherTouch", "witherTouch",
+			"miasmaBrew"
+		]
 	}
 ]
 
@@ -337,7 +354,12 @@ const ACHIEVEMENTS = [
 	{"id":"greatboss5","kind":"stat","stat":"defeat_great_boss","target":5,"nameKey":"ach.greatboss5.name","descKey":"ach.greatboss5.desc"},
 	{"id":"rune_play50","kind":"stat","stat":"play_runed_cards","target":50,"nameKey":"ach.rune_play50.name","descKey":"ach.rune_play50.desc"},
 	{"id":"collect20","kind":"card_collection","target":20,"nameKey":"ach.collect20.name","descKey":"ach.collect20.desc"},
-	{"id":"collect_all","kind":"card_collection","target":34,"nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	# target == cards.size() (all of them collectible today, since decay_blight/void_curse
+	# currently live in core.json's "statuses" array rather than "cards" — see the spawned
+	# task about moving them). If that move happens, this target must drop by 2 (or the
+	# card_collection progress reader must start excluding rarity=="Curse"), or 100% collection
+	# becomes permanently impossible.
+	{"id":"collect_all","kind":"card_collection","target":39,"nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
@@ -371,6 +393,13 @@ const HERO_MASTERY_PERKS = {
 		{"level":3,"kind":"first_attack_bonus","value":3,"nameKey":"mastery.shadow.3.name","descKey":"mastery.shadow.3.desc"},
 		{"level":4,"kind":"vulnerable_start","value":1,"nameKey":"mastery.shadow.4.name","descKey":"mastery.shadow.4.desc"},
 		{"level":5,"kind":"first_attack_bonus","value":4,"nameKey":"mastery.shadow.5.name","descKey":"mastery.shadow.5.desc"},
+	],
+	"miasma_witch": [
+		{"level":1,"kind":"max_hp","value":4,"nameKey":"mastery.miasma.1.name","descKey":"mastery.miasma.1.desc"},
+		{"level":2,"kind":"poison_start","value":1,"nameKey":"mastery.miasma.2.name","descKey":"mastery.miasma.2.desc"},
+		{"level":3,"kind":"first_attack_bonus","value":2,"nameKey":"mastery.miasma.3.name","descKey":"mastery.miasma.3.desc"},
+		{"level":4,"kind":"poison_start","value":1,"nameKey":"mastery.miasma.4.name","descKey":"mastery.miasma.4.desc"},
+		{"level":5,"kind":"first_attack_bonus","value":3,"nameKey":"mastery.miasma.5.name","descKey":"mastery.miasma.5.desc"},
 	],
 }
 
@@ -813,6 +842,7 @@ const UI_TEXT = {
 	"desc.vulnerable": {"zh-Hans":"施加%d回合易伤（受到伤害+50%%）", "en":"Apply %d Vulnerable (+50%% damage taken)"},
 	"desc.weak": {"zh-Hans":"施加%d回合虚弱（造成伤害-25%%）", "en":"Apply %d Weak (-25%% damage dealt)"},
 	"desc.strength": {"zh-Hans":"获得%d点本场力量（攻击牌永久+伤害）", "en":"Gain %d Strength this battle (permanent attack bonus)"},
+	"desc.poison": {"zh-Hans":"施加%d层毒素（每回合造成等量伤害，不会自然衰减）", "en":"Apply %d Poison (deals damage equal to stacks each turn, does not decay on its own)"},
 	"desc.energy": {"zh-Hans":"获得%d点能量", "en":"Gain %d Energy"},
 	"desc.special.pierce": {"zh-Hans":"无视护盾", "en":"Pierces Shield"},
 	"desc.special.cleave": {"zh-Hans":"命中所有敌人", "en":"Hits all enemies"},
@@ -831,6 +861,7 @@ const UI_TEXT = {
 	"kw.vulnerable": {"zh-Hans":"易伤：受到的伤害增加50%，每敌方回合递减1层。", "en":"Vulnerable: Take 50% more damage. Decays by 1 each enemy turn."},
 	"kw.weak": {"zh-Hans":"虚弱：造成的伤害减少25%，每敌方回合递减1层。", "en":"Weak: Deal 25% less damage. Decays by 1 each enemy turn."},
 	"kw.strength": {"zh-Hans":"力量：永久增加攻击牌的伤害，持续整场战斗。", "en":"Strength: Permanently increases attack card damage for this battle."},
+	"kw.poison": {"zh-Hans":"毒素：每回合开始对目标造成等同层数的伤害，且不会像灼烧一样自然衰减，只能被治疗或击杀清除。", "en":"Poison: Deals damage equal to its stacks at the start of each turn. Unlike Burn, it never decays on its own — only healing or a kill clears it."},
 	"kw.pierce": {"zh-Hans":"贯穿：无视目标护盾，直接造成伤害。", "en":"Pierce: Ignores target's Shield, dealing damage directly to HP."},
 	"kw.cleave": {"zh-Hans":"横扫：同时命中所有存活的敌人。", "en":"Cleave: Hits all living enemies simultaneously."},
 	"kw.critical": {"zh-Hans":"暴击：造成双倍伤害。", "en":"Critical: Deals double damage."},
@@ -943,6 +974,17 @@ const UI_TEXT = {
 	"mastery.shadow.4.desc": {"zh-Hans":"战斗开始额外施加 1 层易伤（总计 2 层）", "en":"+1 more Vulnerable at battle start (2 total)"},
 	"mastery.shadow.5.name": {"zh-Hans":"夜影绝杀", "en":"Shadow Execution"},
 	"mastery.shadow.5.desc": {"zh-Hans":"每回合首次攻击牌伤害额外 +4（总计 +7）", "en":"First attack each turn deals a further +4 damage (total +7)"},
+	"mastery.miasma.1.name": {"zh-Hans":"瘴气淬体", "en":"Miasma-Hardened"},
+	"mastery.miasma.1.desc": {"zh-Hans":"最大生命 +4", "en":"+4 Max HP"},
+	"mastery.miasma.2.name": {"zh-Hans":"腐蚀之息", "en":"Corrosive Breath"},
+	"mastery.miasma.2.desc": {"zh-Hans":"战斗开始时对所有敌人施加 1 层毒素", "en":"Apply 1 Poison to all enemies at battle start"},
+	"mastery.miasma.3.name": {"zh-Hans":"毒尖锋芒", "en":"Envenomed Edge"},
+	"mastery.miasma.3.desc": {"zh-Hans":"每回合首次攻击牌伤害 +2", "en":"First attack each turn deals +2 damage"},
+	"mastery.miasma.4.name": {"zh-Hans":"瘟疫蔓延", "en":"Spreading Plague"},
+	"mastery.miasma.4.desc": {"zh-Hans":"战斗开始额外施加 1 层毒素（总计 2 层）", "en":"+1 more Poison at battle start (2 total)"},
+	"mastery.miasma.5.name": {"zh-Hans":"腐灭一击", "en":"Blight Strike"},
+	"mastery.miasma.5.desc": {"zh-Hans":"每回合首次攻击牌伤害额外 +3（总计 +5）", "en":"First attack each turn deals a further +3 damage (total +5)"},
+	"ui.hero_art_pending": {"zh-Hans":"美术资源开发中", "en":"Art Coming Soon"},
 	"ui.daily_trial_title": {"zh-Hans":"每日试炼", "en":"Daily Trial"},
 	"ui.daily_trial_sub": {"zh-Hans":"15 关封印挑战 · 每日重置", "en":"A 15-stage sealed gauntlet, resetting daily"},
 	"ui.daily_trial_modifiers_title": {"zh-Hans":"今日封印", "en":"Today's Seals"},

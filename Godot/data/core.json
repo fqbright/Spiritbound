@@ -704,6 +704,65 @@
           "status": "vulnerable"
         }
       ]
+    },
+    {
+      "id": "toxinDart",
+      "nameKey": "card.toxinDart",
+      "rarity": "Common",
+      "pool": "Universal",
+      "kind": "Attack",
+      "element": "poison",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "amount": 2,
+          "status": "poison"
+        }
+      ]
+    },
+    {
+      "id": "witherTouch",
+      "nameKey": "card.witherTouch",
+      "rarity": "Starter",
+      "pool": "MiasmaWitch",
+      "kind": "Tactic",
+      "element": "poison",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "opponent",
+          "amount": 4,
+          "status": "poison"
+        }
+      ]
+    },
+    {
+      "id": "miasmaBrew",
+      "nameKey": "card.miasmaBrew",
+      "rarity": "Uncommon",
+      "pool": "MiasmaWitch",
+      "kind": "Skill",
+      "element": "poison",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 4
+        }
+      ],
+      "special": "recycleDiscard"
     }
   ],
   "statuses": [
@@ -943,7 +1002,11 @@
       "card.stormcaller": "Stormcaller",
       "card.titanForm": "Titan Form",
       "card.spiritNova": "Spirit Nova",
-      "card.moltenCore": "Molten Core"
+      "card.moltenCore": "Molten Core",
+      "element.poison": "POISON",
+      "card.toxinDart": "Toxin Dart",
+      "card.witherTouch": "Wither Touch",
+      "card.miasmaBrew": "Miasma Brew"
     },
     "zh-Hans": {
       "card.strike": "击打",
@@ -1107,7 +1170,11 @@
       "card.stormcaller": "唤雷者",
       "card.titanForm": "巨灵化身",
       "card.spiritNova": "灵光新星",
-      "card.moltenCore": "熔核之心"
+      "card.moltenCore": "熔核之心",
+      "element.poison": "毒",
+      "card.toxinDart": "毒刺",
+      "card.witherTouch": "凋亡之触",
+      "card.miasmaBrew": "瘴气调息"
     }
   }
 }
