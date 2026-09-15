@@ -73,7 +73,16 @@ const RELICS = [
 	{"id":"thunderSeal","icon":"ϟ","icon_mark":"bolt","color":"ffe08a","zh":"雷纹印","en":"Thunder Seal","detail":"每 3 回合开始时获得 2 点能量。","detail_en":"Gain 2 Energy every third turn."},
 	{"id":"mirrorScale","icon":"◈","icon_mark":"rings","color":"b9a2ff","zh":"镜鳞甲","en":"Mirror Scale","detail":"回合结束时保留一半护盾。","detail_en":"Keep half of your Shield at end of turn."},
 	{"id":"emberCore","icon":"♨","icon_mark":"cross_blade","color":"ff9868","zh":"烬心","en":"Ember Core","detail":"燃烧每层额外造成 1 点伤害。","detail_en":"Burn deals 1 extra damage per stack."},
+	{"id":"cursedTome","icon":"🕮","icon_mark":"leaf","color":"b359ff","zh":"死灵禁典","en":"Cursed Tome","detail":"每回合多抽 1 张牌，但每回合受到 2 点伤害。","detail_en":"Draw 1 additional card each turn, but take 2 damage each turn."},
+	{"id":"titanBell","icon":"🔔","icon_mark":"shield_mark","color":"ffd700","zh":"泰坦古钟","en":"Titan Bell","detail":"最大生命 +20，战斗开始获 15 护盾。每两回合能量上限 -1。","detail_en":"+20 Max HP, start battle with 15 Shield. -1 Energy every 2 turns."},
+	{"id":"chaosPrism","icon":"💎","icon_mark":"sparkle","color":"ff4081","zh":"混沌棱镜","en":"Chaos Prism","detail":"每次攻击造成伤害时施加 1 层易伤，但敌人初始护盾 +6。","detail_en":"Attacks apply 1 Vulnerable, but enemies start with +6 Shield."},
 ]
+
+# High-stakes, high-impact relics reserved for Great Boss kills specifically — a regular
+# boss draws from RELICS minus this list, so these three stay rare and always feel like the
+# reward for the hardest fight in a chapter, not something that can also drop from a
+# mid-chapter boss.
+const BOSS_RELIC_IDS = ["cursedTome", "titanBell", "chaosPrism"]
 
 const RUNES = [
 	{"id":"swift","icon":"»","icon_mark":"chevrons","zh":"迅捷","en":"Swift","detail":"每回合第一次使用免费（返还其能量费用）。","detail_en":"First play each turn is free (refunds its Energy cost).","color":"78e9ff"},
@@ -87,6 +96,49 @@ const RUNES = [
 	{"id":"execute","icon":"✕","icon_mark":"cross_blade","zh":"处决","en":"Execute","detail":"目标低于 25% 生命时伤害 +50%。","detail_en":"Deal +50% damage if target is below 25% HP.","color":"ff7373"},
 	{"id":"resonance","icon":"◈","icon_mark":"wave","zh":"共鸣","en":"Resonance","detail":"本回合每张同属性牌使数值 +1。","detail_en":"+1 value per same-element card played this turn.","color":"b9a2ff"},
 ]
+
+const RUNE_SETS = [
+	{
+		"id": "set_flame",
+		"name": "烈焰共鸣",
+		"name_en": "Flame Resonance",
+		"desc": "命中灼烧目标时造成额外 +3 点伤害。",
+		"desc_en": "Attacks against Burning targets deal +3 bonus damage.",
+		"runes": ["burning", "execute"],
+		"color": "ff784d"
+	},
+	{
+		"id": "set_gale",
+		"name": "疾风共鸣",
+		"name_en": "Gale Resonance",
+		"desc": "每回合首次过牌或循环时回复 1 点能量。",
+		"desc_en": "Gain 1 Energy on your first cycle/card-draw each turn.",
+		"runes": ["swift", "cycle"],
+		"color": "6ee3ff"
+	},
+	{
+		"id": "set_stone",
+		"name": "磐石共鸣",
+		"name_en": "Stone Resonance",
+		"desc": "获得护盾时有 25% 几率使护盾值提升 50%。",
+		"desc_en": "25% chance to gain +50% extra Shield on shield actions.",
+		"runes": ["guardian", "siphon"],
+		"color": "8affc2"
+	}
+]
+
+func active_rune_sets(card_runes: Dictionary) -> Array:
+	var socketed_runes: Array = card_runes.values()
+	var active := []
+	for s in RUNE_SETS:
+		var has_all := true
+		for r in s.runes:
+			if not socketed_runes.has(r):
+				has_all = false
+				break
+		if has_all:
+			active.append(s.id)
+	return active
 
 func _init() -> void:
 	var file := FileAccess.open("res://data/core.json", FileAccess.READ)
@@ -665,6 +717,17 @@ const UI_TEXT = {
 	"boon.wind_stride.desc": {"zh-Hans":"每回合开始时额外抽取 1 张卡牌", "en":"Draw 1 additional card at the start of each turn."},
 	"boon.golden_fortune.name": {"zh-Hans":"深渊淘金", "en":"Abyssal Greed"},
 	"boon.golden_fortune.desc": {"zh-Hans":"深渊金币奖励提升 50%", "en":"Increase Abyss gold rewards by 50%."},
+	"desc.decay_blight": {"zh-Hans":"消耗此牌。回合结束若在手牌中，受到 3 点伤害。", "en":"Exhausts on play. If in hand at turn end, take 3 damage."},
+	"desc.void_curse": {"zh-Hans":"无法打出。抽到时受到 2 点伤害。回合结束时自动消耗。", "en":"Unplayable. When drawn, take 2 damage. Exhausts at turn end."},
+	"ui.rune_resonance_title": {"zh-Hans":"符文共鸣套装", "en":"Rune Resonance Sets"},
+	"ui.rune_resonance_active": {"zh-Hans":"✦ 已激活共鸣", "en":"✦ Resonance Active"},
+	"ui.rune_resonance_inactive": {"zh-Hans":"未激活（需镶嵌对应符文）", "en":"Inactive (Socket required runes)"},
+	"set.flame.name": {"zh-Hans":"烈焰共鸣", "en":"Flame Resonance"},
+	"set.flame.desc": {"zh-Hans":"攻击命中灼烧目标时造成额外 +3 点伤害", "en":"Attacks against Burning targets deal +3 bonus damage"},
+	"set.gale.name": {"zh-Hans":"疾风共鸣", "en":"Gale Resonance"},
+	"set.gale.desc": {"zh-Hans":"每回合首次过牌或循环时回复 1 点能量", "en":"Gain 1 Energy on your first cycle/card-draw each turn"},
+	"set.stone.name": {"zh-Hans":"磐石共鸣", "en":"Stone Resonance"},
+	"set.stone.desc": {"zh-Hans":"获得护盾时有 25% 几率使护盾值提升 50%", "en":"25% chance to gain +50% extra Shield on shield actions"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

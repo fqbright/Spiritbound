@@ -26,13 +26,25 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
 		"boons":modifier.get("boons",[]).duplicate(),
+		"rune_sets":content.active_rune_sets(card_runes),
+		"gale_used":false,
 		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
 		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier
 	}
 	if equipment.has("jadePlate"): state.player.shield += 8
 	if equipment.has("focusCharm"): state.player.focus += 1
-	# Turn 1 is strictly 2 energy and 5 cards under all conditions.
-	_draw(5)
+	if _has_relic("titanBell"):
+		state.player.max_health += 20
+		state.player.health += 20
+		state.player.shield += 15
+	if _has_relic("chaosPrism"):
+		for enemy in state.enemies:
+			enemy.shield += 6
+	# Turn 1 is strictly 2 energy and 5 cards under all conditions, except cursedTome's own
+	# explicit "+1 draw / -2 HP every turn" — that trade applies from turn 1 onward, same as
+	# titanBell's and chaosPrism's battle-start effects above.
+	_draw(5 + (1 if _has_relic("cursedTome") else 0))
+	if _has_relic("cursedTome"): _damage_player(2)
 	_plan_intents()
 	return state
 
@@ -86,7 +98,9 @@ func _execute_intent(enemy_index: int) -> void:
 			emit_signal("event","intent",{"enemy":enemy_index,"kind":kind,"amount":int(intent.amount)})
 		"curse":
 			state.player.burn += int(intent.amount)
-			emit_signal("event","intent",{"enemy":enemy_index,"kind":kind,"amount":int(intent.amount)})
+			var curse_id := "decay_blight" if rng.randf() < 0.5 else "void_curse"
+			state.discard.append({"card_id": curse_id})
+			emit_signal("event","intent",{"enemy":enemy_index,"kind":kind,"amount":int(intent.amount),"curse":curse_id})
 		_:
 			var amount := int(intent.amount)
 			if kind == "attack_defend": enemy.shield += int(intent.get("shield", 0))
@@ -121,6 +135,9 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true
 	if card.get("kind","") == "Tactic" and state.equipment.has("moonStaff") and not state.moon_used: state.energy += 1; state.moon_used = true
+	if state.get("rune_sets", []).has("set_gale") and not state.gale_used and (rune == "cycle" or _has_draw_effect(card)):
+		state.energy += 1
+		state.gale_used = true
 	state.hand.remove_at(hand_index)
 	if rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
 	elif card.exhaust: state.exhaust.append(instance)
@@ -181,19 +198,42 @@ func end_turn() -> void:
 			state.phase = "lost"
 			return
 
+	# Curse cards punish holding onto them rather than resolving on their own: decay_blight
+	# pokes for 3 every turn it survives in hand (deliberately does NOT clear itself — playing
+	# it for its own exhaust, or a Purify Altar/Shop Purge, is the actual way to get rid of
+	# it), while void_curse is already unplayable at 99 cost and just clears itself out.
+	for instance in state.hand:
+		if str(instance.card_id) == "decay_blight":
+			_damage_player(3)
+			if state.phase != "player": return
+	var kept_hand: Array = []
+	for instance in state.hand:
+		if str(instance.card_id) == "void_curse": state.exhaust.append(instance)
+		else: kept_hand.append(instance)
+	state.hand = kept_hand
+
 	state.turn += 1
 	# Energy opens at 2 and climbs by 1 every two turns (turns 1-2 -> 2, 3-4 -> 3, 5-6 -> 4, ...)
 	# instead of a flat amount, so a long fight gradually loosens up rather than staying as
-	# tight on turn 20 as it was on turn 1.
-	state.energy = 2 + int((state.turn - 1) / 2)
+	# tight on turn 20 as it was on turn 1. titanBell trades that growth away entirely (its
+	# own "-1 energy cap every 2 turns" exactly cancels the climb, floored at the opening 2
+	# rather than actually going negative) in exchange for the big battle-start HP/shield
+	# it already grants in create().
+	var energy_growth: int = int((state.turn - 1) / 2)
+	if _has_relic("titanBell"): energy_growth = 0
+	state.energy = 2 + energy_growth
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
-	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.elements = {}
-	# A fixed 2-card draw each turn (+1 if wind stride boon active).
-	_draw(2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0))
+	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}
+	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome —
+	# its own -2 HP cost applies every turn it is held, same as the turn-1 setup above).
+	_draw(2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0))
+	if _has_relic("cursedTome"):
+		_damage_player(2)
+		if state.phase != "player": return
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 
@@ -208,9 +248,24 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					if state.enemies[index].health <= 0: continue
 					var execute := 1.5 if state.runes.get(card.id,"") == "execute" and state.enemies[index].health <= state.enemies[index].max_health * .25 else 1.0
 					var critical := 2 if card.get("special","") == "critical" else 1
-					dealt += _damage_enemy(index,int(round(amount * execute * critical)),card.get("special","") == "pierce" or state.equipment.has("stoneSpear"))
+					# Flame Resonance rewards hitting a target that is already burning, rather
+					# than boosting burn's own damage tick — it only applies to a card actually
+					# landing a hit, checked per target since cleave can hit a mix of burning
+					# and non-burning enemies in the same swing.
+					var flame_bonus := 3 if state.get("rune_sets", []).has("set_flame") and int(state.enemies[index].get("burn", 0)) > 0 else 0
+					var hit := _damage_enemy(index,int(round(amount * execute * critical)) + flame_bonus,card.get("special","") == "pierce" or state.equipment.has("stoneSpear"))
+					dealt += hit
+					# chaosPrism's payoff for the +6 enemy shield it hands out at battle start:
+					# every attack that actually lands stacks Vulnerable, snowballing the rest
+					# of the fight once that opening shield is chewed through.
+					if hit > 0 and _has_relic("chaosPrism") and state.enemies[index].health > 0:
+						state.enemies[index].vulnerable = int(state.enemies[index].get("vulnerable", 0)) + 1
 			"shield":
-				state.player.shield += amount
+				var shield_gain := amount
+				if state.get("rune_sets", []).has("set_stone") and rng.randf() < 0.25:
+					shield_gain = int(round(shield_gain * 1.5))
+					emit_signal("event","rune_set",{"id":"set_stone"})
+				state.player.shield += shield_gain
 				if state.equipment.has("tideCharm") and not state.tide_used:
 					state.tide_used = true
 					_draw(1)
@@ -275,8 +330,16 @@ func _draw(count: int) -> void:
 			state.discard.clear()
 			_shuffle(state.draw)
 			if _has_relic("windChime") and state.hand.size() < 10 and not state.draw.is_empty():
-				state.hand.append(state.draw.pop_back())
-		state.hand.append(state.draw.pop_back())
+				_draw_one()
+		_draw_one()
+
+# Pulled out of _draw's loop body so both the normal draw and windChime's bonus draw run the
+# same "a curse card punishes you the moment it's drawn" check exactly once per card, instead
+# of duplicating it at both call sites.
+func _draw_one() -> void:
+	var instance: Dictionary = state.draw.pop_back()
+	state.hand.append(instance)
+	if str(instance.card_id) == "void_curse": _damage_player(2)
 
 func _shuffle(cards: Array) -> void:
 	for i in range(cards.size() - 1,0,-1):
@@ -297,6 +360,14 @@ func _is_attack(card: Dictionary) -> bool:
 func _targets_opponent(card: Dictionary) -> bool:
 	for effect in card.effects:
 		if effect.get("target", "") == "opponent": return true
+	return false
+
+# Gale Resonance's "first cycle/draw each turn" bonus needs to recognize plain draw cards
+# (spiritCurrent, etc.), not just the "cycle" rune — a card can have a draw effect without
+# being socketed with cycle at all.
+func _has_draw_effect(card: Dictionary) -> bool:
+	for effect in card.effects:
+		if effect.operation == "draw": return true
 	return false
 
 func _base_damage(card: Dictionary, bonus: int) -> int:

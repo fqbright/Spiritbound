@@ -626,6 +626,114 @@ func run() -> void:
 			missing_m2_strings += 1
 	check(missing_m2_strings == 0, "all Milestone 2 UI strings have bilingual translations")
 
+	# Milestone 3: rune resonance, curse cards, and high-stakes boss relics.
+	# Gale Resonance: +1 energy on the first cycle/draw card played each turn, and it has to
+	# reset each turn — the bug that shipped here (missing _has_draw_effect()) hard-crashed
+	# the whole script at load time, so this also stands in as "combat.gd still compiles".
+	var gale := SpiritCombat.new(content)
+	gale.create(200, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {"strike": "swift", "ward": "cycle"})
+	check(gale.state.rune_sets.has("set_gale"), "socketing swift+cycle activates Gale Resonance")
+	_force_hand(gale, "ward")
+	var gale_energy_before: int = gale.state.energy
+	gale.play(0)
+	check(gale.state.energy == gale_energy_before, "Gale Resonance's own energy refund cancels cycle's cost on the first cycle each turn")
+	check(gale.state.gale_used, "gale_used is set after the first cycle/draw card this turn")
+	gale.end_turn()
+	check(not gale.state.gale_used, "gale_used resets for the new turn")
+
+	# Flame Resonance: +3 bonus damage specifically against a target that is already burning,
+	# not a boost to burn's own damage tick.
+	var flame := SpiritCombat.new(content)
+	flame.create(201, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {"strike": "burning", "ward": "execute"})
+	check(flame.state.rune_sets.has("set_flame"), "socketing burning+execute activates Flame Resonance")
+	_force_hand(flame, "strike")
+	var strike_dmg: int = int(content.card("strike").effects[0].amount)
+	flame.state.enemies[0].burn = 3
+	flame.play(0, 0)
+	check(flame.state.enemies[0].health == 100 - strike_dmg - 3, "Flame Resonance adds exactly +3 against a burning target (%d expected, got health %d)" % [strike_dmg + 3, 100 - flame.state.enemies[0].health])
+
+	var flame_cold := SpiritCombat.new(content)
+	flame_cold.create(202, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {"strike": "burning", "ward": "execute"})
+	_force_hand(flame_cold, "strike")
+	flame_cold.play(0, 0)
+	check(flame_cold.state.enemies[0].health == 100 - strike_dmg, "Flame Resonance adds nothing against a target with no burn")
+
+	# Stone Resonance: 25% chance per shield gain to boost it by 50%. Probabilistic by design,
+	# so check the boosted value actually appears over many attempts rather than pinning an
+	# exact roll — flat statistical smoke test, not a seed-hunting exercise.
+	var stone := SpiritCombat.new(content)
+	stone.create(203, encounter(500, 0), Array(content.raw.startingDeck), 200, {}, [], {"strike": "guardian", "ward": "siphon"})
+	check(stone.state.rune_sets.has("set_stone"), "socketing guardian+siphon activates Stone Resonance")
+	var ward_shield: int = int(content.card("ward").effects[0].amount)
+	var boosted_seen := false
+	var unboosted_seen := false
+	for i in 200:
+		stone.state.hand = [{"uid": 900 + i, "card_id": "ward"}]
+		stone.state.energy = 99
+		var shield_before: int = int(stone.state.player.shield)
+		stone.play(0)
+		var gained: int = int(stone.state.player.shield) - shield_before
+		if gained > ward_shield: boosted_seen = true
+		else: unboosted_seen = true
+	check(boosted_seen, "Stone Resonance's 50% shield boost fires at least once in 200 tries")
+	check(unboosted_seen, "Stone Resonance is a chance, not a guarantee — the plain value also appears in 200 tries")
+
+	# Curse cards: decay_blight pokes for 3 every turn it survives in hand (and does NOT
+	# clear itself — the whole point is that playing it, or a Purify Altar/Shop Purge, is
+	# the actual way to get rid of it); void_curse (already unplayable at 99 cost) hurts
+	# once when drawn and clears itself out automatically at turn end.
+	var blight := SpiritCombat.new(content)
+	blight.create(204, encounter(100, 0), Array(content.raw.startingDeck), 60)
+	blight.state.hand = [{"uid": 950, "card_id": "decay_blight"}]
+	var blight_hp_before: int = int(blight.state.player.health)
+	force_attack(blight)  # pin the enemy's own intent to its (here, 0) damage stat, not a random curse/defend roll
+	blight.end_turn()
+	check(int(blight.state.player.health) == blight_hp_before - 3, "decay_blight deals 3 damage if still in hand at turn end")
+	# end_turn() also draws the normal 2 cards for the new turn, so hand size alone isn't the
+	# signal — decay_blight itself has to still be one of the cards in hand.
+	var still_holding_blight := false
+	for instance in blight.state.hand:
+		if str(instance.card_id) == "decay_blight": still_holding_blight = true
+	check(still_holding_blight, "decay_blight stays in hand instead of clearing itself")
+
+	var void_draw := SpiritCombat.new(content)
+	void_draw.create(205, encounter(100, 0), Array(content.raw.startingDeck), 60)
+	var void_hp_before: int = int(void_draw.state.player.health)
+	void_draw.state.draw.append({"uid": 951, "card_id": "void_curse"})
+	void_draw._draw(1)
+	check(int(void_draw.state.player.health) == void_hp_before - 2, "void_curse deals 2 damage the moment it is drawn")
+	void_draw.end_turn()
+	var still_holding_void := false
+	for instance in void_draw.state.hand:
+		if str(instance.card_id) == "void_curse": still_holding_void = true
+	check(not still_holding_void, "void_curse clears itself out of hand by the next turn")
+
+	# cursedTome: +1 draw and -2 HP every turn, including turn 1.
+	var tome := SpiritCombat.new(content)
+	tome.create(206, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {}, {}, ["cursedTome"])
+	check(tome.state.hand.size() == 6, "cursedTome grants +1 opening card (6 instead of 5)")
+	check(int(tome.state.player.health) == 58, "cursedTome costs 2 HP on turn 1 too (60 -> 58, got %d)" % int(tome.state.player.health))
+	var tome_hand_before: int = tome.state.hand.size()
+	tome.end_turn()
+	check(tome.state.hand.size() == mini(10, tome_hand_before - 0 + 3), "cursedTome adds its own +1 to the flat turn draw (3 cards drawn instead of 2)")
+
+	# titanBell: the big battle-start HP/shield bonus, and the energy curve trade — it never
+	# climbs above the opening 2, instead of the usual +1 every 2 turns.
+	var bell := SpiritCombat.new(content)
+	bell.create(207, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {}, {}, ["titanBell"])
+	check(int(bell.state.player.max_health) == 80 and int(bell.state.player.health) == 80 and int(bell.state.player.shield) == 15, "titanBell grants +20 max HP, +20 HP, +15 shield at battle start")
+	for i in 6: bell.end_turn()
+	check(int(bell.state.energy) == 2, "titanBell keeps energy flat at 2 even after several turns (turn %d, got %d)" % [int(bell.state.turn), int(bell.state.energy)])
+
+	# chaosPrism: enemies open with +6 shield, and a landed attack stacks Vulnerable.
+	var prism := SpiritCombat.new(content)
+	prism.create(208, encounter(20, 0), Array(content.raw.startingDeck), 60, {}, [], {}, {}, ["chaosPrism"])
+	check(int(prism.state.enemies[0].shield) == 6, "chaosPrism gives enemies +6 opening shield")
+	prism.state.enemies[0].shield = 0  # isolate the Vulnerable check from its own opening-shield effect
+	_force_hand(prism, "strike")
+	prism.play(0, 0)
+	check(int(prism.state.enemies[0].get("vulnerable", 0)) == 1, "chaosPrism stacks Vulnerable on a landed attack, got %d" % int(prism.state.enemies[0].get("vulnerable", 0)))
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

@@ -326,6 +326,20 @@ func _run() -> void:
 	check(game.root.get_child_count() > 0, "rune tab built")
 	check(ResourceLoader.exists("res://assets/icons/equip_emberBlade.png"), "equipment icon assets exist")
 	check(ResourceLoader.exists("res://assets/icons/rune_swift.png"), "rune icon assets exist")
+
+	# Rune Resonance banner: shows all 3 sets, and flips to "active" the moment the player's
+	# actually socketed the matching pair of runes on cards in their deck.
+	check(_find_label_text(game.root, game.content.ui("ui.rune_resonance_title", game.lang)), "the rune tab shows the Rune Resonance section")
+	check(_find_label_text(game.root, game.content.ui("set.gale.name", game.lang)), "Gale Resonance is listed")
+	check(_find_label_text(game.root, game.content.ui("ui.rune_resonance_inactive", game.lang)), "an unsocketed resonance set shows as inactive")
+	var saved_card_runes: Dictionary = game.profile.card_runes.duplicate(true)
+	game.profile.card_runes = {"strike": "swift", "ward": "cycle"}
+	game.show_loadout()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.rune_resonance_active", game.lang)), "socketing swift+cycle flips Gale Resonance to active in the loadout screen")
+	game.profile.card_runes = saved_card_runes
+	game.show_loadout()
+	await process_frame
 	check(load("res://assets/icons/equip_emberBlade.png") != null, "equipment icon loads as texture")
 	check(load("res://assets/icons/rune_swift.png") != null, "rune icon loads as texture")
 
@@ -798,6 +812,48 @@ func _run() -> void:
 	check(game.root.get_child_count() > 0, "reward details page builds")
 	var has_skip := _find_text(game.root, game.content.ui("ui.skip_card", game.lang))
 	check(not has_skip, "the skip-card option is gone")
+
+	# Milestone 3: Great Bosses draw exclusively from the high-stakes boss relic pool
+	# (cursedTome/titanBell/chaosPrism); a regular boss must never hand one out, so those
+	# three stay rare and mean something. Save/restore unlocked/position/claimed-events
+	# around this — granting a stage-49 reward jumps `unlocked` straight to 50, which would
+	# otherwise make every stage in between look like an already-visited replay (no new
+	# items granted) to every test that runs after this one.
+	check(game.content.node_kind(4) == "boss", "stage 4 (chapter 1) is a regular boss, sanity-checking the fixture")
+	check(game.content.node_kind(49) == "greatboss", "stage 49 (chapter 10) is a great boss, sanity-checking the fixture")
+	var saved_unlocked: int = int(game.profile.unlocked)
+	var saved_position: int = int(game.profile.position)
+	var saved_claimed_events: Array = game.profile.get("claimed_stage_events", []).duplicate()
+	var saved_relics: Array = game.profile.relics.duplicate()
+
+	game.profile.relics = []
+	game.profile.unlocked = 4  # stage 4 not yet a replay
+	game.current_stage = 4
+	game.begin_battle(4)
+	await process_frame
+	var rw := 0.0
+	while game.resolving and rw < 8.0:
+		await create_timer(0.1).timeout
+		rw += 0.1
+	game._grant_stage_rewards()
+	check(not str(game.pending_rewards.relic).is_empty() and not SpiritContent.BOSS_RELIC_IDS.has(str(game.pending_rewards.relic)), "a regular boss kill never grants a high-stakes boss relic, got '%s'" % str(game.pending_rewards.relic))
+
+	game.profile.relics = []
+	game.profile.unlocked = 49  # stage 49 not yet a replay
+	game.current_stage = 49
+	game.begin_battle(49)
+	await process_frame
+	var gw := 0.0
+	while game.resolving and gw < 8.0:
+		await create_timer(0.1).timeout
+		gw += 0.1
+	game._grant_stage_rewards()
+	check(SpiritContent.BOSS_RELIC_IDS.has(str(game.pending_rewards.relic)), "a great boss kill grants one of the high-stakes boss relics, got '%s'" % str(game.pending_rewards.relic))
+
+	game.profile.unlocked = saved_unlocked
+	game.profile.position = saved_position
+	game.profile.claimed_stage_events = saved_claimed_events
+	game.profile.relics = saved_relics
 
 	var target_card: Dictionary = game.content.card("moonfang")
 	game.profile.deck = []

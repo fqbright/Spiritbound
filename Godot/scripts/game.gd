@@ -3958,7 +3958,15 @@ func _grant_stage_rewards() -> void:
 		var id: String = order[(current_stage / 5 + int(profile.difficulty) * 2) % order.size()]
 		if not profile.equipment_owned.has(id): profile.equipment_owned.append(id)
 		pending_rewards.equipment = id
-		var relic: Dictionary = SpiritContent.RELICS[(current_stage / 5) % SpiritContent.RELICS.size()]
+		# Great Bosses draw exclusively from the high-stakes boss relic pool (cursedTome,
+		# titanBell, chaosPrism) so those stay rare and mean something; regular bosses draw
+		# from everything else, same rotation as before.
+		var relic_pool: Array = SpiritContent.RELICS
+		if kind == "greatboss":
+			relic_pool = SpiritContent.RELICS.filter(func(r): return SpiritContent.BOSS_RELIC_IDS.has(r.id))
+		else:
+			relic_pool = SpiritContent.RELICS.filter(func(r): return not SpiritContent.BOSS_RELIC_IDS.has(r.id))
+		var relic: Dictionary = relic_pool[(current_stage / 5) % relic_pool.size()]
 		if not profile.relics.has(relic.id):
 			profile.relics.append(relic.id)
 			pending_rewards.relic = relic.id
@@ -5097,6 +5105,35 @@ func _build_rune_tab(list: VBoxContainer) -> void:
 		var hint := _label("%s %s · %s" % [chosen.icon, _rune_name(chosen), _rune_detail(chosen)], 10, Color(chosen.color), HORIZONTAL_ALIGNMENT_CENTER, true)
 		list.add_child(hint)
 
+	list.add_child(_label(t("ui.rune_resonance_title"), 13, JADE))
+	var active_sets: Array = content.active_rune_sets(profile.card_runes)
+	for rune_set in SpiritContent.RUNE_SETS:
+		var is_active: bool = active_sets.has(rune_set.id)
+		var set_color: Color = Color(rune_set.color)
+		var row := Panel.new()
+		row.custom_minimum_size.y = 58
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_stylebox_override("panel", _panel(Color("173a2e") if is_active else Color("101f24"), 12, set_color if is_active else Color("28393e")))
+		list.add_child(row)
+		var set_pad := MarginContainer.new()
+		set_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		for side in ["left", "right"]: set_pad.add_theme_constant_override("margin_%s" % side, 10)
+		set_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(set_pad)
+		var set_stack := VBoxContainer.new()
+		set_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+		set_stack.add_theme_constant_override("separation", 1)
+		set_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_pad.add_child(set_stack)
+		var set_head := HBoxContainer.new()
+		set_head.alignment = BoxContainer.ALIGNMENT_CENTER
+		set_head.add_theme_constant_override("separation", 6)
+		set_head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_stack.add_child(set_head)
+		set_head.add_child(_label(t("set.%s.name" % str(rune_set.id).trim_prefix("set_")), 12, set_color if is_active else TEXT))
+		set_head.add_child(_label(t("ui.rune_resonance_active") if is_active else t("ui.rune_resonance_inactive"), 9, JADE if is_active else MUTED))
+		set_stack.add_child(_label(t("set.%s.desc" % str(rune_set.id).trim_prefix("set_")), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
 	list.add_child(_label(t("ui.loadout_deck_runes"), 13, JADE))
 	for id in _unique(profile.deck):
 		var card := content.card(id)
@@ -5532,12 +5569,16 @@ func _unique(values: Array) -> Array:
 	return result
 
 func _card_color(card: Dictionary) -> Color:
-	return {"Attack":Color("d95d37"),"Skill":Color("50b99b"),"Power":Color("a75bd6"),"Tactic":Color("4d9dd6")}.get(card.get("kind","Skill"),JADE)
+	return {"Attack":Color("d95d37"),"Skill":Color("50b99b"),"Power":Color("a75bd6"),"Tactic":Color("4d9dd6"),"Curse":Color("6b3fa0")}.get(card.get("kind","Skill"),JADE)
 
 func _rune_color(id: String, fallback: Color) -> Color:
 	var rune := content.rune(id); return fallback if rune.is_empty() else Color(rune.color)
 
 func _card_description(card: Dictionary) -> String:
+	# Curse cards (decay_blight, void_curse) carry no effects array at all — their rules text
+	# is a hazard description (damage on draw, damage if left in hand, unplayable, ...) that
+	# doesn't map to any generic "operation", so it gets its own desc.<card_id> string instead.
+	if card.get("kind", "") == "Curse": return content.ui("desc.%s" % card.id, lang)
 	var parts := []
 	for effect in card.effects:
 		match effect.operation:

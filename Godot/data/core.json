@@ -729,6 +729,28 @@
       "scaleWithStacks": false,
       "decay": 0,
       "nextAttackBonus": 3
+    },
+    {
+      "id": "decay_blight",
+      "nameKey": "card.decay_blight",
+      "rarity": "Curse",
+      "pool": "Curse",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [],
+      "kind": "Curse",
+      "element": "void"
+    },
+    {
+      "id": "void_curse",
+      "nameKey": "card.void_curse",
+      "rarity": "Curse",
+      "pool": "Curse",
+      "cost": 99,
+      "exhaust": true,
+      "effects": [],
+      "kind": "Curse",
+      "element": "void"
     }
   ],
   "startingDeck": [
@@ -764,6 +786,8 @@
       "card.ward": "Spirit Ward",
       "card.foxfire": "Foxfire",
       "card.focus": "Focus Spirit",
+      "card.decay_blight": "Decay Blight",
+      "card.void_curse": "Void Curse",
       "battle.subtitle": "The Ember Trial",
       "battle.chapter": "MISTWOOD · TRAINING",
       "battle.stage": "Encounter {current} / {total}",
@@ -926,6 +950,8 @@
       "card.ward": "灵盾",
       "card.foxfire": "狐火",
       "card.focus": "凝神",
+      "card.decay_blight": "腐朽枯萎",
+      "card.void_curse": "虚空诅咒",
       "battle.subtitle": "烬火试炼",
       "battle.chapter": "雾林 · 试炼",
       "battle.stage": "第 {current} / {total} 场",

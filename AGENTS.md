@@ -190,11 +190,50 @@ The visual presentation blends high-detail painted assets with procedural vector
     - Selecting a hero class in Camp updates the traveler map avatar and loadout.
   - **Endless Abyss Mode (`show_abyss` / `begin_abyss_battle`)**: Infinite gauntlet where enemies and gold rewards scale by floor (`content.abyss_encounter(floor)`). Tracks `profile.abyss_floor` and `profile.abyss_record`.
 
+- **Deckbuilding depth: rune resonance, curse cards, high-stakes boss relics**:
+  - **Rune Resonance (`content.RUNE_SETS` / `content.active_rune_sets()`)**: socketing both
+    runes of a pair (`swift`+`cycle` = Gale, `burning`+`execute` = Flame, `guardian`+`siphon`
+    = Stone) anywhere in the deck activates that set for the whole battle. Flame adds +3
+    damage to a hit landing on an already-burning target (`_resolve_effects`'s damage
+    branch, per target so cleave can partially trigger it); Gale refunds 1 energy on the
+    first cycle-rune or draw-effect card played each turn (`state.gale_used`, reset in
+    `end_turn()` — it was NOT being reset before this milestone, so the bonus only ever
+    fired once per whole battle); Stone has a 25% chance per shield gain to boost it 50%.
+    The rune loadout tab shows all 3 sets with an active/inactive badge.
+  - **Curse cards (`decay_blight`, `void_curse`)** are purely battle-scoped — an enemy's
+    "curse" intent adds one to `state.discard`, and neither ever touches `profile.deck`, so
+    they simply vanish when the battle ends either way (no Purify Altar/Shop Purge
+    interaction needed or implemented). `void_curse` (cost 99, already unplayable) deals 2
+    damage the instant it is drawn and auto-exhausts at end of turn; `decay_blight` deals 3
+    damage every turn it survives in hand and deliberately does **not** clear itself —
+    playing it for its own `exhaust:true` is the intended way to get rid of it. Both have an
+    empty `effects` array, so `_card_color`/`_card_description` special-case
+    `card.kind == "Curse"` rather than trying to synthesize a description from effects that
+    don't exist.
+  - **High-stakes boss relics (`SpiritContent.BOSS_RELIC_IDS`: `cursedTome`, `titanBell`,
+    `chaosPrism`)** are exclusive to Great Boss kills — `_grant_stage_rewards()` draws a
+    regular `boss`'s relic from `RELICS` minus this list, and a `greatboss`'s relic only
+    from it. `cursedTome` (+1 draw, -2 HP every turn including turn 1) and `titanBell`
+    (+20 max HP/+20 HP/+15 shield at battle start, and its "-1 energy cap every 2 turns" is
+    implemented as *cancelling* the normal growth rather than actually going negative — energy
+    just stays flat at the opening 2 all fight) both apply from turn 1, matching how
+    `chaosPrism`'s own battle-start effect (+6 enemy shield) already worked; `chaosPrism`
+    also stacks 1 Vulnerable on any attack that lands real damage (not fully shielded).
+  - **A missing function is a silent, permanent hang here, not a crash.** `combat.gd` called
+    `_has_draw_effect()` (for Gale Resonance) before that function existed anywhere in the
+    script. GDScript's compile failure doesn't make Godot's headless script runner exit —
+    it just sits there consuming ~0% CPU indefinitely. Several `test_runner.gd`/
+    `ui_smoke.gd` processes were stuck for hours before this was caught; `ps aux | grep
+    godot` and killing anything idle for more than a minute or two is the fix, not waiting
+    longer. If a headless test run seems to hang rather than finish in a few seconds,
+    suspect a compile error in a script it depends on before suspecting an infinite loop in
+    test logic.
+
 ## Handoff & verification notes for future agents
 
 - **Verifying changes**:
   ```bash
-  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (122 checks)
+  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (164 checks)
   godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
   ```
   Both must pass without failures before committing.
