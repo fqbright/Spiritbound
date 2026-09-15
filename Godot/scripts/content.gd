@@ -316,6 +316,38 @@ func abyss_boon(id: String) -> Dictionary:
 # hero never needs new engine code, only a new row in HERO_MASTERY_PERKS. Levels are
 # cumulative: mastery_bonuses() sums every perk at or below the reached level, so Lv5 carries
 # everything Lv1-4 already granted plus its own.
+# Achievements: a permanent, never-reset counterpart to the daily/weekly quest system.
+# "stat" achievements read profile.lifetime_stats[stat] — a running total game.gd bumps
+# alongside the existing period-scoped quest progress every time _advance_quest() fires, so
+# no new event-hook call sites were needed anywhere in combat/reward code. The other "kind"
+# values read an existing profile field directly (mastery level, abyss record, daily trial
+# badges, compendium %, relic count, distinct cards owned) since those are already permanent
+# running totals with nothing to duplicate.
+const ACHIEVEMENTS = [
+	{"id":"win10","kind":"stat","stat":"win_battles","target":10,"nameKey":"ach.win10.name","descKey":"ach.win10.desc"},
+	{"id":"win50","kind":"stat","stat":"win_battles","target":50,"nameKey":"ach.win50.name","descKey":"ach.win50.desc"},
+	{"id":"win200","kind":"stat","stat":"win_battles","target":200,"nameKey":"ach.win200.name","descKey":"ach.win200.desc"},
+	{"id":"damage10k","kind":"stat","stat":"deal_damage","target":10000,"nameKey":"ach.damage10k.name","descKey":"ach.damage10k.desc"},
+	{"id":"damage100k","kind":"stat","stat":"deal_damage","target":100000,"nameKey":"ach.damage100k.name","descKey":"ach.damage100k.desc"},
+	{"id":"chest10","kind":"stat","stat":"open_chest","target":10,"nameKey":"ach.chest10.name","descKey":"ach.chest10.desc"},
+	{"id":"shop20","kind":"stat","stat":"shop_purchase","target":20,"nameKey":"ach.shop20.name","descKey":"ach.shop20.desc"},
+	{"id":"gold1000","kind":"stat","stat":"earn_gold","target":1000,"nameKey":"ach.gold1000.name","descKey":"ach.gold1000.desc"},
+	{"id":"gold10000","kind":"stat","stat":"earn_gold","target":10000,"nameKey":"ach.gold10000.name","descKey":"ach.gold10000.desc"},
+	{"id":"elite_boss20","kind":"stat","stat":"clear_elite_or_boss","target":20,"nameKey":"ach.elite_boss20.name","descKey":"ach.elite_boss20.desc"},
+	{"id":"greatboss5","kind":"stat","stat":"defeat_great_boss","target":5,"nameKey":"ach.greatboss5.name","descKey":"ach.greatboss5.desc"},
+	{"id":"rune_play50","kind":"stat","stat":"play_runed_cards","target":50,"nameKey":"ach.rune_play50.name","descKey":"ach.rune_play50.desc"},
+	{"id":"collect20","kind":"card_collection","target":20,"nameKey":"ach.collect20.name","descKey":"ach.collect20.desc"},
+	{"id":"collect_all","kind":"card_collection","target":34,"nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	{"id":"relics_all","kind":"relic_count","target":11,"nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
+	{"id":"mastery5","kind":"mastery_level","target":5,"nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
+	{"id":"abyss10","kind":"abyss_floor","target":10,"nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
+	{"id":"abyss30","kind":"abyss_floor","target":30,"nameKey":"ach.abyss30.name","descKey":"ach.abyss30.desc"},
+	{"id":"trial_badges5","kind":"daily_trial_badges","target":5,"nameKey":"ach.trial_badges5.name","descKey":"ach.trial_badges5.desc"},
+	{"id":"trial_badges20","kind":"daily_trial_badges","target":20,"nameKey":"ach.trial_badges20.name","descKey":"ach.trial_badges20.desc"},
+	{"id":"compendium50","kind":"compendium_percent","target":50,"nameKey":"ach.compendium50.name","descKey":"ach.compendium50.desc"},
+	{"id":"compendium100","kind":"compendium_percent","target":100,"nameKey":"ach.compendium100.name","descKey":"ach.compendium100.desc"},
+]
+
 const HERO_MASTERY_XP_FOR_LEVEL = [60, 150, 300, 500, 800]
 
 const HERO_MASTERY_PERKS = {
@@ -950,6 +982,53 @@ const UI_TEXT = {
 	"ui.login_reward_progress_fmt": {"zh-Hans":"已登录 %d/7 天", "en":"Logged in %d/7 days"},
 	"ui.login_reward_tier_fmt": {"zh-Hans":"登录满 %d 天", "en":"Log in %d days"},
 	"ui.login_reward_claimed_toast": {"zh-Hans":"登录奖励 +%d 金币", "en":"Login reward +%d gold"},
+	"ui.compendium_tab_achievements": {"zh-Hans":"成就", "en":"Achievements"},
+	"ui.achievement_unlocked_toast": {"zh-Hans":"✦ 成就解锁：%s", "en":"✦ Achievement Unlocked: %s"},
+	"ui.achievement_locked": {"zh-Hans":"未解锁", "en":"Locked"},
+	"ach.win10.name": {"zh-Hans":"初出茅庐", "en":"First Steps"},
+	"ach.win10.desc": {"zh-Hans":"累计赢得 10 场战斗", "en":"Win 10 battles total"},
+	"ach.win50.name": {"zh-Hans":"身经百战", "en":"Battle-Tested"},
+	"ach.win50.desc": {"zh-Hans":"累计赢得 50 场战斗", "en":"Win 50 battles total"},
+	"ach.win200.name": {"zh-Hans":"传奇驭灵者", "en":"Legendary Tamer"},
+	"ach.win200.desc": {"zh-Hans":"累计赢得 200 场战斗", "en":"Win 200 battles total"},
+	"ach.damage10k.name": {"zh-Hans":"灵力初显", "en":"Spirit Power Awakens"},
+	"ach.damage10k.desc": {"zh-Hans":"累计造成 10,000 点伤害", "en":"Deal 10,000 total damage"},
+	"ach.damage100k.name": {"zh-Hans":"毁天灭地", "en":"World Ender"},
+	"ach.damage100k.desc": {"zh-Hans":"累计造成 100,000 点伤害", "en":"Deal 100,000 total damage"},
+	"ach.chest10.name": {"zh-Hans":"寻宝人", "en":"Treasure Hunter"},
+	"ach.chest10.desc": {"zh-Hans":"累计开启 10 个胜利宝箱", "en":"Open 10 victory chests"},
+	"ach.shop20.name": {"zh-Hans":"熟客", "en":"Regular Customer"},
+	"ach.shop20.desc": {"zh-Hans":"累计在商店购买 20 次", "en":"Make 20 shop purchases total"},
+	"ach.gold1000.name": {"zh-Hans":"小有积蓄", "en":"Modest Savings"},
+	"ach.gold1000.desc": {"zh-Hans":"累计获得 1,000 金币", "en":"Earn 1,000 gold total"},
+	"ach.gold10000.name": {"zh-Hans":"富甲一方", "en":"Wealthy Tamer"},
+	"ach.gold10000.desc": {"zh-Hans":"累计获得 10,000 金币", "en":"Earn 10,000 gold total"},
+	"ach.elite_boss20.name": {"zh-Hans":"精英猎手", "en":"Elite Hunter"},
+	"ach.elite_boss20.desc": {"zh-Hans":"累计击败 20 场精英或首领战斗", "en":"Clear 20 elite or boss battles"},
+	"ach.greatboss5.name": {"zh-Hans":"弑神者", "en":"Godslayer"},
+	"ach.greatboss5.desc": {"zh-Hans":"累计击败 5 位大首领", "en":"Defeat 5 Great Bosses"},
+	"ach.rune_play50.name": {"zh-Hans":"符文大师", "en":"Rune Adept"},
+	"ach.rune_play50.desc": {"zh-Hans":"累计使用 50 次镶嵌符文的卡牌", "en":"Play 50 rune-socketed cards"},
+	"ach.collect20.name": {"zh-Hans":"卡牌收藏家", "en":"Card Collector"},
+	"ach.collect20.desc": {"zh-Hans":"收集 20 种不同的卡牌", "en":"Collect 20 distinct cards"},
+	"ach.collect_all.name": {"zh-Hans":"图书馆管理员", "en":"The Librarian"},
+	"ach.collect_all.desc": {"zh-Hans":"收集全部卡牌", "en":"Collect every card"},
+	"ach.relics_all.name": {"zh-Hans":"遗物大师", "en":"Relic Master"},
+	"ach.relics_all.desc": {"zh-Hans":"获得全部遗物", "en":"Obtain every relic"},
+	"ach.mastery5.name": {"zh-Hans":"专精圆满", "en":"Mastery Achieved"},
+	"ach.mastery5.desc": {"zh-Hans":"任意英雄专精达到 Lv.5", "en":"Reach Mastery Lv.5 with any hero"},
+	"ach.abyss10.name": {"zh-Hans":"深渊行者", "en":"Abyss Walker"},
+	"ach.abyss10.desc": {"zh-Hans":"无尽深渊达到第 10 层", "en":"Reach Abyss Floor 10"},
+	"ach.abyss30.name": {"zh-Hans":"深渊征服者", "en":"Abyss Conqueror"},
+	"ach.abyss30.desc": {"zh-Hans":"无尽深渊达到第 30 层", "en":"Reach Abyss Floor 30"},
+	"ach.trial_badges5.name": {"zh-Hans":"试炼常客", "en":"Trial Regular"},
+	"ach.trial_badges5.desc": {"zh-Hans":"每日试炼累计获得 5 枚徽章", "en":"Earn 5 Daily Trial badges total"},
+	"ach.trial_badges20.name": {"zh-Hans":"试炼英雄", "en":"Trial Hero"},
+	"ach.trial_badges20.desc": {"zh-Hans":"每日试炼累计获得 20 枚徽章", "en":"Earn 20 Daily Trial badges total"},
+	"ach.compendium50.name": {"zh-Hans":"探索者", "en":"Explorer"},
+	"ach.compendium50.desc": {"zh-Hans":"驭灵秘典收集率达到 50%", "en":"Reach 50% Compendium discovery"},
+	"ach.compendium100.name": {"zh-Hans":"驭灵秘典·大成", "en":"Compendium Complete"},
+	"ach.compendium100.desc": {"zh-Hans":"驭灵秘典收集率达到 100%", "en":"Reach 100% Compendium discovery"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

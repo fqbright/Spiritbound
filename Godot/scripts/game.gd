@@ -1200,6 +1200,11 @@ const KEYWORD_KEYS: Array[String] = [
 # opened, a purchase made — rather than anything invented just for quests.
 func _advance_quest(quest_type: String, amount: int) -> void:
 	if amount <= 0: return
+	# A permanent running total alongside the period-scoped quest progress below — this is
+	# the only hook lifetime achievement stats need, since every real gameplay signal that
+	# matters (a win, damage dealt, a chest opened, a purchase) already flows through here.
+	if not profile.get("lifetime_stats") is Dictionary: profile.lifetime_stats = {}
+	profile.lifetime_stats[quest_type] = int(profile.lifetime_stats.get(quest_type, 0)) + amount
 	var any_completed := false
 	for list_name in ["daily_quests", "weekly_quests"]:
 		var list: Array = profile.get(list_name, [])
@@ -1212,6 +1217,42 @@ func _advance_quest(quest_type: String, amount: int) -> void:
 			if int(q.progress) >= target and before < target: any_completed = true
 	SpiritSave.write(profile)
 	if any_completed: _toast(t("ui.quest_ready_toast"), GOLD)
+	_refresh_achievements()
+
+# Achievement progress readers, one per ACHIEVEMENTS "kind" — most kinds just read an existing
+# permanent profile field directly (nothing to duplicate), "stat" is the one kind backed by
+# the lifetime_stats counter _advance_quest() maintains above.
+func _achievement_progress(ach: Dictionary) -> int:
+	match str(ach.get("kind", "stat")):
+		"stat": return int(profile.get("lifetime_stats", {}).get(str(ach.get("stat", "")), 0))
+		"mastery_level":
+			var best := 0
+			for hero_id in profile.get("hero_masteries", {}):
+				var xp: int = int(profile.hero_masteries[hero_id].get("xp", 0))
+				best = maxi(best, content.mastery_level_for_xp(xp))
+			return best
+		"abyss_floor": return int(profile.get("abyss_record", 0))
+		"daily_trial_badges": return int(profile.get("daily_trial_record", {}).get("badges", 0))
+		"compendium_percent":
+			var totals: Vector2i = _compendium_totals()
+			return int(round(100.0 * float(totals.x) / maxf(1.0, float(totals.y))))
+		"relic_count": return profile.get("relics", []).size()
+		"card_collection": return profile.get("collection", {}).size()
+		_: return 0
+
+# Unlocks are permanent and one-time: once achievements_unlocked[id] is true it never gets
+# re-evaluated, so a stat that could ever regress (nothing currently does) can't un-toast.
+func _refresh_achievements() -> void:
+	if not profile.get("achievements_unlocked") is Dictionary: profile.achievements_unlocked = {}
+	var changed := false
+	for ach in SpiritContent.ACHIEVEMENTS:
+		var id: String = str(ach.id)
+		if bool(profile.achievements_unlocked.get(id, false)): continue
+		if _achievement_progress(ach) >= int(ach.target):
+			profile.achievements_unlocked[id] = true
+			changed = true
+			_toast(tf("ui.achievement_unlocked_toast", content.ui(ach.nameKey, lang)), GOLD)
+	if changed: SpiritSave.write(profile)
 
 func _claim_quest(list_name: String, quest_id: String) -> void:
 	var list: Array = profile.get(list_name, [])
@@ -5464,6 +5505,7 @@ func show_compendium() -> void:
 		["runes", t("ui.tab_runes")],
 		["relics", t("ui.relic_title")],
 		["bestiary", t("ui.compendium_tab_bestiary")],
+		["achievements", t("ui.compendium_tab_achievements")],
 	], compendium_tab, func(id): compendium_tab = id; show_compendium()))
 
 	var scroll := TouchScrollContainer.new()
@@ -5480,7 +5522,8 @@ func show_compendium() -> void:
 		"gear": _build_compendium_equipment(list)
 		"runes": _build_compendium_runes(list)
 		"relics": _build_compendium_relics(list)
-		_: _build_compendium_bestiary(list)
+		"bestiary": _build_compendium_bestiary(list)
+		_: _build_compendium_achievements(list)
 
 # Shared row shell for every Compendium tab: an icon/art badge on the left, a title (or the
 # generic "undiscovered" label) and one detail line on the right. Discovered items get their
@@ -5572,6 +5615,51 @@ func _build_compendium_bestiary(list: VBoxContainer) -> void:
 		else:
 			badge = _compendium_locked_badge()
 		list.add_child(_compendium_row(badge, name_str, content.enemy_lore(enemy, lang), discovered, Color(enemy.get("tint", "83e4c1"))))
+
+func _build_compendium_achievements(list: VBoxContainer) -> void:
+	if not profile.get("achievements_unlocked") is Dictionary: profile.achievements_unlocked = {}
+	var unlocked_n := 0
+	for ach in SpiritContent.ACHIEVEMENTS:
+		if bool(profile.achievements_unlocked.get(str(ach.id), false)): unlocked_n += 1
+	list.add_child(_label(tf("ui.compendium_progress", [unlocked_n, SpiritContent.ACHIEVEMENTS.size()]), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	for ach in SpiritContent.ACHIEVEMENTS:
+		var id: String = str(ach.id)
+		var unlocked: bool = bool(profile.achievements_unlocked.get(id, false))
+		var progress: int = mini(int(ach.target), _achievement_progress(ach))
+		var accent: Color = GOLD if unlocked else Color("2a3d42")
+
+		var panel := Panel.new()
+		panel.custom_minimum_size.y = 90
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		panel.add_theme_stylebox_override("panel", _panel(Color("13282e") if unlocked else Color("0e191d"), 12, accent))
+		list.add_child(panel)
+
+		var pad := MarginContainer.new()
+		pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
+		panel.add_child(pad)
+
+		var texts := VBoxContainer.new()
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.add_theme_constant_override("separation", 4)
+		pad.add_child(texts)
+
+		var title_row := HBoxContainer.new()
+		title_row.add_theme_constant_override("separation", 8)
+		texts.add_child(title_row)
+		title_row.add_child(_label(content.ui(ach.nameKey, lang), 13, TEXT if unlocked else MUTED))
+		if unlocked:
+			var spacer := Control.new()
+			spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			title_row.add_child(spacer)
+			title_row.add_child(_label("✦", 13, GOLD))
+
+		texts.add_child(_label(content.ui(ach.descKey, lang), 10, JADE if unlocked else MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		if not unlocked:
+			var bar := _stat_bar(120.0, 14.0, progress, int(ach.target), GOLD, "%d / %d" % [progress, int(ach.target)], 9)
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			texts.add_child(bar)
 
 func _equip(item: Dictionary) -> void:
 	if profile.equipment_slots.get(item.slot,"") == item.id: profile.equipment_slots.erase(item.slot)

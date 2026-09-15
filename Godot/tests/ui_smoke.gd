@@ -1420,6 +1420,34 @@ func _run() -> void:
 	await process_frame
 	check(game.root.find_child("DailyTrialEnterBtn", true, false) == null, "the enter button is hidden once today's trial is fully cleared")
 
+	section("== achievements ==")
+	game.profile.achievements_unlocked = {}
+	game.profile.lifetime_stats = {}
+	game._advance_quest("win_battles", 10)
+	check(int(game.profile.lifetime_stats.get("win_battles", 0)) == 10, "_advance_quest maintains a permanent lifetime_stats counter alongside period-scoped quest progress")
+	check(bool(game.profile.achievements_unlocked.get("win10", false)), "reaching a stat achievement's target unlocks it automatically")
+	check(not bool(game.profile.achievements_unlocked.get("win50", false)), "a higher threshold on the same stat stays locked")
+
+	game.profile.abyss_record = 15
+	game._refresh_achievements()
+	check(bool(game.profile.achievements_unlocked.get("abyss10", false)), "an abyss_floor achievement reads profile.abyss_record directly, no separate counter needed")
+	check(not bool(game.profile.achievements_unlocked.get("abyss30", false)), "abyss30 stays locked below its own threshold")
+
+	game.profile.hero_class = "stone_sentinel"
+	game.profile.hero_masteries = {"stone_sentinel": {"xp": 800}}
+	game._refresh_achievements()
+	check(bool(game.profile.achievements_unlocked.get("mastery5", false)), "a mastery_level achievement checks every hero's mastery, not just the active one's stat key")
+
+	var win10_progress_before: int = game._achievement_progress({"kind": "stat", "stat": "win_battles"})
+	game._advance_quest("win_battles", 1)
+	check(bool(game.profile.achievements_unlocked.get("win10", false)) and game._achievement_progress({"kind": "stat", "stat": "win_battles"}) == win10_progress_before + 1, "an already-unlocked achievement stays unlocked while its underlying stat keeps counting")
+
+	game.compendium_tab = "achievements"
+	game.show_compendium()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ach.win10.name", game.lang)), "an unlocked achievement's name renders in the Achievements tab")
+	check(_find_label_text(game.root, game.content.ui("ach.win200.name", game.lang)), "a locked achievement still renders (with progress, not hidden)")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")

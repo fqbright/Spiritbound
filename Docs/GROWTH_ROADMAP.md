@@ -50,12 +50,16 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   *Built on:* `_quest_section()`'s row layout, `_stat_bar()`, the day/week-boundary pattern
   already in `_ensure_quests_current()`. 189/0 rules (unaffected), UI smoke +7 checks, 0
   failures.
-- `[ ]` **C1 — 成就系统 (achievements)**
-  30-40 bilingual achievements (combat feats, collection milestones, mastery levels, abyss
-  depth, daily trial badges). New `content.ACHIEVEMENTS` data + `profile.achievements_unlocked:
-  Dictionary`. Add an "Achievements" tab to the existing Compendium tab bar rather than a new
-  screen.
-  *Builds on:* `show_compendium()`'s `_tab_bar()` + `_compendium_row()` shell.
+- `[x]` **C1 — 成就系统 (achievements)** — done 2026-09-15
+  22 bilingual achievements across combat totals, gold, chests, shop purchases, rune plays,
+  card/relic collection, mastery level, abyss depth, daily trial badges, and Compendium %.
+  `content.ACHIEVEMENTS` (each a `kind` + either a `stat` key or nothing) + new
+  `profile.lifetime_stats: Dictionary` (a permanent counterpart to the period-scoped
+  daily/weekly quest progress, bumped in `_advance_quest()` itself — no new event-hook call
+  sites needed anywhere in combat/reward code) + `profile.achievements_unlocked: Dictionary`.
+  6th tab ("成就") added to the Compendium's existing `_tab_bar()`, NOT a new screen.
+  *Built on:* `_advance_quest()` (extended, not replaced), `show_compendium()`'s tab bar,
+  `_stat_bar()`. 189/0 rules unaffected, UI smoke +9 checks, 0 failures.
 - `[ ]` **F1 — 营地标签页化 (Camp becomes tabs, not one long scroll)**
   Camp has grown to 7 stacked sections (account, compendium, hero mastery, daily trial, abyss,
   difficulty, relics). Split into tabs (e.g. "角色" hero+mastery+difficulty, "挑战" abyss+daily
@@ -179,6 +183,24 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — C1 achievement system shipped
+The report estimated "30-40 achievements"; shipped 22. Cut for the same reason F1/C2/D3 all
+carry a "needs a real design pass" flag rather than being padded to a round number — a fixed
+`target` int baked into `content.ACHIEVEMENTS` at write time is a real commitment (e.g.
+`collect_all`'s target of 34 is `36 total cards - 2 curse cards`, hardcoded rather than
+computed, matching how `test_runner.gd` already hardcodes "twelve equipment definitions"
+elsewhere in this codebase) — it's cheap to add more rows to `ACHIEVEMENTS` later, so 22 solid
+ones beat 40 padded ones for a first pass. If you add more: every achievement needs a `kind`
+that already has a reader in `_achievement_progress()` (stat / mastery_level / abyss_floor /
+daily_trial_badges / compendium_percent / relic_count / card_collection) — a new `kind` needs
+a new match arm there, same "grep before trusting a data key does anything" trap AGENTS.md
+already documents for `combat.gd` mechanics.
+No new call sites anywhere in combat.gd or the reward-granting code: `_advance_quest()`
+already fires at every real gameplay signal (a win, damage, a chest, a purchase), so bumping
+`profile.lifetime_stats` there for free was the whole trick — resist the urge to add a
+separate `_track_achievement_stat()` call scattered through combat code if a future stat
+doesn't fit this shape; look for whether it already flows through `_advance_quest` first.
 
 ### 2026-09-15 — B1 rolling weekly login reward shipped
 Placed the entry point in `show_quests()` rather than Camp — a deliberate deviation from a
