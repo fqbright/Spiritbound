@@ -163,7 +163,7 @@ The visual presentation blends high-detail painted assets with procedural vector
   - `CampButton` (`"CampButton"` in `show_map()`) links to `show_camp()`, rendered with a custom `"profile"` `GameIcon` (hero crest medallion) and `assets/icons/profile.png`. Camp is dedicated to the player account profile, ascension difficulty tiers (A0..A5), and relics collection.
   - Claiming any quest via `_claim_quest()` refreshes `show_quests()` directly.
 - **Symphonic audio & dynamic stage combat soundtrack**:
-  - `map_symphony.wav`: Grand symphonic orchestral theme (92 BPM, D Major) featuring multi-track strings chorus, soaring French horn fanfare motifs, rippling harp arpeggios, woodwinds, timpani, crash cymbals, and concert-hall reverberation.
+  - `map_symphony.wav`: Grand neoclassical gothic symphony in the style of "The Undead Overture" / "The Dawn" (138 BPM, D Minor) featuring ominous tolling cathedral bells, relentless galloping 16th-note cello/viola ostinatos, soaring tragic yet triumphant violin and brass melodies, sweeping baroque harpsichord arpeggio cascades, choral pad swells, and martial double-kick orchestral percussion.
   - 5 Distinct battle tracks for chapter sub-stages (`_play_music(true, stage_lvl)`):
     - `battle_stage_0.wav` (Level 1: Trailhead): Agile, fast skirmish theme (116 BPM, E Minor) with staccato string ostinatos, woodwind leads, and snappy snare.
     - `battle_stage_1.wav` (Level 2: Crossing): Tactical martial march (122 BPM, G Minor) with driving cellos, marching snare rolls, and bold horn calls.
