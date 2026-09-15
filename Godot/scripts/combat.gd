@@ -25,6 +25,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
+		"boons":modifier.get("boons",[]).duplicate(),
 		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
 		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier
 	}
@@ -132,6 +133,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 	if harmful and not state.first_attack:
 		if state.equipment.has("emberBlade"): bonus += 3
 		if _has_relic("starShard"): bonus += 2
+		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
 	if harmful: state.first_attack = true
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
@@ -186,11 +188,12 @@ func end_turn() -> void:
 	state.energy = 2 + int((state.turn - 1) / 2)
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
+	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.elements = {}
-	# A fixed 2-card draw each turn.
-	_draw(2)
+	# A fixed 2-card draw each turn (+1 if wind stride boon active).
+	_draw(2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0))
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 
@@ -215,8 +218,10 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 			"draw": _draw(amount)
 			"energy": state.energy += amount
 			"status":
-				if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + amount
-				elif target_index >= 0: state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + amount
+				var final_amt: int = amount
+				if effect.status == "burn" and state.get("boons", []).has("boon_flame_affinity"): final_amt += 2
+				if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
+				elif target_index >= 0: state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
 	return dealt
 
 func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
@@ -245,6 +250,7 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 		if state.equipment.has("soulPendant") and state.soul_heals < 3: state.player.health = mini(state.player.max_health,state.player.health + 2); state.soul_heals += 1
 		if state.equipment.has("stormBow"): _draw(1)
 		if _has_relic("bloodJade"): state.player.health = mini(state.player.max_health, state.player.health + 3)
+		if state.get("boons", []).has("boon_blood_lust"): state.player.health = mini(state.player.max_health, state.player.health + 8)
 		if _living_count() == 0: state.phase = "won"
 	else: emit_signal("event","hit",{"enemy":index,"amount":dealt})
 	return dealt
@@ -331,6 +337,7 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 	if not state.first_attack:
 		if state.equipment.has("emberBlade"): bonus += 3
 		if _has_relic("starShard"): bonus += 2
+		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
 	var resonance := int(state.elements.get(card.get("element", ""), 0)) if rune == "resonance" else 0
 	var total_dealt := 0
 	var temp_shield: int = enemy.shield

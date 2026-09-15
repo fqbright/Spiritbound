@@ -776,6 +776,7 @@ var selected_card := -1
 var advancing_to_reward := false
 var pre_battle_health := 60
 var in_abyss := false
+var pending_boon_draft := false
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
 var _back_action := Callable()
@@ -1764,27 +1765,69 @@ func _get_mote_texture() -> GradientTexture2D:
 # Fixed to the screen rather than the scrolling map canvas, so the atmosphere reads as
 # weather over the whole view instead of specks pinned to particular map coordinates.
 func _add_map_ambience() -> void:
+	var current_chapter: int = int(profile.unlocked / 5)
+	var biome_idx: int = current_chapter % 6
+
 	var motes := CPUParticles2D.new()
+	motes.name = "MapAmbienceParticles"
 	motes.texture = _get_mote_texture()
 	motes.position = Vector2(MAP_WIDTH / 2.0, 844.0 / 2.0)
-	motes.amount = 22
-	motes.lifetime = 7.0
-	motes.preprocess = 7.0
+	motes.amount = 24
+	motes.lifetime = 6.5
+	motes.preprocess = 6.5
 	motes.emitting = true
 	motes.z_index = 90
 	motes.local_coords = true
 	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	motes.emission_rect_extents = Vector2(MAP_WIDTH / 2.0, 844.0 / 2.0)
-	motes.direction = Vector2(0, -1)
-	motes.spread = 25.0
-	motes.gravity = Vector2.ZERO
-	motes.initial_velocity_min = 6.0
-	motes.initial_velocity_max = 14.0
+
+	match biome_idx:
+		0: # Mistwood: gentle green drifting spores
+			motes.direction = Vector2(0.2, -1.0)
+			motes.spread = 30.0
+			motes.gravity = Vector2.ZERO
+			motes.initial_velocity_min = 6.0
+			motes.initial_velocity_max = 14.0
+			motes.color = Color(0.70, 0.95, 0.80, 0.55)
+		1: # Ashlands / Ember Canyon: warm rising fire sparks
+			motes.direction = Vector2(0.1, -1.0)
+			motes.spread = 20.0
+			motes.gravity = Vector2(0, -10.0)
+			motes.initial_velocity_min = 15.0
+			motes.initial_velocity_max = 35.0
+			motes.color = Color(1.0, 0.55, 0.22, 0.70)
+		2: # Glacial Pass / Frost Peaks: falling snow crystals
+			motes.direction = Vector2(0.15, 1.0)
+			motes.spread = 40.0
+			motes.gravity = Vector2(0, 14.0)
+			motes.initial_velocity_min = 10.0
+			motes.initial_velocity_max = 24.0
+			motes.color = Color(0.85, 0.95, 1.0, 0.65)
+		3: # Starfall Sanctuary: sparkling stardust
+			motes.direction = Vector2(0.0, -0.5)
+			motes.spread = 180.0
+			motes.gravity = Vector2.ZERO
+			motes.initial_velocity_min = 4.0
+			motes.initial_velocity_max = 10.0
+			motes.color = Color(0.95, 0.85, 1.0, 0.60)
+		4: # Sunken Marsh: floating algae bubbles
+			motes.direction = Vector2(-0.2, -1.0)
+			motes.spread = 25.0
+			motes.gravity = Vector2(0, -4.0)
+			motes.initial_velocity_min = 5.0
+			motes.initial_velocity_max = 12.0
+			motes.color = Color(0.45, 0.92, 0.75, 0.55)
+		5: # Abyssal Rift: void motes
+			motes.direction = Vector2(0.0, -1.0)
+			motes.spread = 35.0
+			motes.gravity = Vector2(0, -8.0)
+			motes.initial_velocity_min = 10.0
+			motes.initial_velocity_max = 22.0
+			motes.color = Color(0.75, 0.40, 1.0, 0.65)
+
 	motes.scale_amount_min = 0.5
 	motes.scale_amount_max = 1.4
-	motes.color = Color(0.75, 0.95, 0.85, 0.55)
-	# CPUParticles2D.color_ramp takes a Gradient directly, unlike GPUParticles2D's
-	# ParticleProcessMaterial which wants a texture — fades each mote in, then back out.
+
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 0.0))
 	ramp.add_point(0.15, Color(1, 1, 1, 1.0))
@@ -3558,6 +3601,87 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 		tween.tween_property(box, "scale", Vector2(0.4, 0.4), 0.4)
 	await tween.finished
 	popup.queue_free()
+	if defeated and combat != null and combat.state.phase == "won":
+		await _animate_finishing_blow(box, sprite)
+
+func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
+	if overlay == null: return
+	_haptic("heavy")
+	_shake_screen(14.0, 0.45)
+
+	var top_bar := ColorRect.new()
+	top_bar.color = Color("04090c")
+	top_bar.custom_minimum_size = Vector2(390, 64)
+	top_bar.size = top_bar.custom_minimum_size
+	top_bar.position = Vector2(0, -64)
+	top_bar.z_index = 450
+	top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(top_bar)
+
+	var btm_bar := ColorRect.new()
+	btm_bar.color = Color("04090c")
+	btm_bar.custom_minimum_size = Vector2(390, 64)
+	btm_bar.size = btm_bar.custom_minimum_size
+	btm_bar.position = Vector2(0, 844)
+	btm_bar.z_index = 450
+	btm_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(btm_bar)
+
+	var banner := PanelContainer.new()
+	banner.name = "FinishingBlowBanner"
+	banner.z_index = 460
+	banner.custom_minimum_size = Vector2(260, 56)
+	banner.position = Vector2(65, 340)
+	banner.pivot_offset = Vector2(130, 28)
+	banner.scale = Vector2(0.4, 0.4)
+	banner.modulate.a = 0.0
+	var b_style := _panel(Color(0.1, 0.03, 0.02, 0.95), 12, Color("ffd700"))
+	b_style.border_width_left = 2; b_style.border_width_right = 2
+	b_style.border_width_top = 2; b_style.border_width_bottom = 2
+	b_style.content_margin_left = 12; b_style.content_margin_right = 12
+	b_style.content_margin_top = 6; b_style.content_margin_bottom = 6
+	banner.add_theme_stylebox_override("panel", b_style)
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var b_stack := VBoxContainer.new()
+	b_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	b_stack.add_theme_constant_override("separation", -2)
+	b_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.add_child(b_stack)
+
+	var b_title := _label("✦ " + t("ui.finishing_blow") + " ✦", 20, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+	var b_sub := _label(t("ui.finishing_sub"), 9, Color("ffb09c"), HORIZONTAL_ALIGNMENT_CENTER)
+	b_stack.add_child(b_title)
+	b_stack.add_child(b_sub)
+	overlay.add_child(banner)
+
+	if sprite:
+		_flash_hit(sprite, Color(2.5, 2.5, 2.5))
+
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(top_bar, "position:y", 0.0, _battle_delay(0.2)).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(btm_bar, "position:y", 780.0, _battle_delay(0.2)).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(banner, "scale", Vector2.ONE, _battle_delay(0.22)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(banner, "modulate:a", 1.0, _battle_delay(0.15))
+	if sprite:
+		var base_scale: float = float(sprite.get_meta("base_scale", 1.0))
+		tw.tween_property(sprite, "scale", Vector2.ONE * (base_scale * 1.3), _battle_delay(0.25))
+
+	await tw.finished
+	await get_tree().create_timer(_battle_delay(0.4)).timeout
+
+	var out_tw := create_tween().set_parallel(true)
+	out_tw.tween_property(banner, "modulate:a", 0.0, _battle_delay(0.25))
+	out_tw.tween_property(banner, "scale", Vector2(1.2, 1.2), _battle_delay(0.25))
+	out_tw.tween_property(top_bar, "position:y", -64.0, _battle_delay(0.25))
+	out_tw.tween_property(btm_bar, "position:y", 844.0, _battle_delay(0.25))
+	if sprite:
+		out_tw.tween_property(sprite, "modulate:a", 0.0, _battle_delay(0.25))
+
+	await out_tw.finished
+	top_bar.queue_free()
+	btm_bar.queue_free()
+	banner.queue_free()
 
 func _advance_to_reward() -> void:
 	# show_battle can run several times while the win is on screen; only one hand-off.
@@ -3762,6 +3886,10 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 
 	_grant_stage_rewards()
 	_advance_quest("open_chest", 1)
+	if pending_boon_draft:
+		pending_boon_draft = false
+		show_abyss_boon_draft()
+		return
 	# The chest and its button have done their job; rebuild the page so only the
 	# rewards and the card choice remain on screen.
 	show_reward_details()
@@ -3786,7 +3914,8 @@ func _grant_stage_rewards() -> void:
 	if in_abyss:
 		in_abyss = false
 		var floor_num: int = int(profile.get("abyss_floor", 1))
-		var gold_gain: int = 25 + floor_num * 5
+		var bonus_mult: float = 1.5 if profile.get("abyss_boons", []).has("boon_golden_fortune") else 1.0
+		var gold_gain: int = int(round((25 + floor_num * 5) * bonus_mult))
 		profile.gold += gold_gain
 		profile.abyss_floor = floor_num + 1
 		profile.abyss_record = maxi(int(profile.get("abyss_record", 0)), floor_num)
@@ -3795,6 +3924,8 @@ func _grant_stage_rewards() -> void:
 		SpiritSave.write(profile)
 		_advance_quest("win_battles", 1)
 		_advance_quest("earn_gold", gold_gain)
+		if floor_num % 5 == 0:
+			pending_boon_draft = true
 		return
 	var encounter: Dictionary = content.encounters[current_stage]
 	var multiplier: float = active_modifier.get("reward_scale", 1.0)
@@ -5318,6 +5449,7 @@ func begin_abyss_battle() -> void:
 	current_stage = 0
 	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
 	active_modifier = _modifier(seed, floor_num)
+	active_modifier["boons"] = profile.get("abyss_boons", []).duplicate()
 	combat = SpiritCombat.new(content)
 	var equipped: Array = profile.equipment_slots.values()
 	combat.create(seed, enc, profile.deck, int(profile.health), profile.upgrades, equipped, profile.card_runes, active_modifier, profile.relics)
@@ -5327,6 +5459,65 @@ func begin_abyss_battle() -> void:
 	selected_card = -1
 	show_battle()
 	_maybe_end_turn()
+
+func show_abyss_boon_draft() -> void:
+	_clear()
+	var page := _create_page(12)
+	page.add_child(_header(t("ui.boon_draft_title"), t("ui.boon_draft_sub"), show_reward_details))
+
+	var current_boons: Array = profile.get("abyss_boons", [])
+	var pool: Array = []
+	for boon in content.ABYSS_BOONS:
+		if not current_boons.has(boon.id):
+			pool.append(boon)
+	if pool.is_empty(): pool = content.ABYSS_BOONS.duplicate()
+	pool.shuffle()
+	var offered: Array = pool.slice(0, mini(3, pool.size()))
+
+	var card_list := VBoxContainer.new()
+	card_list.name = "BoonDraftList"
+	card_list.add_theme_constant_override("separation", 14)
+	card_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card_list.alignment = BoxContainer.ALIGNMENT_CENTER
+	page.add_child(card_list)
+
+	for boon in offered:
+		var panel := PanelContainer.new()
+		panel.custom_minimum_size = Vector2(350, 96)
+		var p_style := _panel(Color("101d24"), 12, Color(boon.color))
+		p_style.content_margin_left = 16; p_style.content_margin_right = 16
+		p_style.content_margin_top = 12; p_style.content_margin_bottom = 12
+		panel.add_theme_stylebox_override("panel", p_style)
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		panel.add_child(row)
+
+		var icon_lbl := _label(boon.icon, 28, Color(boon.color), HORIZONTAL_ALIGNMENT_CENTER)
+		icon_lbl.custom_minimum_size = Vector2(40, 40)
+		row.add_child(icon_lbl)
+
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation", 2)
+		row.add_child(info)
+
+		var name_str: String = content.text(boon.nameKey, lang)
+		info.add_child(_label(name_str, 15, TEXT))
+		info.add_child(_label(content.text(boon.descKey, lang), 10, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var choose_btn := _button(t("ui.claim"), func(): _select_abyss_boon(boon), Color("244a56"), Vector2(68, 40))
+		choose_btn.name = "ChooseBoon_" + boon.id
+		row.add_child(choose_btn)
+
+		card_list.add_child(panel)
+
+func _select_abyss_boon(boon: Dictionary) -> void:
+	if not profile.has("abyss_boons") or not profile.abyss_boons is Array: profile.abyss_boons = []
+	profile.abyss_boons.append(boon.id)
+	SpiritSave.write(profile)
+	_toast(tf("ui.boon_acquired_toast", content.text(boon.nameKey, lang)))
+	show_reward_details()
 
 func _toggle_music() -> void:
 	muted = not muted

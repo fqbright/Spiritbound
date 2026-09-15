@@ -179,6 +179,68 @@ const HERO_CLASSES = [
 	}
 ]
 
+const ABYSS_BOONS = [
+	{
+		"id": "boon_blood_lust",
+		"nameKey": "boon.blood_lust.name",
+		"descKey": "boon.blood_lust.desc",
+		"icon": "♥",
+		"color": "ff5c5c",
+		"type": "heal_on_kill",
+		"value": 8
+	},
+	{
+		"id": "boon_iron_core",
+		"nameKey": "boon.iron_core.name",
+		"descKey": "boon.iron_core.desc",
+		"icon": "⬢",
+		"color": "7ec9ff",
+		"type": "shield_turn_start",
+		"value": 5
+	},
+	{
+		"id": "boon_spirit_surge",
+		"nameKey": "boon.spirit_surge.name",
+		"descKey": "boon.spirit_surge.desc",
+		"icon": "⚡",
+		"color": "ffe175",
+		"type": "first_attack_bonus",
+		"value": 4
+	},
+	{
+		"id": "boon_flame_affinity",
+		"nameKey": "boon.flame_affinity.name",
+		"descKey": "boon.flame_affinity.desc",
+		"icon": "♨",
+		"color": "ff944d",
+		"type": "burn_boost",
+		"value": 2
+	},
+	{
+		"id": "boon_wind_stride",
+		"nameKey": "boon.wind_stride.name",
+		"descKey": "boon.wind_stride.desc",
+		"icon": "༄",
+		"color": "82f7c0",
+		"type": "draw_turn_start",
+		"value": 1
+	},
+	{
+		"id": "boon_golden_fortune",
+		"nameKey": "boon.golden_fortune.name",
+		"descKey": "boon.golden_fortune.desc",
+		"icon": "◆",
+		"color": "ffd859",
+		"type": "gold_boost",
+		"value": 50
+	}
+]
+
+func abyss_boon(id: String) -> Dictionary:
+	for b in ABYSS_BOONS:
+		if b.id == id: return b
+	return {}
+
 func hero_class(id: String) -> Dictionary:
 	for h in HERO_CLASSES:
 		if h.id == id: return h
@@ -586,6 +648,23 @@ const UI_TEXT = {
 	"ui.pile_exhaust_title": {"zh-Hans":"消耗堆", "en":"Exhaust Pile"},
 	"ui.cancel_drop": {"zh-Hans":"拖至此处取消释放", "en":"Drop here to cancel"},
 	"ui.pile_count_desc": {"zh-Hans":"共 %d 张卡牌（无序）", "en":"%d cards remaining (shuffled)"},
+	"ui.finishing_blow": {"zh-Hans":"终结", "en":"FINISHING BLOW"},
+	"ui.finishing_sub": {"zh-Hans":"致命一击", "en":"LETHAL STRIKE"},
+	"ui.boon_draft_title": {"zh-Hans":"深渊恩赐", "en":"Abyss Boon"},
+	"ui.boon_draft_sub": {"zh-Hans":"深渊裂隙给予你的古老祝福（选择一项）：", "en":"Choose an ancient blessing granted by the abyss:"},
+	"ui.boon_acquired_toast": {"zh-Hans":"已获得深渊恩赐：%s！", "en":"Acquired Abyss Boon: %s!"},
+	"boon.blood_lust.name": {"zh-Hans":"嗜血渴望", "en":"Blood Lust"},
+	"boon.blood_lust.desc": {"zh-Hans":"击败敌人时恢复 8 点生命值", "en":"Heal 8 HP when an enemy is defeated."},
+	"boon.iron_core.name": {"zh-Hans":"玄铁核心", "en":"Iron Core"},
+	"boon.iron_core.desc": {"zh-Hans":"每回合开始时获得 5 点护盾", "en":"Gain 5 shield at the start of each turn."},
+	"boon.spirit_surge.name": {"zh-Hans":"灵力涌动", "en":"Spirit Surge"},
+	"boon.spirit_surge.desc": {"zh-Hans":"每回合第一张攻击牌伤害 +4", "en":"First attack card each turn deals +4 damage."},
+	"boon.flame_affinity.name": {"zh-Hans":"炎火亲和", "en":"Flame Affinity"},
+	"boon.flame_affinity.desc": {"zh-Hans":"施加的灼烧层数额外 +2", "en":"All burn effects apply +2 additional stacks."},
+	"boon.wind_stride.name": {"zh-Hans":"风行之步", "en":"Wind Stride"},
+	"boon.wind_stride.desc": {"zh-Hans":"每回合开始时额外抽取 1 张卡牌", "en":"Draw 1 additional card at the start of each turn."},
+	"boon.golden_fortune.name": {"zh-Hans":"深渊淘金", "en":"Abyssal Greed"},
+	"boon.golden_fortune.desc": {"zh-Hans":"深渊金币奖励提升 50%", "en":"Increase Abyss gold rewards by 50%."},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

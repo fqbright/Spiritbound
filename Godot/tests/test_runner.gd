@@ -583,6 +583,49 @@ func run() -> void:
 			missing_m1_strings += 1
 	check(missing_m1_strings == 0, "all Milestone 1 UI strings have bilingual translations")
 
+	# Milestone 2 checks: Abyss boons and rules engine mechanics
+	check(content.ABYSS_BOONS.size() >= 6, "at least 6 abyss boons defined")
+	var boon_ids := ["boon_blood_lust", "boon_iron_core", "boon_spirit_surge", "boon_flame_affinity", "boon_wind_stride", "boon_golden_fortune"]
+	for bid in boon_ids:
+		var b := content.abyss_boon(bid)
+		check(not b.is_empty(), "abyss boon %s is accessible" % bid)
+
+	# Test boon_spirit_surge (+4 first attack damage)
+	var m2_combat := SpiritCombat.new(content)
+	m2_combat.create(88, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"boons": ["boon_spirit_surge"]})
+	_force_hand(m2_combat, "strike")
+	var m2_pred: int = m2_combat.preview_card_damage(0, 0)
+	check(m2_pred == 10, "boon_spirit_surge increases first attack damage by +4 (6+4=10, got %d)" % m2_pred)
+	m2_combat.play(0, 0)
+	check(m2_combat.state.enemies[0].health == 90, "boon_spirit_surge actually dealt 10 damage")
+
+	# Test boon_iron_core (+5 shield on turn end)
+	var m2_iron := SpiritCombat.new(content)
+	m2_iron.create(89, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"boons": ["boon_iron_core"]})
+	m2_iron.end_turn()
+	check(m2_iron.state.player.shield >= 5, "boon_iron_core grants 5 shield at turn end (got %d)" % m2_iron.state.player.shield)
+
+	# Test boon_blood_lust (+8 HP on enemy kill)
+	var m2_blood := SpiritCombat.new(content)
+	m2_blood.create(90, encounter(5, 0), content.raw.startingDeck, 40, {}, [], {}, {"boons": ["boon_blood_lust"]})
+	_force_hand(m2_blood, "strike")
+	m2_blood.play(0, 0)
+	check(m2_blood.state.player.health == 48, "boon_blood_lust heals 8 HP on enemy kill (40 -> 48, got %d)" % m2_blood.state.player.health)
+
+	# Milestone 2 UI strings completeness
+	var m2_keys := [
+		"ui.finishing_blow", "ui.finishing_sub", "ui.boon_draft_title", "ui.boon_draft_sub", "ui.boon_acquired_toast",
+		"boon.blood_lust.name", "boon.blood_lust.desc", "boon.iron_core.name", "boon.iron_core.desc",
+		"boon.spirit_surge.name", "boon.spirit_surge.desc", "boon.flame_affinity.name", "boon.flame_affinity.desc",
+		"boon.wind_stride.name", "boon.wind_stride.desc", "boon.golden_fortune.name", "boon.golden_fortune.desc"
+	]
+	var missing_m2_strings := 0
+	for key in m2_keys:
+		var entry: Dictionary = SpiritContent.UI_TEXT.get(key, {})
+		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
+			missing_m2_strings += 1
+	check(missing_m2_strings == 0, "all Milestone 2 UI strings have bilingual translations")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

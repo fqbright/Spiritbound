@@ -24,7 +24,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[]}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[]}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -39,6 +39,7 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	base.unlocked = clampi(int(base.unlocked),0,last_stage)
 	base.position = clampi(int(base.position),0,last_stage)
 	if not base.get("claimed_stage_events") is Array: base.claimed_stage_events = []
+	if not base.get("abyss_boons") is Array: base.abyss_boons = []
 	# Saves written before accounts existed get one on load rather than on next write.
 	if not base.get("account") is Dictionary or not base.account.has("id"): base.account = new_account()
 	base.schema_version = SCHEMA_VERSION

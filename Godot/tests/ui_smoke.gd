@@ -1201,6 +1201,40 @@ func _run() -> void:
 	var danger_badge := game.root.find_child("DangerWarningBadge", true, false) as Control
 	check(danger_badge != null, "DangerWarningBadge displays when incoming damage exceeds player HP+shield")
 
+	section("== milestone 2: visual punch, finishing blow & abyss boons ==")
+	# Test map ambience particles
+	game.show_map()
+	await process_frame
+	var ambience_particles := game.root.find_child("MapAmbienceParticles", true, false) as CPUParticles2D
+	check(ambience_particles != null, "MapAmbienceParticles exists with biome dynamic theming")
+
+	# Test finishing blow animation
+	game.begin_battle(0)
+	await process_frame
+	var fb_box: Control = game.enemy_boxes[0]
+	await game._animate_finishing_blow(fb_box, null)
+	await process_frame
+	check(game.overlay.get_node_or_null("FinishingBlowBanner") == null, "FinishingBlowBanner completes and cleans up cleanly")
+
+	# Test Abyss boons draft
+	game.profile.abyss_boons = []
+	game.show_abyss_boon_draft()
+	await process_frame
+	var boon_list := game.root.find_child("BoonDraftList", true, false) as Control
+	check(boon_list != null, "BoonDraftList renders on screen")
+	check(boon_list.get_child_count() >= 1, "boon choices are offered")
+	var first_boon_panel: Node = boon_list.get_child(0)
+	var claim_btn: Button = null
+	for child in first_boon_panel.find_children("", "Button", true, false):
+		if str(child.name).begins_with("ChooseBoon_"):
+			claim_btn = child as Button
+			break
+	check(claim_btn != null, "ChooseBoon button exists")
+	if claim_btn:
+		claim_btn.emit_signal("pressed")
+		await process_frame
+		check(game.profile.abyss_boons.size() == 1, "selecting boon adds it to profile.abyss_boons")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
