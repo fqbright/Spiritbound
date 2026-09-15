@@ -579,6 +579,13 @@ const UI_TEXT = {
 	"ui.abyss_enter": {"zh-Hans":"踏入深渊试炼", "en":"Enter Abyss Trial"},
 	"ui.abyss_btn": {"zh-Hans":"深渊", "en":"Abyss"},
 	"ui.abyss_reward_toast": {"zh-Hans":"深渊第 %d 层通关！获得 ◆%d 金币", "en":"Abyss Floor %d Cleared! +◆%d Gold"},
+	"ui.lethal": {"zh-Hans":"斩杀", "en":"LETHAL"},
+	"ui.danger": {"zh-Hans":"危险", "en":"DANGER"},
+	"ui.pile_draw_title": {"zh-Hans":"抽牌堆", "en":"Draw Pile"},
+	"ui.pile_discard_title": {"zh-Hans":"弃牌堆", "en":"Discard Pile"},
+	"ui.pile_exhaust_title": {"zh-Hans":"消耗堆", "en":"Exhaust Pile"},
+	"ui.cancel_drop": {"zh-Hans":"拖至此处取消释放", "en":"Drop here to cancel"},
+	"ui.pile_count_desc": {"zh-Hans":"共 %d 张卡牌（无序）", "en":"%d cards remaining (shuffled)"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

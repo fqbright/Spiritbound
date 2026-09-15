@@ -315,3 +315,72 @@ func _living_count() -> int:
 	for enemy in state.enemies:
 		if enemy.health > 0: result += 1
 	return result
+
+func preview_card_damage(hand_index: int, target_index: int) -> int:
+	if state.phase != "player" or hand_index < 0 or hand_index >= state.hand.size(): return 0
+	if target_index < 0 or target_index >= state.enemies.size(): return 0
+	var enemy: Dictionary = state.enemies[target_index]
+	if enemy.health <= 0: return 0
+	var instance: Dictionary = state.hand[hand_index]
+	var card: Dictionary = content.card(instance.card_id)
+	if card.is_empty() or not _is_attack(card): return 0
+	var rune: String = state.runes.get(card.id, "")
+	var bonus := int(state.upgrades.get(card.id, 0))
+	bonus += int(state.player.get("strength", 0))
+	if state.player.focus > 0: bonus += 3 * state.player.focus
+	if not state.first_attack:
+		if state.equipment.has("emberBlade"): bonus += 3
+		if _has_relic("starShard"): bonus += 2
+	var resonance := int(state.elements.get(card.get("element", ""), 0)) if rune == "resonance" else 0
+	var total_dealt := 0
+	var temp_shield: int = enemy.shield
+	var temp_hp: int = enemy.health
+	var pierce: bool = card.get("special", "") == "pierce" or state.equipment.has("stoneSpear")
+
+	for effect in card.effects:
+		if effect.operation != "damage": continue
+		var amount := maxi(1, int(round((effect.amount + bonus + resonance) * 1.0)))
+		var execute := 1.5 if rune == "execute" and temp_hp <= enemy.max_health * 0.25 else 1.0
+		var critical := 2 if card.get("special", "") == "critical" else 1
+		var hit_amount := int(round(amount * execute * critical))
+		if int(enemy.get("vulnerable", 0)) > 0: hit_amount = int(round(hit_amount * 1.5))
+		var absorbed := 0 if pierce else mini(temp_shield, hit_amount)
+		temp_shield -= absorbed
+		var dealt := mini(temp_hp, hit_amount - absorbed)
+		temp_hp -= dealt
+		total_dealt += dealt
+
+	if rune == "echo":
+		for effect in card.effects:
+			if effect.operation != "damage": continue
+			var amount := maxi(1, int(round((effect.amount + bonus + resonance) * 0.5)))
+			var execute := 1.5 if rune == "execute" and temp_hp <= enemy.max_health * 0.25 else 1.0
+			var critical := 2 if card.get("special", "") == "critical" else 1
+			var hit_amount := int(round(amount * execute * critical))
+			if int(enemy.get("vulnerable", 0)) > 0: hit_amount = int(round(hit_amount * 1.5))
+			var absorbed := 0 if pierce else mini(temp_shield, hit_amount)
+			temp_shield -= absorbed
+			var dealt := mini(temp_hp, hit_amount - absorbed)
+			temp_hp -= dealt
+			total_dealt += dealt
+
+	return total_dealt
+
+func is_lethal(hand_index: int, target_index: int) -> bool:
+	if target_index < 0 or target_index >= state.enemies.size(): return false
+	var enemy: Dictionary = state.enemies[target_index]
+	if enemy.health <= 0: return false
+	return preview_card_damage(hand_index, target_index) >= enemy.health
+
+func total_incoming_damage() -> int:
+	var total := 0
+	for enemy in state.enemies:
+		if enemy.health <= 0: continue
+		var intent: Dictionary = enemy.get("intent", {})
+		var kind: String = str(intent.get("kind", ""))
+		var amount: int = int(intent.get("amount", 0))
+		if kind in ["attack", "attack_defend"]:
+			if int(enemy.get("weak", 0)) > 0: amount = int(round(amount * 0.75))
+			if int(state.player.get("vulnerable", 0)) > 0: amount = int(round(amount * 1.5))
+			total += amount
+	return total

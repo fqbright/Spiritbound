@@ -551,6 +551,38 @@ func run() -> void:
 			missing_p3_strings += 1
 	check(missing_p3_strings == 0, "all Phase 3 UI strings have bilingual translations")
 
+	# Milestone 1 checks: Combat transparency & damage forecast rules
+	var m1_combat := SpiritCombat.new(content)
+	m1_combat.create(77, encounter(30, 8), content.raw.startingDeck, 60)
+	_force_hand(m1_combat, "strike")
+	var pred_dmg: int = m1_combat.preview_card_damage(0, 0)
+	check(pred_dmg == 6, "preview_card_damage correctly predicts basic strike damage (got %d, expected 6)" % pred_dmg)
+	check(not m1_combat.is_lethal(0, 0), "strike against 30 hp enemy is not lethal")
+
+	m1_combat.state.enemies[0].health = 5
+	check(m1_combat.is_lethal(0, 0), "strike (6 dmg) against 5 hp enemy is lethal")
+
+	# Test incoming damage calculation
+	m1_combat.state.enemies[0].intent = {"kind":"attack","amount":12}
+	var incoming: int = m1_combat.total_incoming_damage()
+	check(incoming == 12, "total_incoming_damage calculates base attack intent (got %d, expected 12)" % incoming)
+
+	m1_combat.state.enemies[0].weak = 1
+	var weakened_incoming: int = m1_combat.total_incoming_damage()
+	check(weakened_incoming == 9, "total_incoming_damage factors in weak reduction (12 * 0.75 = 9, got %d)" % weakened_incoming)
+
+	# Milestone 1 UI strings completeness
+	var m1_keys := [
+		"ui.lethal", "ui.danger", "ui.pile_draw_title", "ui.pile_discard_title",
+		"ui.pile_exhaust_title", "ui.cancel_drop", "ui.pile_count_desc"
+	]
+	var missing_m1_strings := 0
+	for key in m1_keys:
+		var entry: Dictionary = SpiritContent.UI_TEXT.get(key, {})
+		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
+			missing_m1_strings += 1
+	check(missing_m1_strings == 0, "all Milestone 1 UI strings have bilingual translations")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

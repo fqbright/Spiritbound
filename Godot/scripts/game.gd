@@ -210,6 +210,7 @@ class HandCard extends Control:
 			# A peek is "let me read this," not a drag — the instant a real drag starts,
 			# drop the peek and fall straight into the normal drag-to-target flow.
 			_end_preview()
+			if game: game._show_cancel_zone(true)
 		if is_dragging:
 			if current_tween: current_tween.kill()
 			global_position = cur_global - Vector2(custom_minimum_size.x / 2.0, custom_minimum_size.y / 2.0)
@@ -239,6 +240,7 @@ class HandCard extends Control:
 		if game:
 			game._clear_damage_preview()
 			game._clear_valid_targets()
+			game._show_cancel_zone(false)
 
 		# The peek has been showing since the moment this touch began; decide now, from how
 		# long that actually was, whether this reads as a tap (plays the card) or a hold
@@ -257,7 +259,8 @@ class HandCard extends Control:
 			is_dragging = false
 			return
 
-		if is_dragging and (position.y < home_pos.y - 60.0 or global_position.y < 580.0):
+		# If dropped in the cancel zone (bottom hand region) or below 560y, cancel play cleanly
+		if is_dragging and global_position.y < 560.0 and position.y < home_pos.y - 60.0:
 			var final_target := target_enemy_idx
 			if final_target < 0 and game._card_target_mode(card_data) == "enemy":
 				# Dropped short of any enemy: with one left there is no ambiguity to resolve.
@@ -2615,6 +2618,27 @@ func _build_player_stage() -> Control:
 	hp_bar.position = Vector2(center_x - 84.0, 78.0)
 	stage.add_child(hp_bar)
 
+	var incoming: int = combat.total_incoming_damage()
+	var effective_hp: int = int(combat.state.player.health) + int(combat.state.player.shield)
+	if incoming >= effective_hp and incoming > 0:
+		var danger_badge := Panel.new()
+		danger_badge.name = "DangerWarningBadge"
+		danger_badge.custom_minimum_size = Vector2(96.0, 18.0)
+		danger_badge.size = danger_badge.custom_minimum_size
+		danger_badge.position = Vector2(center_x - 48.0, 58.0)
+		danger_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var d_style := _panel(Color(0.85, 0.15, 0.15, 0.95), 9, Color("ffc2c2"))
+		d_style.border_width_left = 1; d_style.border_width_right = 1
+		d_style.border_width_top = 1; d_style.border_width_bottom = 1
+		danger_badge.add_theme_stylebox_override("panel", d_style)
+		var d_label := _label("⚠ %s: %d" % [t("ui.danger"), incoming], 9, Color("ffffff"), HORIZONTAL_ALIGNMENT_CENTER)
+		d_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		danger_badge.add_child(d_label)
+		stage.add_child(danger_badge)
+		var d_tw := danger_badge.create_tween().set_loops()
+		d_tw.tween_property(danger_badge, "modulate:a", 0.55, 0.4).set_trans(Tween.TRANS_SINE)
+		d_tw.tween_property(danger_badge, "modulate:a", 1.0, 0.4).set_trans(Tween.TRANS_SINE)
+
 	var badges := HBoxContainer.new()
 	badges.position = Vector2(center_x - 84.0, 98.0)
 	badges.size = Vector2(168.0, 18.0)
@@ -2628,11 +2652,11 @@ func _build_player_stage() -> Control:
 
 	return stage
 
-func _pile_chip(count: int, caption: String, number_color: Color) -> Panel:
+func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callable = Callable()) -> Panel:
 	var chip := Panel.new()
 	chip.custom_minimum_size = Vector2(52.0, 46.0)
 	chip.size = chip.custom_minimum_size
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.mouse_filter = Control.MOUSE_FILTER_PASS if on_tap.is_valid() else Control.MOUSE_FILTER_IGNORE
 	chip.add_theme_stylebox_override("panel", _panel(Color("0c1a1f"), 10, Color("1f404d")))
 	var stack := VBoxContainer.new()
 	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2642,6 +2666,19 @@ func _pile_chip(count: int, caption: String, number_color: Color) -> Panel:
 	chip.add_child(stack)
 	stack.add_child(_label(str(count), 17, number_color, HORIZONTAL_ALIGNMENT_CENTER))
 	stack.add_child(_label(caption, 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	if on_tap.is_valid():
+		var btn := Button.new()
+		btn.flat = true
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var empty := StyleBoxEmpty.new()
+		btn.add_theme_stylebox_override("normal", empty)
+		btn.add_theme_stylebox_override("hover", empty)
+		btn.add_theme_stylebox_override("pressed", empty)
+		btn.add_theme_stylebox_override("focus", empty)
+		btn.pressed.connect(on_tap)
+		chip.add_child(btn)
 	return chip
 
 func _add_hand(page: VBoxContainer) -> void:
@@ -2656,7 +2693,9 @@ func _add_hand(page: VBoxContainer) -> void:
 	status.add_theme_constant_override("separation", 10)
 	page.add_child(status)
 
-	status.add_child(_pile_chip(combat.state.draw.size(), t("ui.draw_pile"), Color("f3e8cf")))
+	var draw_chip := _pile_chip(combat.state.draw.size(), t("ui.draw_pile"), Color("f3e8cf"), func(): show_pile_inspector("ui.pile_draw_title", combat.state.draw))
+	draw_chip.name = "DrawPileChip"
+	status.add_child(draw_chip)
 
 	# Energy is the only thing that gates a play now — there is no play-count limit, so this
 	# orb (not a row of used-up pips) is the one number that actually matters each turn.
@@ -2676,7 +2715,9 @@ func _add_hand(page: VBoxContainer) -> void:
 	orb_stack.add_child(_label(t("ui.energy_label"), 8, Color("8fd9f2"), HORIZONTAL_ALIGNMENT_CENTER))
 	status.add_child(orb)
 
-	status.add_child(_pile_chip(combat.state.discard.size(), t("ui.discard_pile"), Color("a8b2b5")))
+	var discard_chip := _pile_chip(combat.state.discard.size(), t("ui.discard_pile"), Color("a8b2b5"), func(): show_pile_inspector("ui.pile_discard_title", combat.state.discard))
+	discard_chip.name = "DiscardPileChip"
+	status.add_child(discard_chip)
 
 	var pass_btn := _button(t("ui.pass_turn"), _pass_turn, Color("1c2a30"), Vector2(48, 44))
 	pass_btn.name = "PassTurnBtn"
@@ -3216,7 +3257,12 @@ func _show_damage_preview(card: Dictionary, enemy_index: int) -> void:
 	var tone: Color = Color("ff6f5e") if prediction.lethal else Color("ffe6b8")
 	holder.add_child(_label("−%d" % prediction.damage, 26, tone, HORIZONTAL_ALIGNMENT_CENTER))
 	if prediction.lethal:
-		holder.add_child(_label(t("ui.preview_lethal"), 11, Color("ff9c8c"), HORIZONTAL_ALIGNMENT_CENTER))
+		var lethal_badge := _label("☠ " + t("ui.lethal"), 11, Color("ff4444"), HORIZONTAL_ALIGNMENT_CENTER)
+		lethal_badge.name = "LethalBadge"
+		holder.add_child(lethal_badge)
+		var tw := holder.create_tween().set_loops()
+		tw.tween_property(lethal_badge, "modulate:a", 0.45, 0.3).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(lethal_badge, "modulate:a", 1.0, 0.3).set_trans(Tween.TRANS_SINE)
 	elif prediction.blocked > 0:
 		holder.add_child(_label(tf("ui.preview_blocked", prediction.blocked), 10, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER))
 
@@ -3224,6 +3270,179 @@ func _clear_damage_preview() -> void:
 	if overlay == null: return
 	var existing := overlay.get_node_or_null("DamagePreview")
 	if existing: existing.queue_free()
+
+func _show_cancel_zone(active: bool) -> void:
+	if overlay == null: return
+	var zone: Control = overlay.get_node_or_null("CancelDropZone") as Control
+	if not active:
+		if zone: zone.queue_free()
+		return
+	if zone != null: return
+	zone = Panel.new()
+	zone.name = "CancelDropZone"
+	zone.custom_minimum_size = Vector2(366.0, 140.0)
+	zone.size = zone.custom_minimum_size
+	zone.position = Vector2(12.0, 660.0)
+	zone.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _panel(Color(0.55, 0.12, 0.12, 0.45), 14, Color(1.0, 0.45, 0.45, 0.8))
+	style.border_width_left = 2; style.border_width_right = 2
+	style.border_width_top = 2; style.border_width_bottom = 2
+	zone.add_theme_stylebox_override("panel", style)
+	var lbl := _label("✕ " + t("ui.cancel_drop"), 12, Color("ffd5d5"), HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	zone.add_child(lbl)
+	overlay.add_child(zone)
+
+func show_pile_inspector(title_key: String, pile: Array) -> void:
+	if overlay == null: return
+	_clear_pile_inspector()
+	var backdrop := _modal_backdrop("PileInspector", _clear_pile_inspector)
+
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(366, 560)
+	panel.size = panel.custom_minimum_size
+	panel.position = Vector2(12, 140)
+	panel.add_theme_stylebox_override("panel", _panel(Color("091316"), 16, Color("2d4a52")))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	backdrop.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
+
+	var header := HBoxContainer.new()
+	header.custom_minimum_size = Vector2(350, 44)
+	header.alignment = BoxContainer.ALIGNMENT_BEGIN
+	vbox.add_child(header)
+
+	var spacer_l := Control.new()
+	spacer_l.custom_minimum_size = Vector2(12, 0)
+	header.add_child(spacer_l)
+
+	var title_lbl := _label(t(title_key), 17, TEXT)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title_lbl)
+
+	var count_lbl := _label(tf("ui.pile_count_desc", pile.size()), 11, MUTED)
+	header.add_child(count_lbl)
+
+	var close_btn := _button("✕", _clear_pile_inspector, Color("2a3f45"), Vector2(36, 32))
+	close_btn.name = "PileCloseBtn"
+	header.add_child(close_btn)
+
+	var spacer_r := Control.new()
+	spacer_r.custom_minimum_size = Vector2(8, 0)
+	header.add_child(spacer_r)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.allow_vertical = true
+	vbox.add_child(scroll)
+
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 8)
+	pad.add_theme_constant_override("margin_right", 8)
+	pad.add_theme_constant_override("margin_top", 4)
+	pad.add_theme_constant_override("margin_bottom", 12)
+	scroll.add_child(pad)
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	pad.add_child(grid)
+
+	for item in pile:
+		var c_id: String = item.card_id if (item is Dictionary and item.has("card_id")) else str(item)
+		var c_data: Dictionary = content.card(c_id)
+		if not c_data.is_empty():
+			grid.add_child(_pile_card_tile(c_data))
+
+func _clear_pile_inspector() -> void:
+	if overlay == null: return
+	var existing := overlay.get_node_or_null("PileInspector")
+	if existing: existing.queue_free()
+
+func _pile_card_tile(card: Dictionary) -> Control:
+	var accent := _card_color(card)
+	var rune_id: String = ""
+	if combat and combat.state: rune_id = combat.state.runes.get(card.id, "")
+	elif profile: rune_id = profile.card_runes.get(card.id, "")
+
+	var tile := Panel.new()
+	tile.custom_minimum_size = Vector2(170, 225)
+	tile.size = tile.custom_minimum_size
+	tile.add_theme_stylebox_override("panel", _panel(Color("11242a"), 12, accent))
+	tile.clip_contents = true
+
+	var art := TextureRect.new()
+	art.texture = _get_card_texture(card.id)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var up_lvl: int = int(combat.state.upgrades.get(card.id, 0)) if (combat and combat.state) else int(profile.upgrades.get(card.id, 0))
+	_apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0)
+	tile.add_child(art)
+
+	_add_ornate_frame(tile, tile.custom_minimum_size, accent, str(card.get("rarity", "Common")))
+
+	var badge := _cost_badge(int(card.cost), accent)
+	badge.position = Vector2(8, 8)
+	tile.add_child(badge)
+
+	if not rune_id.is_empty():
+		var rune_info := content.rune(rune_id)
+		var rune_path := "res://assets/icons/rune_%s.png" % rune_id
+		if ResourceLoader.exists(rune_path):
+			var r_tr := TextureRect.new()
+			r_tr.texture = load(rune_path)
+			r_tr.position = Vector2(38, 8)
+			r_tr.custom_minimum_size = Vector2(20, 20)
+			r_tr.size = r_tr.custom_minimum_size
+			r_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			r_tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			r_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tile.add_child(r_tr)
+		else:
+			var rune_lbl := _label(rune_info.icon, 14, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
+			rune_lbl.position = Vector2(38, 8)
+			rune_lbl.size = Vector2(20, 20)
+			tile.add_child(rune_lbl)
+
+	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
+	rarity_row.position = Vector2(84, 10)
+	rarity_row.size = Vector2(76, 16)
+	tile.add_child(rarity_row)
+
+	var info_box := PanelContainer.new()
+	info_box.position = Vector2(8, 90)
+	info_box.custom_minimum_size = Vector2(154, 126)
+	info_box.size = info_box.custom_minimum_size
+	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.92), 8, accent)
+	box_style.content_margin_left = 10; box_style.content_margin_right = 10
+	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
+	info_box.add_theme_stylebox_override("panel", box_style)
+	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(info_box)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 2)
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info_box.add_child(stack)
+
+	stack.add_child(_label(content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else ""), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var desc := _label(_card_description(card), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc.custom_minimum_size.y = 48
+	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stack.add_child(desc)
+
+	return tile
 
 func _shake_screen(intensity: float, duration := 0.24) -> void:
 	if root == null: return

@@ -1151,6 +1151,56 @@ func _run() -> void:
 	check(game.pending_rewards.get("replay", false) == true, "stage replay is flagged in pending_rewards")
 	check(str(game.pending_rewards.get("equipment", "")) == "", "stage replay does not drop equipment")
 
+	section("== milestone 1: combat transparency & mobile controls ==")
+	game.begin_battle(0)
+	await process_frame
+	var draw_chip := game.root.find_child("DrawPileChip", true, false) as Control
+	var discard_chip := game.root.find_child("DiscardPileChip", true, false) as Control
+	check(draw_chip != null, "DrawPileChip exists in combat HUD")
+	check(discard_chip != null, "DiscardPileChip exists in combat HUD")
+
+	# Test Pile Inspector
+	game.show_pile_inspector("ui.pile_draw_title", game.combat.state.draw)
+	await process_frame
+	var inspector := game.overlay.get_node_or_null("PileInspector") as Control
+	check(inspector != null, "PileInspector opens on overlay")
+	var close_btn := inspector.find_child("PileCloseBtn", true, false) as Button
+	check(close_btn != null, "PileCloseBtn exists inside inspector")
+	if close_btn:
+		close_btn.emit_signal("pressed")
+		await process_frame
+		check(game.overlay.get_node_or_null("PileInspector") == null, "closing PileInspector frees it from overlay")
+
+	# Test Cancel Drop Zone
+	game._show_cancel_zone(true)
+	await process_frame
+	var cancel_zone := game.overlay.get_node_or_null("CancelDropZone") as Control
+	check(cancel_zone != null, "CancelDropZone appears when card is dragged")
+	game._show_cancel_zone(false)
+	await process_frame
+	check(game.overlay.get_node_or_null("CancelDropZone") == null, "CancelDropZone cleans up after drag ends")
+
+	# Test Lethal Forecast Badge
+	game.combat.state.enemies[0].health = 4
+	game._show_damage_preview(game.content.card("strike"), 0)
+	await process_frame
+	var dmg_preview := game.overlay.get_node_or_null("DamagePreview") as Control
+	check(dmg_preview != null, "DamagePreview displays on enemy")
+	var lethal_badge := dmg_preview.find_child("LethalBadge", true, false) as Control
+	check(lethal_badge != null, "LethalBadge displays when attack will finish target")
+	game._clear_damage_preview()
+	await process_frame
+	check(game.overlay.get_node_or_null("DamagePreview") == null, "DamagePreview clears cleanly")
+
+	# Test Danger Warning Badge on player
+	game.combat.state.player.health = 10
+	game.combat.state.player.shield = 0
+	game.combat.state.enemies[0].intent = {"kind":"attack", "amount": 15}
+	game.show_battle()
+	await process_frame
+	var danger_badge := game.root.find_child("DangerWarningBadge", true, false) as Control
+	check(danger_badge != null, "DangerWarningBadge displays when incoming damage exceeds player HP+shield")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
