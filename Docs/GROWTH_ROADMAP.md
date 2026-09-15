@@ -31,12 +31,14 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 ## High impact
 
-- `[ ]` **A1 — 首战互动教程 (first-battle tutorial)**
-  A scripted sequence of dismissible full-screen callouts during a brand-new profile's very
-  first battle: hand/dragging, energy, targeting, auto-end-turn, rewards. Reuse
-  `_modal_backdrop()` (AGENTS.md already documents this as the proven "tap anywhere to
-  dismiss" pattern — don't reinvent it). Gate on a new `profile.tutorial_seen: bool`.
-  *Builds on:* `_modal_backdrop()`, `_show_info_popup()`.
+- `[x]` **A1 — 首战互动教程 (first-battle tutorial)** — done 2026-09-15
+  Implemented as a 4-step slide carousel (`_show_battle_tutorial()`/`_render_tutorial_step()`
+  in game.gd) shown once, gated on `profile.tutorial_seen` and `index == 0`, triggered from
+  `begin_battle()`. NOT gated on the player actually performing each action — see the note
+  below on why. Content: hand/energy, drag-to-target, auto-end-turn, rewards/growth.
+  *Built on:* `_modal_backdrop()` (exactly as AGENTS.md's documented pattern), the
+  `_button()`/`_panel()` primitives. 4 new checks in `ui_smoke.gd`'s `== first-battle
+  tutorial ==` section; both suites 0 failures.
 - `[ ]` **B1 — 累积型登录奖励 (rolling weekly login reward)**
   "Log in on any 3 of 7 days this week" reward strip, NOT a hard-reset daily streak (the
   research explicitly warns reset-based streaks are less sustainable — see the report's
@@ -173,6 +175,30 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — A1 first-battle tutorial shipped
+A 4-step dismissible slide carousel (`TUTORIAL_STEPS`, `_show_battle_tutorial()`,
+`_render_tutorial_step()`, `_tutorial_next_step/_prev_step()`, `_finish_tutorial()`, all in
+`game.gd`) shown once per profile on `begin_battle(0)` when `not profile.tutorial_seen`.
+Deliberately **not** wired to actual gameplay actions (a real card drag, a real turn
+auto-ending) — hooking every card-play code path (drag, tap-to-play, tap-to-target) reliably
+would be real engine surface for a first pass; the carousel just explains those things up
+front instead. If a future pass wants "true" step-gated onboarding (don't advance until the
+player actually plays a card), the natural hook point is wherever `combat.play()` is called
+from game.gd's input handlers — there wasn't a single existing choke point for that, unlike
+`begin_battle()` which is the one true entry point for "a battle is starting."
+One pitfall hit and fixed before committing: a GDScript string literal used a bare `"..."`
+containing embedded ASCII double-quotes (`这里没有"结束回合"按钮`), which breaks the outer
+string delimiter — GDScript doesn't error loudly on this in a way that's easy to spot in a
+huge dict literal, so it's easy to miss. Fixed by switching that one entry to single-quote
+delimiters. Watch for this in any future bilingual UI_TEXT entry that needs to quote a term.
+Also caught before committing: an Edit's `old_string` anchored on `func begin_daily_trial()`
+matched the *nearest preceding* occurrence of the target lines, which turned out to be inside
+`begin_abyss_battle()` (which has no `index` variable at all) rather than `begin_battle()` —
+a reminder that a same-shaped code block repeated 2-3 times in one file needs a more specific
+anchor, not just "the next function's name," or the edit lands in the wrong copy silently.
+189 rules checks (unchanged — this is a screens-only feature) / UI smoke all passing,
+including 4 new assertions. Committed as (see git log for hash at time of your reading).
 
 ### 2026-09-15 — Roadmap created
 Report published as an artifact (see link at top). Full 24-item backlog transcribed here,

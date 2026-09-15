@@ -2244,6 +2244,7 @@ func begin_battle(index: int) -> void:
 	advancing_to_reward = false
 	selected_card = -1
 	show_battle()
+	if index == 0 and not bool(profile.get("tutorial_seen", false)): _show_battle_tutorial()
 	_maybe_end_turn()
 
 func show_battle() -> void:
@@ -2906,6 +2907,88 @@ func _show_info_popup(icon: Control, title: String, detail: String, accent: Colo
 func _clear_info_popup() -> void:
 	if overlay == null: return
 	var existing := overlay.get_node_or_null("InfoPopup")
+	if existing: existing.queue_free()
+
+# First-battle tutorial: a short dismissible slide carousel shown once per profile, right
+# before the very first fight. Deliberately NOT gated on the player actually performing each
+# action (dragging a card, letting a turn auto-end) — hooking every one of those reliably
+# across drag/tap/target code paths is real engine surface for marginal gain over just
+# explaining them up front. Tapping the backdrop, "跳过教程", or reaching the last step's
+# "开始战斗" all do the same thing: mark tutorial_seen and get out of the way.
+const TUTORIAL_STEPS: Array[String] = ["tutorial.1", "tutorial.2", "tutorial.3", "tutorial.4"]
+var tutorial_step := 0
+
+func _show_battle_tutorial() -> void:
+	if overlay == null: return
+	tutorial_step = 0
+	_modal_backdrop("BattleTutorial", _finish_tutorial)
+	_render_tutorial_step()
+
+func _render_tutorial_step() -> void:
+	var backdrop := overlay.get_node_or_null("BattleTutorial") as Control
+	if backdrop == null: return
+	for child in backdrop.get_children(): child.queue_free()
+
+	var center := VBoxContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.alignment = BoxContainer.ALIGNMENT_CENTER
+	center.add_theme_constant_override("separation", 12)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(center)
+
+	var card := PanelContainer.new()
+	card.name = "TutorialCard"
+	card.custom_minimum_size = Vector2(290, 0)
+	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var card_style := _panel(Color("15262b"), 16, GOLD)
+	card_style.content_margin_left = 20; card_style.content_margin_right = 20
+	card_style.content_margin_top = 20; card_style.content_margin_bottom = 18
+	card.add_theme_stylebox_override("panel", card_style)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(card)
+
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 10)
+	card.add_child(inner)
+
+	var key: String = TUTORIAL_STEPS[tutorial_step]
+	inner.add_child(_label(tf("ui.tutorial_step_fmt", [tutorial_step + 1, TUTORIAL_STEPS.size()]), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	inner.add_child(_label(content.ui("%s.title" % key, lang), 17, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var desc_lbl := _label(content.ui("%s.desc" % key, lang), 12, Color("cfe3e0"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.custom_minimum_size.x = 250
+	inner.add_child(desc_lbl)
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	inner.add_child(actions)
+	if tutorial_step > 0:
+		var back_btn := _button(t("ui.tutorial_prev"), _tutorial_prev_step, Color("1a3d44"), Vector2(84, 40))
+		actions.add_child(back_btn)
+	var is_last: bool = tutorial_step >= TUTORIAL_STEPS.size() - 1
+	var next_callback: Callable = _finish_tutorial if is_last else _tutorial_next_step
+	var next_btn := _button(t("ui.tutorial_start") if is_last else t("ui.tutorial_next"), next_callback, EMBER, Vector2(120, 40))
+	next_btn.name = "TutorialNextBtn"
+	actions.add_child(next_btn)
+
+	var skip_btn := _button(t("ui.tutorial_skip"), _finish_tutorial, Color.TRANSPARENT, Vector2(0, 30))
+	skip_btn.name = "TutorialSkipBtn"
+	skip_btn.add_theme_color_override("font_color", MUTED)
+	center.add_child(skip_btn)
+
+func _tutorial_next_step() -> void:
+	tutorial_step += 1
+	_render_tutorial_step()
+
+func _tutorial_prev_step() -> void:
+	tutorial_step -= 1
+	_render_tutorial_step()
+
+func _finish_tutorial() -> void:
+	profile.tutorial_seen = true
+	SpiritSave.write(profile)
+	if overlay == null: return
+	var existing := overlay.get_node_or_null("BattleTutorial")
 	if existing: existing.queue_free()
 
 # MTG Arena's hold-to-peek: press and hold a card in hand and an enlarged copy floats up so

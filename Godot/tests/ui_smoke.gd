@@ -354,11 +354,38 @@ func _run() -> void:
 	check(game.root.get_child_count() > 0, "camp page built")
 
 	section("== battle ==")
+	check(not bool(game.profile.get("tutorial_seen", false)), "a fresh profile has not seen the tutorial yet")
 	game.begin_battle(0)
 	await process_frame
 	check(game.combat != null, "combat created")
 	check(game.combat.state.phase == "player", "battle starts on player phase")
 	check(int(game.combat.state.energy) == 2, "battle starts with two energy")
+
+	section("== first-battle tutorial ==")
+	var tutorial_backdrop := game.overlay.get_node_or_null("BattleTutorial") as Control
+	check(tutorial_backdrop != null, "tutorial carousel opens on a fresh profile's first battle (stage 0)")
+	var tutorial_card := tutorial_backdrop.find_child("TutorialCard", true, false) as Control
+	check(tutorial_card != null, "tutorial card renders")
+	check(game.tutorial_step == 0, "tutorial starts on step 0")
+	game._tutorial_next_step()
+	await process_frame
+	check(game.tutorial_step == 1, "TutorialNextBtn advances to the next step")
+	game._tutorial_prev_step()
+	await process_frame
+	check(game.tutorial_step == 0, "TutorialPrevBtn (back) returns to the previous step")
+	for i in game.TUTORIAL_STEPS.size() - 1: game._tutorial_next_step()
+	await process_frame
+	var next_btn := tutorial_backdrop.find_child("TutorialNextBtn", true, false) as Button
+	check(next_btn != null and next_btn.text == game.content.ui("ui.tutorial_start", game.lang), "the last step's button reads Start Battle instead of Next")
+	game._finish_tutorial()
+	await process_frame
+	check(bool(game.profile.get("tutorial_seen", false)), "finishing the tutorial marks tutorial_seen so it never shows again")
+	check(game.overlay.get_node_or_null("BattleTutorial") == null, "tutorial carousel is gone after finishing")
+	game.begin_battle(4)
+	await process_frame
+	check(game.overlay.get_node_or_null("BattleTutorial") == null, "a later battle does not re-show the tutorial once seen")
+	game.begin_battle(0)
+	await process_frame
 
 	# Health bar must actually shrink with the enemy's health.
 	var enemy_box: Control = game.enemy_boxes[0]

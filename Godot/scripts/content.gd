@@ -923,6 +923,19 @@ const UI_TEXT = {
 	"trial.tag.undying.desc": {"zh-Hans":"敌人有几率于死亡后复活", "en":"Enemies may revive after death"},
 	"trial.tag.frenzy.name": {"zh-Hans":"狂暴之怒", "en":"Berserk Fury"},
 	"trial.tag.frenzy.desc": {"zh-Hans":"敌人攻击力 +5", "en":"Enemy damage +5"},
+	"ui.tutorial_next": {"zh-Hans":"下一步", "en":"Next"},
+	"ui.tutorial_prev": {"zh-Hans":"上一步", "en":"Back"},
+	"ui.tutorial_start": {"zh-Hans":"开始战斗", "en":"Start Battle"},
+	"ui.tutorial_skip": {"zh-Hans":"跳过教程", "en":"Skip Tutorial"},
+	"ui.tutorial_step_fmt": {"zh-Hans":"%d / %d", "en":"%d / %d"},
+	"tutorial.1.title": {"zh-Hans":"手牌与能量", "en":"Hand & Energy"},
+	"tutorial.1.desc": {"zh-Hans":"卡牌左上角的数字是能量费用。每回合能量有限，够花才能出牌——没有出牌次数上限，只有能量说了算。", "en":"The number on a card's top-left corner is its Energy cost. Energy is limited each turn — there's no cap on how many cards you can play, only on what you can afford."},
+	"tutorial.2.title": {"zh-Hans":"出牌与瞄准", "en":"Playing & Targeting"},
+	"tutorial.2.desc": {"zh-Hans":"把卡牌拖到敌人身上即可对其造成效果；没有攻击效果的卡牌（比如护盾、回复）直接拖到空白处使用即可。", "en":"Drag a card onto an enemy to affect them; a card with no attack effect (shield, heal) can be dragged anywhere else to play it."},
+	"tutorial.3.title": {"zh-Hans":"回合自动结束", "en":"Turns End Themselves"},
+	"tutorial.3.desc": {"zh-Hans":'这里没有"结束回合"按钮：当手牌打不动（能量不够或没牌了），回合会自动结束，进入敌人的行动。', "en":"There's no End Turn button: once nothing left in hand is affordable, the turn ends itself and the enemy acts."},
+	"tutorial.4.title": {"zh-Hans":"战报与成长", "en":"Rewards & Growth"},
+	"tutorial.4.desc": {"zh-Hans":"获胜后可以选择带走一张新卡加入牌组。营地里还有装备、符文、专精与每日试炼——一步步来，先打赢眼前这一场。", "en":"Winning lets you add a new card to your deck. Camp holds equipment, runes, mastery and the Daily Trial — for now, just win the fight in front of you."},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
