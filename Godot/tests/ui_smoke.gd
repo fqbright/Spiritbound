@@ -82,11 +82,15 @@ func _run() -> void:
 	game._claim_quest("daily_quests", str(win_quest.id))
 	check(int(game.profile.gold) == gold_after_claim, "claiming an already-claimed quest does not pay out twice")
 
-	game.show_camp()
+	game.show_quests()
 	await process_frame
-	check(game.root.get_child_count() > 0, "camp screen builds with quest sections")
+	check(game.root.get_child_count() > 0, "quests screen builds with quest sections")
 	var quest_bar := _find_progress_bar(game.root)
 	check(quest_bar != null and quest_bar.size.x > 20.0, "quest progress bar has real width, not collapsed to zero")
+
+	game.show_camp()
+	await process_frame
+	check(game.root.get_child_count() > 0, "camp screen builds with profile & relics")
 
 	section("== map ==")
 	game.show_map()
@@ -211,12 +215,17 @@ func _run() -> void:
 	game.profile.collection["strike"] = game.profile.deck.count("strike") + 3
 	game.show_map()
 	await process_frame
+	var quest_btn: Node = game.root.find_child("QuestButton", true, false)
+	check(quest_btn != null, "the quest entry point button exists")
+	if quest_btn != null:
+		check(quest_btn.get_node_or_null("NotificationDot") != null, "a claimable quest shows a red dot on the quest entry point")
+		var quest_icon := _find_by_script(quest_btn, game.GameIcon)
+		check(quest_icon != null and str(quest_icon.kind) == "quest", "the quest entry point uses a quest icon")
 	var camp_btn: Node = game.root.find_child("CampButton", true, false)
-	check(camp_btn != null, "the quest/camp entry point button exists")
+	check(camp_btn != null, "the camp entry point button exists")
 	if camp_btn != null:
-		check(camp_btn.get_node_or_null("NotificationDot") != null, "a claimable quest shows a red dot on the quest entry point")
 		var camp_icon := _find_by_script(camp_btn, game.GameIcon)
-		check(camp_icon != null and str(camp_icon.kind) == "scroll", "the quest entry point uses a scroll icon, not an ambiguous glyph")
+		check(camp_icon != null and str(camp_icon.kind) == "profile", "the camp entry point uses a profile icon")
 	var deck_dock_btn := _find_button_containing(game.root, game.content.ui("ui.deck_btn", game.lang))
 	check(deck_dock_btn != null and deck_dock_btn.get_node_or_null("NotificationDot") != null, "an owned-but-unused card shows a red dot on the deck dock button")
 
@@ -226,10 +235,12 @@ func _run() -> void:
 	game.profile.deck = []
 	game.show_map()
 	await process_frame
-	var camp_btn2: Node = game.root.find_child("CampButton", true, false)
-	check(camp_btn2 != null and camp_btn2.get_node_or_null("NotificationDot") == null, "the quest dot goes away once nothing is claimable")
+	var quest_btn2: Node = game.root.find_child("QuestButton", true, false)
+	check(quest_btn2 != null and quest_btn2.get_node_or_null("NotificationDot") == null, "the quest dot goes away once nothing is claimable")
 	var deck_dock_btn2 := _find_button_containing(game.root, game.content.ui("ui.deck_btn", game.lang))
 	check(deck_dock_btn2 != null and deck_dock_btn2.get_node_or_null("NotificationDot") == null, "the deck dot goes away once the collection matches the deck")
+	check(game.battle_music_streams.size() == 5, "there are 5 distinct sub-stage battle music tracks")
+	check(game.map_music != null and game.map_music.stream != null, "world map has symphonic music loaded")
 
 	game.profile.daily_quests = saved_daily
 	game.profile.weekly_quests = saved_weekly

@@ -407,6 +407,8 @@ class GameIcon extends Control:
 			"hill": _draw_hill_body(s)
 			"star": _draw_star_body(s)
 			"scroll": _draw_scroll_body(s)
+			"quest": _draw_quest_body(s)
+			"profile": _draw_profile_body(s)
 			_: _draw_sword_body(s)
 		if not flourish.is_empty(): _draw_mark(flourish, s, Vector2(s, s) / 2.0, s * 0.34)
 
@@ -616,6 +618,42 @@ class GameIcon extends Control:
 		draw_line(Vector2(c.x - w * 0.3, c.y - s * 0.06), Vector2(c.x + w * 0.3, c.y - s * 0.06), ink, s * 0.045)
 		draw_line(Vector2(c.x - w * 0.3, c.y + s * 0.08), Vector2(c.x + w * 0.15, c.y + s * 0.08), ink, s * 0.045)
 
+	# Dedicated quest commission icon: parchment scroll with wax seal & ribbon star
+	func _draw_quest_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		var w: float = s * 0.58
+		var body_top: float = s * 0.22
+		var body_bottom: float = s * 0.76
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(c.x - w / 2.0, body_top), Vector2(c.x + w / 2.0, body_top),
+			Vector2(c.x + w / 2.0, body_bottom), Vector2(c.x - w / 2.0, body_bottom),
+		]), Color(icon_color, 0.9))
+		draw_rect(Rect2(c.x - w / 2.0 - s * 0.07, body_top - s * 0.05, w + s * 0.14, s * 0.07), icon_color.darkened(0.3))
+		draw_rect(Rect2(c.x - w / 2.0 - s * 0.07, body_bottom - s * 0.02, w + s * 0.14, s * 0.07), icon_color.darkened(0.3))
+		var ink := icon_color.darkened(0.45)
+		draw_line(Vector2(c.x - w * 0.32, c.y - s * 0.12), Vector2(c.x + w * 0.32, c.y - s * 0.12), ink, s * 0.04)
+		draw_line(Vector2(c.x - w * 0.32, c.y), Vector2(c.x + w * 0.18, c.y), ink, s * 0.04)
+		draw_line(Vector2(c.x - w * 0.32, c.y + s * 0.12), Vector2(c.x + w * 0.05, c.y + s * 0.12), ink, s * 0.04)
+		var seal_c := Vector2(c.x + w * 0.22, body_bottom - s * 0.10)
+		draw_circle(seal_c, s * 0.13, Color("d94537"))
+		draw_circle(seal_c, s * 0.07, Color("f4b23f"))
+
+	# Dedicated hero profile / adventurer emblem: circular medallion with hooded hero silhouette
+	func _draw_profile_body(s: float) -> void:
+		var c := Vector2(s, s) / 2.0
+		_ring(c, s * 0.42, s * 0.055, icon_color)
+		var head_c := c + Vector2(0, -0.10) * s
+		draw_circle(head_c, s * 0.15, icon_color)
+		var torso := PackedVector2Array([
+			c + Vector2(-0.28, 0.34) * s,
+			c + Vector2(-0.18, 0.08) * s,
+			c + Vector2(-0.08, 0.02) * s,
+			c + Vector2(0.08, 0.02) * s,
+			c + Vector2(0.18, 0.08) * s,
+			c + Vector2(0.28, 0.34) * s,
+		])
+		draw_colored_polygon(torso, icon_color)
+
 	# ---- flourishes / marks, drawn as a small overlay centred at `center` with radius `r` ----
 	func _draw_mark(mark: String, s: float, center: Vector2, r: float) -> void:
 		match mark:
@@ -739,6 +777,7 @@ var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
 var map_music: AudioStreamPlayer
 var battle_music: AudioStreamPlayer
+var battle_music_streams: Array[AudioStream] = []
 var font_cjk: Font = load("res://assets/fonts/NotoSansSC.ttf")
 
 var _char_atlas_tex: Texture2D = null
@@ -1082,7 +1121,7 @@ func _claim_quest(list_name: String, quest_id: String) -> void:
 		profile.gold += int(q.get("reward", 0))
 		SpiritSave.write(profile)
 		_toast(tf("ui.quest_claimed_toast", int(q.get("reward", 0))), GOLD)
-		show_camp()
+		show_quests()
 		return
 
 func show_account_setup() -> void:
@@ -1325,15 +1364,33 @@ func _create_page(separation := 6) -> VBoxContainer:
 	return page
 
 func _build_audio() -> void:
-	map_music = AudioStreamPlayer.new(); map_music.stream = load("res://assets/audio/spirit-symphony-mobile.wav"); map_music.volume_db = -12; add_child(map_music)
-	battle_music = AudioStreamPlayer.new(); battle_music.stream = load("res://assets/audio/ember-battle-mobile.wav"); battle_music.volume_db = -13; add_child(battle_music)
+	map_music = AudioStreamPlayer.new(); map_music.stream = load("res://assets/audio/map_symphony.wav"); map_music.volume_db = -10; add_child(map_music)
+	battle_music = AudioStreamPlayer.new(); battle_music.volume_db = -10; add_child(battle_music)
+	battle_music_streams = [
+		load("res://assets/audio/battle_stage_0.wav"),
+		load("res://assets/audio/battle_stage_1.wav"),
+		load("res://assets/audio/battle_stage_2.wav"),
+		load("res://assets/audio/battle_stage_3.wav"),
+		load("res://assets/audio/battle_stage_4.wav"),
+	]
 	map_music.finished.connect(func(): if not muted: map_music.play())
 	battle_music.finished.connect(func(): if not muted: battle_music.play())
 
-func _play_music(battle := false) -> void:
+func _play_music(battle := false, stage_level: int = 0) -> void:
 	if muted: return
-	if battle: map_music.stop(); battle_music.play()
-	else: battle_music.stop(); if not map_music.playing: map_music.play()
+	if battle:
+		map_music.stop()
+		var stream_idx: int = clampi(stage_level, 0, battle_music_streams.size() - 1)
+		if battle_music_streams.size() > stream_idx and battle_music_streams[stream_idx] != null:
+			var target_stream: AudioStream = battle_music_streams[stream_idx]
+			if battle_music.stream != target_stream or not battle_music.playing:
+				battle_music.stream = target_stream
+				battle_music.play()
+		else:
+			if not battle_music.playing: battle_music.play()
+	else:
+		battle_music.stop()
+		if not map_music.playing: map_music.play()
 
 func _panel(color: Color, radius := 12, border := Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new(); style.bg_color = color
@@ -1387,7 +1444,7 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	copy.add_child(_label(subtitle, 10, JADE))
 	bar.add_child(copy)
 	var stats := _label("♥ %d/60  ◆ %d" % [profile.health, profile.gold], 11, GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
-	stats.custom_minimum_size.x = 95
+	stats.custom_minimum_size.x = 80
 	stats.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(stats)
 	return bar
@@ -1439,28 +1496,42 @@ func show_map() -> void:
 	overlay_page.add_child(header_holder)
 
 	var header := _header("SPIRITBOUND", t("ui.choose_dest"))
-	var btn_lang := _button(t("ui.lang_toggle"), _toggle_language, Color("17363e"), Vector2(50,34))
+	var btn_lang := _button(t("ui.lang_toggle"), _toggle_language, Color("17363e"), Vector2(44,34))
 	btn_lang.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_lang)
-	# A scroll icon reads as "quest log" at a glance — the old "✧3" relic-count glyph gave no
-	# hint that daily/weekly quests (the one thing here with a claim timer) lived behind it
-	# too. The red dot is the same "something to check in here" language most mobile games
-	# use for unclaimed rewards, so this button doesn't have to be guessed at either.
-	var camp_size := Vector2(40, 34)
-	var btn_camp := _button("", show_camp, Color("17363e"), camp_size)
+
+	var btn_size := Vector2(36, 34)
+
+	# Dedicated quest commissions entry point with custom quest icon and claimable notification dot
+	var btn_quests := _button("", show_quests, Color("17363e"), btn_size)
+	btn_quests.name = "QuestButton"
+	btn_quests.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var quest_icon := GameIcon.new()
+	quest_icon.kind = "quest"
+	quest_icon.icon_color = GOLD
+	quest_icon.custom_minimum_size = Vector2(20, 20)
+	quest_icon.size = quest_icon.custom_minimum_size
+	quest_icon.position = (btn_size - quest_icon.size) / 2.0
+	quest_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn_quests.add_child(quest_icon)
+	if _has_claimable_quest(): _add_notification_dot(btn_quests, btn_size)
+	header.add_child(btn_quests)
+
+	# Dedicated explorer camp / dossier & relics entry point
+	var btn_camp := _button("", show_camp, Color("17363e"), btn_size)
 	btn_camp.name = "CampButton"
 	btn_camp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var camp_icon := GameIcon.new()
-	camp_icon.kind = "scroll"
+	camp_icon.kind = "profile"
 	camp_icon.icon_color = GOLD
 	camp_icon.custom_minimum_size = Vector2(20, 20)
 	camp_icon.size = camp_icon.custom_minimum_size
-	camp_icon.position = (camp_size - camp_icon.size) / 2.0
+	camp_icon.position = (btn_size - camp_icon.size) / 2.0
 	camp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn_camp.add_child(camp_icon)
-	if _has_claimable_quest(): _add_notification_dot(btn_camp, camp_size)
 	header.add_child(btn_camp)
-	var btn_music := _button("♫" if not muted else "♩", _toggle_music, Color("17363e"), Vector2(34,34))
+
+	var btn_music := _button("♫" if not muted else "♩", _toggle_music, Color("17363e"), Vector2(32,34))
 	btn_music.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_music)
 	header_holder.add_child(header)
@@ -2074,8 +2145,9 @@ func begin_battle(index: int) -> void:
 	_maybe_end_turn()
 
 func show_battle() -> void:
-	_clear(); _play_music(true); enemy_boxes.clear()
 	var encounter: Dictionary = content.encounters[current_stage]
+	var stage_lvl: int = int(encounter.get("level", 1)) - 1
+	_clear(); _play_music(true, stage_lvl); enemy_boxes.clear()
 	var bg := _background(BATTLE_BACKGROUNDS[encounter.background],.28); root.add_child(bg); root.move_child(bg,0)
 	var page := _create_page(4)
 
@@ -4468,6 +4540,25 @@ func _account_panel() -> Control:
 	stack.add_child(_label(t("ui.account_cloud_hint"), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_LEFT, true))
 	return panel
 
+func show_quests() -> void:
+	_clear(); _play_music(false)
+	_back_action = show_map
+	var page := _create_page(8)
+	page.add_child(_header(t("ui.quests_title"), t("ui.quests_sub"), show_map))
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 10)
+	scroll.add_child(list)
+
+	_ensure_quests_current()
+	list.add_child(_quest_section(t("ui.quests_daily"), "daily_quests", int(profile.get("daily_reset_at", 0))))
+	list.add_child(_quest_section(t("ui.quests_weekly"), "weekly_quests", int(profile.get("weekly_reset_at", 0))))
+	list.add_child(_label(t("ui.quests_hint"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
 func show_camp() -> void:
 	_clear(); _play_music(false)
 	_back_action = show_map
@@ -4483,9 +4574,6 @@ func show_camp() -> void:
 	scroll.add_child(list)
 
 	list.add_child(_account_panel())
-	_ensure_quests_current()
-	list.add_child(_quest_section(t("ui.quests_daily"), "daily_quests", int(profile.get("daily_reset_at", 0))))
-	list.add_child(_quest_section(t("ui.quests_weekly"), "weekly_quests", int(profile.get("weekly_reset_at", 0))))
 	list.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
 	for value in 6:
