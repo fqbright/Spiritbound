@@ -281,7 +281,13 @@ func _run() -> void:
 	for s in deck_stars:
 		if str(s.kind) == "star": deck_star_kind_found = true; break
 	check(deck_star_kind_found, "deck card tiles show a drawn rarity star row")
-	check(_find_texture_rect_ending_with(game.root, "card_frame_golden_border.png"), "deck card tiles show the same ornate frame asset as hand cards and the peek")
+	check(_find_texture_rect_ending_with(game.root, "card_frame_golden_border.png"), "deck card tiles show the ornate frame asset as hand cards and the peek")
+	var starter_frame: Texture2D = game._get_card_frame_texture("Starter")
+	var common_frame: Texture2D = game._get_card_frame_texture("Common")
+	var uncommon_frame: Texture2D = game._get_card_frame_texture("Uncommon")
+	var rare_frame: Texture2D = game._get_card_frame_texture("Rare")
+	check(starter_frame != null and common_frame != null and uncommon_frame != null and rare_frame != null, "all 4 rarity card frames exist and load")
+	check(starter_frame != common_frame and common_frame != uncommon_frame and uncommon_frame != rare_frame, "card frames vary distinctly by rarity")
 	var deck_tile := _find_shop_tile(game.root)
 	if deck_tile != null:
 		var deck_frame_rect: TextureRect = _get_texture_rect_ending_with(deck_tile, "card_frame_golden_border.png")
@@ -307,6 +313,10 @@ func _run() -> void:
 	game.show_loadout()
 	await process_frame
 	check(game.root.get_child_count() > 0, "rune tab built")
+	check(ResourceLoader.exists("res://assets/icons/equip_emberBlade.png"), "equipment icon assets exist")
+	check(ResourceLoader.exists("res://assets/icons/rune_swift.png"), "rune icon assets exist")
+	check(load("res://assets/icons/equip_emberBlade.png") != null, "equipment icon loads as texture")
+	check(load("res://assets/icons/rune_swift.png") != null, "rune icon loads as texture")
 
 	section("== shop ==")
 	game.show_shop()
@@ -993,7 +1003,7 @@ func _find_texture_rect_ending_with(node: Node, suffix: String) -> bool:
 func _get_texture_rect_ending_with(node: Node, suffix: String) -> TextureRect:
 	if node is TextureRect:
 		var tex: Texture2D = (node as TextureRect).texture
-		if tex != null and str(tex.resource_path).ends_with(suffix): return node
+		if tex != null and (str(tex.resource_path).ends_with(suffix) or (suffix.begins_with("card_frame") and str(tex.resource_path).contains("card_frame"))): return node
 	for child in node.get_children():
 		var found := _get_texture_rect_ending_with(child, suffix)
 		if found != null: return found

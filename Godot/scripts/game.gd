@@ -752,6 +752,26 @@ var _terrain_grain_texture: NoiseTexture2D = null
 var _terrain_wash_cache: Dictionary = {}
 var _map_pin_rune_tex: Texture2D = null
 var _card_frame_border_tex: Texture2D = null
+var _card_frame_cache: Dictionary = {}
+
+func _get_card_frame_texture(rarity: String = "Common") -> Texture2D:
+	if _card_frame_cache.has(rarity):
+		return _card_frame_cache[rarity]
+	var path := ""
+	match rarity:
+		"Starter": path = "res://assets/card_frame_starter.png"
+		"Uncommon": path = "res://assets/card_frame_uncommon.png"
+		"Rare": path = "res://assets/card_frame_rare.png"
+		_: path = "res://assets/card_frame_common.png"
+	if ResourceLoader.exists(path):
+		var tex: Texture2D = load(path)
+		if tex != null:
+			_card_frame_cache[rarity] = tex
+			return tex
+	if _card_frame_border_tex == null:
+		_card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
+	return _card_frame_border_tex
+
 var _map_tile_forest_tex: Texture2D = null
 var _biome_textures: Array = []
 var _chapter_map_cache: Dictionary = {}
@@ -1243,7 +1263,46 @@ func _drawn_icon_badge(kind: String, flourish: String, color: Color, diameter :=
 	return badge
 
 func _equip_icon_badge(item: Dictionary, color: Color, diameter := 44) -> Panel:
+	var item_id: String = str(item.get("id", ""))
+	var icon_path := "res://assets/icons/equip_%s.png" % item_id
+	if not item_id.is_empty() and ResourceLoader.exists(icon_path):
+		var badge := Panel.new()
+		badge.custom_minimum_size = Vector2(diameter, diameter)
+		badge.size = badge.custom_minimum_size
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
+		style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+		badge.add_theme_stylebox_override("panel", style)
+		var tr := TextureRect.new()
+		tr.texture = load(icon_path)
+		tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_child(tr)
+		return badge
 	return _drawn_icon_badge(str(item.get("icon_kind", "sword")), str(item.get("icon_flourish", "")), color, diameter)
+
+func _rune_icon_badge(rune: Dictionary, color: Color, diameter := 36) -> Panel:
+	var rune_id: String = str(rune.get("id", ""))
+	var icon_path := "res://assets/icons/rune_%s.png" % rune_id
+	if not rune_id.is_empty() and ResourceLoader.exists(icon_path):
+		var badge := Panel.new()
+		badge.custom_minimum_size = Vector2(diameter, diameter)
+		badge.size = badge.custom_minimum_size
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
+		style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+		badge.add_theme_stylebox_override("panel", style)
+		var tr := TextureRect.new()
+		tr.texture = load(icon_path)
+		tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_child(tr)
+		return badge
+	return _sigil_icon_badge(str(rune.get("icon_mark", "sparkle")), color, diameter)
 
 func _sigil_icon_badge(mark: String, color: Color, diameter := 44) -> Panel:
 	return _drawn_icon_badge("sigil", mark, color, diameter, color)
@@ -2695,9 +2754,8 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	var info_style := _panel(Color(0.05, 0.09, 0.11, 0.97), 0)
 	info_style.corner_radius_top_left = 8; info_style.corner_radius_top_right = 8
 	info_style.border_width_top = 3; info_style.border_color = border_col
-	# ~16% of the card width, clearing the ornate border overlay added below so its
-	# left/right bands never run through the description text.
-	info_style.content_margin_left = 37; info_style.content_margin_right = 37
+	# ~8% of the card width, clearing the slender border overlay added below
+	info_style.content_margin_left = 20; info_style.content_margin_right = 20
 	info_style.content_margin_top = 8; info_style.content_margin_bottom = 8
 	info_box.add_theme_stylebox_override("panel", info_style)
 	frame.add_child(info_box)
@@ -2719,20 +2777,10 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc_lbl)
 
-	# card_frame_golden.png's own transparent "window" only covers the middle ~half of the
-	# image, with a wide ornate border and a bottom medallion around it — fine for framing a
-	# small photo, but it either blurs to a haze when shrunk small or, at this size, covers
-	# the full-bleed art and blocks the rules text underneath it. card_frame_golden_border.png
-	# is a derived asset: first cropped to the ornament's own content bounding box (the source
-	# has ~8-10% of transparent padding baked in around it — keeping that padding left a
-	# visible gap between the card edge and the ornament even after widening the kept band,
-	# which read as "floating in the middle" rather than a border), then keeping only the
-	# outer ~16% ring of THAT cropped image. The medallion is left in rather than punched
-	# out — clearing it where it crosses this kept band left a gap in the border instead —
-	# so it just merges into the bottom band.
-	if _card_frame_border_tex == null: _card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
+	# Ornate slim card frame selected according to card rarity (Starter, Common, Uncommon, Rare)
+	var card_rarity: String = str(card.get("rarity", "Common"))
 	var border_overlay := TextureRect.new()
-	border_overlay.texture = _card_frame_border_tex
+	border_overlay.texture = _get_card_frame_texture(card_rarity)
 	border_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	border_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	border_overlay.stretch_mode = TextureRect.STRETCH_SCALE
@@ -2750,9 +2798,21 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 
 	var rune_info: Dictionary = content.rune(rune_id)
 	if not rune_info.is_empty():
-		var r_lbl := _label(rune_info.icon, 22, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
-		r_lbl.position = Vector2(size.x - 34.0, -8.0)
-		frame.add_child(r_lbl)
+		var rune_icon_path := "res://assets/icons/rune_%s.png" % rune_id
+		if ResourceLoader.exists(rune_icon_path):
+			var r_tr := TextureRect.new()
+			r_tr.texture = load(rune_icon_path)
+			r_tr.position = Vector2(size.x - 36.0, -8.0)
+			r_tr.custom_minimum_size = Vector2(34, 34)
+			r_tr.size = r_tr.custom_minimum_size
+			r_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			r_tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			r_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			frame.add_child(r_tr)
+		else:
+			var r_lbl := _label(rune_info.icon, 22, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
+			r_lbl.position = Vector2(size.x - 34.0, -8.0)
+			frame.add_child(r_lbl)
 
 	return frame
 
@@ -2841,16 +2901,15 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var info_style := _panel(Color(0.05, 0.09, 0.11, 0.97), 0)
 	info_style.corner_radius_top_left = 6; info_style.corner_radius_top_right = 6
 	info_style.border_width_top = 2; info_style.border_color = border_col
-	# ~16% of the card width, clearing the ornate border overlay added below so its
-	# left/right bands never run through the description text.
-	info_style.content_margin_left = 19; info_style.content_margin_right = 19
+	# ~8% of the card width, clearing the slender border overlay added below
+	info_style.content_margin_left = 11; info_style.content_margin_right = 11
 	info_style.content_margin_top = 3; info_style.content_margin_bottom = 3
 	info_box.add_theme_stylebox_override("panel", info_style)
 	card_clip.add_child(info_box)
 
-	if _card_frame_border_tex == null: _card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
+	var card_rarity: String = str(card.get("rarity", "Common"))
 	var hand_border := TextureRect.new()
-	hand_border.texture = _card_frame_border_tex
+	hand_border.texture = _get_card_frame_texture(card_rarity)
 	hand_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hand_border.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	hand_border.stretch_mode = TextureRect.STRETCH_SCALE
@@ -2890,9 +2949,21 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 
 	var rune_info: Dictionary = content.rune(rune_id)
 	if not rune_info.is_empty():
-		var r_lbl := _label(rune_info.icon, 16, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
-		r_lbl.position = Vector2(116.0 - 24.0, -6.0)
-		tile.add_child(r_lbl)
+		var rune_icon_path := "res://assets/icons/rune_%s.png" % rune_id
+		if ResourceLoader.exists(rune_icon_path):
+			var r_tr := TextureRect.new()
+			r_tr.texture = load(rune_icon_path)
+			r_tr.position = Vector2(116.0 - 26.0, -6.0)
+			r_tr.custom_minimum_size = Vector2(24, 24)
+			r_tr.size = r_tr.custom_minimum_size
+			r_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			r_tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			r_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tile.add_child(r_tr)
+		else:
+			var r_lbl := _label(rune_info.icon, 16, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
+			r_lbl.position = Vector2(116.0 - 24.0, -6.0)
+			tile.add_child(r_lbl)
 
 	var center_idx: float = (count - 1) / 2.0
 	var distance: float = float(index) - center_idx
@@ -3607,7 +3678,7 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	btn.add_child(art)
 
 	# 2. Ornate frame around the entire card perimeter
-	_add_ornate_frame(btn, btn.custom_minimum_size, border_color)
+	_add_ornate_frame(btn, btn.custom_minimum_size, border_color, str(card.get("rarity", "Common")))
 
 	# 3. Top elements (Cost badge, Rarity stars, Sale tag)
 	var badge := _cost_badge(int(card.cost), accent)
@@ -3620,14 +3691,13 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	btn.add_child(rarity_row)
 
 	if on_sale:
-		var sale_tag := _label(t("ui.shop_sale"), 9, Color("2b1a05"), HORIZONTAL_ALIGNMENT_CENTER)
-		sale_tag.add_theme_stylebox_override("normal", _panel(GOLD, 6))
-		sale_tag.custom_minimum_size = Vector2(70, 18)
-		sale_tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		sale_tag.position = Vector2(53, -9)
-		sale_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		sale_tag.z_index = 5
-		btn.add_child(sale_tag)
+		var sale_badge := PanelContainer.new()
+		sale_badge.custom_minimum_size = Vector2(40, 16)
+		sale_badge.position = Vector2(8, 40)
+		sale_badge.add_theme_stylebox_override("panel", _panel(Color("a83232"), 8, Color("e06060")))
+		var sale_lbl := _label(t("ui.shop_sale"), 8, TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		sale_badge.add_child(sale_lbl)
+		btn.add_child(sale_badge)
 
 	# 4. Carved-out space in the lower-middle portion for card info
 	var info_box := PanelContainer.new()
@@ -3635,9 +3705,8 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	info_box.custom_minimum_size = Vector2(160, 138)
 	info_box.size = info_box.custom_minimum_size
 	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
-	# 22 clears the ornate frame overlay's ~16%-of-176px border band (this box already starts
-	# 8px in from the tile edge, so it only needs to clear the remaining ~20px of overlap).
-	box_style.content_margin_left = 22; box_style.content_margin_right = 22
+	# Slender border overlay margin
+	box_style.content_margin_left = 12; box_style.content_margin_right = 12
 	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -3771,34 +3840,23 @@ func _cost_badge(cost: int, accent: Color, diameter := 26) -> Panel:
 # A single rounded border reads as a plain panel; a thin inset accent line plus a small leaf
 # ornament at each corner is what turns it into something that reads as a picture frame,
 # matching the ornate-border reference for the shop and deck-building screens.
-func _add_ornate_frame(tile: Control, size: Vector2, accent: Color) -> void:
+func _add_ornate_frame(tile: Control, size: Vector2, accent: Color, rarity: String = "Common") -> void:
 	var inset := Panel.new()
-	inset.position = Vector2(5, 5)
-	inset.size = size - Vector2(10, 10)
+	inset.position = Vector2(3, 3)
+	inset.size = size - Vector2(6, 6)
 	inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var inset_style := StyleBoxFlat.new()
 	inset_style.bg_color = Color.TRANSPARENT
-	inset_style.corner_radius_top_left = 8; inset_style.corner_radius_top_right = 8
-	inset_style.corner_radius_bottom_left = 8; inset_style.corner_radius_bottom_right = 8
+	inset_style.corner_radius_top_left = 6; inset_style.corner_radius_top_right = 6
+	inset_style.corner_radius_bottom_left = 6; inset_style.corner_radius_bottom_right = 6
 	inset_style.border_width_left = 1; inset_style.border_width_right = 1
 	inset_style.border_width_top = 1; inset_style.border_width_bottom = 1
-	inset_style.border_color = Color(accent.r, accent.g, accent.b, 0.55)
+	inset_style.border_color = Color(accent.r, accent.g, accent.b, 0.45)
 	inset.add_theme_stylebox_override("panel", inset_style)
 	tile.add_child(inset)
 
-	# card_frame_golden_border.png (cropped to its own content bounding box, then only the
-	# outer ~16% ring kept — see _big_card_face for why the raw asset can't be used directly)
-	# reads cleanly at this tile size too, so shop and deck cards now share the exact same
-	# ornate frame as hand cards and the enlarged peek instead of a separate procedural one.
-	if _card_frame_border_tex == null: _card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
 	var frame_overlay := TextureRect.new()
-	frame_overlay.texture = _card_frame_border_tex
-	# An explicit position/size here (instead of anchors) silently reverted to the texture's
-	# own native 728x1006 by the time this actually rendered — a plain Control's manually-set
-	# size does not survive being layered with expand_mode/stretch_mode assignment order the
-	# way TextureRect wants it to. PRESET_FULL_RECT anchors track the parent's actual size
-	# continuously instead of relying on a one-time size assignment, which is what already
-	# works correctly for this same texture on hand cards and the enlarged peek.
+	frame_overlay.texture = _get_card_frame_texture(rarity)
 	frame_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	frame_overlay.stretch_mode = TextureRect.STRETCH_SCALE
@@ -3903,7 +3961,7 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	tile.add_child(art)
 
 	# 2. Ornate frame around the entire card perimeter
-	_add_ornate_frame(tile, tile.custom_minimum_size, border_color)
+	_add_ornate_frame(tile, tile.custom_minimum_size, border_color, str(card.get("rarity", "Common")))
 
 	# 3. Top elements (Cost badge, Rune icon, Rarity stars)
 	var badge := _cost_badge(int(card.cost), accent)
@@ -3912,10 +3970,22 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 
 	if not rune_id.is_empty():
 		var rune_info := content.rune(rune_id)
-		var rune_lbl := _label(rune_info.icon, 15, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
-		rune_lbl.position = Vector2(40, 8)
-		rune_lbl.size = Vector2(20, 20)
-		tile.add_child(rune_lbl)
+		var rune_path := "res://assets/icons/rune_%s.png" % rune_id
+		if ResourceLoader.exists(rune_path):
+			var r_tr := TextureRect.new()
+			r_tr.texture = load(rune_path)
+			r_tr.position = Vector2(38, 8)
+			r_tr.custom_minimum_size = Vector2(22, 22)
+			r_tr.size = r_tr.custom_minimum_size
+			r_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			r_tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			r_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			tile.add_child(r_tr)
+		else:
+			var rune_lbl := _label(rune_info.icon, 15, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
+			rune_lbl.position = Vector2(40, 8)
+			rune_lbl.size = Vector2(20, 20)
+			tile.add_child(rune_lbl)
 
 	var rarity_row := _rarity_star_row(str(card.rarity), GOLD, BoxContainer.ALIGNMENT_END)
 	rarity_row.position = Vector2(88, 10)
@@ -3928,9 +3998,8 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	info_box.custom_minimum_size = Vector2(160, 138)
 	info_box.size = info_box.custom_minimum_size
 	var box_style := _panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
-	# 22 clears the ornate frame overlay's ~16%-of-176px border band (this box already starts
-	# 8px in from the tile edge, so it only needs to clear the remaining ~20px of overlap).
-	box_style.content_margin_left = 22; box_style.content_margin_right = 22
+	# Slender border overlay margin
+	box_style.content_margin_left = 12; box_style.content_margin_right = 12
 	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -4214,7 +4283,7 @@ func _build_rune_tab(list: VBoxContainer) -> void:
 		stack.add_theme_constant_override("separation", 1)
 		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(stack)
-		var rune_badge := _sigil_icon_badge(str(rune.get("icon_mark", "sparkle")), color if available > 0 else Color("3c5057"), 32)
+		var rune_badge := _rune_icon_badge(rune, color if available > 0 else Color("3c5057"), 34)
 		var rune_badge_holder := CenterContainer.new()
 		rune_badge_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		rune_badge_holder.add_child(rune_badge)
