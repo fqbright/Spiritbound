@@ -10,13 +10,16 @@ var rng := RandomNumberGenerator.new()
 func _init(game_content: SpiritContent) -> void:
 	content = game_content
 
-func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, upgrades := {}, equipment := [], card_runes := {}, modifier := {}, relics := []) -> Dictionary:
+func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, upgrades := {}, equipment := [], card_runes := {}, modifier := {}, relics := [], hero_bonuses := {}) -> Dictionary:
 	rng.seed = seed
 	var health_scale: float = modifier.get("health_scale", 1.0)
 	var damage_bonus: int = modifier.get("damage_bonus", 0)
-	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), encounter.art, int(round(encounter.health * health_scale)), encounter.damage + damage_bonus, encounter.mechanics)]
+	# Only the Daily Trial's "double damage" tag ever sets this — a straight multiplier applied
+	# after the flat bonus above, to the boss and its adds alike.
+	var damage_mult: float = modifier.get("damage_mult", 1.0)
+	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), encounter.art, int(round(encounter.health * health_scale)), int(round((encounter.damage + damage_bonus) * damage_mult)), encounter.mechanics)]
 	for add_index in encounter.adds + modifier.get("extra_enemy", 0):
-		enemies.append(_enemy("add-%d" % add_index, "灵迹随从", "Spirit Minion", "ash-raven-v2.jpg" if add_index % 2 == 0 else "rune-shard-v2.jpg", int(round((9 + encounter.chapter) * health_scale)), 2 + encounter.chapter / 3 + damage_bonus, {}))
+		enemies.append(_enemy("add-%d" % add_index, "灵迹随从", "Spirit Minion", "ash-raven-v2.jpg" if add_index % 2 == 0 else "rune-shard-v2.jpg", int(round((9 + encounter.chapter) * health_scale)), int(round((2 + encounter.chapter / 3 + damage_bonus) * damage_mult)), {}))
 	var draw_pile: Array = []
 	for i in deck.size(): draw_pile.append({"uid":i,"card_id":deck[i]})
 	_shuffle(draw_pile)
@@ -29,7 +32,8 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"rune_sets":content.active_rune_sets(card_runes),
 		"gale_used":false,
 		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
-		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier
+		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier,
+		"hero_bonuses":hero_bonuses.duplicate(true)
 	}
 	if equipment.has("jadePlate"): state.player.shield += 8
 	if equipment.has("focusCharm"): state.player.focus += 1
@@ -40,6 +44,19 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	if _has_relic("chaosPrism"):
 		for enemy in state.enemies:
 			enemy.shield += 6
+	# Hero Mastery: small always-on bonuses from the active hero's permanent Lv1-5 perks —
+	# the same battle-start/first-attack/per-turn hooks relics and equipment already use
+	# (see _resolve_effects, play(), end_turn()), just keyed off save-file progression
+	# (content.gd's mastery_bonuses()) instead of an item the player is carrying.
+	var mastery_max_hp: int = int(hero_bonuses.get("max_hp", 0))
+	if mastery_max_hp > 0:
+		state.player.max_health += mastery_max_hp
+		state.player.health += mastery_max_hp
+	state.player.shield += int(hero_bonuses.get("shield_start", 0))
+	state.energy += int(hero_bonuses.get("energy_turn1", 0))
+	for enemy in state.enemies:
+		if int(hero_bonuses.get("burn_start", 0)) > 0: enemy.burn += int(hero_bonuses.burn_start)
+		if int(hero_bonuses.get("vulnerable_start", 0)) > 0: enemy.vulnerable += int(hero_bonuses.vulnerable_start)
 	# Turn 1 is strictly 2 energy and 5 cards under all conditions, except cursedTome's own
 	# explicit "+1 draw / -2 HP every turn" — that trade applies from turn 1 onward, same as
 	# titanBell's and chaosPrism's battle-start effects above.
@@ -151,6 +168,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 		if state.equipment.has("emberBlade"): bonus += 3
 		if _has_relic("starShard"): bonus += 2
 		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
+		bonus += int(state.get("hero_bonuses", {}).get("first_attack_bonus", 0))
 	if harmful: state.first_attack = true
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
@@ -226,6 +244,8 @@ func end_turn() -> void:
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
+	var mastery_heal: int = int(state.get("hero_bonuses", {}).get("heal_per_turn", 0))
+	if mastery_heal > 0: state.player.health = mini(state.player.max_health, state.player.health + mastery_heal)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}
 	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome —
@@ -409,6 +429,7 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 		if state.equipment.has("emberBlade"): bonus += 3
 		if _has_relic("starShard"): bonus += 2
 		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
+		bonus += int(state.get("hero_bonuses", {}).get("first_attack_bonus", 0))
 	var resonance := int(state.elements.get(card.get("element", ""), 0)) if rune == "resonance" else 0
 	var total_dealt := 0
 	var temp_shield: int = enemy.shield

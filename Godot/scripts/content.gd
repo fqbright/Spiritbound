@@ -22,12 +22,16 @@ const CHAPTER_NAMES_EN = [
 const WAYPOINT_ZH = ["入口", "渡口", "神社", "要塞", "王座"]
 const WAYPOINT_EN = ["Trailhead", "Crossing", "Shrine", "Stronghold", "Crown"]
 const ENEMIES = [
-	{"name":"雾林守卫", "name_en":"Mistwood Sentinel", "art":"sentinel-v1.jpg", "tint":"83e4c1"},
-	{"name":"提灯石卫", "name_en":"Lanternstone Keeper", "art":"lanternstone-keeper-v1.jpg", "tint":"75d7d2"},
-	{"name":"缚文巨像", "name_en":"Runebound Colossus", "art":"runebound-colossus-v1.jpg", "tint":"a3c8ff"},
-	{"name":"烬崖守护者", "name_en":"Embercliff Guardian", "art":"embercliff-guardian-v1.jpg", "tint":"f0b16d"},
-	{"name":"山岳之心", "name_en":"Heart of the Mountain", "art":"heart-of-mountain-v1.jpg", "tint":"e67c65"},
+	{"name":"雾林守卫", "name_en":"Mistwood Sentinel", "art":"sentinel-v1.jpg", "tint":"83e4c1", "lore":"游荡于雾林间的古老哨兵，行动迟缓但极难被击溃。", "lore_en":"An ancient sentinel wandering the misty woods — slow, but brutally hard to bring down."},
+	{"name":"提灯石卫", "name_en":"Lanternstone Keeper", "art":"lanternstone-keeper-v1.jpg", "tint":"75d7d2", "lore":"以石灯照亮回廊的守望者，偏好稳固防御与反复布阵。", "lore_en":"A watcher lighting the corridors with stone lanterns, favoring steady defense over aggression."},
+	{"name":"缚文巨像", "name_en":"Runebound Colossus", "art":"runebound-colossus-v1.jpg", "tint":"a3c8ff", "lore":"由古老符文束缚而成的巨像，力大无穷，招式沉重。", "lore_en":"A colossus bound by ancient runes, immense in strength and weighty in every strike."},
+	{"name":"烬崖守护者", "name_en":"Embercliff Guardian", "art":"embercliff-guardian-v1.jpg", "tint":"f0b16d", "lore":"栖息于烬崖的守护者，愤怒时攻击力会持续攀升。", "lore_en":"A guardian dwelling on the ember cliffs, growing more dangerous the longer a fight drags on."},
+	{"name":"山岳之心", "name_en":"Heart of the Mountain", "art":"heart-of-mountain-v1.jpg", "tint":"e67c65", "lore":"整座山脉的意志凝聚而成，是每十章尽头等待着的终极考验。", "lore_en":"The will of an entire mountain given form — the ultimate trial waiting at the end of every tenth chapter."},
 ]
+
+func enemy_lore(enemy: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return str(enemy.get("lore_en", ""))
+	return str(enemy.get("lore", ""))
 
 const EQUIPMENT = [
 	{"id":"emberBlade","slot":"weapon","icon":"⚔","icon_kind":"sword","icon_flourish":"flame","zh":"烬火长刀","en":"Ember Blade","detail":"每回合第一张攻击牌伤害 +3。","detail_en":"First attack each turn deals +3 damage."},
@@ -292,6 +296,132 @@ func abyss_boon(id: String) -> Dictionary:
 	for b in ABYSS_BOONS:
 		if b.id == id: return b
 	return {}
+
+# Hero Mastery: every battle won with a hero equipped earns that hero XP (see
+# game.gd's _grant_mastery_xp), climbing a permanent Lv1-5 track. Each level adds one
+# always-on perk to a small, reusable vocabulary of battle-start/first-attack/per-turn hooks
+# combat.gd already has hooks for (max_hp mirrors titanBell, shield_start mirrors jadePlate,
+# first_attack_bonus mirrors emberBlade/starShard, heal_per_turn mirrors ancientSeed,
+# burn_start/vulnerable_start are the one new pair, applied once at battle start) — so a new
+# hero never needs new engine code, only a new row in HERO_MASTERY_PERKS. Levels are
+# cumulative: mastery_bonuses() sums every perk at or below the reached level, so Lv5 carries
+# everything Lv1-4 already granted plus its own.
+const HERO_MASTERY_XP_FOR_LEVEL = [60, 150, 300, 500, 800]
+
+const HERO_MASTERY_PERKS = {
+	"fox_spirit": [
+		{"level":1,"kind":"energy_turn1","value":1,"nameKey":"mastery.fox.1.name","descKey":"mastery.fox.1.desc"},
+		{"level":2,"kind":"max_hp","value":4,"nameKey":"mastery.fox.2.name","descKey":"mastery.fox.2.desc"},
+		{"level":3,"kind":"first_attack_bonus","value":2,"nameKey":"mastery.fox.3.name","descKey":"mastery.fox.3.desc"},
+		{"level":4,"kind":"burn_start","value":1,"nameKey":"mastery.fox.4.name","descKey":"mastery.fox.4.desc"},
+		{"level":5,"kind":"first_attack_bonus","value":3,"nameKey":"mastery.fox.5.name","descKey":"mastery.fox.5.desc"},
+	],
+	"stone_sentinel": [
+		{"level":1,"kind":"max_hp","value":6,"nameKey":"mastery.stone.1.name","descKey":"mastery.stone.1.desc"},
+		{"level":2,"kind":"shield_start","value":5,"nameKey":"mastery.stone.2.name","descKey":"mastery.stone.2.desc"},
+		{"level":3,"kind":"heal_per_turn","value":1,"nameKey":"mastery.stone.3.name","descKey":"mastery.stone.3.desc"},
+		{"level":4,"kind":"shield_start","value":7,"nameKey":"mastery.stone.4.name","descKey":"mastery.stone.4.desc"},
+		{"level":5,"kind":"max_hp","value":10,"nameKey":"mastery.stone.5.name","descKey":"mastery.stone.5.desc"},
+	],
+	"shadow_stalker": [
+		{"level":1,"kind":"max_hp","value":4,"nameKey":"mastery.shadow.1.name","descKey":"mastery.shadow.1.desc"},
+		{"level":2,"kind":"vulnerable_start","value":1,"nameKey":"mastery.shadow.2.name","descKey":"mastery.shadow.2.desc"},
+		{"level":3,"kind":"first_attack_bonus","value":3,"nameKey":"mastery.shadow.3.name","descKey":"mastery.shadow.3.desc"},
+		{"level":4,"kind":"vulnerable_start","value":1,"nameKey":"mastery.shadow.4.name","descKey":"mastery.shadow.4.desc"},
+		{"level":5,"kind":"first_attack_bonus","value":4,"nameKey":"mastery.shadow.5.name","descKey":"mastery.shadow.5.desc"},
+	],
+}
+
+# Level 0 (no perks at all) is the real starting point for a brand-new hero — combat.gd's
+# "turn 1 is strictly 2 energy" and similar invariants (see AGENTS.md) must hold with zero
+# mastery investment, so every threshold below is a positive xp cost, never free at 0 xp.
+func mastery_level_for_xp(xp: int) -> int:
+	var level := 0
+	for l in range(1, 6):
+		if xp >= HERO_MASTERY_XP_FOR_LEVEL[l - 1]: level = l
+	return level
+
+# xp required to REACH a level (level 1 is free, at 0 xp); -1 outside 1..5.
+func mastery_xp_for_level(level: int) -> int:
+	if level < 1 or level > 5: return -1
+	return HERO_MASTERY_XP_FOR_LEVEL[level - 1]
+
+func mastery_perk(hero_id: String, level: int) -> Dictionary:
+	for p in HERO_MASTERY_PERKS.get(hero_id, []):
+		if int(p.level) == level: return p
+	return {}
+
+func mastery_bonuses(hero_id: String, level: int) -> Dictionary:
+	var result := {}
+	for p in HERO_MASTERY_PERKS.get(hero_id, []):
+		if int(p.level) > level: continue
+		var kind: String = str(p.kind)
+		result[kind] = int(result.get(kind, 0)) + int(p.value)
+	return result
+
+# Daily Seeded Trial: a 15-stage gauntlet, independent of campaign progress, that resets at
+# the same day boundary as the daily quests (game.gd's DAY_SECONDS). Every device rolling
+# over on the same day picks the same 3-tag trio and fights the same seeded battles, same
+# deterministic-per-period approach as roll_quests()/roll_shop_stock() above. Each tag maps
+# to exactly one combat.gd modifier key, so combining up to 3 of these 5 is always a plain
+# dictionary union — never two tags fighting over the same key.
+const DAILY_TRIAL_STAGES = 15
+
+const DAILY_TRIAL_TAGS = [
+	{"id":"double_damage","nameKey":"trial.tag.double_damage.name","descKey":"trial.tag.double_damage.desc","damage_mult":2.0},
+	{"id":"juggernaut","nameKey":"trial.tag.juggernaut.name","descKey":"trial.tag.juggernaut.desc","health_scale":1.75},
+	{"id":"swarm","nameKey":"trial.tag.swarm.name","descKey":"trial.tag.swarm.desc","extra_enemy":1},
+	{"id":"undying","nameKey":"trial.tag.undying.name","descKey":"trial.tag.undying.desc","revive":0.5},
+	{"id":"frenzy","nameKey":"trial.tag.frenzy.name","descKey":"trial.tag.frenzy.desc","damage_bonus":5},
+]
+
+func daily_trial_tags(day_seed: int) -> Array:
+	var indices := _shuffled_indices(DAILY_TRIAL_TAGS.size(), day_seed + 555)
+	var picked: Array = []
+	for i in mini(3, indices.size()): picked.append(DAILY_TRIAL_TAGS[indices[i]])
+	return picked
+
+# Same shape as the campaign's _modifier() options in game.gd (name/name_en/detail/detail_en
+# alongside the actual combat.gd keys) — show_battle()'s modifier badge reads those four
+# fields unconditionally, so a trio with no display text would read a null property off this
+# dictionary and crash the battle screen the moment a Daily Trial run started.
+func daily_trial_modifier(day_seed: int) -> Dictionary:
+	var tags: Array = daily_trial_tags(day_seed)
+	var mod := {}
+	for tag in tags:
+		for key in tag:
+			if key in ["id", "nameKey", "descKey"]: continue
+			mod[key] = tag[key]
+	var names_zh: Array = []
+	var names_en: Array = []
+	var descs_zh: Array = []
+	var descs_en: Array = []
+	for tag in tags:
+		names_zh.append(ui(tag.nameKey, "zh-Hans"))
+		names_en.append(ui(tag.nameKey, "en"))
+		descs_zh.append(ui(tag.descKey, "zh-Hans"))
+		descs_en.append(ui(tag.descKey, "en"))
+	mod["name"] = "、".join(names_zh)
+	mod["name_en"] = ", ".join(names_en)
+	mod["detail"] = "；".join(descs_zh)
+	mod["detail_en"] = "; ".join(descs_en)
+	return mod
+
+# Purely a function of the stage index (1-based), not the day seed — the trio of tags above
+# is what makes a given day distinct, while the base gauntlet itself stays a fair, predictable
+# 15-stage curve every player climbs the same way.
+func daily_trial_encounter(stage: int) -> Dictionary:
+	var enemy: Dictionary = ENEMIES[(stage - 1) % ENEMIES.size()]
+	return {
+		"chapter": 100, "level": stage,
+		"health": 30 + stage * 14,
+		"damage": 6 + int(stage * 1.8),
+		"reward": 20 + stage * 6,
+		"name": enemy.name, "name_en": enemy.get("name_en", enemy.name), "art": enemy.art,
+		"mechanics": {"shield_per_turn": 4, "critical_every": 3, "enrage": 1} if stage >= DAILY_TRIAL_STAGES else ({"shield_per_turn": 3} if stage >= 8 else {}),
+		"adds": 1 if stage % 4 == 0 else 0,
+		"background": (stage - 1) % 5
+	}
 
 func hero_class(id: String) -> Dictionary:
 	for h in HERO_CLASSES:
@@ -705,6 +835,7 @@ const UI_TEXT = {
 	"ui.boon_draft_title": {"zh-Hans":"深渊恩赐", "en":"Abyss Boon"},
 	"ui.boon_draft_sub": {"zh-Hans":"深渊裂隙给予你的古老祝福（选择一项）：", "en":"Choose an ancient blessing granted by the abyss:"},
 	"ui.boon_acquired_toast": {"zh-Hans":"已获得深渊恩赐：%s！", "en":"Acquired Abyss Boon: %s!"},
+	"ui.claim": {"zh-Hans":"选择", "en":"Choose"},
 	"boon.blood_lust.name": {"zh-Hans":"嗜血渴望", "en":"Blood Lust"},
 	"boon.blood_lust.desc": {"zh-Hans":"击败敌人时恢复 8 点生命值", "en":"Heal 8 HP when an enemy is defeated."},
 	"boon.iron_core.name": {"zh-Hans":"玄铁核心", "en":"Iron Core"},
@@ -728,6 +859,70 @@ const UI_TEXT = {
 	"set.gale.desc": {"zh-Hans":"每回合首次过牌或循环时回复 1 点能量", "en":"Gain 1 Energy on your first cycle/card-draw each turn"},
 	"set.stone.name": {"zh-Hans":"磐石共鸣", "en":"Stone Resonance"},
 	"set.stone.desc": {"zh-Hans":"获得护盾时有 25% 几率使护盾值提升 50%", "en":"25% chance to gain +50% extra Shield on shield actions"},
+	"ui.compendium_title": {"zh-Hans":"驭灵秘典", "en":"Spirit Compendium"},
+	"ui.compendium_sub": {"zh-Hans":"卡牌、装备、符文、遗物与图鉴全收录", "en":"Every card, relic, rune and beast you've discovered"},
+	"ui.compendium_tab_cards": {"zh-Hans":"卡牌", "en":"Cards"},
+	"ui.compendium_tab_gear": {"zh-Hans":"装备", "en":"Gear"},
+	"ui.compendium_tab_bestiary": {"zh-Hans":"图鉴", "en":"Bestiary"},
+	"ui.compendium_progress": {"zh-Hans":"已发现 %d/%d", "en":"Discovered %d/%d"},
+	"ui.compendium_locked": {"zh-Hans":"尚未发现", "en":"Undiscovered"},
+	"ui.compendium_open_btn": {"zh-Hans":"打开驭灵秘典", "en":"Open Compendium"},
+	"ui.mastery_level_fmt": {"zh-Hans":"专精 Lv.%d", "en":"Mastery Lv.%d"},
+	"ui.mastery_progress_fmt": {"zh-Hans":"%d/%d 经验", "en":"%d/%d XP"},
+	"ui.mastery_maxed": {"zh-Hans":"已满级", "en":"Maxed"},
+	"ui.mastery_levelup_toast": {"zh-Hans":"%s 专精提升至 Lv.%d！", "en":"%s Mastery reached Lv.%d!"},
+	"mastery.fox.1.name": {"zh-Hans":"灵狐初醒", "en":"Fox Awakening"},
+	"mastery.fox.1.desc": {"zh-Hans":"战斗第 1 回合起始能量 +1", "en":"+1 starting Energy on Turn 1"},
+	"mastery.fox.2.name": {"zh-Hans":"灵体强化", "en":"Vital Attunement"},
+	"mastery.fox.2.desc": {"zh-Hans":"最大生命 +4", "en":"+4 Max HP"},
+	"mastery.fox.3.name": {"zh-Hans":"灵火连击", "en":"Foxfire Combo"},
+	"mastery.fox.3.desc": {"zh-Hans":"每回合首次攻击牌伤害 +2", "en":"First attack each turn deals +2 damage"},
+	"mastery.fox.4.name": {"zh-Hans":"引燃之息", "en":"Kindling Breath"},
+	"mastery.fox.4.desc": {"zh-Hans":"战斗开始时对所有敌人施加 1 层灼烧", "en":"Apply 1 Burn to all enemies at battle start"},
+	"mastery.fox.5.name": {"zh-Hans":"灵狐爆发", "en":"Fox Spirit Surge"},
+	"mastery.fox.5.desc": {"zh-Hans":"每回合首次攻击牌伤害额外 +3（与 3 级共计 +5）", "en":"First attack each turn deals a further +3 damage (total +5 with Lv.3)"},
+	"mastery.stone.1.name": {"zh-Hans":"磐岩之体", "en":"Stoneflesh"},
+	"mastery.stone.1.desc": {"zh-Hans":"最大生命 +6", "en":"+6 Max HP"},
+	"mastery.stone.2.name": {"zh-Hans":"起手布防", "en":"Opening Bulwark"},
+	"mastery.stone.2.desc": {"zh-Hans":"战斗开始获得 5 点护盾", "en":"Start battle with 5 Shield"},
+	"mastery.stone.3.name": {"zh-Hans":"自愈之核", "en":"Regenerative Core"},
+	"mastery.stone.3.desc": {"zh-Hans":"每回合开始回复 1 点生命", "en":"Restore 1 HP at the start of each turn"},
+	"mastery.stone.4.name": {"zh-Hans":"重甲加固", "en":"Reinforced Plating"},
+	"mastery.stone.4.desc": {"zh-Hans":"战斗开始额外获得 7 点护盾（总计 12 点）", "en":"+7 more Shield at battle start (12 total)"},
+	"mastery.stone.5.name": {"zh-Hans":"不朽之躯", "en":"Unbreakable Form"},
+	"mastery.stone.5.desc": {"zh-Hans":"最大生命额外 +10（总计 +16）", "en":"+10 more Max HP (16 total)"},
+	"mastery.shadow.1.name": {"zh-Hans":"暗影淬体", "en":"Shadow-Honed Body"},
+	"mastery.shadow.1.desc": {"zh-Hans":"最大生命 +4", "en":"+4 Max HP"},
+	"mastery.shadow.2.name": {"zh-Hans":"破绽初现", "en":"Mark of Weakness"},
+	"mastery.shadow.2.desc": {"zh-Hans":"战斗开始时施加敌方 1 层易伤", "en":"Apply 1 Vulnerable to enemies at battle start"},
+	"mastery.shadow.3.name": {"zh-Hans":"暗袭之势", "en":"Ambush Momentum"},
+	"mastery.shadow.3.desc": {"zh-Hans":"每回合首次攻击牌伤害 +3", "en":"First attack each turn deals +3 damage"},
+	"mastery.shadow.4.name": {"zh-Hans":"双重破绽", "en":"Double Mark"},
+	"mastery.shadow.4.desc": {"zh-Hans":"战斗开始额外施加 1 层易伤（总计 2 层）", "en":"+1 more Vulnerable at battle start (2 total)"},
+	"mastery.shadow.5.name": {"zh-Hans":"夜影绝杀", "en":"Shadow Execution"},
+	"mastery.shadow.5.desc": {"zh-Hans":"每回合首次攻击牌伤害额外 +4（总计 +7）", "en":"First attack each turn deals a further +4 damage (total +7)"},
+	"ui.daily_trial_title": {"zh-Hans":"每日试炼", "en":"Daily Trial"},
+	"ui.daily_trial_sub": {"zh-Hans":"15 关封印挑战 · 每日重置", "en":"A 15-stage sealed gauntlet, resetting daily"},
+	"ui.daily_trial_modifiers_title": {"zh-Hans":"今日封印", "en":"Today's Seals"},
+	"ui.daily_trial_progress_fmt": {"zh-Hans":"进度 %d/15", "en":"Progress %d/15"},
+	"ui.daily_trial_best_fmt": {"zh-Hans":"历史最佳 %d/15", "en":"Best %d/15"},
+	"ui.daily_trial_badges_fmt": {"zh-Hans":"徽章 ×%d", "en":"Badges ×%d"},
+	"ui.daily_trial_enter": {"zh-Hans":"进入试炼", "en":"Enter Trial"},
+	"ui.daily_trial_done": {"zh-Hans":"今日试炼已通关，明日再来", "en":"Today's trial is cleared — come back tomorrow"},
+	"ui.daily_trial_complete": {"zh-Hans":"✦ 试炼徽章 +1！", "en":"✦ Trial Badge +1!"},
+	"ui.daily_trial_progress_reward_fmt": {"zh-Hans":"试炼进度 %d/15", "en":"Trial progress %d/15"},
+	"ui.abyss_stage_label_fmt": {"zh-Hans":"深渊 · 第%d层", "en":"Abyss · Floor %d"},
+	"ui.daily_trial_stage_label_fmt": {"zh-Hans":"每日试炼 · %d/%d", "en":"Daily Trial · %d/%d"},
+	"trial.tag.double_damage.name": {"zh-Hans":"倍伤浪潮", "en":"Surging Onslaught"},
+	"trial.tag.double_damage.desc": {"zh-Hans":"敌人造成的伤害翻倍", "en":"Enemies deal double damage"},
+	"trial.tag.juggernaut.name": {"zh-Hans":"巨兽压境", "en":"Juggernaut Foes"},
+	"trial.tag.juggernaut.desc": {"zh-Hans":"敌人生命 +75%", "en":"Enemy HP +75%"},
+	"trial.tag.swarm.name": {"zh-Hans":"群狼环伺", "en":"Encircling Swarm"},
+	"trial.tag.swarm.desc": {"zh-Hans":"额外增加一名敌人", "en":"+1 additional enemy"},
+	"trial.tag.undying.name": {"zh-Hans":"不死意志", "en":"Undying Will"},
+	"trial.tag.undying.desc": {"zh-Hans":"敌人有几率于死亡后复活", "en":"Enemies may revive after death"},
+	"trial.tag.frenzy.name": {"zh-Hans":"狂暴之怒", "en":"Berserk Fury"},
+	"trial.tag.frenzy.desc": {"zh-Hans":"敌人攻击力 +5", "en":"Enemy damage +5"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

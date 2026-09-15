@@ -1291,6 +1291,82 @@ func _run() -> void:
 		await process_frame
 		check(game.profile.abyss_boons.size() == 1, "selecting boon adds it to profile.abyss_boons")
 
+	section("== milestone 4: compendium, hero mastery & daily trial ==")
+	game.compendium_tab = "cards"
+	game.show_compendium()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.compendium_title", game.lang)), "Compendium title renders")
+	check(_find_button_containing(game.root, game.content.ui("ui.compendium_tab_bestiary", game.lang)) != null, "Bestiary tab button exists")
+	game.compendium_tab = "bestiary"
+	game.show_compendium()
+	await process_frame
+	check(game.root.get_child_count() > 0, "Bestiary tab renders")
+
+	# A synthetic key is used here (rather than a real card/equipment id) so the check doesn't
+	# depend on what earlier sections in this same long-running suite already collected or
+	# fought — this suite shares one profile across every section.
+	check(not game._bestiary_discovered("_smoke_test_enemy"), "an unmarked bestiary key starts undiscovered")
+	game._mark_discovered("bestiary", "_smoke_test_enemy")
+	check(game._bestiary_discovered("_smoke_test_enemy"), "marking a bestiary key discovers it permanently")
+	game._mark_discovered("relics", "starShard")
+	check(game._relic_discovered("starShard"), "marking a relic id discovers it")
+	var totals: Vector2i = game._compendium_totals()
+	check(totals.y > 0, "compendium totals count a nonzero catalog of collectibles")
+	check(totals.x >= 0 and totals.x <= totals.y, "discovered count never exceeds the total")
+
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("CompendiumOpenBtn", true, false) != null, "CompendiumOpenBtn exists in camp")
+
+	# Hero Mastery: a fresh hero sits at level 0 (see test_runner.gd for why — combat.gd's
+	# "turn 1 is strictly 2 energy" invariant must hold with zero mastery investment), and
+	# crossing a threshold raises the level.
+	game.profile.hero_class = "fox_spirit"
+	game.profile.hero_masteries = {}
+	check(game.content.mastery_level_for_xp(0) == 0, "a fresh hero mastery starts at level 0")
+	game._grant_mastery_xp(60)
+	check(int(game.profile.hero_masteries.fox_spirit.xp) == 60, "mastery XP accumulates on the currently active hero")
+	check(game.content.mastery_level_for_xp(int(game.profile.hero_masteries.fox_spirit.xp)) == 1, "60 xp reaches mastery level 1")
+	game.show_camp()
+	await process_frame
+	check(_find_label_containing(game.root, "Lv.1"), "hero archetypes section shows the reached mastery level")
+
+	# Daily Trial: force a fresh day so the run starts at stage 0, then drive it through to
+	# completion via the same "force phase to won, then grant rewards" shortcut the pre-existing
+	# replay test above uses, rather than actually playing out 15 full battles.
+	game.profile.daily_trial_record = {"day": -1, "stage": 0, "badges": 0, "best_stage": 0}
+	game._ensure_daily_trial_current()
+	check(int(game.profile.daily_trial_record.stage) == 0, "daily trial record starts a new day at stage 0")
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DailyTrialEnterBtn", true, false) != null, "DailyTrialEnterBtn exists in camp")
+
+	game.begin_daily_trial()
+	await process_frame
+	check(game.in_daily_trial, "begin_daily_trial enters trial mode")
+	# health_scale depends on today's deterministically-rolled tag trio (the "juggernaut" tag
+	# sets it), so the expected value is derived from the same active_modifier begin_daily_trial
+	# just built rather than assumed to be 1.0.
+	var expected_health: int = int(round(int(game.content.daily_trial_encounter(1).health) * float(game.active_modifier.get("health_scale", 1.0))))
+	check(int(game.combat.state.enemies[0].max_health) == expected_health, "daily trial stage 1 uses the trial's own encounter curve (with today's modifier), not the campaign's")
+	var trial_gold_before: int = int(game.profile.gold)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(int(game.profile.daily_trial_record.stage) == 1, "winning a trial stage advances daily_trial_record.stage")
+	check(int(game.profile.gold) > trial_gold_before, "winning a trial stage grants gold")
+	check(not game.in_daily_trial, "_grant_stage_rewards clears in_daily_trial after granting")
+
+	for i in range(2, SpiritContent.DAILY_TRIAL_STAGES + 1):
+		game.begin_daily_trial()
+		game.combat.state.phase = "won"
+		game._grant_stage_rewards()
+	check(int(game.profile.daily_trial_record.stage) == SpiritContent.DAILY_TRIAL_STAGES, "completing all 15 stages fills daily_trial_record.stage")
+	check(int(game.profile.daily_trial_record.badges) == 1, "clearing the full 15-stage trial awards exactly 1 badge")
+	check(int(game.profile.daily_trial_record.best_stage) == SpiritContent.DAILY_TRIAL_STAGES, "best_stage tracks the deepest run reached")
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DailyTrialEnterBtn", true, false) == null, "the enter button is hidden once today's trial is fully cleared")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
@@ -1349,6 +1425,14 @@ func _find_label_text(node: Node, needle: String) -> bool:
 	if node is Label and (node as Label).text == needle: return true
 	for child in node.get_children():
 		if _find_label_text(child, needle): return true
+	return false
+
+# Substring variant of the above, for labels built from a runtime-formatted string (a mastery
+# level, an xp count) where reproducing the exact text would just re-implement the format call.
+func _find_label_containing(node: Node, needle: String) -> bool:
+	if node is Label and needle in (node as Label).text: return true
+	for child in node.get_children():
+		if _find_label_containing(child, needle): return true
 	return false
 
 # `is GameIcon` doesn't work through a base-typed `game: Control` reference (GDScript needs

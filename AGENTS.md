@@ -229,11 +229,56 @@ The visual presentation blends high-detail painted assets with procedural vector
     suspect a compile error in a script it depends on before suspecting an infinite loop in
     test logic.
 
+- **Meta-progression: compendium, hero mastery, daily trial (`show_compendium`,
+  `_hero_archetypes_section`, `begin_daily_trial`)**:
+  - **Compendium (`show_compendium`)** is a 5-tab gallery (cards, gear, runes, relics,
+    bestiary) over `profile.compendium_discovered` — a permanent discovery log, not a live
+    inventory, kept separate from `profile.collection`/`equipment_owned`/`relics`/
+    `rune_inventory` so a card or relic stays "discovered" forever once seen. The
+    `_x_discovered()` helpers in `game.gd` OR the compendium flag with the existing
+    inventory array as a fallback, so saves from before this milestone show their
+    already-owned items as discovered without a migration pass. Curse cards
+    (`rarity == "Curse"`) are excluded from the card tab — they're enemy-inflicted battle
+    hazards nothing ever "collects", and including them would leave a permanently
+    uncompletable entry. Bestiary entries are the 5 `SpiritContent.ENEMIES` (not one per
+    chapter — every chapter/boss reuses this same pool of 5 sprites via
+    `_art_key_for_enemy`), marked discovered the moment a battle starts against them.
+  - **Hero Mastery (`content.HERO_MASTERY_PERKS` / `mastery_bonuses()`)**: every battle win
+    grants `profile.hero_masteries[hero_id].xp` to whichever hero is currently equipped
+    (boss kills worth double, campaign replays halved — see `_grant_mastery_xp` in
+    `game.gd`), climbing a permanent Lv1-5 track with one always-on perk per level,
+    cumulative. **Level 0 (zero perks) has to be reachable at 0 xp** — combat.gd's
+    documented "turn 1 is strictly 2 energy" invariant broke the first time this shipped,
+    because Lv1 was free and fox_spirit's Lv1 perk was `energy_turn1`. Every threshold in
+    `HERO_MASTERY_XP_FOR_LEVEL` is a positive cost for exactly this reason; don't make a
+    level free again without checking every "under all conditions" invariant in this file.
+    Perks are a small reusable vocabulary (`max_hp`, `shield_start`, `energy_turn1`,
+    `first_attack_bonus`, `heal_per_turn`, `burn_start`, `vulnerable_start`) resolved into a
+    flat bonus dict and passed as `combat.create()`'s `hero_bonuses` parameter — the same
+    battle-start/first-attack/per-turn hook sites relics and equipment already use, so a new
+    hero needs a new `HERO_MASTERY_PERKS` row, not new engine code.
+  - **Daily Trial (`content.daily_trial_encounter/_tags/_modifier`, `begin_daily_trial`)** is
+    a 15-stage gauntlet independent of campaign progress, resetting at the same day boundary
+    as the daily quests (`_ensure_daily_trial_current`, mirroring `_ensure_quests_current`).
+    Every device rolls the same 3-tag trio for the same day (`_shuffled_indices` on the day
+    index, same deterministic-per-period approach `roll_quests`/`roll_shop_stock` already
+    use) — each tag maps to exactly one existing `combat.gd` modifier key
+    (`damage_mult`/`health_scale`/`extra_enemy`/`revive`/`damage_bonus`) so combining up to 3
+    of the 5 is always a plain dictionary union, never two tags fighting over one key.
+    `damage_mult` is the one genuinely new `combat.gd` modifier this milestone adds. A loss
+    costs the attempt, not the run — `daily_trial_record.stage` only advances on a win, so
+    the next try that day re-fights the same stage, same "attempt vs. run" split Abyss
+    already uses. `content.daily_trial_modifier()` must always carry `name`/`name_en`/
+    `detail`/`detail_en` (synthesized from the day's tag names/descriptions) because
+    `show_battle()`'s modifier badge reads those four fields unconditionally — an early
+    version of this returned only the raw combat.gd keys and crashed the battle screen the
+    moment a trial started.
+
 ## Handoff & verification notes for future agents
 
 - **Verifying changes**:
   ```bash
-  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (164 checks)
+  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (189 checks)
   godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
   ```
   Both must pass without failures before committing.

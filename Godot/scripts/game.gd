@@ -777,6 +777,8 @@ var advancing_to_reward := false
 var pre_battle_health := 60
 var in_abyss := false
 var pending_boon_draft := false
+var in_daily_trial := false
+var compendium_tab := "cards"
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
 var _back_action := Callable()
@@ -1047,6 +1049,7 @@ func _ready() -> void:
 	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 2.0)
 	_build_audio()
 	_ensure_quests_current()
+	_ensure_daily_trial_current()
 	if SpiritSave.has_account_name(profile): show_map()
 	else: show_account_setup()
 
@@ -1071,6 +1074,16 @@ func _ensure_quests_current() -> void:
 		profile.weekly_reset_at = (week + 1) * WEEK_SECONDS
 		changed = true
 	if changed: SpiritSave.write(profile)
+
+# Same day-boundary rule as quests above: whichever day index the trial record was rolled
+# for, once "now" moves past it the run resets to stage 0 — lifetime badges/best_stage are
+# untouched, only the in-progress run.
+func _ensure_daily_trial_current() -> void:
+	var day: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var previous: Dictionary = profile.get("daily_trial_record", {})
+	if int(previous.get("day", -1)) != day:
+		profile.daily_trial_record = {"day": day, "stage": 0, "badges": int(previous.get("badges", 0)), "best_stage": int(previous.get("best_stage", 0))}
+		SpiritSave.write(profile)
 
 # Drives the red notification dot on the camp/quest entry point — true the moment any daily
 # or weekly quest is complete and waiting on its reward, same as the claim button inside.
@@ -2224,8 +2237,9 @@ func begin_battle(index: int) -> void:
 	active_modifier = _modifier(seed,index)
 	combat = SpiritCombat.new(content)
 	var equipped: Array = profile.equipment_slots.values()
-	combat.create(seed,content.encounters[index],profile.deck,int(profile.health),profile.upgrades,equipped,profile.card_runes,active_modifier,profile.relics)
+	combat.create(seed,content.encounters[index],profile.deck,int(profile.health),profile.upgrades,equipped,profile.card_runes,active_modifier,profile.relics,_current_hero_mastery_bonuses())
 	combat.event.connect(_combat_event)
+	_mark_discovered("bestiary", str(content.encounters[index].name))
 	pre_battle_health = int(profile.health)
 	advancing_to_reward = false
 	selected_card = -1
@@ -2233,14 +2247,14 @@ func begin_battle(index: int) -> void:
 	_maybe_end_turn()
 
 func show_battle() -> void:
-	var encounter: Dictionary = content.encounters[current_stage]
+	var encounter: Dictionary = _current_encounter()
 	var stage_lvl: int = int(encounter.get("level", 1)) - 1
 	_clear(); _play_music(true, stage_lvl); enemy_boxes.clear()
 	var bg := _background(BATTLE_BACKGROUNDS[encounter.background],.28); root.add_child(bg); root.move_child(bg,0)
 	var page := _create_page(4)
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 44
-	top.add_child(_label("%d-%d  %s" % [encounter.chapter,encounter.level,content.stage_name(current_stage, lang)], 13, JADE))
+	top.add_child(_label("%d-%d  %s" % [encounter.chapter,encounter.level,_current_stage_label()], 13, JADE))
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(spacer)
 	top.add_child(_label(tf("ui.turn_n", combat.state.turn), 11, GOLD))
 	var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
@@ -3835,6 +3849,15 @@ func _leave_battle() -> void:
 		SpiritSave.write(profile)
 		show_camp()
 		return
+	if in_daily_trial:
+		# A loss (or an early retreat) costs the attempt, not the run: the stage you were on
+		# stays un-cleared so today's next try re-fights it, same "attempt vs. run" split the
+		# comment above already uses for Abyss.
+		in_daily_trial = false
+		profile.health = maxi(1, pre_battle_health)
+		SpiritSave.write(profile)
+		show_camp()
+		return
 	if combat != null:
 		# A defeat costs you the attempt, not the run: health returns to what you entered with.
 		# Retreating mid-battle still keeps the damage you took.
@@ -3910,6 +3933,93 @@ func _mark_stage_event_claimed(index: int) -> void:
 		profile.claimed_stage_events.append(index)
 		SpiritSave.write(profile)
 
+# Compendium discovery is a permanent log, not a live inventory: a card/relic/rune/equipment
+# never un-discovers even in a hypothetical future where it could be lost, and a Bestiary
+# entry has no other tracking array to fall back on. The _x_discovered() helpers below still
+# OR in the existing inventory arrays as a fallback so saves from before this milestone show
+# their already-owned items as discovered without needing a migration pass.
+func _compendium_dict(category: String) -> Dictionary:
+	if not profile.get("compendium_discovered") is Dictionary: profile.compendium_discovered = {}
+	if not profile.compendium_discovered.get(category) is Dictionary: profile.compendium_discovered[category] = {}
+	return profile.compendium_discovered[category]
+
+func _mark_discovered(category: String, key: String) -> void:
+	var dict := _compendium_dict(category)
+	if not bool(dict.get(key, false)):
+		dict[key] = true
+		SpiritSave.write(profile)
+
+func _card_discovered(id: String) -> bool:
+	return bool(_compendium_dict("cards").get(id, false)) or int(profile.collection.get(id, 0)) > 0
+
+func _equip_discovered(id: String) -> bool:
+	return bool(_compendium_dict("equipment").get(id, false)) or profile.equipment_owned.has(id)
+
+func _rune_discovered(id: String) -> bool:
+	return bool(_compendium_dict("runes").get(id, false)) or int(profile.rune_inventory.get(id, 0)) > 0 or profile.card_runes.values().has(id)
+
+func _relic_discovered(id: String) -> bool:
+	return bool(_compendium_dict("relics").get(id, false)) or profile.relics.has(id)
+
+func _bestiary_discovered(enemy_name: String) -> bool:
+	return bool(_compendium_dict("bestiary").get(enemy_name, false))
+
+func _compendium_totals() -> Vector2i:
+	var discovered := 0
+	var total := 0
+	for c in content.cards:
+		if c.get("rarity", "") == "Curse": continue
+		total += 1
+		if _card_discovered(c.id): discovered += 1
+	for e in SpiritContent.EQUIPMENT:
+		total += 1
+		if _equip_discovered(e.id): discovered += 1
+	for r in SpiritContent.RUNES:
+		total += 1
+		if _rune_discovered(r.id): discovered += 1
+	for r in SpiritContent.RELICS:
+		total += 1
+		if _relic_discovered(r.id): discovered += 1
+	for e in SpiritContent.ENEMIES:
+		total += 1
+		if _bestiary_discovered(str(e.name)): discovered += 1
+	return Vector2i(discovered, total)
+
+# Every battle win feeds mastery XP to whichever hero is currently equipped — a boss kill is
+# worth double a regular fight, halved again on a campaign replay, same discount campaign
+# gold already takes. Abyss and Daily Trial wins call this with their own flat amounts since
+# neither has a "kind"/"replay" concept to scale off of.
+func _grant_mastery_xp(amount: int) -> void:
+	if amount <= 0: return
+	var hero_id: String = str(profile.hero_class)
+	if not profile.get("hero_masteries") is Dictionary: profile.hero_masteries = {}
+	var entry: Dictionary = profile.hero_masteries.get(hero_id, {"xp": 0})
+	var before_level: int = content.mastery_level_for_xp(int(entry.get("xp", 0)))
+	entry.xp = int(entry.get("xp", 0)) + amount
+	profile.hero_masteries[hero_id] = entry
+	var after_level: int = content.mastery_level_for_xp(int(entry.xp))
+	if after_level > before_level:
+		_toast(tf("ui.mastery_levelup_toast", [content.hero_name(content.hero_class(hero_id), lang), after_level]), GOLD)
+
+func _current_hero_mastery_bonuses() -> Dictionary:
+	var hero_id: String = str(profile.hero_class)
+	var xp: int = int(profile.get("hero_masteries", {}).get(hero_id, {}).get("xp", 0))
+	return content.mastery_bonuses(hero_id, content.mastery_level_for_xp(xp))
+
+# Battle screen header/background source of truth: campaign battles index straight into
+# content.encounters, while Abyss and the Daily Trial are their own procedural tracks that
+# don't live in that array (current_stage is left at 0 for both, same placeholder abyss
+# already used before this existed).
+func _current_encounter() -> Dictionary:
+	if in_abyss: return content.abyss_encounter(int(profile.get("abyss_floor", 1)))
+	if in_daily_trial: return content.daily_trial_encounter(int(profile.daily_trial_record.get("stage", 0)) + 1)
+	return content.encounters[current_stage]
+
+func _current_stage_label() -> String:
+	if in_abyss: return tf("ui.abyss_stage_label_fmt", int(profile.get("abyss_floor", 1)))
+	if in_daily_trial: return tf("ui.daily_trial_stage_label_fmt", [int(profile.daily_trial_record.get("stage", 0)) + 1, SpiritContent.DAILY_TRIAL_STAGES])
+	return content.stage_name(current_stage, lang)
+
 func _grant_stage_rewards() -> void:
 	if in_abyss:
 		in_abyss = false
@@ -3924,8 +4034,26 @@ func _grant_stage_rewards() -> void:
 		SpiritSave.write(profile)
 		_advance_quest("win_battles", 1)
 		_advance_quest("earn_gold", gold_gain)
+		_grant_mastery_xp(20)
 		if floor_num % 5 == 0:
 			pending_boon_draft = true
+		return
+	if in_daily_trial:
+		in_daily_trial = false
+		var stage_num: int = int(profile.daily_trial_record.stage) + 1
+		var gold_gain: int = int(content.daily_trial_encounter(stage_num).reward)
+		profile.gold += gold_gain
+		profile.daily_trial_record.stage = stage_num
+		profile.daily_trial_record.best_stage = maxi(int(profile.daily_trial_record.get("best_stage", 0)), stage_num)
+		profile.health = mini(60, int(combat.state.player.health) + 8)
+		var completed: bool = stage_num >= SpiritContent.DAILY_TRIAL_STAGES
+		if completed:
+			profile.daily_trial_record.badges = int(profile.daily_trial_record.get("badges", 0)) + 1
+		pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "daily_trial": true, "daily_trial_stage": stage_num, "daily_trial_completed": completed}
+		SpiritSave.write(profile)
+		_advance_quest("win_battles", 1)
+		_advance_quest("earn_gold", gold_gain)
+		_grant_mastery_xp(12 + stage_num)
 		return
 	var encounter: Dictionary = content.encounters[current_stage]
 	var multiplier: float = active_modifier.get("reward_scale", 1.0)
@@ -3949,6 +4077,9 @@ func _grant_stage_rewards() -> void:
 	_advance_quest("earn_gold", int(pending_rewards.gold))
 	if content.is_boss_kind(kind) or kind == "elite": _advance_quest("clear_elite_or_boss", 1)
 	if kind == "greatboss": _advance_quest("defeat_great_boss", 1)
+	var mastery_xp: int = 24 if content.is_boss_kind(kind) else 12
+	if replay: mastery_xp = int(mastery_xp / 2)
+	_grant_mastery_xp(mastery_xp)
 	if replay:
 		SpiritSave.write(profile)
 		return
@@ -3958,6 +4089,7 @@ func _grant_stage_rewards() -> void:
 		var id: String = order[(current_stage / 5 + int(profile.difficulty) * 2) % order.size()]
 		if not profile.equipment_owned.has(id): profile.equipment_owned.append(id)
 		pending_rewards.equipment = id
+		_mark_discovered("equipment", id)
 		# Great Bosses draw exclusively from the high-stakes boss relic pool (cursedTome,
 		# titanBell, chaosPrism) so those stay rare and mean something; regular bosses draw
 		# from everything else, same rotation as before.
@@ -3970,10 +4102,12 @@ func _grant_stage_rewards() -> void:
 		if not profile.relics.has(relic.id):
 			profile.relics.append(relic.id)
 			pending_rewards.relic = relic.id
+		_mark_discovered("relics", relic.id)
 	elif kind == "elite":
 		var rune: Dictionary = SpiritContent.RUNES[(current_stage / 5 + int(profile.difficulty)) % SpiritContent.RUNES.size()]
 		profile.rune_inventory[rune.id] = profile.rune_inventory.get(rune.id, 0) + 1
 		pending_rewards.rune = rune.id
+		_mark_discovered("runes", rune.id)
 	SpiritSave.write(profile)
 
 func show_reward_details() -> void:
@@ -4013,6 +4147,13 @@ func show_reward_details() -> void:
 
 	if bool(pending_rewards.get("replay", false)):
 		list.add_child(_label(t("ui.reward_replay_note"), 12, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		page.add_child(_button(t("ui.return_map"), _finish_reward, EMBER, Vector2(0, 50)))
+		return
+
+	if bool(pending_rewards.get("daily_trial", false)):
+		if bool(pending_rewards.get("daily_trial_completed", false)):
+			list.add_child(_label(t("ui.daily_trial_complete"), 14, GOLD, HORIZONTAL_ALIGNMENT_CENTER, true))
+		list.add_child(_label(tf("ui.daily_trial_progress_reward_fmt", int(pending_rewards.get("daily_trial_stage", 0))), 12, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 		page.add_child(_button(t("ui.return_map"), _finish_reward, EMBER, Vector2(0, 50)))
 		return
 
@@ -4076,6 +4217,7 @@ func _reward_card_row(card: Dictionary) -> Control:
 func _collect_card(card: Dictionary) -> void:
 	if int(profile.collection.get(card.id, 0)) == 0: _advance_quest("collect_cards", 1)
 	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
+	_mark_discovered("cards", card.id)
 	SpiritSave.write(profile)
 	_toast(tf("ui.reward_collected", content.text(card.nameKey, lang)), JADE)
 	_finish_reward()
@@ -4085,6 +4227,7 @@ func _collect_card(card: Dictionary) -> void:
 func _smart_add_card(card: Dictionary) -> void:
 	if int(profile.collection.get(card.id, 0)) == 0: _advance_quest("collect_cards", 1)
 	profile.collection[card.id] = profile.collection.get(card.id, 0) + 1
+	_mark_discovered("cards", card.id)
 	if profile.deck.size() < 25:
 		profile.deck.append(card.id)
 		SpiritSave.write(profile)
@@ -5182,6 +5325,126 @@ func _build_rune_tab(list: VBoxContainer) -> void:
 			socket_btn.disabled = selected_rune.is_empty()
 			actions.add_child(socket_btn)
 
+func show_compendium() -> void:
+	_clear(); _play_music(false)
+	_back_action = show_camp
+	var page := _create_page(6)
+	page.add_child(_header(t("ui.compendium_title"), t("ui.compendium_sub"), show_camp))
+	page.add_child(_tab_bar([
+		["cards", t("ui.compendium_tab_cards")],
+		["gear", t("ui.compendium_tab_gear")],
+		["runes", t("ui.tab_runes")],
+		["relics", t("ui.relic_title")],
+		["bestiary", t("ui.compendium_tab_bestiary")],
+	], compendium_tab, func(id): compendium_tab = id; show_compendium()))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	match compendium_tab:
+		"cards": _build_compendium_cards(list)
+		"gear": _build_compendium_equipment(list)
+		"runes": _build_compendium_runes(list)
+		"relics": _build_compendium_relics(list)
+		_: _build_compendium_bestiary(list)
+
+# Shared row shell for every Compendium tab: an icon/art badge on the left, a title (or the
+# generic "undiscovered" label) and one detail line on the right. Discovered items get their
+# real color as the border accent; undiscovered ones fall back to a flat, uninformative gray
+# so nothing about a locked entry's rarity or theme leaks through before it's actually found.
+func _compendium_row(badge: Control, title: String, detail: String, discovered: bool, accent: Color) -> Control:
+	var panel := Panel.new()
+	panel.custom_minimum_size.y = 68
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var border: Color = accent if discovered else Color("2a3d42")
+	panel.add_theme_stylebox_override("panel", _panel(Color("13282e") if discovered else Color("0e191d"), 12, border))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	pad.add_child(row)
+
+	var holder := CenterContainer.new()
+	holder.custom_minimum_size = Vector2(50, 60)
+	holder.add_child(badge)
+	row.add_child(holder)
+
+	var texts := VBoxContainer.new()
+	texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.add_theme_constant_override("separation", 2)
+	row.add_child(texts)
+	texts.add_child(_label(title if discovered else t("ui.compendium_locked"), 13, TEXT if discovered else MUTED))
+	if discovered and not detail.is_empty():
+		var detail_lbl := _label(detail, 9, JADE, HORIZONTAL_ALIGNMENT_LEFT, true)
+		detail_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.add_child(detail_lbl)
+
+	return panel
+
+func _compendium_locked_badge() -> Control:
+	return _icon_badge("?", Color("3c5057"), 46, 20)
+
+func _build_compendium_cards(list: VBoxContainer) -> void:
+	var totals := _compendium_totals()
+	list.add_child(_label(tf("ui.compendium_progress", [totals.x, totals.y]), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	# Curse cards (decay_blight, void_curse) are enemy-inflicted battle hazards, never something
+	# a player collects — showing them here would be a permanently "undiscovered" entry with no
+	# way to ever complete it.
+	for card in content.cards.filter(func(c): return c.get("rarity", "") != "Curse"):
+		var discovered := _card_discovered(card.id)
+		var badge: Control = _compendium_locked_badge()
+		if discovered: badge = _card_art_panel(card.id, Vector2(44, 60))
+		var detail := "%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), _card_description(card)]
+		list.add_child(_compendium_row(badge, content.text(card.nameKey, lang), detail, discovered, _card_color(card)))
+
+func _build_compendium_equipment(list: VBoxContainer) -> void:
+	for item in SpiritContent.EQUIPMENT:
+		var discovered := _equip_discovered(item.id)
+		var badge: Control = _compendium_locked_badge()
+		if discovered: badge = _equip_icon_badge(item, GOLD, 46)
+		list.add_child(_compendium_row(badge, _equip_name(item), _equip_detail(item), discovered, GOLD))
+
+func _build_compendium_runes(list: VBoxContainer) -> void:
+	for rune in SpiritContent.RUNES:
+		var discovered := _rune_discovered(rune.id)
+		var badge: Control = _compendium_locked_badge()
+		if discovered: badge = _rune_icon_badge(rune, Color(rune.color), 46)
+		list.add_child(_compendium_row(badge, _rune_name(rune), _rune_detail(rune), discovered, Color(rune.color)))
+
+func _build_compendium_relics(list: VBoxContainer) -> void:
+	for relic in SpiritContent.RELICS:
+		var discovered := _relic_discovered(relic.id)
+		var badge: Control = _compendium_locked_badge()
+		if discovered: badge = _sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), Color(relic.color), 46)
+		list.add_child(_compendium_row(badge, _relic_name(relic), _relic_detail(relic), discovered, Color(relic.color)))
+
+func _build_compendium_bestiary(list: VBoxContainer) -> void:
+	for enemy in SpiritContent.ENEMIES:
+		var discovered := _bestiary_discovered(str(enemy.name))
+		var name_str: String = str(enemy.name_en) if lang == "en" else str(enemy.name)
+		var badge: Control
+		if discovered:
+			var tex := TextureRect.new()
+			tex.texture = _get_character_texture(_art_key_for_enemy(enemy))
+			tex.custom_minimum_size = Vector2(46, 46)
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			badge = tex
+		else:
+			badge = _compendium_locked_badge()
+		list.add_child(_compendium_row(badge, name_str, content.enemy_lore(enemy, lang), discovered, Color(enemy.get("tint", "83e4c1"))))
+
 func _equip(item: Dictionary) -> void:
 	if profile.equipment_slots.get(item.slot,"") == item.id: profile.equipment_slots.erase(item.slot)
 	else: profile.equipment_slots[item.slot] = item.id
@@ -5340,7 +5603,9 @@ func show_camp() -> void:
 	scroll.add_child(list)
 
 	list.add_child(_account_panel())
+	list.add_child(_compendium_section())
 	list.add_child(_hero_archetypes_section())
+	list.add_child(_daily_trial_section())
 	list.add_child(_abyss_section())
 	list.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
@@ -5380,6 +5645,82 @@ func show_camp() -> void:
 			texts.add_child(_label(_relic_detail(relic), 9, color, HORIZONTAL_ALIGNMENT_LEFT, true))
 	list.add_child(_label(t("ui.camp_desc"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
+func _compendium_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 64)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel(Color("142418"), 14, Color("8ff5cf")))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	pad.add_child(row)
+
+	var texts := VBoxContainer.new()
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	texts.add_theme_constant_override("separation", 2)
+	row.add_child(texts)
+	texts.add_child(_label(t("ui.compendium_title"), 15, Color("8ff5cf")))
+	var totals := _compendium_totals()
+	texts.add_child(_label(tf("ui.compendium_progress", [totals.x, totals.y]), 10, MUTED))
+
+	var open_btn := _button(t("ui.compendium_open_btn"), show_compendium, Color("1e4a35"), Vector2(0, 40))
+	open_btn.name = "CompendiumOpenBtn"
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(open_btn)
+
+	return panel
+
+func _daily_trial_section() -> Control:
+	_ensure_daily_trial_current()
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 130)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel(Color("241a10"), 14, Color("ffb765")))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 5)
+	pad.add_child(stack)
+
+	stack.add_child(_label(t("ui.daily_trial_title"), 16, Color("ffb765"), HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(t("ui.daily_trial_sub"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var tags: Array = content.daily_trial_tags(int(profile.daily_trial_record.day))
+	var tag_names: Array = []
+	for tag in tags: tag_names.append(content.ui(tag.nameKey, lang))
+	var sep: String = ", " if lang == "en" else "、"
+	stack.add_child(_label("%s: %s" % [t("ui.daily_trial_modifiers_title"), sep.join(tag_names)], 9, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var stage_num: int = int(profile.daily_trial_record.stage)
+	var stats := HBoxContainer.new()
+	stats.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats.add_theme_constant_override("separation", 14)
+	stats.add_child(_label(tf("ui.daily_trial_progress_fmt", stage_num), 11, GOLD))
+	stats.add_child(_label(tf("ui.daily_trial_best_fmt", int(profile.daily_trial_record.get("best_stage", 0))), 11, JADE))
+	stats.add_child(_label(tf("ui.daily_trial_badges_fmt", int(profile.daily_trial_record.get("badges", 0))), 11, Color("ffd8a8")))
+	stack.add_child(stats)
+
+	if stage_num >= SpiritContent.DAILY_TRIAL_STAGES:
+		stack.add_child(_label(t("ui.daily_trial_done"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	else:
+		var enter_btn := _button(t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(240, 40))
+		enter_btn.name = "DailyTrialEnterBtn"
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		stack.add_child(enter_btn)
+
+	return panel
+
 func _hero_archetypes_section() -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -5389,7 +5730,7 @@ func _hero_archetypes_section() -> Control:
 	for h in content.HERO_CLASSES:
 		var is_selected: bool = h.id == current_class_id
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(340, 72)
+		panel.custom_minimum_size = Vector2(340, 104)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var border_col: Color = GOLD if is_selected else Color("1a3d44")
 		panel.add_theme_stylebox_override("panel", _panel(Color("10242b") if not is_selected else Color("153038"), 12, border_col))
@@ -5422,6 +5763,15 @@ func _hero_archetypes_section() -> Control:
 		var name_str: String = content.hero_name(h, lang)
 		texts.add_child(_label(name_str + ("  ✓" if is_selected else ""), 13, JADE if is_selected else TEXT))
 		texts.add_child(_label(content.hero_desc(h, lang), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var hero_xp: int = int(profile.get("hero_masteries", {}).get(h.id, {}).get("xp", 0))
+		var hero_level: int = content.mastery_level_for_xp(hero_xp)
+		var mastery_line: String = tf("ui.mastery_level_fmt", hero_level)
+		mastery_line += "  " + (t("ui.mastery_maxed") if hero_level >= 5 else tf("ui.mastery_progress_fmt", [hero_xp, content.mastery_xp_for_level(hero_level + 1)]))
+		texts.add_child(_label(mastery_line, 9, GOLD))
+		var perk: Dictionary = content.mastery_perk(h.id, hero_level)
+		if not perk.is_empty():
+			texts.add_child(_label("%s · %s" % [content.ui(perk.nameKey, lang), content.ui(perk.descKey, lang)], 8, Color("9fd8c9"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 		var sel_btn := _button("✓" if is_selected else t("ui.hero_class_select"), func():
 			profile.hero_class = h.id
@@ -5489,8 +5839,32 @@ func begin_abyss_battle() -> void:
 	active_modifier["boons"] = profile.get("abyss_boons", []).duplicate()
 	combat = SpiritCombat.new(content)
 	var equipped: Array = profile.equipment_slots.values()
-	combat.create(seed, enc, profile.deck, int(profile.health), profile.upgrades, equipped, profile.card_runes, active_modifier, profile.relics)
+	combat.create(seed, enc, profile.deck, int(profile.health), profile.upgrades, equipped, profile.card_runes, active_modifier, profile.relics, _current_hero_mastery_bonuses())
 	combat.event.connect(_combat_event)
+	_mark_discovered("bestiary", str(enc.name))
+	pre_battle_health = int(profile.health)
+	advancing_to_reward = false
+	selected_card = -1
+	show_battle()
+	_maybe_end_turn()
+
+func begin_daily_trial() -> void:
+	_ensure_daily_trial_current()
+	if int(profile.daily_trial_record.stage) >= SpiritContent.DAILY_TRIAL_STAGES: return
+	in_daily_trial = true
+	var day: int = int(profile.daily_trial_record.day)
+	var stage_num: int = int(profile.daily_trial_record.stage) + 1
+	var enc: Dictionary = content.daily_trial_encounter(stage_num)
+	current_stage = 0
+	# Seeded by the day index (not wall-clock time like campaign/abyss battles), so every
+	# device attempting today's trial fights the exact same encounter — the "deterministic
+	# seed" the daily challenge is named for.
+	active_modifier = content.daily_trial_modifier(day)
+	combat = SpiritCombat.new(content)
+	var equipped: Array = profile.equipment_slots.values()
+	combat.create(day * 1000 + stage_num, enc, profile.deck, int(profile.health), profile.upgrades, equipped, profile.card_runes, active_modifier, profile.relics, _current_hero_mastery_bonuses())
+	combat.event.connect(_combat_event)
+	_mark_discovered("bestiary", str(enc.name))
 	pre_battle_health = int(profile.health)
 	advancing_to_reward = false
 	selected_card = -1
@@ -5539,9 +5913,9 @@ func show_abyss_boon_draft() -> void:
 		info.add_theme_constant_override("separation", 2)
 		row.add_child(info)
 
-		var name_str: String = content.text(boon.nameKey, lang)
+		var name_str: String = content.ui(boon.nameKey, lang)
 		info.add_child(_label(name_str, 15, TEXT))
-		info.add_child(_label(content.text(boon.descKey, lang), 10, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		info.add_child(_label(content.ui(boon.descKey, lang), 10, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 		var choose_btn := _button(t("ui.claim"), func(): _select_abyss_boon(boon), Color("244a56"), Vector2(68, 40))
 		choose_btn.name = "ChooseBoon_" + boon.id
@@ -5553,7 +5927,7 @@ func _select_abyss_boon(boon: Dictionary) -> void:
 	if not profile.has("abyss_boons") or not profile.abyss_boons is Array: profile.abyss_boons = []
 	profile.abyss_boons.append(boon.id)
 	SpiritSave.write(profile)
-	_toast(tf("ui.boon_acquired_toast", content.text(boon.nameKey, lang)))
+	_toast(tf("ui.boon_acquired_toast", content.ui(boon.nameKey, lang)))
 	show_reward_details()
 
 func _toggle_music() -> void:

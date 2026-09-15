@@ -734,6 +734,73 @@ func run() -> void:
 	prism.play(0, 0)
 	check(int(prism.state.enemies[0].get("vulnerable", 0)) == 1, "chaosPrism stacks Vulnerable on a landed attack, got %d" % int(prism.state.enemies[0].get("vulnerable", 0)))
 
+	# Milestone 4: hero mastery, and the Daily Trial's damage_mult modifier.
+	# A brand-new hero must sit at level 0 with zero bonuses — combat.gd's documented "turn 1
+	# is strictly 2 energy" invariant (see AGENTS.md) has to hold with no mastery investment
+	# at all, so every threshold is a positive xp cost rather than "free at 0 xp".
+	check(content.mastery_level_for_xp(0) == 0, "a fresh hero starts at mastery level 0")
+	check(content.mastery_bonuses("fox_spirit", 0).is_empty(), "level 0 grants no mastery bonuses at all")
+	check(content.mastery_level_for_xp(59) == 0, "59 xp is not yet enough for level 1")
+	check(content.mastery_level_for_xp(60) == 1, "60 xp reaches level 1")
+	check(content.mastery_level_for_xp(799) == 4, "799 xp is level 4, not yet level 5")
+	check(content.mastery_level_for_xp(800) == 5, "800 xp reaches the max, level 5")
+	check(content.mastery_level_for_xp(5000) == 5, "xp past the level 5 threshold still caps at level 5")
+	# fox_spirit's own perks: L1 energy_turn1+1, L3 first_attack_bonus+2, L5 first_attack_bonus+3
+	# (cumulative, so level 5 carries both first_attack_bonus perks at once).
+	var fox_lv1 := content.mastery_bonuses("fox_spirit", 1)
+	check(int(fox_lv1.get("energy_turn1", 0)) == 1 and not fox_lv1.has("first_attack_bonus"), "fox_spirit level 1 only grants its own +1 turn-1 energy perk")
+	var fox_lv5 := content.mastery_bonuses("fox_spirit", 5)
+	check(int(fox_lv5.get("first_attack_bonus", 0)) == 5, "fox_spirit level 5 sums both first_attack_bonus perks (2 + 3 = 5), got %d" % int(fox_lv5.get("first_attack_bonus", 0)))
+	check(int(fox_lv5.get("energy_turn1", 0)) == 1, "fox_spirit level 5 still carries its level 1 perk")
+
+	# Hero Mastery bonuses apply through combat.create()'s new hero_bonuses parameter, using
+	# the same battle-start/first-attack/per-turn hooks relics and equipment already use.
+	var mastery_start := SpiritCombat.new(content)
+	mastery_start.create(300, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"max_hp": 6, "shield_start": 5, "energy_turn1": 1, "burn_start": 1, "vulnerable_start": 1})
+	check(int(mastery_start.state.player.max_health) == 66 and int(mastery_start.state.player.health) == 66, "mastery max_hp bonus raises both max and current HP at battle start")
+	check(int(mastery_start.state.player.shield) == 5, "mastery shield_start bonus applies at battle start")
+	check(int(mastery_start.state.energy) == 3, "mastery energy_turn1 bonus adds to turn 1's opening energy (2 base + 1 = 3)")
+	check(int(mastery_start.state.enemies[0].get("burn", 0)) == 1, "mastery burn_start bonus applies to enemies at battle start")
+	check(int(mastery_start.state.enemies[0].get("vulnerable", 0)) == 1, "mastery vulnerable_start bonus applies to enemies at battle start")
+
+	var mastery_attack := SpiritCombat.new(content)
+	mastery_attack.create(301, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"first_attack_bonus": 4})
+	_force_hand(mastery_attack, "strike")
+	var strike_amount: int = int(content.card("strike").effects[0].amount)
+	mastery_attack.play(0, 0)
+	check(int(mastery_attack.state.enemies[0].health) == 100 - strike_amount - 4, "mastery first_attack_bonus adds to the turn's first attack, same site as emberBlade/starShard")
+
+	var mastery_heal := SpiritCombat.new(content)
+	mastery_heal.create(302, encounter(100, 0), Array(content.raw.startingDeck), 40, {}, [], {}, {}, [], {"heal_per_turn": 3})
+	force_attack(mastery_heal)
+	mastery_heal.end_turn()
+	check(int(mastery_heal.state.player.health) == 40 - 0 + 3, "mastery heal_per_turn heals at the start of each turn, same site as ancientSeed")
+
+	# Daily Trial: damage_mult scales both the boss's and its adds' damage, on top of the
+	# existing flat damage_bonus — the only new combat.gd modifier key this milestone adds.
+	var trial_mod := SpiritCombat.new(content)
+	trial_mod.create(303, {"chapter":100,"level":1,"health":50,"damage":10,"reward":20,"name":"测试","name_en":"Test","art":"sentinel-v1.jpg","mechanics":{},"adds":1,"background":0}, Array(content.raw.startingDeck), 60, {}, [], {}, {"damage_mult": 2.0})
+	check(int(trial_mod.state.enemies[0].damage) == 20, "daily trial damage_mult doubles the boss's damage (10 -> 20)")
+	check(int(trial_mod.state.enemies[1].damage) == int(round((2.0 + 100 / 3) * 2.0)), "daily trial damage_mult also doubles an add's damage")
+
+	check(SpiritContent.DAILY_TRIAL_STAGES == 15, "the Daily Trial is 15 stages")
+	var trial_stage1 := content.daily_trial_encounter(1)
+	var trial_stage15 := content.daily_trial_encounter(15)
+	check(int(trial_stage1.chapter) == 100, "daily trial encounters use the sentinel chapter 100, distinct from the campaign's 50 chapters")
+	check(int(trial_stage15.health) > int(trial_stage1.health) and int(trial_stage15.damage) > int(trial_stage1.damage), "the daily trial's own 15-stage curve gets harder from stage 1 to stage 15")
+
+	# Same day always rolls the same 3-tag trio — every device attempting today's trial has to
+	# fight the identical challenge, the "deterministic seed" the mode is named for.
+	var tags_a := content.daily_trial_tags(777)
+	var tags_b := content.daily_trial_tags(777)
+	check(tags_a.size() == 3, "the daily trial always picks exactly 3 tags")
+	var same_ids := true
+	for i in 3:
+		if str(tags_a[i].id) != str(tags_b[i].id): same_ids = false
+	check(same_ids, "the same day seed always rolls the identical 3-tag trio")
+	var modifier_a := content.daily_trial_modifier(777)
+	check(not str(modifier_a.get("name", "")).is_empty() and not str(modifier_a.get("detail", "")).is_empty(), "daily_trial_modifier carries display text so show_battle()'s modifier badge doesn't read a missing property")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)
