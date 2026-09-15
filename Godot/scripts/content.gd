@@ -131,6 +131,83 @@ func node_kind(index: int) -> String:
 func is_boss_kind(kind: String) -> bool:
 	return kind == "boss" or kind == "greatboss"
 
+const HERO_CLASSES = [
+	{
+		"id": "fox_spirit",
+		"name": "灵狐行者",
+		"name_en": "Fox Spirit",
+		"desc": "掌控灵火与疾风的敏捷行者。擅长灵火连击与爆发回响。",
+		"desc_en": "Agile master of foxfire and gale. Excels at flame combos and echo bursts.",
+		"sprite": "fox",
+		"relic": "foxCharm",
+		"deck": [
+			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
+			"foxfire", "foxfire", "foxfire",
+			"wildSpark", "wildSpark"
+		]
+	},
+	{
+		"id": "stone_sentinel",
+		"name": "岩铠卫士",
+		"name_en": "Stone Sentinel",
+		"desc": "坚若磐石的古代护卫。擅长重甲防御、护盾转化与反击。",
+		"desc_en": "Immovable ancient guardian. Specializes in heavy armor, shield conversion and counter-strike.",
+		"sprite": "sentinel",
+		"relic": "ancientSeed",
+		"deck": [
+			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
+			"stoneBreaker", "stoneBreaker",
+			"ironHide"
+		]
+	},
+	{
+		"id": "shadow_stalker",
+		"name": "夜影刺客",
+		"name_en": "Shadow Stalker",
+		"desc": "潜行于暗影中的致命杀手。擅长易伤诅咒、暴击斩杀与毒火流血。",
+		"desc_en": "Lethal stalker of shadows. Specializes in vulnerability curses, critical executions, and bleed.",
+		"sprite": "ashRaven",
+		"relic": "starShard",
+		"deck": [
+			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
+			"moonfang", "moonfang",
+			"cinderHex"
+		]
+	}
+]
+
+func hero_class(id: String) -> Dictionary:
+	for h in HERO_CLASSES:
+		if h.id == id: return h
+	return HERO_CLASSES[0]
+
+func hero_name(h: Dictionary, language := "zh-Hans") -> String:
+	return str(h.get("name_en" if language == "en" else "name", h.get("id", "")))
+
+func hero_desc(h: Dictionary, language := "zh-Hans") -> String:
+	return str(h.get("desc_en" if language == "en" else "desc", ""))
+
+func abyss_encounter(floor: int) -> Dictionary:
+	var hp: int = 45 + floor * 12
+	var dmg: int = 7 + int(floor * 1.5)
+	var adds: int = 1 if floor % 3 == 0 else (2 if floor % 7 == 0 else 0)
+	var bgs: int = floor % 5
+	return {
+		"chapter": 99,
+		"level": floor,
+		"health": hp,
+		"damage": dmg,
+		"reward": 25 + floor * 5,
+		"name": "深渊守卫 · 层%d" % floor,
+		"art": "sentinel-v1.jpg",
+		"mechanics": {"shield_per_turn": 3} if floor > 5 else {},
+		"adds": adds,
+		"background": bgs
+	}
+
 func equipment(id: String) -> Dictionary:
 	for item in EQUIPMENT:
 		if item.id == id: return item
@@ -492,6 +569,16 @@ const UI_TEXT = {
 	"ui.upgraded_toast": {"zh-Hans":"%s 已强化为 %s +1", "en":"%s upgraded to %s +1"},
 	"ui.event_blood_pact": {"zh-Hans":"暗影契约 · 承受 15 伤害，获得 ◆60 金币", "en":"Shadow Pact · Take 15 damage, gain ◆60 gold"},
 	"ui.event_spirit_blessing": {"zh-Hans":"灵脉洗礼 · 恢复 18 点生命", "en":"Spirit Blessing · Restore 18 HP"},
+	"ui.hero_classes_title": {"zh-Hans":"英雄流派", "en":"Hero Archetypes"},
+	"ui.hero_class_select": {"zh-Hans":"选择职业", "en":"Select Class"},
+	"ui.hero_selected_toast": {"zh-Hans":"已切换为 %s", "en":"Switched to %s"},
+	"ui.abyss_title": {"zh-Hans":"无尽深渊", "en":"Endless Abyss"},
+	"ui.abyss_sub": {"zh-Hans":"挑战无休止的极度试炼 · 击破深渊守卫", "en":"Challenge endless trials · Vanquish abyss sentinels"},
+	"ui.abyss_floor_fmt": {"zh-Hans":"当前深渊：第 %d 层", "en":"Current: Floor %d"},
+	"ui.abyss_record_fmt": {"zh-Hans":"历史最佳：第 %d 层", "en":"Personal Best: Floor %d"},
+	"ui.abyss_enter": {"zh-Hans":"踏入深渊试炼", "en":"Enter Abyss Trial"},
+	"ui.abyss_btn": {"zh-Hans":"深渊", "en":"Abyss"},
+	"ui.abyss_reward_toast": {"zh-Hans":"深渊第 %d 层通关！获得 ◆%d 金币", "en":"Abyss Floor %d Cleared! +◆%d Gold"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

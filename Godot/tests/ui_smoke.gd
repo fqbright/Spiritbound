@@ -1100,6 +1100,27 @@ func _run() -> void:
 	check(has_foil, "Rare card face carries foil ShaderMaterial")
 	rare_face.queue_free()
 
+	# ── Phase 3 feature tests ──
+	section("== hero archetypes & endless abyss ==")
+	game.show_camp()
+	var found_hero_title := _find_label_text(game.root, game.content.ui("ui.hero_classes_title", game.lang))
+	check(found_hero_title, "Hero archetypes section renders in camp")
+	var found_abyss_title := _find_label_text(game.root, game.content.ui("ui.abyss_title", game.lang))
+	check(found_abyss_title, "Endless abyss section renders in camp")
+	var abyss_btn: Button = game.root.find_child("AbyssEnterBtn", true, false) as Button
+	check(abyss_btn != null, "AbyssEnterBtn exists in camp")
+
+	# Test switching class
+	check(game.profile.get("hero_class", "") == "fox_spirit", "initial hero class is fox_spirit")
+	var sentinel: Dictionary = game.content.hero_class("stone_sentinel")
+	game.profile.hero_class = "stone_sentinel"
+	game.profile.deck = sentinel.deck.duplicate()
+	SpiritSave.write(game.profile)
+	check(game.profile.hero_class == "stone_sentinel", "switched hero class to stone_sentinel")
+	check(game.profile.deck.size() == 25, "stone_sentinel deck has 25 cards")
+	game.show_map()
+	check(game.traveler != null, "traveler exists on map with new hero class")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")

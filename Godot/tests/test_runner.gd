@@ -498,6 +498,39 @@ func run() -> void:
 			missing_p2_strings += 1
 	check(missing_p2_strings == 0, "all Phase 2 UI strings have bilingual translations")
 
+	# Phase 3 checks: Hero Archetypes / Classes
+	check(content.HERO_CLASSES.size() == 3, "three hero archetype classes defined")
+	var class_ids := ["fox_spirit", "stone_sentinel", "shadow_stalker"]
+	for cid in class_ids:
+		var hero: Dictionary = content.hero_class(cid)
+		check(hero.id == cid, "hero class %s is accessible" % cid)
+		check(hero.deck.size() == 25, "%s starting deck has exactly 25 cards" % cid)
+		var expensive_cards := 0
+		for card_id in hero.deck:
+			var c: Dictionary = content.card(card_id)
+			if int(c.cost) > 1: expensive_cards += 1
+		check(expensive_cards == 0, "%s starting deck is all 1-cost cards" % cid)
+
+	# Phase 3 checks: Endless Abyss Scaling
+	var abyss_f1: Dictionary = content.abyss_encounter(1)
+	var abyss_f10: Dictionary = content.abyss_encounter(10)
+	check(int(abyss_f1.health) > 0 and int(abyss_f1.damage) > 0, "abyss floor 1 is valid encounter")
+	check(int(abyss_f10.health) > int(abyss_f1.health), "abyss floor 10 has scaled health (%d > %d)" % [int(abyss_f10.health), int(abyss_f1.health)])
+	check(int(abyss_f10.damage) > int(abyss_f1.damage), "abyss floor 10 has scaled damage (%d > %d)" % [int(abyss_f10.damage), int(abyss_f1.damage)])
+
+	# Phase 3 checks: UI strings completeness
+	var phase3_keys := [
+		"ui.hero_classes_title", "ui.hero_class_select", "ui.hero_selected_toast",
+		"ui.abyss_title", "ui.abyss_sub", "ui.abyss_floor_fmt", "ui.abyss_record_fmt",
+		"ui.abyss_enter", "ui.abyss_btn", "ui.abyss_reward_toast"
+	]
+	var missing_p3_strings := 0
+	for key in phase3_keys:
+		var entry: Dictionary = SpiritContent.UI_TEXT.get(key, {})
+		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
+			missing_p3_strings += 1
+	check(missing_p3_strings == 0, "all Phase 3 UI strings have bilingual translations")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

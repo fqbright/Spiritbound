@@ -170,11 +170,30 @@ The visual presentation blends high-detail painted assets with procedural vector
     - `battle_stage_3.wav` (Level 4: Stronghold): Heavy fortress siege (130 BPM, D Minor) with driving war drums, aggressive brass stabs, and urgent 16th-note string ostinatos.
     - `battle_stage_4.wav` (Level 5: Crown / Great Boss): Epic climax boss symphony (140 BPM, B Minor) with thunderous timpani, soaring brass fanfares in octaves, glockenspiel, and sweeping choral sweeps.
 
+- **Combat ergonomics & visual juice (Phase 1, 2, 3 enhancements)**:
+  - **Battle Speed Toggle**: 1x / 1.5x / 2x cycling capsule button in battle HUD (`SpeedToggle`). Paced delays and animations scale via `_battle_delay(seconds)`. Persists to `profile.battle_speed`.
+  - **Manual Pass / End Turn Button**: `PassTurnBtn` in combat status row allows voluntarily ending turn with unspent cards.
+  - **Haptic Feedback Hierarchy**: Centralized `_haptic(type)` with 4 tiers (`tap`, `shield`, `hit`, `heavy`).
+  - **Interactive Keyword Glossary Tooltips**: Scanning card mechanics in `_big_card_face` generates tappable keyword pills displaying bilingual rules explanations.
+  - **Campfire Rest Site Rituals (`show_event` for `rest`)**:
+    - `rest_heal`: Restore 20 HP.
+    - `rest_purify`: Purify Altar (`show_deck_purge`) — banish a basic starter card and transform it into an elite spirit card (`foxfire`, `mirrorWard`, or `wildSpark`) while keeping the 25-card deck invariant.
+    - `rest_smith`: Spirit Smith (`show_deck_upgrade`) — permanently upgrade a selected card to `+1`.
+  - **Shop Oblivion Service (`ShopPurgeBtn`)**: Card removal service available for ◆50 gold in town.
+  - **Holographic Card Foil Shader (`assets/shaders/card_foil.gdshader`)**: Real-time GLSL CanvasItem shader rendering iridescent sweeping rainbow foil reflection across Rare and Upgraded (`+1`) cards.
+  - **3 Hero Archetypes / Classes (`content.HERO_CLASSES`)**:
+    - **Fox Spirit Master (灵狐行者 / `fox_spirit`)**: Agile fire/gale caster with `foxCharm` and `foxfire` combos.
+    - **Stone Sentinel (岩铠卫士 / `stone_sentinel`)**: Immovable fortress with `ancientSeed`, heavy armor, and `stoneBreaker` shield conversion.
+    - **Shadow Stalker (夜影刺客 / `shadow_stalker`)**: Lethal critical assassin with `starShard`, `moonfang`, and `cinderHex`.
+    - All 3 class starting decks strictly follow the 25-card, all 1-cost balance rule.
+    - Selecting a hero class in Camp updates the traveler map avatar and loadout.
+  - **Endless Abyss Mode (`show_abyss` / `begin_abyss_battle`)**: Infinite gauntlet where enemies and gold rewards scale by floor (`content.abyss_encounter(floor)`). Tracks `profile.abyss_floor` and `profile.abyss_record`.
+
 ## Handoff & verification notes for future agents
 
 - **Verifying changes**:
   ```bash
-  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (47 checks)
+  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (122 checks)
   godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
   ```
   Both must pass without failures before committing.

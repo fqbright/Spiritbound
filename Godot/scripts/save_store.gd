@@ -24,7 +24,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)

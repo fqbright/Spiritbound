@@ -772,6 +772,7 @@ var pending_rewards: Dictionary = {}
 var selected_card := -1
 var advancing_to_reward := false
 var pre_battle_health := 60
+var in_abyss := false
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
 var _back_action := Callable()
@@ -1587,7 +1588,8 @@ func show_map() -> void:
 	_add_map_ambience()
 
 	traveler = Sprite2D.new()
-	traveler.texture = _get_character_texture("fox")
+	var current_hero: Dictionary = content.hero_class(str(profile.get("hero_class", "fox_spirit")))
+	traveler.texture = _get_character_texture(str(current_hero.get("sprite", "fox")))
 	traveler.scale = Vector2(40.0 / 341.33, 40.0 / 341.33)
 	traveler.position = _map_point(profile.position) - Vector2(0, 26)
 	traveler.z_index = 25
@@ -3482,6 +3484,12 @@ func _toast(message: String, color := TEXT) -> void:
 
 func _leave_battle() -> void:
 	selected_card = -1
+	if in_abyss:
+		in_abyss = false
+		profile.health = maxi(1, pre_battle_health)
+		SpiritSave.write(profile)
+		show_camp()
+		return
 	if combat != null:
 		# A defeat costs you the attempt, not the run: health returns to what you entered with.
 		# Retreating mid-battle still keeps the damage you took.
@@ -3543,6 +3551,19 @@ func _is_replay(index: int) -> bool:
 	return index < int(profile.unlocked)
 
 func _grant_stage_rewards() -> void:
+	if in_abyss:
+		in_abyss = false
+		var floor_num: int = int(profile.get("abyss_floor", 1))
+		var gold_gain: int = 25 + floor_num * 5
+		profile.gold += gold_gain
+		profile.abyss_floor = floor_num + 1
+		profile.abyss_record = maxi(int(profile.get("abyss_record", 0)), floor_num)
+		profile.health = mini(60, int(combat.state.player.health) + 15)
+		pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
+		SpiritSave.write(profile)
+		_advance_quest("win_battles", 1)
+		_advance_quest("earn_gold", gold_gain)
+		return
 	var encounter: Dictionary = content.encounters[current_stage]
 	var multiplier: float = active_modifier.get("reward_scale", 1.0)
 	if profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
@@ -4898,6 +4919,8 @@ func show_camp() -> void:
 	scroll.add_child(list)
 
 	list.add_child(_account_panel())
+	list.add_child(_hero_archetypes_section())
+	list.add_child(_abyss_section())
 	list.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
 	for value in 6:
@@ -4935,6 +4958,122 @@ func show_camp() -> void:
 			texts.add_child(_label(_relic_name(relic), 12, TEXT))
 			texts.add_child(_label(_relic_detail(relic), 9, color, HORIZONTAL_ALIGNMENT_LEFT, true))
 	list.add_child(_label(t("ui.camp_desc"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+func _hero_archetypes_section() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	box.add_child(_label(t("ui.hero_classes_title"), 15, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var current_class_id: String = str(profile.get("hero_class", "fox_spirit"))
+	for h in content.HERO_CLASSES:
+		var is_selected: bool = h.id == current_class_id
+		var panel := PanelContainer.new()
+		panel.custom_minimum_size = Vector2(340, 72)
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var border_col: Color = GOLD if is_selected else Color("1a3d44")
+		panel.add_theme_stylebox_override("panel", _panel(Color("10242b") if not is_selected else Color("153038"), 12, border_col))
+
+		var pad := MarginContainer.new()
+		pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 8)
+		panel.add_child(pad)
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		pad.add_child(row)
+
+		var portrait := CenterContainer.new()
+		portrait.custom_minimum_size = Vector2(48, 48)
+		var spr := TextureRect.new()
+		spr.texture = _get_character_texture(str(h.sprite))
+		spr.custom_minimum_size = Vector2(44, 44)
+		spr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		spr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait.add_child(spr)
+		row.add_child(portrait)
+
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.add_theme_constant_override("separation", 2)
+		row.add_child(texts)
+
+		var name_str: String = content.hero_name(h, lang)
+		texts.add_child(_label(name_str + ("  ✓" if is_selected else ""), 13, JADE if is_selected else TEXT))
+		texts.add_child(_label(content.hero_desc(h, lang), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var sel_btn := _button("✓" if is_selected else t("ui.hero_class_select"), func():
+			profile.hero_class = h.id
+			profile.deck = h.deck.duplicate()
+			for cid in h.deck:
+				profile.collection[cid] = maxi(int(profile.collection.get(cid, 0)), h.deck.count(cid))
+			var relic_id: String = str(h.get("relic", ""))
+			if not relic_id.is_empty() and not profile.relics.has(relic_id):
+				profile.relics.append(relic_id)
+			SpiritSave.write(profile)
+			_haptic("heavy")
+			_toast(tf("ui.hero_selected_toast", name_str), GOLD)
+			show_camp()
+		, GOLD if is_selected else Color("1a3d44"), Vector2(68, 38))
+		sel_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(sel_btn)
+
+		box.add_child(panel)
+
+	return box
+
+func _abyss_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 110)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel(Color("1b1024"), 14, Color("c79bff")))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 6)
+	pad.add_child(stack)
+
+	stack.add_child(_label(t("ui.abyss_title"), 16, Color("e0b8ff"), HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(t("ui.abyss_sub"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var floor_num: int = int(profile.get("abyss_floor", 1))
+	var record_num: int = int(profile.get("abyss_record", 0))
+
+	var stats := HBoxContainer.new()
+	stats.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats.add_theme_constant_override("separation", 16)
+	stats.add_child(_label(tf("ui.abyss_floor_fmt", floor_num), 11, GOLD))
+	stats.add_child(_label(tf("ui.abyss_record_fmt", record_num), 11, JADE))
+	stack.add_child(stats)
+
+	var enter_btn := _button(t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(240, 40))
+	enter_btn.name = "AbyssEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(enter_btn)
+
+	return panel
+
+func begin_abyss_battle() -> void:
+	in_abyss = true
+	var floor_num: int = int(profile.get("abyss_floor", 1))
+	var enc: Dictionary = content.abyss_encounter(floor_num)
+	current_stage = 0
+	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	active_modifier = _modifier(seed, floor_num)
+	combat = SpiritCombat.new(content)
+	var equipped: Array = profile.equipment_slots.values()
+	combat.create(seed, enc, profile.deck, int(profile.health), profile.upgrades, equipped, profile.card_runes, active_modifier, profile.relics)
+	combat.event.connect(_combat_event)
+	pre_battle_health = int(profile.health)
+	advancing_to_reward = false
+	selected_card = -1
+	show_battle()
+	_maybe_end_turn()
 
 func _toggle_music() -> void:
 	muted = not muted
