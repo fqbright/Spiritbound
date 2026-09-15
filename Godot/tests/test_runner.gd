@@ -86,7 +86,9 @@ func run() -> void:
 
 	var relic_run := SpiritCombat.new(content)
 	relic_run.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["windChime","foxCharm"])
-	check(relic_run.state.hand.size() == 7 and int(relic_run.state.energy) == 3,"relics apply at battle start")
+	check(relic_run.state.hand.size() == 5 and int(relic_run.state.energy) == 2,"turn 1 is strictly 5 cards and 2 energy even with relics")
+	relic_run.end_turn()
+	check(relic_run.state.hand.size() == 9 and int(relic_run.state.energy) == 3,"relics grant bonus cards and energy on turn 2")
 
 	var profile := SpiritSave.defaults(content)
 	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty(),"new save schema is valid")

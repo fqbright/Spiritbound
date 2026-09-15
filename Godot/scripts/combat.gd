@@ -30,10 +30,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	}
 	if equipment.has("jadePlate"): state.player.shield += 8
 	if equipment.has("focusCharm"): state.player.focus += 1
-	# There is no play-count cap any more (see play()) — the fox charm's tempo bonus is
-	# expressed as energy instead of an extra play, so it stays a real turn-one boost.
-	if _has_relic("foxCharm"): state.energy += 1
-	_draw(5 + (1 if equipment.has("tideCharm") else 0) + (2 if _has_relic("windChime") else 0))
+	# Turn 1 is strictly 2 energy and 5 cards under all conditions.
+	# Progression bonuses from foxCharm, windChime, and tideCharm apply from turn 2.
+	_draw(5)
 	_plan_intents()
 	return state
 
@@ -186,13 +185,14 @@ func end_turn() -> void:
 	# instead of a flat amount, so a long fight gradually loosens up rather than staying as
 	# tight on turn 20 as it was on turn 1.
 	state.energy = 2 + int((state.turn - 1) / 2)
+	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.elements = {}
-	# A fixed 2-card draw each turn, not a refill back up to some target hand size — the hand
-	# grows if you don't spend it down, capped at 10 by _draw() itself.
-	_draw(2)
+	# A fixed 2-card draw each turn, plus turn-2 bonuses from windChime and tideCharm.
+	var extra_draw := (2 if _has_relic("windChime") and state.turn == 2 else 0) + (1 if state.equipment.has("tideCharm") and state.turn == 2 else 0)
+	_draw(2 + extra_draw)
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 

@@ -101,15 +101,14 @@ Every one of these produced a wrong screen with no error in the log. They are th
   assertion honest rather than loosening it.
 - Hand size is not refilled to a target each turn — `end_turn()` draws a flat 2 cards
   (`_draw(2)`), so an unspent hand grows turn over turn until `_draw()`'s own 10-card cap
-  kicks in. The opening hand at battle start is still 5 (`create()` still calls
-  `_draw(5 + ...)`) — only the per-turn draw changed.
+  kicks in. Opening hand at battle start is strictly 5 cards and opening energy is strictly 2 —
+  relics and equipment (foxCharm, windChime, tideCharm) must NEVER override turn one's strict
+  opening constraints; their bonus energy and extra cards apply on turn 2.
 - There is no End Turn button: the turn ends itself once nothing left in hand is affordable
   (empty hand or every remaining card costs more than remaining energy) — see
   `_maybe_end_turn()` in `game.gd`. There used to also be a fixed plays-per-turn cap
   (`state.actions`); it was removed so cost, not an arbitrary play count, is the only
-  constraint. Swift's rune and the foxCharm relic were both action-based and are now
-  energy-based (refund/grant energy instead of an extra play) — keep that in mind if you see
-  older references to "actions" anywhere.
+  constraint. Swift's rune refunds energy; foxCharm grants 1 extra energy on turn 2.
 - Enemies roll an intent a turn ahead and `_execute_intent` spends exactly the telegraphed
   amount. Never recompute it at execution time — the promise is the mechanic.
 - A card with any `target: "opponent"` effect aims at enemies; everything else aims at the
