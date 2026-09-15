@@ -1059,6 +1059,47 @@ func _run() -> void:
 	check(found_keyword_pill, "keyword tooltip pills exist in enlarged card face")
 	big_face.queue_free()
 
+	# ── Phase 2 feature tests ──
+	section("== shop card purge service ==")
+	game.show_shop()
+	var shop_purge_btn: Button = game.root.find_child("ShopPurgeBtn", true, false) as Button
+	check(shop_purge_btn != null, "ShopPurgeBtn exists in shop screen")
+
+	section("== campfire rest site screen ==")
+	game.show_event(3, "rest")
+	var found_rest_heal := _find_text(game.root, game.content.ui("ui.rest_heal_choice", game.lang))
+	var found_rest_purify := _find_text(game.root, game.content.ui("ui.rest_purify_choice", game.lang))
+	var found_rest_smith := _find_text(game.root, game.content.ui("ui.rest_smith_choice", game.lang))
+	check(found_rest_heal, "Campfire has rest heal choice")
+	check(found_rest_purify, "Campfire has purify altar choice")
+	check(found_rest_smith, "Campfire has smith upgrade choice")
+
+	section("== deck purge screen ==")
+	game.show_deck_purge(game.show_map, 0)
+	var found_purge_title := _find_label_text(game.root, game.content.ui("ui.purge_title", game.lang))
+	check(found_purge_title, "Deck purge screen renders with title")
+	var found_purge_btn := _find_text(game.root, game.content.ui("ui.purge_confirm", game.lang))
+	check(found_purge_btn, "Deck purge screen displays purge confirmation button")
+
+	section("== deck upgrade screen ==")
+	game.show_deck_upgrade(game.show_map)
+	var found_upgrade_title := _find_label_text(game.root, game.content.ui("ui.upgrade_title", game.lang))
+	check(found_upgrade_title, "Deck upgrade screen renders with title")
+
+	section("== card foil shader application ==")
+	var rare_card: Dictionary = game.content.card("phoenixEdge")
+	var rare_face: Panel = game._big_card_face(rare_card, "")
+	game.root.add_child(rare_face)
+	var rare_art: TextureRect = rare_face.find_child("TextureRect", true, false) as TextureRect
+	# Find art child which has material
+	var has_foil := false
+	for child in rare_face.get_children():
+		if child is TextureRect and (child as TextureRect).material is ShaderMaterial:
+			has_foil = true
+			break
+	check(has_foil, "Rare card face carries foil ShaderMaterial")
+	rare_face.queue_free()
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")

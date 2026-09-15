@@ -469,6 +469,35 @@ func run() -> void:
 	check(pass_combat.state.turn == 2, "passing / ending turn advances to turn 2")
 	check(pass_combat.state.player.shield == 0, "shields decay at end of turn")
 
+	# Phase 2 checks: Foil shader asset existence
+	check(FileAccess.file_exists("res://assets/shaders/card_foil.gdshader"), "card_foil.gdshader exists on disk")
+	var foil_shader: Shader = load("res://assets/shaders/card_foil.gdshader") as Shader
+	check(foil_shader != null, "card_foil.gdshader loads as valid Shader resource")
+
+	# Phase 2 checks: Deck Purge & Transformation maintains 25 cards
+	var purge_profile := SpiritSave.defaults(content)
+	check(purge_profile.deck.size() == 25, "deck starts at 25 cards")
+	var strike_idx: int = purge_profile.deck.find("strike")
+	check(strike_idx >= 0, "deck contains starter strike")
+	# Simulate purge transformation
+	purge_profile.deck[strike_idx] = "foxfire"
+	check(purge_profile.deck.size() == 25, "deck retains exact 25 cards after purge")
+	check(purge_profile.deck[strike_idx] == "foxfire", "starter strike purified into foxfire")
+
+	# Phase 2 checks: UI strings completeness
+	var phase2_keys := [
+		"ui.rest_title", "ui.rest_prompt", "ui.rest_heal_choice", "ui.rest_purify_choice",
+		"ui.rest_smith_choice", "ui.shop_purge_service", "ui.purge_title", "ui.purge_sub",
+		"ui.purge_confirm", "ui.purged_toast", "ui.upgrade_title", "ui.upgrade_sub",
+		"ui.upgraded_toast", "ui.event_blood_pact", "ui.event_spirit_blessing"
+	]
+	var missing_p2_strings := 0
+	for key in phase2_keys:
+		var entry: Dictionary = SpiritContent.UI_TEXT.get(key, {})
+		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
+			missing_p2_strings += 1
+	check(missing_p2_strings == 0, "all Phase 2 UI strings have bilingual translations")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

@@ -788,6 +788,7 @@ var _card_atlas_2: Texture2D = null
 var _road_texture: NoiseTexture2D = null
 var _mote_texture: GradientTexture2D = null
 var _hit_flash_shader: Shader = null
+var _card_foil_shader: Shader = null
 var _ember_texture: GradientTexture2D = null
 var _terrain_grain_texture: NoiseTexture2D = null
 var _terrain_wash_cache: Dictionary = {}
@@ -2304,6 +2305,19 @@ func _get_hit_flash_shader() -> Shader:
 	if _hit_flash_shader == null: _hit_flash_shader = load("res://assets/shaders/hit_flash.gdshader")
 	return _hit_flash_shader
 
+func _get_card_foil_shader() -> Shader:
+	if _card_foil_shader == null and ResourceLoader.exists("res://assets/shaders/card_foil.gdshader"):
+		_card_foil_shader = load("res://assets/shaders/card_foil.gdshader")
+	return _card_foil_shader
+
+func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool) -> void:
+	if rarity == "Rare" or upgraded:
+		var s := _get_card_foil_shader()
+		if s:
+			var mat := ShaderMaterial.new()
+			mat.shader = s
+			node.material = mat
+
 # One shader material per sprite so a mid-flash overlap on one enemy never disturbs another.
 func _install_hit_flash(sprite: CanvasItem) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
@@ -2860,6 +2874,9 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var card_rarity: String = str(card.get("rarity", "Common"))
+	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
+	_apply_card_foil(art, card_rarity, up_lvl > 0)
 	frame.add_child(art)
 
 	var info_box := PanelContainer.new()
@@ -2883,7 +2900,6 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	stack.add_theme_constant_override("separation", 4)
 	info_box.add_child(stack)
 
-	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
 	var name_text: String = content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else "")
 	var name_lbl := _label(name_text, 16, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
 	stack.add_child(name_lbl)
@@ -2896,7 +2912,6 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	stack.add_child(desc_lbl)
 
 	# Ornate slim card frame selected according to card rarity (Starter, Common, Uncommon, Rare)
-	var card_rarity: String = str(card.get("rarity", "Common"))
 	var border_overlay := TextureRect.new()
 	border_overlay.texture = _get_card_frame_texture(card_rarity)
 	border_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -3713,19 +3728,210 @@ func show_event(index: int, kind: String) -> void:
 	var title: String
 	if kind == "event": title = t("ui.event_traveler")
 	elif kind == "merchant": title = t("ui.event_merchant")
-	elif kind == "rest": title = t("ui.event_rest")
+	elif kind == "rest": title = t("ui.rest_title")
 	else: title = t("ui.event_default")
-	page.add_child(_label("✦", 48, GOLD, HORIZONTAL_ALIGNMENT_CENTER)); page.add_child(_label(title, 21, TEXT, HORIZONTAL_ALIGNMENT_CENTER)); page.add_child(_label(t("ui.event_prompt"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label("✦", 48, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label(title, 21, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label(t("ui.rest_prompt") if kind == "rest" else t("ui.event_prompt"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
 	if kind == "event":
-		page.add_child(_button(t("ui.event_opt_gold"), func(): profile.gold += 25; _advance_quest("earn_gold", 25); SpiritSave.write(profile); begin_battle(index), EMBER, Vector2(280,48)))
-		page.add_child(_button(t("ui.event_opt_heal"), func(): profile.health = mini(60,profile.health+15); SpiritSave.write(profile); begin_battle(index), Color("21594e"), Vector2(280,48)))
+		page.add_child(_button(t("ui.event_blood_pact"), func():
+			profile.health = maxi(1, profile.health - 15)
+			profile.gold += 60
+			_advance_quest("earn_gold", 60)
+			SpiritSave.write(profile)
+			_haptic("heavy")
+			begin_battle(index)
+		, Color("591d1d"), Vector2(300, 48)))
+		page.add_child(_button(t("ui.event_spirit_blessing"), func():
+			profile.health = mini(60, profile.health + 18)
+			SpiritSave.write(profile)
+			_haptic("tap")
+			begin_battle(index)
+		, Color("21594e"), Vector2(300, 48)))
+		page.add_child(_button(t("ui.rest_smith_choice"), func():
+			show_deck_upgrade(func(): show_event(index, "event"), func(): begin_battle(index))
+		, EMBER, Vector2(300, 48)))
 	elif kind == "rest":
-		page.add_child(_button(t("ui.event_opt_rest_heal"), func(): profile.health = mini(60,profile.health+12); SpiritSave.write(profile); begin_battle(index), Color("21594e"), Vector2(280,48)))
-		page.add_child(_button(t("ui.event_opt_upgrade"), func(): profile.upgrades[profile.deck[0]]=1; SpiritSave.write(profile); begin_battle(index), EMBER, Vector2(280,48)))
+		page.add_child(_button(t("ui.rest_heal_choice"), func():
+			profile.health = mini(60, profile.health + 20)
+			SpiritSave.write(profile)
+			_haptic("tap")
+			begin_battle(index)
+		, Color("21594e"), Vector2(300, 48)))
+		page.add_child(_button(t("ui.rest_purify_choice"), func():
+			show_deck_purge(func(): show_event(index, "rest"), 0, func(): begin_battle(index))
+		, Color("4a285d"), Vector2(300, 48)))
+		page.add_child(_button(t("ui.rest_smith_choice"), func():
+			show_deck_upgrade(func(): show_event(index, "rest"), func(): begin_battle(index))
+		, GOLD, Vector2(300, 48)))
 	else:
-		page.add_child(_button(t("ui.event_opt_potion"), func(): if profile.gold>=30: profile.gold-=30; profile.health=mini(60,profile.health+25); SpiritSave.write(profile); begin_battle(index), EMBER, Vector2(280,48)))
-		page.add_child(_button(t("ui.event_opt_direct"), func(): begin_battle(index), Color("21594e"), Vector2(280,48)))
-	page.add_child(_button(t("ui.return_map"), show_map, Color("17363e"), Vector2(170,42)))
+		page.add_child(_button(t("ui.event_opt_potion"), func():
+			if profile.gold >= 30:
+				profile.gold -= 30
+				profile.health = mini(60, profile.health + 25)
+				SpiritSave.write(profile)
+				_haptic("tap")
+			begin_battle(index)
+		, EMBER, Vector2(300, 48)))
+		page.add_child(_button(t("ui.shop_purge_service") + " · ◆50", func():
+			if profile.gold >= 50:
+				show_deck_purge(func(): show_event(index, "merchant"), 50, func(): begin_battle(index))
+			else:
+				_toast(t("ui.shop_no_gold"))
+		, Color("3d2154"), Vector2(300, 48)))
+		page.add_child(_button(t("ui.event_opt_direct"), func(): begin_battle(index), Color("21594e"), Vector2(300, 48)))
+
+	page.add_child(_button(t("ui.return_map"), show_map, Color("17363e"), Vector2(170, 42)))
+
+func show_deck_purge(return_callback: Callable, cost := 0, on_done := Callable()) -> void:
+	_clear(); _play_music(false)
+	_back_action = return_callback
+	var page := _create_page(12)
+
+	var sub: String = t("ui.purge_sub") + (" · " + tf("ui.shop_gold", cost) if cost > 0 else "")
+	var header := _header(t("ui.purge_title"), sub)
+	var back_btn := _button("←", return_callback, Color("17363e"), Vector2(36, 34))
+	back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(back_btn)
+	page.add_child(header)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	var seen_ids: Array[String] = []
+	for card_id in profile.deck:
+		if card_id in seen_ids: continue
+		seen_ids.append(card_id)
+		var card: Dictionary = content.card(card_id)
+		if card.is_empty(): continue
+		var count: int = profile.deck.count(card_id)
+
+		var row := PanelContainer.new()
+		row.custom_minimum_size = Vector2(340, 56)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var accent := _card_color(card)
+		row.add_theme_stylebox_override("panel", _panel(Color("10242b"), 10, accent))
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		row.add_child(hbox)
+
+		var badge := _cost_badge(int(card.cost), accent)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(badge)
+
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		hbox.add_child(texts)
+
+		var name_lbl := _label("%s  ×%d" % [content.text(card.nameKey, lang), count], 13, TEXT)
+		texts.add_child(name_lbl)
+		var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("rarity.%s" % card.get("rarity", "Common"))], 10, GOLD)
+		texts.add_child(kind_lbl)
+
+		var purge_btn := _button(t("ui.purge_confirm"), func():
+			if cost > 0 and int(profile.gold) < cost:
+				_toast(t("ui.shop_no_gold"))
+				return
+			if cost > 0: profile.gold -= cost
+			var replacement_id := "foxfire" if card.id == "strike" else ("mirrorWard" if card.id == "ward" else "wildSpark")
+			var idx: int = profile.deck.find(card.id)
+			if idx >= 0: profile.deck[idx] = replacement_id
+			if int(profile.collection.get(card.id, 0)) > 0:
+				profile.collection[card.id] = maxi(0, int(profile.collection[card.id]) - 1)
+			profile.collection[replacement_id] = int(profile.collection.get(replacement_id, 0)) + 1
+			SpiritSave.write(profile)
+			_haptic("heavy")
+			_toast(tf("ui.purged_toast", [content.text(card.nameKey, lang), content.text(content.card(replacement_id).nameKey, lang)]), JADE)
+			if on_done.is_valid(): on_done.call()
+			else: return_callback.call()
+		, EMBER, Vector2(88, 38))
+		purge_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(purge_btn)
+
+		list.add_child(row)
+
+func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void:
+	_clear(); _play_music(false)
+	_back_action = return_callback
+	var page := _create_page(12)
+
+	var header := _header(t("ui.upgrade_title"), t("ui.upgrade_sub"))
+	var back_btn := _button("←", return_callback, Color("17363e"), Vector2(36, 34))
+	back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(back_btn)
+	page.add_child(header)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	var seen_ids: Array[String] = []
+	for card_id in profile.deck:
+		if card_id in seen_ids: continue
+		seen_ids.append(card_id)
+		var card: Dictionary = content.card(card_id)
+		if card.is_empty(): continue
+		var is_upgraded: bool = int(profile.upgrades.get(card_id, 0)) > 0
+
+		var row := PanelContainer.new()
+		row.custom_minimum_size = Vector2(340, 56)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var accent := _card_color(card)
+		row.add_theme_stylebox_override("panel", _panel(Color("10242b"), 10, accent if not is_upgraded else GOLD))
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		row.add_child(hbox)
+
+		var badge := _cost_badge(int(card.cost), accent)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(badge)
+
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		hbox.add_child(texts)
+
+		var card_name: String = content.text(card.nameKey, lang)
+		var name_lbl := _label("%s%s" % [card_name, " +1" if is_upgraded else ""], 13, TEXT)
+		texts.add_child(name_lbl)
+		var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("rarity.%s" % card.get("rarity", "Common"))], 10, GOLD)
+		texts.add_child(kind_lbl)
+
+		if not is_upgraded:
+			var up_btn := _button("+1", func():
+				profile.upgrades[card_id] = 1
+				SpiritSave.write(profile)
+				_haptic("heavy")
+				_toast(tf("ui.upgraded_toast", [card_name, card_name]), GOLD)
+				if on_done.is_valid(): on_done.call()
+				else: return_callback.call()
+			, GOLD, Vector2(56, 38))
+			up_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hbox.add_child(up_btn)
+		else:
+			var done_lbl := _label("MAX", 11, JADE, HORIZONTAL_ALIGNMENT_CENTER)
+			done_lbl.custom_minimum_size = Vector2(56, 38)
+			done_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			hbox.add_child(done_lbl)
+
+		list.add_child(row)
 
 const SHOP_STOCK_COUNT := 6
 
@@ -3754,8 +3960,13 @@ func show_shop() -> void:
 	page.add_child(_header(t("ui.shop_title"), t("ui.shop_sub"), show_map))
 	page.add_child(_label(tf("ui.shop_refresh", _format_countdown(_shop_reset_at())), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
+	var svc_row := HBoxContainer.new()
+	svc_row.custom_minimum_size.y = 56
+	svc_row.add_theme_constant_override("separation", 8)
+	page.add_child(svc_row)
+
 	var potion := Button.new()
-	potion.custom_minimum_size.y = 62
+	potion.custom_minimum_size.y = 56
 	potion.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	potion.focus_mode = Control.FOCUS_NONE
 	var affordable: bool = int(profile.gold) >= 30
@@ -3763,24 +3974,55 @@ func show_shop() -> void:
 	potion.add_theme_stylebox_override("hover", _panel(Color("245a4d"), 12, JADE))
 	potion.add_theme_stylebox_override("pressed", _panel(Color("163a32"), 12, GOLD))
 	potion.pressed.connect(_buy_potion)
-	page.add_child(potion)
+	svc_row.add_child(potion)
+
 	var potion_row := HBoxContainer.new()
 	potion_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	potion_row.add_theme_constant_override("separation", 10)
+	potion_row.add_theme_constant_override("separation", 8)
 	potion_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	potion_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	potion.add_child(potion_row)
 	var potion_badge := CenterContainer.new()
 	potion_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	potion_badge.add_child(_icon_badge("✚", JADE, 38, 19))
+	potion_badge.add_child(_icon_badge("✚", JADE, 32, 16))
 	potion_row.add_child(potion_badge)
 	var potion_texts := VBoxContainer.new()
 	potion_texts.alignment = BoxContainer.ALIGNMENT_CENTER
 	potion_texts.add_theme_constant_override("separation", 1)
 	potion_texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	potion_row.add_child(potion_texts)
-	potion_texts.add_child(_label(t("ui.shop_potion"), 12, TEXT))
-	potion_texts.add_child(_label(tf("ui.shop_gold", 30), 11, GOLD))
+	potion_texts.add_child(_label(t("ui.shop_potion"), 11, TEXT))
+	potion_texts.add_child(_label(tf("ui.shop_gold", 30), 10, GOLD))
+
+	var purge_svc := Button.new()
+	purge_svc.name = "ShopPurgeBtn"
+	purge_svc.custom_minimum_size.y = 56
+	purge_svc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	purge_svc.focus_mode = Control.FOCUS_NONE
+	var can_purge: bool = int(profile.gold) >= 50
+	purge_svc.add_theme_stylebox_override("normal", _panel(Color("261d36"), 12, Color("c79bff") if can_purge else Color("2a3d42")))
+	purge_svc.add_theme_stylebox_override("hover", _panel(Color("37264f"), 12, Color("c79bff")))
+	purge_svc.add_theme_stylebox_override("pressed", _panel(Color("1c142b"), 12, GOLD))
+	purge_svc.pressed.connect(func(): show_deck_purge(show_shop, 50))
+	svc_row.add_child(purge_svc)
+
+	var purge_row := HBoxContainer.new()
+	purge_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	purge_row.add_theme_constant_override("separation", 8)
+	purge_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	purge_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	purge_svc.add_child(purge_row)
+	var purge_badge := CenterContainer.new()
+	purge_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	purge_badge.add_child(_icon_badge("✦", Color("c79bff"), 32, 16))
+	purge_row.add_child(purge_badge)
+	var purge_texts := VBoxContainer.new()
+	purge_texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	purge_texts.add_theme_constant_override("separation", 1)
+	purge_texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	purge_row.add_child(purge_texts)
+	purge_texts.add_child(_label(t("ui.shop_purge_service"), 11, TEXT))
+	purge_texts.add_child(_label(tf("ui.shop_gold", 50), 10, GOLD))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
@@ -3827,6 +4069,7 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_apply_card_foil(art, str(card.get("rarity", "Common")), false)
 	btn.add_child(art)
 
 	# 2. Ornate frame around the entire card perimeter
@@ -4110,6 +4353,7 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_apply_card_foil(art, str(card.get("rarity", "Common")), int(profile.upgrades.get(card.id, 0)) > 0)
 	tile.add_child(art)
 
 	# 2. Ornate frame around the entire card perimeter

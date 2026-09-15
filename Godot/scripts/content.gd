@@ -476,6 +476,22 @@ const UI_TEXT = {
 	"kw.echo": {"zh-Hans":"回响：卡牌效果有50%概率触发第二次。", "en":"Echo: 50% chance to trigger the card's effect a second time."},
 	"kw.siphon": {"zh-Hans":"虹吸：将造成伤害的25%转化为护盾。", "en":"Siphon: Converts 25% of damage dealt into Shield."},
 	"kw.resonance": {"zh-Hans":"共鸣：根据之前打出的同元素卡牌数量增加伤害。", "en":"Resonance: Increases damage based on previously played same-element cards."},
+	"ui.rest_title": {"zh-Hans":"灵火营地", "en":"Spirit Campfire"},
+	"ui.rest_prompt": {"zh-Hans":"温暖的灵火在荒野中升腾。选择一项仪式以助前路：", "en":"Warm spirit embers burn in the wild. Choose a ritual to aid your path:"},
+	"ui.rest_heal_choice": {"zh-Hans":"灵火休整 · 恢复 20 点生命", "en":"Spirit Rest · Restore 20 HP"},
+	"ui.rest_purify_choice": {"zh-Hans":"遗忘祭坛 · 净化并替换一张卡牌", "en":"Purify Altar · Banish & replace a card"},
+	"ui.rest_smith_choice": {"zh-Hans":"灵火淬炼 · 强化一张卡牌 (+1)", "en":"Spirit Smith · Upgrade a card (+1)"},
+	"ui.shop_purge_service": {"zh-Hans":"遗忘仪式 · 移除一张卡牌", "en":"Oblivion Ritual · Purge a card"},
+	"ui.purge_title": {"zh-Hans":"遗忘祭坛", "en":"Altar of Oblivion"},
+	"ui.purge_sub": {"zh-Hans":"选择一张卡牌永久从牌组中放逐，获得灵火祝福", "en":"Select a card to banish from deck & gain a spirit blessing"},
+	"ui.purge_confirm": {"zh-Hans":"放逐", "en":"Banish"},
+	"ui.purge_card_fmt": {"zh-Hans":"放逐 %s", "en":"Banish %s"},
+	"ui.purged_toast": {"zh-Hans":"已放逐 %s，转化获得 %s", "en":"Banished %s, transformed into %s"},
+	"ui.upgrade_title": {"zh-Hans":"灵火淬炼", "en":"Spirit Smith"},
+	"ui.upgrade_sub": {"zh-Hans":"选择一张卡牌进行永久强化 (+1)", "en":"Select a card to permanently upgrade (+1)"},
+	"ui.upgraded_toast": {"zh-Hans":"%s 已强化为 %s +1", "en":"%s upgraded to %s +1"},
+	"ui.event_blood_pact": {"zh-Hans":"暗影契约 · 承受 15 伤害，获得 ◆60 金币", "en":"Shadow Pact · Take 15 damage, gain ◆60 gold"},
+	"ui.event_spirit_blessing": {"zh-Hans":"灵脉洗礼 · 恢复 18 点生命", "en":"Spirit Blessing · Restore 18 HP"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
