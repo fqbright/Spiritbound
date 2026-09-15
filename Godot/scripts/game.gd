@@ -772,6 +772,8 @@ var pending_rewards: Dictionary = {}
 var selected_card := -1
 var advancing_to_reward := false
 var pre_battle_health := 60
+var battle_speed := 1.0
+const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
@@ -1036,6 +1038,7 @@ func _ready() -> void:
 	set_process_input(true)
 	profile = SpiritSave.load_profile(content)
 	lang = str(profile.get("language", "zh-Hans"))
+	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 2.0)
 	_build_audio()
 	_ensure_quests_current()
 	if SpiritSave.has_account_name(profile): show_map()
@@ -1093,6 +1096,40 @@ func _add_notification_dot(anchor: Control, btn_size: Vector2) -> void:
 	dot.z_index = 5
 	dot.add_theme_stylebox_override("panel", _panel(EMBER, 7, Color("2b0a08")))
 	anchor.add_child(dot)
+
+# Speed-adjusted timer: combat delays are divided by battle_speed so 2x plays twice as fast.
+func _battle_delay(seconds: float) -> float:
+	return seconds / battle_speed
+
+func _haptic(kind: String) -> void:
+	match kind:
+		"tap": Input.vibrate_handheld(10)
+		"shield": Input.vibrate_handheld(25)
+		"hit": Input.vibrate_handheld(40)
+		"heavy": Input.vibrate_handheld(75)
+		_: Input.vibrate_handheld(15)
+
+func _cycle_speed() -> void:
+	var idx: int = BATTLE_SPEED_OPTIONS.find(battle_speed)
+	idx = (idx + 1) % BATTLE_SPEED_OPTIONS.size()
+	battle_speed = BATTLE_SPEED_OPTIONS[idx]
+	profile.battle_speed = battle_speed
+	SpiritSave.write(profile)
+	show_battle()
+
+func _pass_turn() -> void:
+	if combat == null or combat.state.phase != "player" or resolving: return
+	_toast(t("ui.no_playable"))
+	await get_tree().create_timer(_battle_delay(0.28)).timeout
+	if combat == null or combat.state.phase != "player": return
+	await _enemy_turn()
+
+# Keywords that may appear on cards and warrant a tap-to-explain tooltip.
+const KEYWORD_KEYS: Array[String] = [
+	"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
+	"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
+	"echo", "siphon", "resonance",
+]
 
 # Bumps progress on every not-yet-complete quest of this type in both lists. Called from
 # the same real signals the rest of the game already fires — a card played, a chest
@@ -1219,7 +1256,7 @@ func _input(event: InputEvent) -> void:
 		var delta: Vector2 = pos - _swipe_origin
 		if delta.x > 64.0 and absf(delta.y) < 70.0:
 			get_viewport().set_input_as_handled()
-			Input.vibrate_handheld(12)
+			_haptic("tap")
 			var action := _back_action
 			_back_action = Callable()
 			action.call()
@@ -2155,6 +2192,11 @@ func show_battle() -> void:
 	top.add_child(_label("%d-%d  %s" % [encounter.chapter,encounter.level,content.stage_name(current_stage, lang)], 13, JADE))
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(spacer)
 	top.add_child(_label(tf("ui.turn_n", combat.state.turn), 11, GOLD))
+	var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+	var speed_btn := _button(speed_label, _cycle_speed, Color("1a3a42"), Vector2(44, 28))
+	speed_btn.name = "SpeedToggle"
+	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(speed_btn)
 	var leave_btn := _button("⌂", _leave_battle, Color("17363e"), Vector2(36,34))
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(leave_btn); page.add_child(top)
@@ -2618,6 +2660,10 @@ func _add_hand(page: VBoxContainer) -> void:
 
 	status.add_child(_pile_chip(combat.state.discard.size(), t("ui.discard_pile"), Color("a8b2b5")))
 
+	var pass_btn := _button(t("ui.pass_turn"), _pass_turn, Color("1c2a30"), Vector2(48, 44))
+	pass_btn.name = "PassTurnBtn"
+	status.add_child(pass_btn)
+
 	var hand_zone := Control.new()
 	hand_zone.custom_minimum_size = Vector2(366.0, 186.0)
 	hand_zone.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2885,6 +2931,40 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 			var r_lbl := _label(rune_info.icon, 22, Color(rune_info.color), HORIZONTAL_ALIGNMENT_CENTER)
 			r_lbl.position = Vector2(size.x - 34.0, -8.0)
 			frame.add_child(r_lbl)
+
+	# Keyword tooltip badges — small tappable pills at the bottom of the enlarged card peek,
+	# so a player can tap any mechanic name to see what it does without leaving the card.
+	var kw_set: Dictionary = {}
+	for effect in card.effects:
+		var op: String = str(effect.get("operation", ""))
+		if op in KEYWORD_KEYS: kw_set[op] = true
+		var status_key: String = str(effect.get("status", ""))
+		if status_key in KEYWORD_KEYS: kw_set[status_key] = true
+		for special in effect.get("special", []):
+			var sp: String = str(special)
+			if sp in KEYWORD_KEYS: kw_set[sp] = true
+	if not rune_id.is_empty() and rune_id in KEYWORD_KEYS: kw_set[rune_id] = true
+	if not kw_set.is_empty():
+		var kw_flow := HBoxContainer.new()
+		kw_flow.position = Vector2(8.0, size.y - 28.0)
+		kw_flow.size = Vector2(size.x - 16.0, 24.0)
+		kw_flow.alignment = BoxContainer.ALIGNMENT_CENTER
+		kw_flow.add_theme_constant_override("separation", 4)
+		kw_flow.mouse_filter = Control.MOUSE_FILTER_PASS
+		frame.add_child(kw_flow)
+		for kw_key in kw_set:
+			var kw_name: String = str(kw_key).capitalize()
+			var pill := Button.new()
+			pill.text = kw_name
+			pill.custom_minimum_size = Vector2(0, 22)
+			pill.add_theme_font_size_override("font_size", 9)
+			pill.add_theme_color_override("font_color", Color("cce8e0"))
+			pill.add_theme_stylebox_override("normal", _panel(Color("1a3d44"), 6, JADE))
+			pill.add_theme_stylebox_override("hover", _panel(Color("1a3d44"), 6, JADE))
+			pill.add_theme_stylebox_override("pressed", _panel(Color("1a3d44"), 6, JADE))
+			var kw_text: String = t("kw." + str(kw_key))
+			pill.pressed.connect(func(): _show_info_popup(_label(kw_name, 18, JADE, HORIZONTAL_ALIGNMENT_CENTER), kw_name, kw_text, JADE))
+			kw_flow.add_child(pill)
 
 	return frame
 
@@ -3202,7 +3282,7 @@ func _maybe_end_turn() -> void:
 		guard += 1
 		if _has_playable_card(): return
 		if combat.state.hand.size() > 0: _toast(t("ui.no_playable"))
-		await get_tree().create_timer(0.28).timeout
+		await get_tree().create_timer(_battle_delay(0.28)).timeout
 		if combat == null or combat.state.phase != "player": return
 		await _enemy_turn()
 
@@ -3225,7 +3305,7 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	punch.tween_property(popup, "scale", Vector2(1.2, 1.2), 0.14)
 	punch.tween_property(popup, "scale", Vector2.ONE, 0.1)
 
-	Input.vibrate_handheld(18 if not defeated else 45)
+	_haptic("heavy" if defeated else "hit")
 	_shake_screen(9.0 if defeated else clampf(float(amount) * 0.45, 2.5, 7.0))
 
 	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
@@ -3245,7 +3325,7 @@ func _advance_to_reward() -> void:
 	# show_battle can run several times while the win is on screen; only one hand-off.
 	if advancing_to_reward: return
 	advancing_to_reward = true
-	await get_tree().create_timer(0.8).timeout
+	await get_tree().create_timer(_battle_delay(0.8)).timeout
 	advancing_to_reward = false
 	if combat != null and combat.state.phase == "won": show_reward()
 
@@ -3265,7 +3345,7 @@ func _enemy_turn() -> void:
 	var before_health: int = combat.state.player.health
 	combat.end_turn()
 	if combat.state.player.health < before_health:
-		Input.vibrate_handheld(35)
+		_haptic("heavy")
 		await _animate_player_hit(before_health - combat.state.player.health)
 	show_battle()
 
@@ -3315,7 +3395,7 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 			tween.tween_callback(func():
 				_flash_hit(sprite, Color(1.0, 0.75, 0.55), 0.14)
 				_shake_screen(4.0)
-				Input.vibrate_handheld(12))
+				_haptic("tap"))
 			tween.tween_property(sprite, "scale", Vector2(base_scale * 1.1, base_scale * 0.9), 0.05).set_trans(Tween.TRANS_QUAD)
 			tween.tween_property(sprite, "position:y", origin.y, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 			tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
@@ -3419,7 +3499,7 @@ func show_reward() -> void:
 
 func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> void:
 	button.disabled = true
-	Input.vibrate_handheld(35)
+	_haptic("heavy")
 	var shake := chest.create_tween()
 	shake.tween_property(chest, "rotation", -0.05, 0.08)
 	shake.tween_property(chest, "rotation", 0.05, 0.08)
@@ -3434,7 +3514,7 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), 0.16)
 	pop.tween_property(chest, "scale", Vector2.ONE, 0.12)
 	await pop.finished
-	await get_tree().create_timer(0.25).timeout
+	await get_tree().create_timer(_battle_delay(0.25)).timeout
 
 	_grant_stage_rewards()
 	_advance_quest("open_chest", 1)
@@ -3871,7 +3951,7 @@ func _buy_card_with_feedback(tile: Panel, card: Dictionary, price: int) -> void:
 	var pop := tile.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	pop.tween_property(tile, "scale", Vector2(1.06, 1.06), 0.09)
 	pop.tween_property(tile, "scale", Vector2.ONE, 0.14)
-	Input.vibrate_handheld(22)
+	_haptic("tap")
 	await pop.finished
 	_buy_card(card, price)
 

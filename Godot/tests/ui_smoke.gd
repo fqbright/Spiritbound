@@ -1019,6 +1019,46 @@ func _run() -> void:
 	game.profile.equipment_slots.erase("weapon")
 	check(not game.profile.equipment_slots.has("weapon"), "Equipment unequips cleanly")
 
+	# ── Phase 1 feature tests ──
+	section("== battle speed toggle ==")
+	game.begin_battle(0)
+	game.show_battle()
+	var speed_btn: Button = game.root.find_child("SpeedToggle", true, false) as Button
+	check(speed_btn != null, "SpeedToggle button exists in battle HUD")
+	check(game.battle_speed == 1.0, "initial battle_speed is 1.0")
+	# Simulate clicking speed toggle to cycle 1.0 -> 1.5 -> 2.0 -> 1.0
+	game._cycle_speed()
+	check(game.battle_speed == 1.5, "after first click speed is 1.5")
+	game._cycle_speed()
+	check(game.battle_speed == 2.0, "after second click speed is 2.0")
+	game._cycle_speed()
+	check(game.battle_speed == 1.0, "after third click speed wraps to 1.0")
+	check(float(game.profile.get("battle_speed", 0.0)) == 1.0, "battle_speed persists to profile")
+
+	section("== manual pass turn button ==")
+	game.begin_battle(0)
+	game.show_battle()
+	var pass_btn: Button = game.root.find_child("PassTurnBtn", true, false) as Button
+	check(pass_btn != null, "PassTurnBtn exists in combat status row")
+
+	section("== keyword tooltip badges ==")
+	# Show a card peek and verify keyword pills are present
+	var test_card_inst: Dictionary = game.combat.state.hand[0]
+	var test_card: Dictionary = game.content.card(str(test_card_inst.get("card_id", "strike")))
+	var rune_for_card: String = str(game.profile.card_runes.get(test_card.id, ""))
+	var big_face: Panel = game._big_card_face(test_card, rune_for_card)
+	game.root.add_child(big_face)
+	# The card should have at least one keyword pill (all cards have at least damage/shield/etc)
+	var found_keyword_pill := false
+	for child in big_face.get_children():
+		if child is HBoxContainer:
+			for btn in child.get_children():
+				if btn is Button and btn.custom_minimum_size.y == 22:
+					found_keyword_pill = true
+					break
+	check(found_keyword_pill, "keyword tooltip pills exist in enlarged card face")
+	big_face.queue_free()
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")

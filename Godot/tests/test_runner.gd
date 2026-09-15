@@ -445,6 +445,30 @@ func run() -> void:
 	temp_file.close()
 	var loaded_save := SpiritSave.load_profile(content)
 	check(loaded_save.deck.size() == 25, "corrupted save deck auto-repairs to 25 cards on load")
+	check(loaded_save.get("battle_speed", 0.0) == 1.0, "save defaults battle_speed to 1.0")
+
+	# Keyword glossary bilingual completeness
+	var expected_keywords: Array[String] = [
+		"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
+		"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
+		"echo", "siphon", "resonance"
+	]
+	var missing_kw := 0
+	for kw in expected_keywords:
+		var entry: Dictionary = SpiritContent.UI_TEXT.get("kw." + kw, {})
+		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
+			missing_kw += 1
+	check(missing_kw == 0, "all 17 core combat keywords have bilingual descriptions in UI_TEXT")
+
+	# Pass / end turn mechanics check
+	var pass_combat := SpiritCombat.new(content)
+	pass_combat.create(42, encounter(50, 8), content.raw.startingDeck, 60)
+	check(pass_combat.state.turn == 1, "combat begins on turn 1")
+	pass_combat.state.player.shield = 10
+	pass_combat.end_turn()
+	check(pass_combat.state.turn == 2, "passing / ending turn advances to turn 2")
+	check(pass_combat.state.player.shield == 0, "shields decay at end of turn")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)
