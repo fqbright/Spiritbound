@@ -82,6 +82,32 @@ func _run() -> void:
 	game._claim_quest("daily_quests", str(win_quest.id))
 	check(int(game.profile.gold) == gold_after_claim, "claiming an already-claimed quest does not pay out twice")
 
+	section("== rolling weekly login reward ==")
+	game.profile.login_reward = {"week": -1, "days": [], "claimed": []}
+	game._ensure_login_reward_current()
+	check(int(game.profile.login_reward.days.size()) == 1, "the first _ensure_login_reward_current call of a new week logs exactly one day")
+	game._ensure_login_reward_current()
+	check(int(game.profile.login_reward.days.size()) == 1, "calling it again the same day does not double-log")
+	# Simulate having visited on 3 distinct days this week without waiting three real days.
+	game.profile.login_reward.days = [game.profile.login_reward.days[0] - 2, game.profile.login_reward.days[0] - 1, game.profile.login_reward.days[0]]
+	check(game._has_claimable_quest(), "3 days logged makes the first login-reward tier claimable")
+	game.show_quests()
+	await process_frame
+	var login_gold_before: int = int(game.profile.gold)
+	game._claim_login_reward(0)
+	check(int(game.profile.gold) == login_gold_before + int(SpiritContent.LOGIN_REWARD_TIERS[0].reward), "claiming the 3-day login tier grants its gold")
+	check(game.profile.login_reward.claimed.has(3), "the 3-day tier is recorded as claimed")
+	var gold_after_login_claim: int = int(game.profile.gold)
+	game._claim_login_reward(0)
+	check(int(game.profile.gold) == gold_after_login_claim, "claiming an already-claimed login tier does not pay out twice")
+	game._claim_login_reward(1)
+	check(int(game.profile.gold) == gold_after_login_claim, "the 5-day tier cannot be claimed with only 3 days logged")
+	var new_week_record: Dictionary = game.profile.login_reward
+	new_week_record.week = int(new_week_record.week) - 1
+	game.profile.login_reward = new_week_record
+	game._ensure_login_reward_current()
+	check(int(game.profile.login_reward.days.size()) == 1 and game.profile.login_reward.claimed.is_empty(), "a new week resets the login tally and claimed tiers")
+
 	game.show_quests()
 	await process_frame
 	check(game.root.get_child_count() > 0, "quests screen builds with quest sections")

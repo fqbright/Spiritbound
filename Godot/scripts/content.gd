@@ -68,6 +68,16 @@ const WEEKLY_QUESTS = [
 	{"id":"w_gold500","type":"earn_gold","target":500,"reward":120,"zh":"累计获得 500 金币","en":"Earn 500 gold"},
 ]
 
+# Rolling weekly login reward: "log in on any N of the 7 days this week" rather than a
+# hard-reset daily streak — 2026 mobile-retention research is explicit that the reset variant
+# makes a player give up on the whole system after one missed day, while a forgiving weekly
+# tally keeps paying off even after a gap. See game.gd's _ensure_login_reward_current().
+const LOGIN_REWARD_TIERS = [
+	{"days":3,"reward":30},
+	{"days":5,"reward":60},
+	{"days":7,"reward":100},
+]
+
 const RELICS = [
 	{"id":"foxCharm","icon":"✦","icon_mark":"flame","color":"ffb765","zh":"绯狐护符","en":"Fox Charm","detail":"第 2 回合额外获得 1 点能量。","detail_en":"Gain 1 extra Energy on Turn 2."},
 	{"id":"starShard","icon":"✧","icon_mark":"sparkle","color":"a2d9ff","zh":"碎星石","en":"Star Shard","detail":"每回合第一张攻击牌额外造成 2 点伤害。","detail_en":"First attack each turn deals +2 damage."},
@@ -936,6 +946,10 @@ const UI_TEXT = {
 	"tutorial.3.desc": {"zh-Hans":'这里没有"结束回合"按钮：当手牌打不动（能量不够或没牌了），回合会自动结束，进入敌人的行动。', "en":"There's no End Turn button: once nothing left in hand is affordable, the turn ends itself and the enemy acts."},
 	"tutorial.4.title": {"zh-Hans":"战报与成长", "en":"Rewards & Growth"},
 	"tutorial.4.desc": {"zh-Hans":"获胜后可以选择带走一张新卡加入牌组。营地里还有装备、符文、专精与每日试炼——一步步来，先打赢眼前这一场。", "en":"Winning lets you add a new card to your deck. Camp holds equipment, runes, mastery and the Daily Trial — for now, just win the fight in front of you."},
+	"ui.login_reward_title": {"zh-Hans":"本周登录", "en":"This Week's Visits"},
+	"ui.login_reward_progress_fmt": {"zh-Hans":"已登录 %d/7 天", "en":"Logged in %d/7 days"},
+	"ui.login_reward_tier_fmt": {"zh-Hans":"登录满 %d 天", "en":"Log in %d days"},
+	"ui.login_reward_claimed_toast": {"zh-Hans":"登录奖励 +%d 金币", "en":"Login reward +%d gold"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

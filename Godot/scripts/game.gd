@@ -1050,6 +1050,7 @@ func _ready() -> void:
 	_build_audio()
 	_ensure_quests_current()
 	_ensure_daily_trial_current()
+	_ensure_login_reward_current()
 	if SpiritSave.has_account_name(profile): show_map()
 	else: show_account_setup()
 
@@ -1085,10 +1086,54 @@ func _ensure_daily_trial_current() -> void:
 		profile.daily_trial_record = {"day": day, "stage": 0, "badges": int(previous.get("badges", 0)), "best_stage": int(previous.get("best_stage", 0))}
 		SpiritSave.write(profile)
 
+# Rolling weekly login reward: a new week resets the tally, and today's day index is recorded
+# at most once (calling this repeatedly in one session, e.g. once per _ready(), must not let a
+# player "log in" more than once for the same calendar day). Deliberately never resets on a
+# missed day mid-week — see content.gd's LOGIN_REWARD_TIERS comment for why a hard streak
+# reset is the wrong shape here.
+func _ensure_login_reward_current() -> void:
+	var now := int(Time.get_unix_time_from_system())
+	var week: int = now / WEEK_SECONDS
+	var today: int = now / DAY_SECONDS
+	var record: Dictionary = profile.get("login_reward", {})
+	if int(record.get("week", -1)) != week:
+		record = {"week": week, "days": [], "claimed": []}
+	var days: Array = record.get("days", [])
+	if not days.has(today):
+		days.append(today)
+		record.days = days
+		profile.login_reward = record
+		SpiritSave.write(profile)
+	else:
+		profile.login_reward = record
+
+func _claim_login_reward(tier_index: int) -> void:
+	if tier_index < 0 or tier_index >= SpiritContent.LOGIN_REWARD_TIERS.size(): return
+	var tier: Dictionary = SpiritContent.LOGIN_REWARD_TIERS[tier_index]
+	var record: Dictionary = profile.get("login_reward", {"days": [], "claimed": []})
+	var days_logged: int = record.get("days", []).size()
+	if days_logged < int(tier.days): return
+	var claimed: Array = record.get("claimed", [])
+	if claimed.has(int(tier.days)): return
+	claimed.append(int(tier.days))
+	record.claimed = claimed
+	profile.login_reward = record
+	profile.gold += int(tier.reward)
+	SpiritSave.write(profile)
+	_toast(tf("ui.login_reward_claimed_toast", int(tier.reward)), GOLD)
+	show_quests()
+
 # Drives the red notification dot on the camp/quest entry point — true the moment any daily
-# or weekly quest is complete and waiting on its reward, same as the claim button inside.
+# or weekly quest, or a login reward tier, is complete and waiting on its reward, same as the
+# claim buttons inside.
 func _has_claimable_quest() -> bool:
 	_ensure_quests_current()
+	_ensure_login_reward_current()
+	var record: Dictionary = profile.get("login_reward", {"days": [], "claimed": []})
+	var days_logged: int = record.get("days", []).size()
+	var claimed: Array = record.get("claimed", [])
+	for tier in SpiritContent.LOGIN_REWARD_TIERS:
+		if days_logged >= int(tier.days) and not claimed.has(int(tier.days)): return true
 	for list_name in ["daily_quests", "weekly_quests"]:
 		for entry in profile.get(list_name, []):
 			if int(entry.get("progress", 0)) >= int(entry.get("target", 1)) and not bool(entry.get("claimed", false)):
@@ -5666,10 +5711,57 @@ func show_quests() -> void:
 	list.add_theme_constant_override("separation", 10)
 	scroll.add_child(list)
 
+	_ensure_login_reward_current()
+	list.add_child(_login_reward_section())
 	_ensure_quests_current()
 	list.add_child(_quest_section(t("ui.quests_daily"), "daily_quests", int(profile.get("daily_reset_at", 0))))
 	list.add_child(_quest_section(t("ui.quests_weekly"), "weekly_quests", int(profile.get("weekly_reset_at", 0))))
 	list.add_child(_label(t("ui.quests_hint"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+func _login_reward_section() -> Control:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 8)
+	section.add_child(_label(t("ui.login_reward_title"), 14, JADE))
+
+	var record: Dictionary = profile.get("login_reward", {"days": [], "claimed": []})
+	var days_logged: int = record.get("days", []).size()
+	var claimed: Array = record.get("claimed", [])
+
+	var bar := _stat_bar(120.0, 16.0, days_logged, 7, JADE, tf("ui.login_reward_progress_fmt", days_logged), 9)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section.add_child(bar)
+
+	var tiers_row := HBoxContainer.new()
+	tiers_row.add_theme_constant_override("separation", 8)
+	section.add_child(tiers_row)
+	for i in SpiritContent.LOGIN_REWARD_TIERS.size():
+		var tier: Dictionary = SpiritContent.LOGIN_REWARD_TIERS[i]
+		var tier_days: int = int(tier.days)
+		var is_claimed: bool = claimed.has(tier_days)
+		var is_ready: bool = days_logged >= tier_days and not is_claimed
+
+		var tile := Panel.new()
+		tile.custom_minimum_size = Vector2(0, 74)
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tile.add_theme_stylebox_override("panel", _panel(Color("12262b"), 12, JADE if is_ready else Color("28393e")))
+		tiers_row.add_child(tile)
+
+		var stack := VBoxContainer.new()
+		stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		stack.alignment = BoxContainer.ALIGNMENT_CENTER
+		stack.add_theme_constant_override("separation", 4)
+		tile.add_child(stack)
+		stack.add_child(_label(tf("ui.login_reward_tier_fmt", tier_days), 10, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		stack.add_child(_label(tf("ui.quest_reward_fmt", int(tier.reward)), 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+		if is_claimed:
+			stack.add_child(_label(t("ui.quest_claimed"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		else:
+			var claim_btn := _button(t("ui.quest_claim"), func(): _claim_login_reward(i), EMBER if is_ready else Color("1a2f36"), Vector2(0, 32))
+			claim_btn.disabled = not is_ready
+			claim_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			stack.add_child(claim_btn)
+	return section
 
 func show_camp() -> void:
 	_clear(); _play_music(false)

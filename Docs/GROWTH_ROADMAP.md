@@ -39,13 +39,17 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   *Built on:* `_modal_backdrop()` (exactly as AGENTS.md's documented pattern), the
   `_button()`/`_panel()` primitives. 4 new checks in `ui_smoke.gd`'s `== first-battle
   tutorial ==` section; both suites 0 failures.
-- `[ ]` **B1 — 累积型登录奖励 (rolling weekly login reward)**
-  "Log in on any 3 of 7 days this week" reward strip, NOT a hard-reset daily streak (the
-  research explicitly warns reset-based streaks are less sustainable — see the report's
-  caution section). New `profile.login_reward: {week, days_logged: [], claimed_tier: int}`
-  field, checked/updated once per session in `_ready()` alongside `_ensure_quests_current()`.
-  Entry point: a small banner on the map or in Camp.
-  *Builds on:* the exact day/week-boundary pattern in `_ensure_quests_current()`.
+- `[x]` **B1 — 累积型登录奖励 (rolling weekly login reward)** — done 2026-09-15
+  `profile.login_reward: {week, days: [], claimed: []}`; `_ensure_login_reward_current()`
+  (called from `_ready()`) logs today's day-index at most once per day, resets on a new week,
+  never on a missed day mid-week. 3 tiers (`SpiritContent.LOGIN_REWARD_TIERS`: 3/5/7 days →
+  30/60/100 gold). Placed as a new section at the top of `show_quests()` — not Camp — since it
+  belongs with the other "commissions" mentally and Camp is already crowded (see F1's note).
+  `_has_claimable_quest()` (drives the map's QuestButton red dot) extended to also check
+  login-reward tiers, so it's discoverable without opening Quests speculatively.
+  *Built on:* `_quest_section()`'s row layout, `_stat_bar()`, the day/week-boundary pattern
+  already in `_ensure_quests_current()`. 189/0 rules (unaffected), UI smoke +7 checks, 0
+  failures.
 - `[ ]` **C1 — 成就系统 (achievements)**
   30-40 bilingual achievements (combat feats, collection milestones, mastery levels, abyss
   depth, daily trial badges). New `content.ACHIEVEMENTS` data + `profile.achievements_unlocked:
@@ -175,6 +179,18 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — B1 rolling weekly login reward shipped
+Placed the entry point in `show_quests()` rather than Camp — a deliberate deviation from a
+literal reading of the report (which sketched it as "a banner on the map or in Camp"), because
+Camp already has 7 stacked sections and F1 (not yet done) is specifically about *reducing*
+that, not adding a 8th before the cleanup happens. Quests already covers "periodic commissions
+you check in on," so a login-reward strip fits there without waiting on F1.
+One thing to watch: `_has_claimable_quest()` now calls `_ensure_login_reward_current()` on
+every check (it's called often — it drives a notification dot rendered on every `show_map()`).
+That function is idempotent within a calendar day (checked via the `days.has(today)` guard
+before writing), so this doesn't spam `SpiritSave.write()` — but if a future change adds
+per-open-of-the-app tracking, make sure to keep that idempotency, not "log a visit" per call.
 
 ### 2026-09-15 — A1 first-battle tutorial shipped
 A 4-step dismissible slide carousel (`TUTORIAL_STEPS`, `_show_battle_tutorial()`,
