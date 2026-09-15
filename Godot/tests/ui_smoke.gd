@@ -378,6 +378,14 @@ func _run() -> void:
 	game.show_camp()
 	await process_frame
 	check(game.root.get_child_count() > 0, "camp page built")
+	check(game.camp_tab == "character", "camp defaults to the character tab")
+	check(_find_button_containing(game.root, game.content.ui("ui.camp_tab_challenges", game.lang)) != null, "camp's challenges tab button exists")
+	check(_find_button_containing(game.root, game.content.ui("ui.camp_tab_collection", game.lang)) != null, "camp's collection tab button exists")
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(not _find_label_text(game.root, game.content.ui("ui.hero_classes_title", game.lang)), "switching to the challenges tab hides the character tab's content")
+	game.camp_tab = "character"
 
 	section("== battle ==")
 	check(not bool(game.profile.get("tutorial_seen", false)), "a fresh profile has not seen the tutorial yet")
@@ -1224,13 +1232,16 @@ func _run() -> void:
 
 	# ── Phase 3 feature tests ──
 	section("== hero archetypes & endless abyss ==")
+	game.camp_tab = "character"
 	game.show_camp()
 	var found_hero_title := _find_label_text(game.root, game.content.ui("ui.hero_classes_title", game.lang))
-	check(found_hero_title, "Hero archetypes section renders in camp")
+	check(found_hero_title, "Hero archetypes section renders in camp's character tab")
+	game.camp_tab = "challenges"
+	game.show_camp()
 	var found_abyss_title := _find_label_text(game.root, game.content.ui("ui.abyss_title", game.lang))
-	check(found_abyss_title, "Endless abyss section renders in camp")
+	check(found_abyss_title, "Endless abyss section renders in camp's challenges tab")
 	var abyss_btn: Button = game.root.find_child("AbyssEnterBtn", true, false) as Button
-	check(abyss_btn != null, "AbyssEnterBtn exists in camp")
+	check(abyss_btn != null, "AbyssEnterBtn exists in camp's challenges tab")
 
 	# Test switching class
 	check(game.profile.get("hero_class", "") == "fox_spirit", "initial hero class is fox_spirit")
@@ -1367,9 +1378,10 @@ func _run() -> void:
 	check(totals.y > 0, "compendium totals count a nonzero catalog of collectibles")
 	check(totals.x >= 0 and totals.x <= totals.y, "discovered count never exceeds the total")
 
+	game.camp_tab = "collection"
 	game.show_camp()
 	await process_frame
-	check(game.root.find_child("CompendiumOpenBtn", true, false) != null, "CompendiumOpenBtn exists in camp")
+	check(game.root.find_child("CompendiumOpenBtn", true, false) != null, "CompendiumOpenBtn exists in camp's collection tab")
 
 	# Hero Mastery: a fresh hero sits at level 0 (see test_runner.gd for why — combat.gd's
 	# "turn 1 is strictly 2 energy" invariant must hold with zero mastery investment), and
@@ -1380,6 +1392,7 @@ func _run() -> void:
 	game._grant_mastery_xp(60)
 	check(int(game.profile.hero_masteries.fox_spirit.xp) == 60, "mastery XP accumulates on the currently active hero")
 	check(game.content.mastery_level_for_xp(int(game.profile.hero_masteries.fox_spirit.xp)) == 1, "60 xp reaches mastery level 1")
+	game.camp_tab = "character"
 	game.show_camp()
 	await process_frame
 	check(_find_label_containing(game.root, "Lv.1"), "hero archetypes section shows the reached mastery level")
@@ -1390,9 +1403,10 @@ func _run() -> void:
 	game.profile.daily_trial_record = {"day": -1, "stage": 0, "badges": 0, "best_stage": 0}
 	game._ensure_daily_trial_current()
 	check(int(game.profile.daily_trial_record.stage) == 0, "daily trial record starts a new day at stage 0")
+	game.camp_tab = "challenges"
 	game.show_camp()
 	await process_frame
-	check(game.root.find_child("DailyTrialEnterBtn", true, false) != null, "DailyTrialEnterBtn exists in camp")
+	check(game.root.find_child("DailyTrialEnterBtn", true, false) != null, "DailyTrialEnterBtn exists in camp's challenges tab")
 
 	game.begin_daily_trial()
 	await process_frame

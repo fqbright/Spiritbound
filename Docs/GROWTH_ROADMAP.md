@@ -60,14 +60,18 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   6th tab ("成就") added to the Compendium's existing `_tab_bar()`, NOT a new screen.
   *Built on:* `_advance_quest()` (extended, not replaced), `show_compendium()`'s tab bar,
   `_stat_bar()`. 189/0 rules unaffected, UI smoke +9 checks, 0 failures.
-- `[ ]` **F1 — 营地标签页化 (Camp becomes tabs, not one long scroll)**
-  Camp has grown to 7 stacked sections (account, compendium, hero mastery, daily trial, abyss,
-  difficulty, relics). Split into tabs (e.g. "角色" hero+mastery+difficulty, "挑战" abyss+daily
-  trial, "收藏" compendium+relics+account) using the same `_tab_bar()` already proven in
-  `show_loadout()`/`show_compendium()`. **Do this before C1/F2 add more entries to Camp** — the
-  report's own caution section flags this sequencing.
-  *Builds on:* `_tab_bar()`, `show_camp()`'s existing section functions (mostly just
-  reorganized, not rewritten).
+- `[x]` **F1 — 营地标签页化 (Camp becomes tabs, not one long scroll)** — done 2026-09-15
+  Split into 3 tabs via the same `_tab_bar()` already proven in `show_loadout()`/
+  `show_compendium()`: "角色" (account + hero archetypes/mastery), "挑战" (Daily Trial +
+  Abyss + difficulty ladder), "收藏" (Compendium entry + relics owned). C1 and B1 had already
+  landed on Compendium/Quests respectively rather than Camp specifically to avoid making this
+  worse before it was fixed — see their progress-log notes.
+  *Built on:* `_tab_bar()`; the section-builder functions (`_account_panel()`,
+  `_hero_archetypes_section()`, etc.) were reorganized into 3 new composing functions, not
+  rewritten. 189/0 rules unaffected. UI smoke: every existing Camp-content assertion had to be
+  updated to set `camp_tab` before checking (a label/button that used to always be on screen
+  is now on exactly one of 3 tabs) — see the progress log for the one this would have silently
+  broken if missed. +5 new checks, 0 failures.
 - `[ ]` **D3 — 第四英雄流派 (4th hero archetype)**
   A "持续伤害/资源循环" (DoT-stacking / resource-banking) archetype to sit alongside Fox
   Spirit (burst), Stone Sentinel (defense), Shadow Stalker (crit/vulnerable). Needs a full
@@ -183,6 +187,20 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — F1 Camp tabs shipped
+The real risk in this change wasn't the game.gd rewrite — it was that `ui_smoke.gd` had
+several checks that called `game.show_camp()` and then looked for content that used to always
+render (hero archetypes title, AbyssEnterBtn, CompendiumOpenBtn, DailyTrialEnterBtn) but now
+only renders on ONE of three tabs, whichever `camp_tab` happens to already be set to from
+whatever the previous section left it at. Two of these (hero title + abyss title/button) were
+originally asserted from the *same* `show_camp()` call, which is no longer possible at all
+now that they live on different tabs — that pair had to become two separate `show_camp()`
+calls with `camp_tab` set explicitly between them, not just "add a camp_tab assignment before
+the existing check." Every future screen-reorganization change (tabs, moved sections) should
+grep the test files for anything that finds content by label/button-text/node-name on that
+screen before assuming the reorg is UI-only — the assertions encode assumptions about layout
+that the reorg itself breaks.
 
 ### 2026-09-15 — C1 achievement system shipped
 The report estimated "30-40 achievements"; shipped 22. Cut for the same reason F1/C2/D3 all

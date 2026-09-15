@@ -779,6 +779,7 @@ var in_abyss := false
 var pending_boon_draft := false
 var in_daily_trial := false
 var compendium_tab := "cards"
+var camp_tab := "character"
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
 var _back_action := Callable()
@@ -5854,8 +5855,14 @@ func _login_reward_section() -> Control:
 func show_camp() -> void:
 	_clear(); _play_music(false)
 	_back_action = show_map
-	var page := _create_page(8)
+	var page := _create_page(6)
 	page.add_child(_header(t("ui.camp_title"), t("ui.camp_sub"), show_map))
+	page.add_child(_tab_bar([
+		["character", t("ui.camp_tab_character")],
+		["challenges", t("ui.camp_tab_challenges")],
+		["collection", t("ui.camp_tab_collection")],
+	], camp_tab, func(id): camp_tab = id; show_camp()))
+
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -5865,48 +5872,80 @@ func show_camp() -> void:
 	list.add_theme_constant_override("separation", 10)
 	scroll.add_child(list)
 
+	match camp_tab:
+		"challenges": _build_camp_challenges(list)
+		"collection": _build_camp_collection(list)
+		_: _build_camp_character(list)
+
+# "Who you are": account identity plus the hero archetype you're actually playing. Split out
+# of what used to be one long show_camp() scroll (account, compendium, hero mastery, daily
+# trial, abyss, difficulty, relics — 7 sections stacked vertically) once Milestone 4 pushed it
+# past the point of being scannable in one screen.
+func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
-	list.add_child(_compendium_section())
 	list.add_child(_hero_archetypes_section())
+
+# "Modes you enter": the two challenge tracks (Daily Trial, Endless Abyss) plus the campaign's
+# own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
+# "what have I collected."
+func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_daily_trial_section())
 	list.add_child(_abyss_section())
-	list.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	list.add_child(_difficulty_tier_section())
+
+# "What you've earned": the Compendium entry point plus the actual relics owned right now —
+# the Compendium already covers cards/gear/runes/bestiary/achievements, so relics-in-hand
+# stays here as the one collection view that's about current loadout, not lifetime discovery.
+func _build_camp_collection(list: VBoxContainer) -> void:
+	list.add_child(_compendium_section())
+	list.add_child(_relics_section())
+
+func _difficulty_tier_section() -> Control:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 8)
+	section.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
 	for value in 6:
 		var button := _button("A%d"%value, func(): profile.difficulty=value; SpiritSave.write(profile); show_camp(), Color("245247") if value==profile.difficulty else Color("17363e"), Vector2(0,40))
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(button)
-	list.add_child(row)
-	list.add_child(_label(tf("ui.camp_relics", profile.relics.size()), 14, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	section.add_child(row)
+	section.add_child(_label(t("ui.camp_desc"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	return section
+
+func _relics_section() -> Control:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 8)
+	section.add_child(_label(tf("ui.camp_relics", profile.relics.size()), 14, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	if profile.relics.is_empty():
-		list.add_child(_label(t("ui.relic_none"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-	else:
-		for id in profile.relics:
-			var relic := content.relic(id)
-			if relic.is_empty(): continue
-			var color := Color(relic.color)
-			var row_panel := Panel.new()
-			row_panel.custom_minimum_size.y = 56
-			row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row_panel.add_theme_stylebox_override("panel", _panel(Color("12262b"), 12, color))
-			list.add_child(row_panel)
-			var pad := MarginContainer.new()
-			pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-			row_panel.add_child(pad)
-			var relic_row := HBoxContainer.new()
-			relic_row.add_theme_constant_override("separation", 10)
-			pad.add_child(relic_row)
-			var holder := CenterContainer.new()
-			holder.add_child(_sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, 38))
-			relic_row.add_child(holder)
-			var texts := VBoxContainer.new()
-			texts.alignment = BoxContainer.ALIGNMENT_CENTER
-			texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			texts.add_theme_constant_override("separation", 1)
-			relic_row.add_child(texts)
-			texts.add_child(_label(_relic_name(relic), 12, TEXT))
-			texts.add_child(_label(_relic_detail(relic), 9, color, HORIZONTAL_ALIGNMENT_LEFT, true))
-	list.add_child(_label(t("ui.camp_desc"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		section.add_child(_label(t("ui.relic_none"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		return section
+	for id in profile.relics:
+		var relic := content.relic(id)
+		if relic.is_empty(): continue
+		var color := Color(relic.color)
+		var row_panel := Panel.new()
+		row_panel.custom_minimum_size.y = 56
+		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_panel.add_theme_stylebox_override("panel", _panel(Color("12262b"), 12, color))
+		section.add_child(row_panel)
+		var pad := MarginContainer.new()
+		pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+		row_panel.add_child(pad)
+		var relic_row := HBoxContainer.new()
+		relic_row.add_theme_constant_override("separation", 10)
+		pad.add_child(relic_row)
+		var holder := CenterContainer.new()
+		holder.add_child(_sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, 38))
+		relic_row.add_child(holder)
+		var texts := VBoxContainer.new()
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.add_theme_constant_override("separation", 1)
+		relic_row.add_child(texts)
+		texts.add_child(_label(_relic_name(relic), 12, TEXT))
+		texts.add_child(_label(_relic_detail(relic), 9, color, HORIZONTAL_ALIGNMENT_LEFT, true))
+	return section
 
 func _compendium_section() -> Control:
 	var panel := PanelContainer.new()
