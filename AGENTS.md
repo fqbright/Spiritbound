@@ -101,9 +101,10 @@ Every one of these produced a wrong screen with no error in the log. They are th
   assertion honest rather than loosening it.
 - Hand size is not refilled to a target each turn — `end_turn()` draws a flat 2 cards
   (`_draw(2)`), so an unspent hand grows turn over turn until `_draw()`'s own 10-card cap
-  kicks in. Opening hand at battle start is strictly 5 cards and opening energy is strictly 2 —
-  relics and equipment (foxCharm, windChime, tideCharm) must NEVER override turn one's strict
-  opening constraints; their bonus energy and extra cards apply on turn 2.
+  kicks in. Opening hand at battle start is strictly 5 cards and opening energy is strictly 2.
+  Turn 2 draws the flat 2 cards (e.g. 3 cards remaining on turn 1 -> 5 cards on turn 2).
+  Relics and equipment must NEVER blow up hand size on turn 2 (foxCharm grants +1 energy on turn 2;
+  windChime triggers when draw pile reshuffles; tideCharm triggers on first shield gained).
 - There is no End Turn button: the turn ends itself once nothing left in hand is affordable
   (empty hand or every remaining card costs more than remaining energy) — see
   `_maybe_end_turn()` in `game.gd`. There used to also be a fixed plays-per-turn cap

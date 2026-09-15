@@ -89,13 +89,31 @@ func run() -> void:
 		check(int(intents.state.player.health) == hp_before,"non-attack intents deal no damage")
 
 	var relic_run := SpiritCombat.new(content)
-	relic_run.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["windChime","foxCharm"])
+	relic_run.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["foxCharm"])
 	check(relic_run.state.hand.size() == 5 and int(relic_run.state.energy) == 2,"turn 1 is strictly 5 cards and 2 energy even with relics")
+	relic_run.state.hand.pop_back()
+	relic_run.state.hand.pop_back()
+	check(relic_run.state.hand.size() == 3, "player has 3 cards remaining at end of turn 1")
 	relic_run.end_turn()
-	check(relic_run.state.hand.size() == 9 and int(relic_run.state.energy) == 3,"relics grant bonus cards and energy on turn 2")
+	check(relic_run.state.hand.size() == 5 and int(relic_run.state.energy) == 3,"turn 2 draws flat 2 cards (3 remaining -> 5 cards) and foxCharm grants 3 energy")
+
+	var chime_combat := SpiritCombat.new(content)
+	chime_combat.create(10,encounter(),content.raw.startingDeck,60,{},[],{},{},["windChime"])
+	chime_combat.state.discard = [chime_combat.state.draw.pop_back(), chime_combat.state.draw.pop_back(), chime_combat.state.draw.pop_back()]
+	chime_combat.state.draw.clear()
+	var hand_before: int = chime_combat.state.hand.size()
+	chime_combat._draw(1)
+	check(chime_combat.state.hand.size() == hand_before + 2, "windChime draws extra card on reshuffle")
+
+	var tide_combat := SpiritCombat.new(content)
+	tide_combat.create(10,encounter(),content.raw.startingDeck,60,{},["tideCharm"],{},{},[])
+	var tide_hand_before: int = tide_combat.state.hand.size()
+	var ward_card := content.card("ward")
+	tide_combat._resolve_effects(ward_card, -1, 0, 1.0)
+	check(tide_combat.state.hand.size() == tide_hand_before + 1, "tideCharm draws 1 card on first shield gain")
 
 	var profile := SpiritSave.defaults(content)
-	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty(),"new save schema is valid")
+	check(profile.deck.size() == 25 and profile.equipment_slots.is_empty() and profile.claimed_stage_events is Array,"new save schema is valid")
 
 	check(content.text("card.strike", "zh-Hans") == "击打" and content.text("card.strike", "en") == "Strike", "bilingual card names work")
 	check(content.ui("ui.battle_won", "zh-Hans") == "战斗胜利" and content.ui("ui.battle_won", "en") == "Victory", "bilingual UI text works")
@@ -279,8 +297,10 @@ func run() -> void:
 	var tide_run := SpiritCombat.new(content)
 	tide_run.create(87, encounter(100, 0), content.raw.startingDeck, 60, {}, ["tideCharm"])
 	check(tide_run.state.hand.size() == 5, "Tide Charm leaves Turn 1 hand strictly at 5 cards")
-	tide_run.end_turn()
-	check(tide_run.state.hand.size() == 8, "Tide Charm draws 1 extra card on Turn 2 (5 + 2 + 1 = 8)")
+	_force_hand(tide_run, "ward")
+	var t_hand_before: int = tide_run.state.hand.size()
+	tide_run.play(0, -1)
+	check(tide_run.state.hand.size() == t_hand_before, "Tide Charm draws 1 card on first shield gained (1 played + 1 drawn)")
 
 	# === 8 RELICS COMPREHENSIVE COVERAGE ===
 	var star_run := SpiritCombat.new(content)

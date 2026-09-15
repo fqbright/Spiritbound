@@ -25,13 +25,12 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
-		"swift_used":false,"first_attack":false,"moon_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
+		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
 		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier
 	}
 	if equipment.has("jadePlate"): state.player.shield += 8
 	if equipment.has("focusCharm"): state.player.focus += 1
 	# Turn 1 is strictly 2 energy and 5 cards under all conditions.
-	# Progression bonuses from foxCharm, windChime, and tideCharm apply from turn 2.
 	_draw(5)
 	_plan_intents()
 	return state
@@ -189,10 +188,9 @@ func end_turn() -> void:
 	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
-	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.elements = {}
-	# A fixed 2-card draw each turn, plus turn-2 bonuses from windChime and tideCharm.
-	var extra_draw := (2 if _has_relic("windChime") and state.turn == 2 else 0) + (1 if state.equipment.has("tideCharm") and state.turn == 2 else 0)
-	_draw(2 + extra_draw)
+	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.elements = {}
+	# A fixed 2-card draw each turn.
+	_draw(2)
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 
@@ -208,7 +206,11 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					var execute := 1.5 if state.runes.get(card.id,"") == "execute" and state.enemies[index].health <= state.enemies[index].max_health * .25 else 1.0
 					var critical := 2 if card.get("special","") == "critical" else 1
 					dealt += _damage_enemy(index,int(round(amount * execute * critical)),card.get("special","") == "pierce" or state.equipment.has("stoneSpear"))
-			"shield": state.player.shield += amount
+			"shield":
+				state.player.shield += amount
+				if state.equipment.has("tideCharm") and not state.tide_used:
+					state.tide_used = true
+					_draw(1)
 			"heal": state.player.health = mini(state.player.max_health,state.player.health + amount)
 			"draw": _draw(amount)
 			"energy": state.energy += amount
@@ -266,6 +268,8 @@ func _draw(count: int) -> void:
 			state.draw = state.discard.duplicate()
 			state.discard.clear()
 			_shuffle(state.draw)
+			if _has_relic("windChime") and state.hand.size() < 10 and not state.draw.is_empty():
+				state.hand.append(state.draw.pop_back())
 		state.hand.append(state.draw.pop_back())
 
 func _shuffle(cards: Array) -> void:

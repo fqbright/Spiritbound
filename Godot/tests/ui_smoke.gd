@@ -897,11 +897,24 @@ func _run() -> void:
 	plain.create(11, game.content.encounters[0], game.content.raw.startingDeck, 60)
 	check(plain.state.hand.size() == 5, "plain opening hand is 5 cards")
 	check(int(plain.state.energy) == 2, "plain opening energy is 2")
+	# Verify turn 2 draw with 3 cards remaining on turn 1:
+	var turn2_combat := SpiritCombat.new(game.content)
+	turn2_combat.create(11, game.content.encounters[0], game.content.raw.startingDeck, 60)
+	turn2_combat.state.hand.pop_back()
+	turn2_combat.state.hand.pop_back()
+	check(turn2_combat.state.hand.size() == 3, "turn 1 remaining hand is 3 cards")
+	turn2_combat.end_turn()
+	check(turn2_combat.state.hand.size() == 5, "turn 2 draws flat 2 cards (3 remaining -> exactly 5 cards, not 7)")
+
 	var chimed := SpiritCombat.new(game.content)
 	chimed.create(11, game.content.encounters[0], game.content.raw.startingDeck, 60, {}, [], {}, {}, ["windChime"])
 	check(chimed.state.hand.size() == 5, "windChime keeps turn 1 hand at 5 cards")
-	chimed.end_turn()
-	check(chimed.state.hand.size() == 9, "windChime draws 2 extra on turn 2 (9 cards)")
+	chimed.state.discard = [chimed.state.draw.pop_back(), chimed.state.draw.pop_back()]
+	chimed.state.draw.clear()
+	var h_before: int = chimed.state.hand.size()
+	chimed._draw(1)
+	check(chimed.state.hand.size() == h_before + 2, "windChime draws 1 extra card when draw pile reshuffles")
+
 	var charmed := SpiritCombat.new(game.content)
 	charmed.create(11, game.content.encounters[0], game.content.raw.startingDeck, 60, {}, [], {}, {}, ["foxCharm"])
 	check(int(charmed.state.energy) == 2, "foxCharm keeps turn 1 energy at 2")
@@ -1120,6 +1133,23 @@ func _run() -> void:
 	check(game.profile.deck.size() == 25, "stone_sentinel deck has 25 cards")
 	game.show_map()
 	check(game.traveler != null, "traveler exists on map with new hero class")
+
+	section("== repeated stage rewards & event claiming ==")
+	check(not game._is_stage_event_claimed(42), "unvisited stage 42 event is not claimed")
+	game._mark_stage_event_claimed(42)
+	check(game._is_stage_event_claimed(42), "stage 42 event is marked as claimed")
+	game.profile.unlocked = 5
+	check(game._is_replay(2), "stage 2 is detected as replay")
+	check(game._is_stage_event_claimed(2), "replay stage 2 event is treated as claimed")
+	game.current_stage = 2
+	var test_replay_combat := SpiritCombat.new(game.content)
+	test_replay_combat.create(1, game.content.encounters[2], game.content.raw.startingDeck, 60)
+	test_replay_combat.state.player.health = 35
+	game.combat = test_replay_combat
+	game._grant_stage_rewards()
+	check(game.profile.health == 35, "replaying stage 2 does not grant extra +10 HP healing")
+	check(game.pending_rewards.get("replay", false) == true, "stage replay is flagged in pending_rewards")
+	check(str(game.pending_rewards.get("equipment", "")) == "", "stage replay does not drop equipment")
 
 	_restore_save()
 	print("")

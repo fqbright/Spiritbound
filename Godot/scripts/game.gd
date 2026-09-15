@@ -2152,8 +2152,10 @@ func _travel_to(index: int) -> void:
 		tween.parallel().tween_method(func(y): map_scroll.scroll_vertical = int(y), float(map_scroll.scroll_vertical), float(maxi(0, int(_map_point(index).y - 360))), 0.65)
 	await tween.finished; profile.position = index; SpiritSave.write(profile)
 	var kind := content.node_kind(index)
-	if kind in ["event","merchant","rest"] and index == int(profile.unlocked): show_event(index,kind)
-	else: begin_battle(index)
+	if kind in ["event","merchant","rest"] and not _is_stage_event_claimed(index) and not _is_replay(index):
+		show_event(index, kind)
+	else:
+		begin_battle(index)
 
 func _next_stage() -> void:
 	if int(profile.position) < int(profile.unlocked): _travel_to(int(profile.position)+1)
@@ -3550,6 +3552,17 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 func _is_replay(index: int) -> bool:
 	return index < int(profile.unlocked)
 
+func _is_stage_event_claimed(index: int) -> bool:
+	if _is_replay(index): return true
+	return profile.get("claimed_stage_events", []).has(index)
+
+func _mark_stage_event_claimed(index: int) -> void:
+	if not profile.has("claimed_stage_events") or not profile.claimed_stage_events is Array:
+		profile.claimed_stage_events = []
+	if not profile.claimed_stage_events.has(index):
+		profile.claimed_stage_events.append(index)
+		SpiritSave.write(profile)
+
 func _grant_stage_rewards() -> void:
 	if in_abyss:
 		in_abyss = false
@@ -3573,9 +3586,13 @@ func _grant_stage_rewards() -> void:
 	if replay: multiplier *= 0.5
 	pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay}
 	profile.gold += int(pending_rewards.gold)
-	profile.health = mini(60, int(combat.state.player.health) + 10)
+	if not replay:
+		profile.health = mini(60, int(combat.state.player.health) + 10)
+	else:
+		profile.health = int(combat.state.player.health)
 	profile.unlocked = maxi(int(profile.unlocked), mini(content.encounters.size() - 1, current_stage + 1))
 	profile.position = current_stage
+	_mark_stage_event_claimed(current_stage)
 
 	var kind := content.node_kind(current_stage)
 	_advance_quest("win_battles", 1)
@@ -3611,7 +3628,8 @@ func show_reward_details() -> void:
 	spoils.add_theme_constant_override("separation", 14)
 	page.add_child(spoils)
 	spoils.add_child(_label(tf("ui.reward_gold_line", int(pending_rewards.get("gold", 0))), 15, GOLD))
-	spoils.add_child(_label(t("ui.reward_heal_line"), 13, JADE))
+	if not pending_rewards.get("replay", false):
+		spoils.add_child(_label(t("ui.reward_heal_line"), 13, JADE))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
@@ -3760,44 +3778,60 @@ func show_event(index: int, kind: String) -> void:
 			profile.health = maxi(1, profile.health - 15)
 			profile.gold += 60
 			_advance_quest("earn_gold", 60)
+			_mark_stage_event_claimed(index)
 			SpiritSave.write(profile)
 			_haptic("heavy")
 			begin_battle(index)
 		, Color("591d1d"), Vector2(300, 48)))
 		page.add_child(_button(t("ui.event_spirit_blessing"), func():
 			profile.health = mini(60, profile.health + 18)
+			_mark_stage_event_claimed(index)
 			SpiritSave.write(profile)
 			_haptic("tap")
 			begin_battle(index)
 		, Color("21594e"), Vector2(300, 48)))
 		page.add_child(_button(t("ui.rest_smith_choice"), func():
-			show_deck_upgrade(func(): show_event(index, "event"), func(): begin_battle(index))
+			show_deck_upgrade(func(): show_event(index, "event"), func():
+				_mark_stage_event_claimed(index)
+				begin_battle(index)
+			)
 		, EMBER, Vector2(300, 48)))
 	elif kind == "rest":
 		page.add_child(_button(t("ui.rest_heal_choice"), func():
 			profile.health = mini(60, profile.health + 20)
+			_mark_stage_event_claimed(index)
 			SpiritSave.write(profile)
 			_haptic("tap")
 			begin_battle(index)
 		, Color("21594e"), Vector2(300, 48)))
 		page.add_child(_button(t("ui.rest_purify_choice"), func():
-			show_deck_purge(func(): show_event(index, "rest"), 0, func(): begin_battle(index))
+			show_deck_purge(func(): show_event(index, "rest"), 0, func():
+				_mark_stage_event_claimed(index)
+				begin_battle(index)
+			)
 		, Color("4a285d"), Vector2(300, 48)))
 		page.add_child(_button(t("ui.rest_smith_choice"), func():
-			show_deck_upgrade(func(): show_event(index, "rest"), func(): begin_battle(index))
+			show_deck_upgrade(func(): show_event(index, "rest"), func():
+				_mark_stage_event_claimed(index)
+				begin_battle(index)
+			)
 		, GOLD, Vector2(300, 48)))
 	else:
 		page.add_child(_button(t("ui.event_opt_potion"), func():
 			if profile.gold >= 30:
 				profile.gold -= 30
 				profile.health = mini(60, profile.health + 25)
+				_mark_stage_event_claimed(index)
 				SpiritSave.write(profile)
 				_haptic("tap")
 			begin_battle(index)
 		, EMBER, Vector2(300, 48)))
 		page.add_child(_button(t("ui.shop_purge_service") + " · ◆50", func():
 			if profile.gold >= 50:
-				show_deck_purge(func(): show_event(index, "merchant"), 50, func(): begin_battle(index))
+				show_deck_purge(func(): show_event(index, "merchant"), 50, func():
+					_mark_stage_event_claimed(index)
+					begin_battle(index)
+				)
 			else:
 				_toast(t("ui.shop_no_gold"))
 		, Color("3d2154"), Vector2(300, 48)))
