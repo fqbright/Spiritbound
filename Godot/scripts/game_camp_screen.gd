@@ -539,6 +539,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_daily_trial_section())
 	list.add_child(_weekly_challenge_section())
 	list.add_child(_boss_rush_section())
+	list.add_child(_sandbox_section())
 	list.add_child(_abyss_section())
 	list.add_child(_difficulty_tier_section())
 
@@ -973,6 +974,76 @@ func begin_boss_rush_battle() -> void:
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[idx])
 	g.pre_battle_health = int(g.profile.health)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+# A zero-stakes practice bout against any stage the player has genuinely already reached
+# (chapter*5 <= unlocked, the same frontier the map itself gates on) — always full health so a
+# rough campaign run never carries into the test, no rewards so a repeated loss/win here can't
+# be farmed, and profile.health is left completely untouched on the way out (_leave_battle and
+# _advance_to_reward both special-case in_sandbox before either would write to it).
+func _sandbox_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "SandboxSection"
+	panel.custom_minimum_size = Vector2(0, 130)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0d1f24"), 14, Color("5ec9d6")))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 6)
+	pad.add_child(stack)
+
+	stack.add_child(g._label(g.t("ui.sandbox_title"), 16, Color("7fe3ee"), HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(g.t("ui.sandbox_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var max_stage: int = int(g.profile.unlocked)
+	g.sandbox_stage = clampi(g.sandbox_stage, 0, max_stage)
+
+	var picker := HBoxContainer.new()
+	picker.alignment = BoxContainer.ALIGNMENT_CENTER
+	picker.add_theme_constant_override("separation", 10)
+	var prev_btn := g._button("◀", func(): g.sandbox_stage = maxi(0, g.sandbox_stage - 1); show_camp(), Color("17363e"), Vector2(36, 34))
+	prev_btn.name = "SandboxPrevBtn"
+	prev_btn.disabled = g.sandbox_stage <= 0
+	picker.add_child(prev_btn)
+	var stage_lbl := g._label(g.content.stage_name(g.sandbox_stage, g.lang), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	stage_lbl.name = "SandboxStageLabel"
+	stage_lbl.custom_minimum_size = Vector2(150, 0)
+	picker.add_child(stage_lbl)
+	var next_btn := g._button("▶", func(): g.sandbox_stage = mini(max_stage, g.sandbox_stage + 1); show_camp(), Color("17363e"), Vector2(36, 34))
+	next_btn.name = "SandboxNextBtn"
+	next_btn.disabled = g.sandbox_stage >= max_stage
+	picker.add_child(next_btn)
+	stack.add_child(picker)
+
+	var enter_btn := g._button(g.t("ui.sandbox_enter"), func(): begin_sandbox_battle(g.sandbox_stage), Color("0f4a52"), Vector2(240, 40))
+	enter_btn.name = "SandboxEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(enter_btn)
+
+	return panel
+
+func begin_sandbox_battle(stage: int) -> void:
+	g.in_sandbox = true
+	g.current_stage = clampi(stage, 0, int(g.profile.unlocked))
+	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	g.active_modifier = {}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	# Always a fresh 60 HP (SpiritCombat.create's own baseline before relic/mastery bonuses),
+	# never the player's real current health — a practice bout should never be handicapped by
+	# whatever state the live campaign run happens to be in.
+	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	g.show_battle()

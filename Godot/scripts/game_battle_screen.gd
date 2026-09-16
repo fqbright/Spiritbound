@@ -1580,7 +1580,13 @@ func _advance_to_reward() -> void:
 	g.advancing_to_reward = true
 	await g.get_tree().create_timer(g._battle_delay(0.8)).timeout
 	g.advancing_to_reward = false
-	if g.combat != null and g.combat.state.phase == "won": g.show_reward()
+	if g.combat == null or g.combat.state.phase != "won": return
+	if g.in_sandbox:
+		g.in_sandbox = false
+		g._toast(g.t("ui.sandbox_complete_toast"), g.JADE)
+		g.show_camp()
+		return
+	g.show_reward()
 
 func _enemy_turn() -> void:
 	g.selected_card = -1
@@ -1755,6 +1761,12 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 
 func _leave_battle() -> void:
 	g.selected_card = -1
+	if g.in_sandbox:
+		# Zero-stakes: profile.health was never touched on the way in, so there is nothing to
+		# restore and nothing worth writing to disk on the way out either.
+		g.in_sandbox = false
+		g.show_camp()
+		return
 	if g.in_boss_rush:
 		# Same "a loss costs the attempt, not the run" split as Abyss/Daily Trial: the current
 		# bout number stays put so the next attempt re-fights the same boss at the same

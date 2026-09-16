@@ -1411,6 +1411,11 @@ const UI_TEXT = {
 	"ui.awaken_btn": {"zh-Hans":"觉醒", "en":"Awaken"},
 	"ui.awakened_label": {"zh-Hans":"已觉醒", "en":"Awakened"},
 	"ui.awakened_toast_fmt": {"zh-Hans":"%s 已觉醒为 +2！", "en":"%s has Awakened to +2!"},
+	"ui.sandbox_title": {"zh-Hans":"沙盘演练", "en":"Sandbox"},
+	"ui.sandbox_sub": {"zh-Hans":"用当前牌组自由试练已抵达的关卡，满血进入，胜负均不影响存档", "en":"Freely test your current deck against any stage you've reached — full health, no rewards, win or lose changes nothing"},
+	"ui.sandbox_enter": {"zh-Hans":"进入演练", "en":"Enter Sandbox"},
+	"ui.sandbox_stage_label_fmt": {"zh-Hans":"沙盘演练 · %s", "en":"Sandbox · %s"},
+	"ui.sandbox_complete_toast": {"zh-Hans":"演练结束，存档未受影响", "en":"Practice complete — your save is unaffected"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

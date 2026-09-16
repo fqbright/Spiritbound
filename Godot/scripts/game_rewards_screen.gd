@@ -174,6 +174,7 @@ func _current_encounter() -> Dictionary:
 	return g.content.encounters[g.current_stage]
 
 func _current_stage_label() -> String:
+	if g.in_sandbox: return g.tf("ui.sandbox_stage_label_fmt", g.content.stage_name(g.current_stage, g.lang))
 	if g.in_boss_rush: return g.tf("ui.boss_rush_stage_label_fmt", int(g.profile.get("boss_rush_floor", 1)))
 	if g.in_abyss: return g.tf("ui.abyss_stage_label_fmt", int(g.profile.get("abyss_floor", 1)))
 	if g.in_daily_trial: return g.tf("ui.daily_trial_stage_label_fmt", [int(g.profile.daily_trial_record.get("stage", 0)) + 1, SpiritContent.DAILY_TRIAL_STAGES])

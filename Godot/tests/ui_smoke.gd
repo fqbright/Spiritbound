@@ -1780,6 +1780,58 @@ func _run() -> void:
 	check(not game.in_boss_rush, "_leave_battle clears in_boss_rush on a loss")
 	check(int(game.profile.boss_rush_floor) == 2, "a loss keeps the current bout number instead of resetting the streak")
 
+	section("== growth roadmap: sandbox / practice mode ==")
+	game.profile.unlocked = 20
+	game.profile.health = 10
+	game.sandbox_stage = 0
+	# Neutralize anything an earlier section in this long-running suite left on the profile
+	# (a relic reward, hero mastery XP) that would push starting HP above the flat 60 baseline
+	# combat.create() itself would otherwise apply — the "always 60" assertion below needs a
+	# clean slate to be meaningful.
+	game.profile.relics = []
+	game.profile.hero_masteries = {}
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.sandbox_title", game.lang)), "Sandbox section renders in the challenges screen")
+	check(game.root.find_child("SandboxEnterBtn", true, false) != null, "SandboxEnterBtn exists in the challenges screen")
+	var sandbox_prev_btn := game.root.find_child("SandboxPrevBtn", true, false) as Button
+	check(sandbox_prev_btn != null and sandbox_prev_btn.disabled, "the stage picker's prev button is disabled at stage 0")
+	var sandbox_next_btn := game.root.find_child("SandboxNextBtn", true, false) as Button
+	check(sandbox_next_btn != null, "SandboxNextBtn exists in the challenges screen")
+	sandbox_next_btn.pressed.emit()
+	check(int(game.sandbox_stage) == 1, "pressing the next stepper advances the picked sandbox stage")
+
+	game.begin_sandbox_battle(int(game.sandbox_stage))
+	await process_frame
+	check(game.in_sandbox, "begin_sandbox_battle() enters sandbox mode")
+	check(game.current_stage == 1, "sandbox fights the exact stage picked in the stepper")
+	check(int(game.combat.state.player.health) == 60, "sandbox always starts at a full 60 HP, ignoring the real (low) campaign health")
+	check(_find_label_containing(game.root, game.tf("ui.sandbox_stage_label_fmt", game.content.stage_name(1, game.lang))), "the battle HUD shows the Sandbox-prefixed stage label")
+
+	# A win skips the chest/reward flow entirely and returns straight to Camp with no state change.
+	var sandbox_gold_before: int = int(game.profile.gold)
+	for enemy in game.combat.state.enemies: enemy.health = 0
+	game.combat.state.phase = "won"
+	game.show_battle()
+	await process_frame
+	var sandbox_wait := 0.0
+	while sandbox_wait < 3.0 and game.in_sandbox:
+		await create_timer(0.1).timeout
+		sandbox_wait += 0.1
+	check(not game.in_sandbox, "winning a sandbox bout clears in_sandbox on its own, without a chest screen")
+	check(int(game.profile.gold) == sandbox_gold_before, "a sandbox win grants no gold")
+	check(int(game.profile.health) == 10, "a sandbox win leaves the real campaign health completely untouched")
+
+	# A loss (via the retreat/leave path) is equally inert.
+	game.begin_sandbox_battle(2)
+	await process_frame
+	check(game.in_sandbox, "re-entering sandbox mode works for a different stage")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_sandbox, "_leave_battle clears in_sandbox on a loss")
+	check(int(game.profile.health) == 10, "a sandbox loss also leaves the real campaign health completely untouched")
+
 	section("== achievements ==")
 	game.profile.achievements_unlocked = {}
 	game.profile.lifetime_stats = {}
