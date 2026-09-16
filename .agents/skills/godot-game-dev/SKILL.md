@@ -50,12 +50,28 @@ Both MUST pass. If either fails, fix the regression before proceeding.
   to a plain `Control` or `Panel`.
 - **Decorative children swallow input**: `PanelContainer` and `Panel` default to
   `MOUSE_FILTER_STOP`. Always set `MOUSE_FILTER_IGNORE` on decorative backgrounds and icons.
-- **Z-Index beats tree order**:
+- **Z-Index beats tree order for RENDERING only — never for input.** Godot's z_index
+  changes draw order alone; GUI input dispatch (which Control receives a tap) follows
+  scene-tree sibling order exclusively, full stop (confirmed against Godot's own
+  documented behavior — this is a commonly-hit engine gotcha, not a project-specific
+  quirk). A higher z_index makes something *look* like it's on top without giving it any
+  input priority at all:
   - Map pins: `z_index = 10`
   - Traveller: `z_index = 25`
   - Floating bars / HUD: `z_index = 100`
   - Modal Dialogs (`_modal_dialog`): `z_index = 600`
   - Toasts: `z_index = 500`
+- **Every modal MUST move `overlay` to be `root`'s last child before opening.** `_clear()`
+  adds `overlay` to `root` first, before that screen's own page content exists — so by the
+  z-index-is-render-only rule above, every screen's content ends up later in `root`'s
+  children and silently wins every tap over anything `overlay` holds, no matter how high
+  overlay's z_index is drawn. `_modal_dialog()` and `_modal_backdrop()` both call
+  `root.move_child(overlay, root.get_child_count() - 1)` as their first line for exactly
+  this reason — this cost a real, hard-to-diagnose bug (Settings, the stage-replay prompt,
+  and the deck-import modal all silently un-clickable on a real device, passing every
+  headless check because none of them simulate real touch dispatch) before the fix landed;
+  do not remove that line, and give any new overlay-hosted modal the same treatment before
+  assuming `_modal_dialog()`/`_modal_backdrop()` already cover it.
 - **Modal Dialog Pattern**: Never wrap a dialog in a full-screen `Button` backdrop
   that dismisses on press, as touch events can swallow child button taps.
   Use `_modal_dialog(name, on_dismiss)` which places a backdrop `Button` as a sibling

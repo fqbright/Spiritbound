@@ -93,8 +93,24 @@ Every one of these produced a wrong screen with no error in the log. They are th
 - **Decorative children swallow input.** `PanelContainer` and `Panel` default to
   `MOUSE_FILTER_STOP`, so a panel over card art eats the tap. Set `MOUSE_FILTER_IGNORE` on
   anything decorative.
-- **`z_index` beats tree order.** A node added later still draws underneath a sibling with a
-  higher `z_index`. Map pins are 10, the traveller 25, floating bars 100, toasts 500.
+- **`z_index` beats tree order — but only for drawing.** A node added later still draws
+  underneath a sibling with a higher `z_index` (map pins are 10, the traveller 25, floating
+  bars 100, toasts 500) — but **GUI input dispatch never consults z_index at all**; it
+  follows scene-tree sibling order exclusively (confirmed against Godot's own documented
+  behavior — a commonly-hit engine gotcha, not something specific to this project). This bit
+  `_modal_dialog()` and `_modal_backdrop()` directly: `_clear()` adds `overlay` to `root`
+  first, before that screen's own page content exists yet, so every screen's content ends up
+  *later* in `root`'s children and silently won every tap over whatever `overlay` held —
+  Settings, the stage-replay prompt, and the deck-import modal were all genuinely
+  un-clickable on a real device despite drawing correctly on top, and every headless check
+  passed anyway because none of them simulate real touch dispatch (a `.pressed.emit()` call
+  invokes the handler directly, bypassing hit-testing entirely). The fix — now the first line
+  of both functions — is `root.move_child(overlay, root.get_child_count() - 1)`, run every
+  time a modal opens, so tree order actually matches the z-index-driven visual order. Any new
+  code that adds interactive content to `overlay` outside those two helpers needs the same
+  line; `ui_smoke.gd`'s occlusion checker (`find_occlusion`/`_wins_input_over`) deliberately
+  ignores z_index for exactly this reason — an earlier version compared z_index first and
+  reported every modal button as unoccluded, missing this bug entirely.
 - **Anchor presets resolve against the minimum size at call time.** Calling
   `set_anchors_and_offsets_preset` before adding children bakes in a zero size, and a plain
   `Control` parent never recomputes it — the node collapses and silently disappears. Set
