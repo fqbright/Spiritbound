@@ -238,6 +238,53 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-15 — Map path/pins aligned to painted road art, line hidden, fixed-pace travel (user-reported)
+Not one of the original 24 report items — user reported the map's stage pins didn't sit on
+the actual road painted into each chapter's background art. Root cause: `_chapter_waypoints()`
+still used the old `BIOME_PATH_WAYPOINTS` (6 hand-picked point-sets, reused + mirrored across
+all 50 chapters) from back when only 6 biome images existed — once every chapter got bespoke
+unique art, those 6 shapes stopped corresponding to anything actually painted, and the
+`(chapter/6)%2` mirroring flip made half of them wrong in the *opposite* direction on top of
+that.
+Fix: built a Python (PIL+numpy) image-analysis pipeline against all 50
+`assets/chapters/chapter_N.png` files — HSV "pathness" score (`v*(1-s)`, bright+desaturated),
+a **per-image percentile threshold** (top ~10%) rather than a fixed one (brightness varies
+hugely chapter to chapter), refined with **sequential row-to-row tracking** (each point
+prefers the cluster nearest the *previous* point, not image-center) to stop the centerline
+jumping to unrelated bright patches — this tracking step was the single biggest accuracy win.
+4 chapters needed manual coordinate overrides where the heuristic structurally can't apply:
+7 & 18 are abstract dune art with no single distinguishable path; 8 & 26 are lava chapters
+where the path is the *darkest* feature against glowing lava, inverting the "bright=path"
+assumption. Result spliced in as a new 50-entry `CHAPTER_PATH_WAYPOINTS` const in `game.gd`,
+consumed by `_chapter_waypoints()` (now preferring per-chapter waypoints via a new
+`_chapter_has_unique_art()` helper, falling back to the old biome system only when a chapter's
+art file is actually missing) and by `_add_map_chapter()` (fixed to never flip a chapter with
+unique art — the old flip was a leftover from the 6-biome-reuse era that had become actively
+harmful).
+Per explicit user request, stopped drawing the generic decorative connector line: `road_bed`/
+`trail` Line2D nodes in `_add_routes()` are now `.visible = false` (geometry/points still
+computed and assigned, just not rendered) since the waypoints now exactly trace the real
+painted road and a second drawn line would visually clash with it. The green `walked`
+progress line is unaffected.
+Also per explicit user request, reworked `_travel_to()`'s animation: was one fixed-duration
+tween (0.65s) for the whole trip regardless of distance; now chains one fixed
+`TRAVEL_SECONDS_PER_STAGE := 2.0`-second tween per intermediate stage hop, so backtracking
+many stages takes proportionally longer while a single adjacent hop still reads as brisk
+(empirically confirmed: a 2-hop jump took exactly 4.0s in a live test).
+One real bug hit while adding the new travel-timing test: checking `traveler.position` after
+a full multi-hop journey completed threw "previously freed" — arriving at certain stages
+(e.g. an elite battle) synchronously chains into `begin_battle()` → `show_battle()` →
+`_clear()`, which frees the *entire* prior map scene graph (including `traveler`) in the same
+step that sets `profile.position`. There's no safe window from outside to read the old
+`traveler` reference after that; the fix was to just not assert on it — `profile.position`
+landing on the right stage combined with the elapsed-time check already covers correctness
+and timing. Worth remembering for any future test that holds a node reference across a
+screen-transition-triggering call.
+Verified 250/0 rules (unaffected, screens-only) / UI smoke all passing, including 4 rewritten
+assertions (the old ones tested the now-obsolete biome-mirroring behavior directly) and new
+coverage for per-chapter waypoint uniqueness, road-line invisibility, and hop timing.
+Committed as `02510db`.
+
 ### 2026-09-15 — Map header overflow fixed; Challenges rail added (user-reported, follow-on from F1)
 Not one of the original 24 report items — a direct user bug report after the F2/F3/F4/D4/
 art-pass commits landed. Two related fixes:
