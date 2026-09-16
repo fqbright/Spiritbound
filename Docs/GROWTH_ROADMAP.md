@@ -238,6 +238,34 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-15 — Map header overflow fixed; Challenges rail added (user-reported, follow-on from F1)
+Not one of the original 24 report items — a direct user bug report after the F2/F3/F4/D4/
+art-pass commits landed. Two related fixes:
+1. **Header overflow**: `show_map()`'s top row had grown to 5 buttons (lang, quest, camp,
+   music, settings) plus the new fantasy logo (fixed 104px-wide `TextureRect`, replacing what
+   used to be a compressible text label) — packed to the point of visibly overflowing on the
+   user's device. Fix: removed the lang-toggle and music-toggle buttons from the header
+   entirely, since `show_settings()` (F2) already has full controls for both — they were pure
+   duplication once F2 landed. Deleted the now-dead `_toggle_language()`/`_toggle_music()`
+   handlers along with them (confirmed zero remaining call sites first). `show_account_setup()`
+   keeps its own separate, unrelated lang button — not touched.
+2. **Challenges rail**: user asked for Camp's "挑战" (Challenges: Daily Trial + Abyss) tab to
+   be reachable from the map, explicitly *not* by adding to the already-full header — "竖着放，
+   放在最右边" (stack it vertically, on the far right). Added `_add_map_challenge_rail()`: a
+   vertical `VBoxContainer` anchored to the map's right edge (independent of the header row
+   entirely) with two icon buttons (reusing existing `GameIcon` kinds — `"scroll"` for Trial,
+   `"orb"` for Abyss, no new icon-drawing code needed) that jump straight to Camp's Challenges
+   tab. Dims locked icons rather than hiding them; tapping always navigates through regardless
+   of lock state, since Camp already renders the real unlock-requirement text and the rail is
+   too narrow to duplicate it.
+Verified 250/0 rules (unaffected, screens-only), UI smoke +8 checks incl. one that hit real
+test contamination: the rail test taps the Trial shortcut (setting `camp_tab = "challenges"`)
+many sections before the actual `== camp ==` section's own "defaults to character tab"
+assertion runs later in the same long-lived suite — had to explicitly reset `camp_tab` back to
+"character" right after, the same one-shared-profile-across-sections trap this file's F1 entry
+already flagged. Deployed to the user's device for their own visual confirmation — headless
+tests can't see actual pixel overflow, only that the nodes exist with nonzero size.
+
 ### 2026-09-15 — Phase 3: Dedicated Settings, Deck Filters, Colorblind Glyphs, Victory Recap & Hard Replays shipped (F2, F3, F4, A3, D2)
 1. **F2 Dedicated Settings Screen**: Built `show_settings()` modal, opened via `SettingsButton` (gear ⚙) in map top header and Camp. Provides controls for Language (zh-Hans / en), Battle Animation Speed (1.0x / 1.5x / 2.0x), BGM Audio Mute, and Accessibility "Reduce Motion" (`profile.reduce_motion: bool`), which automatically disables map particle emitters.
 2. **F3 Deck Builder Search & Filters**: Added real-time search input (`DeckSearchInput`) and category chip filters for Kind (`DeckKindChips`: All, Attack, Skill, Power, Tactic) and Elements (`DeckElementChips`: All, Neutral, Fire, Gale, Stone, Water, Poison) in `show_deck()`.

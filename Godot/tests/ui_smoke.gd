@@ -215,8 +215,31 @@ func _run() -> void:
 		check(dock_btn.size.y > 20.0, "dock button has real height (%.1f)" % dock_btn.size.y)
 		check(dock_btn.size.x > 40.0, "dock button has real width (%.1f)" % dock_btn.size.x)
 		check(dock_btn.global_position.y > 400.0, "dock sits at the bottom of the screen (y=%.0f)" % dock_btn.global_position.y)
-	var lang_btn := _find_button_containing(game.root, game.content.ui("ui.lang_toggle", game.lang))
-	check(lang_btn != null and lang_btn.size.y > 20.0, "map header is laid out too")
+	# Language/music toggles moved into show_settings() and no longer live in the map header
+	# itself (see the growth-roadmap note on decluttering it) — SettingsButton is the header
+	# element that's always present now, so it's what verifies the header row actually laid
+	# out with real height rather than collapsing to zero.
+	var settings_header_btn: Control = game.root.find_child("SettingsButton", true, false) as Control
+	check(settings_header_btn != null and settings_header_btn.size.y > 20.0, "map header is laid out too")
+	check(_find_button_containing(game.root, game.content.ui("ui.lang_toggle", game.lang)) == null, "the redundant lang toggle no longer clutters the map header (moved into Settings)")
+
+	section("== map challenge rail ==")
+	# Daily Trial / Abyss quick-access rail: a vertical column on the right edge rather than
+	# more width in the already-packed header row (see the header decluttering above).
+	var rail: Control = game.root.find_child("MapChallengeRail", true, false) as Control
+	check(rail != null, "the map challenge rail exists")
+	var trial_shortcut: Control = game.root.find_child("MapTrialShortcutBtn", true, false) as Control
+	var abyss_shortcut: Control = game.root.find_child("MapAbyssShortcutBtn", true, false) as Control
+	check(trial_shortcut != null and trial_shortcut.size.x > 20.0, "the Daily Trial rail shortcut has real size")
+	check(abyss_shortcut != null and abyss_shortcut.size.x > 20.0, "the Abyss rail shortcut has real size")
+	if trial_shortcut != null and abyss_shortcut != null:
+		check(trial_shortcut.global_position.y < abyss_shortcut.global_position.y, "the rail stacks its two shortcuts vertically, trial above abyss")
+		check(trial_shortcut.global_position.x > 300.0, "the rail sits toward the right edge of the screen (x=%.0f)" % trial_shortcut.global_position.x)
+	game.camp_tab = "character"
+	trial_shortcut.emit_signal("pressed")
+	await process_frame
+	check(game.camp_tab == "challenges", "tapping the trial rail shortcut opens Camp on the Challenges tab")
+	game.camp_tab = "character"  # restore: a later section asserts Camp's own default tab
 
 	# Map pins set their own z_index, which beats tree order, so the floating bars have to
 	# outrank them or the dock draws underneath the stages it is supposed to sit over.

@@ -167,6 +167,20 @@ The visual presentation blends high-detail painted assets with procedural vector
   - `QuestButton` (`"QuestButton"` in `show_map()`) links directly to `show_quests()`, rendered with a custom `"quest"` `GameIcon` (parchment scroll with rolled wooden rods and stamped red wax seal) and `assets/icons/quest.png`. It carries `_add_notification_dot()` when `_has_claimable_quest()` is true.
   - `CampButton` (`"CampButton"` in `show_map()`) links to `show_camp()`, rendered with a custom `"profile"` `GameIcon` (hero crest medallion) and `assets/icons/profile.png`. Camp is dedicated to the player account profile, ascension difficulty tiers (A0..A5), and relics collection.
   - Claiming any quest via `_claim_quest()` refreshes `show_quests()` directly.
+  - `SettingsButton` (gear ⚙) opens `show_settings()`, which is now the *only* place to change
+    language or mute audio — the map header used to carry its own separate lang-toggle and
+    music-toggle buttons alongside Quest/Camp/Settings, and with the F2 Settings screen
+    duplicating both, packing 5 buttons plus the logo into one row was overflowing on some
+    devices. Both were removed from `show_map()`'s header (their handlers, `_toggle_language()`
+    and `_toggle_music()`, were deleted too — `_change_language()`/`_toggle_music_settings()`
+    inside `show_settings()` are the only way to do either now). Don't re-add a lang/music
+    button to the header without removing something else first — the row has no spare width.
+  - `MapChallengeRail` — a vertical icon rail on the right edge of the map (not the header;
+    `_add_map_challenge_rail()`), giving one-tap access to Camp's "挑战" tab (Daily Trial via a
+    `"scroll"` `GameIcon`, Endless Abyss via an `"orb"` one) instead of Camp → tab. Icons dim
+    when the feature is still locked (`profile.unlocked` gates from A2) but stay tappable —
+    tapping always opens Camp's Challenges tab, which already renders the real unlock
+    requirement text; the rail itself is too narrow to duplicate that.
 - **Symphonic audio & dynamic stage combat soundtrack**:
   - `map_symphony.wav`: Grand neoclassical gothic symphony in the style of "The Undead Overture" / "The Dawn" (138 BPM, D Minor) featuring ominous tolling cathedral bells, relentless galloping 16th-note cello/viola ostinatos, soaring tragic yet triumphant violin and brass melodies, sweeping baroque harpsichord arpeggio cascades, choral pad swells, and martial double-kick orchestral percussion.
   - 5 Distinct battle tracks for chapter sub-stages (`_play_music(true, stage_lvl)`):

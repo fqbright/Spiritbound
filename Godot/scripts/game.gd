@@ -1043,11 +1043,6 @@ func _relic_name(item: Dictionary) -> String:
 func _relic_detail(item: Dictionary) -> String:
 	return content.relic_detail(item, lang)
 
-func _toggle_language() -> void:
-	lang = "en" if lang == "zh-Hans" else "zh-Hans"
-	profile.language = lang
-	SpiritSave.write(profile)
-	show_map()
 
 func _ready() -> void:
 	set_process_input(true)
@@ -1709,10 +1704,6 @@ func show_map() -> void:
 	overlay_page.add_child(header_holder)
 
 	var header := _header("SPIRITBOUND", "")
-	var btn_lang := _button(t("ui.lang_toggle"), _toggle_language, Color("17363e"), Vector2(44,34))
-	btn_lang.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	header.add_child(btn_lang)
-
 	var btn_size := Vector2(36, 34)
 
 	# Dedicated quest commissions entry point with custom quest icon and claimable notification dot
@@ -1744,15 +1735,18 @@ func show_map() -> void:
 	btn_camp.add_child(camp_icon)
 	header.add_child(btn_camp)
 
-	var btn_music := _button("♫" if not muted else "♩", _toggle_music, Color("17363e"), Vector2(32,34))
-	btn_music.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	header.add_child(btn_music)
-
+	# Language and audio-mute now live in show_settings() (F2, via _change_language()/
+	# _toggle_music_settings()) — the top bar kept its own separate lang toggle and music
+	# toggle from before that screen existed, which packed the header to the point of
+	# overflowing on narrower devices. Removed both (and their now-dead _toggle_language()/
+	# _toggle_music() handlers) in favor of the one Settings entry point.
 	var btn_settings := _button("⚙", show_settings, Color("17363e"), Vector2(32, 34))
 	btn_settings.name = "SettingsButton"
 	btn_settings.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_settings)
 	header_holder.add_child(header)
+
+	_add_map_challenge_rail(overlay_page)
 
 	var stage_count: int = content.encounters.size()
 	var chapter_count: int = stage_count / 5
@@ -1862,6 +1856,65 @@ func show_map() -> void:
 
 	await get_tree().process_frame
 	if map_scroll: map_scroll.scroll_vertical = int(maxi(0, int(_map_point(profile.position).y - 360)))
+
+# Quick access to the two challenge modes (Daily Trial, Endless Abyss) — both already live as
+# their own section in Camp's "挑战" tab, but reaching them meant Camp -> tab tap. The header
+# row is already packed edge to edge (see the lang/music-toggle removal above), so this is a
+# separate vertical rail on the right edge rather than more horizontal width at the top — the
+# whole reason it's vertical is that it doesn't compete with the header for width at all.
+# Icons dim (not hide) when the feature is still locked; tapping either one regardless of lock
+# state goes straight to Camp's Challenges tab, which already renders the exact unlock
+# requirement — no need to duplicate that text in a rail this narrow.
+func _add_map_challenge_rail(parent: Control) -> void:
+	var rail_holder := Control.new()
+	rail_holder.anchor_left = 1.0
+	rail_holder.anchor_right = 1.0
+	rail_holder.anchor_top = 0.38
+	rail_holder.anchor_bottom = 0.38
+	rail_holder.offset_left = -50.0
+	rail_holder.offset_right = -6.0
+	rail_holder.offset_top = 0.0
+	rail_holder.offset_bottom = 130.0
+	rail_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rail_holder.z_index = 100
+	parent.add_child(rail_holder)
+
+	var rail := VBoxContainer.new()
+	rail.name = "MapChallengeRail"
+	rail.add_theme_constant_override("separation", 10)
+	rail.mouse_filter = Control.MOUSE_FILTER_PASS
+	rail_holder.add_child(rail)
+
+	var rail_btn_size := Vector2(44, 44)
+	var trial_unlocked: bool = int(profile.unlocked) >= 5
+	var trial_btn := _button("", _open_camp_challenges, Color("241a10"), rail_btn_size)
+	trial_btn.name = "MapTrialShortcutBtn"
+	var trial_icon := GameIcon.new()
+	trial_icon.kind = "scroll"
+	trial_icon.icon_color = Color("ffb765") if trial_unlocked else Color("4a4238")
+	trial_icon.custom_minimum_size = Vector2(24, 24)
+	trial_icon.size = trial_icon.custom_minimum_size
+	trial_icon.position = (rail_btn_size - trial_icon.size) / 2.0
+	trial_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	trial_btn.add_child(trial_icon)
+	rail.add_child(trial_btn)
+
+	var abyss_unlocked: bool = int(profile.unlocked) >= 10
+	var abyss_btn := _button("", _open_camp_challenges, Color("1b1024"), rail_btn_size)
+	abyss_btn.name = "MapAbyssShortcutBtn"
+	var abyss_icon := GameIcon.new()
+	abyss_icon.kind = "orb"
+	abyss_icon.icon_color = Color("c79bff") if abyss_unlocked else Color("4a4238")
+	abyss_icon.custom_minimum_size = Vector2(24, 24)
+	abyss_icon.size = abyss_icon.custom_minimum_size
+	abyss_icon.position = (rail_btn_size - abyss_icon.size) / 2.0
+	abyss_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	abyss_btn.add_child(abyss_icon)
+	rail.add_child(abyss_btn)
+
+func _open_camp_challenges() -> void:
+	camp_tab = "challenges"
+	show_camp()
 
 # Every chapter used to reuse the exact same five pixel offsets, so the trail looked like a
 # mechanical zigzag repeated 50 times. This walks a seeded random x each chapter instead —
@@ -6552,12 +6605,6 @@ func _select_abyss_boon(boon: Dictionary) -> void:
 	SpiritSave.write(profile)
 	_toast(tf("ui.boon_acquired_toast", content.ui(boon.nameKey, lang)))
 	show_reward_details()
-
-func _toggle_music() -> void:
-	muted = not muted
-	if muted: map_music.stop(); battle_music.stop()
-	else: _play_music(false)
-	show_map()
 
 func _unique(values: Array) -> Array:
 	var result := []
