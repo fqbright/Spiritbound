@@ -112,13 +112,15 @@ func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void
 		seen_ids.append(card_id)
 		var card: Dictionary = g.content.card(card_id)
 		if card.is_empty(): continue
-		var is_upgraded: bool = int(g.profile.upgrades.get(card_id, 0)) > 0
+		var up_lvl: int = int(g.profile.upgrades.get(card_id, 0))
+		var maxed: bool = up_lvl >= SpiritContent.MAX_CARD_UPGRADE
 
 		var row := PanelContainer.new()
 		row.custom_minimum_size = Vector2(340, 56)
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var accent := g._card_color(card)
-		row.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 10, accent if not is_upgraded else g.GOLD))
+		var row_accent := accent if up_lvl == 0 else (g.EMBER if maxed else g.GOLD)
+		row.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 10, row_accent))
 
 		var hbox := HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 8)
@@ -134,24 +136,28 @@ func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void
 		hbox.add_child(texts)
 
 		var card_name: String = g.content.text(card.nameKey, g.lang)
-		var name_lbl := g._label("%s%s" % [card_name, " +1" if is_upgraded else ""], 13, g.TEXT)
+		var name_lbl := g._label("%s%s" % [card_name, " +%d" % up_lvl if up_lvl > 0 else ""], 13, g.TEXT)
 		texts.add_child(name_lbl)
 		var kind_lbl := g._label("%s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("rarity.%s" % card.get("rarity", "Common"))], 10, g.GOLD)
 		texts.add_child(kind_lbl)
 
-		if not is_upgraded:
-			var up_btn := g._button("+1", func():
-				g.profile.upgrades[card_id] = 1
+		if not maxed:
+			var next_lvl := up_lvl + 1
+			var btn_label := "+1" if up_lvl == 0 else g.t("ui.awaken_btn")
+			var btn_color := g.GOLD if up_lvl == 0 else g.EMBER
+			var up_btn := g._button(btn_label, func():
+				g.profile.upgrades[card_id] = next_lvl
 				SpiritSave.write(g.profile)
 				g._haptic("heavy")
-				g._toast(g.tf("ui.upgraded_toast", [card_name, card_name]), g.GOLD)
+				if next_lvl >= SpiritContent.MAX_CARD_UPGRADE: g._toast(g.tf("ui.awakened_toast_fmt", [card_name]), g.EMBER)
+				else: g._toast(g.tf("ui.upgraded_toast", [card_name, card_name]), g.GOLD)
 				if on_done.is_valid(): on_done.call()
 				else: return_callback.call()
-			, g.GOLD, Vector2(56, 38))
+			, btn_color, Vector2(56, 38))
 			up_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			hbox.add_child(up_btn)
 		else:
-			var done_lbl := g._label("MAX", 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER)
+			var done_lbl := g._label(g.t("ui.awakened_label"), 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER)
 			done_lbl.custom_minimum_size = Vector2(56, 38)
 			done_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			hbox.add_child(done_lbl)
@@ -785,7 +791,7 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	info_box.add_child(stack)
 
 	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
-	stack.add_child(g._label(g.content.text(card.nameKey, g.lang) + (" +" if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	stack.add_child(g._label(g._kind_element_line(card), 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var desc := g._label(g._card_description(card), 8, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)

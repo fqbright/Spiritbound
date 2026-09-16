@@ -98,6 +98,12 @@ const RELICS = [
 # mid-chapter boss.
 const BOSS_RELIC_IDS = ["cursedTome", "titanBell", "chaosPrism"]
 
+# combat.gd's upgrade bonus is already a raw int add with no cap of its own (see
+# state.upgrades.get(card.id, 0) in _play_card/_resolve_effects/_preview_damage) — the cap
+# lives here, purely as a UI/economy rule, so a card can be Spirit-Smithed to +1 once and,
+# on a later rest-site visit, Awakened to +2, then no further.
+const MAX_CARD_UPGRADE := 2
+
 const RUNES = [
 	{"id":"swift","icon":"»","icon_mark":"chevrons","zh":"迅捷","en":"Swift","detail":"每回合第一次使用免费（返还其能量费用）。","detail_en":"First play each turn is free (refunds its Energy cost).","color":"78e9ff"},
 	{"id":"chain","icon":"⌁","icon_mark":"bolt","zh":"连锁","en":"Chain","detail":"40% 单体伤害传递给另一名敌人。","detail_en":"40% single-target damage splashes to another enemy.","color":"a2d9ff"},
@@ -1284,6 +1290,9 @@ const UI_TEXT = {
 	"ui.boss_rush_stage_label_fmt": {"zh-Hans":"首领连战 · 第 %d 场", "en":"Boss Rush · Bout %d"},
 	"ui.boss_rush_progress_reward_fmt": {"zh-Hans":"连战进度 %d 场，敌人愈发强大！", "en":"Boss Rush progress: %d bouts. Enemies grow stronger!"},
 	"ui.boss_rush_no_boss": {"zh-Hans":"尚未击败任何首领", "en":"No bosses reached yet"},
+	"ui.awaken_btn": {"zh-Hans":"觉醒", "en":"Awaken"},
+	"ui.awakened_label": {"zh-Hans":"已觉醒", "en":"Awakened"},
+	"ui.awakened_toast_fmt": {"zh-Hans":"%s 已觉醒为 +2！", "en":"%s has Awakened to +2!"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

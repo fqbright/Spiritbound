@@ -973,6 +973,13 @@ func run() -> void:
 	var many_bosses: Array = content.boss_rush_boss_indices(49)
 	check(many_bosses.size() >= 5 and int(many_bosses[0]) == 4, "unlocked=49 exposes every boss reached so far, still starting from stage 4")
 
+	check(SpiritContent.MAX_CARD_UPGRADE == 2, "a card can be upgraded to Awakened (+2) at most")
+	var awakened := SpiritCombat.new(content)
+	awakened.create(7, encounter(100, 0), Array(content.raw.startingDeck), 60, {"strike": SpiritContent.MAX_CARD_UPGRADE})
+	_force_hand(awakened, "strike")
+	awakened.play(0, 0)
+	check(awakened.state.enemies[0].health == awakened.state.enemies[0].max_health - 8, "an Awakened (+2) Strike deals its base 6 damage plus the full +2 bonus, unlike the engine capping it at +1")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

@@ -1370,6 +1370,38 @@ func _run() -> void:
 	var found_upgrade_title := _find_label_text(game.root, game.content.ui("ui.upgrade_title", game.lang))
 	check(found_upgrade_title, "Deck upgrade screen renders with title")
 
+	section("== card awakening (+2) upgrade ==")
+	# Force every other deck card to the max upgrade level (which shows no button at all) so
+	# the "+1"/"Awaken" buttons found below are unambiguously strike's, regardless of whatever
+	# upgrade levels the real borrowed save already had on other cards.
+	var strike_name: String = game.content.text(game.content.card("strike").nameKey, game.lang)
+	var prior_upgrades: Dictionary = game.profile.upgrades.duplicate(true)
+	var awaken_deck_ids: Array[String] = []
+	for card_id in game.profile.deck:
+		if not (card_id in awaken_deck_ids): awaken_deck_ids.append(card_id)
+	for card_id in awaken_deck_ids: game.profile.upgrades[card_id] = SpiritContent.MAX_CARD_UPGRADE
+	game.profile.upgrades["strike"] = 0
+
+	game.show_deck_upgrade(game.show_map)
+	check(not _find_label_containing(game.root, strike_name + " +"), "an unupgraded card's name carries no + suffix")
+	var plus1_btn := _find_button_containing(game.root, "+1")
+	check(plus1_btn != null, "an unupgraded card offers a +1 button in the Spirit Smith screen")
+	plus1_btn.pressed.emit()
+	check(int(game.profile.upgrades.get("strike", 0)) == 1, "pressing +1 upgrades the card to level 1")
+
+	game.show_deck_upgrade(game.show_map)
+	check(_find_label_containing(game.root, strike_name + " +1"), "a +1 card's name shows the +1 suffix in the Spirit Smith screen")
+	var awaken_btn := _find_button_containing(game.root, game.content.ui("ui.awaken_btn", game.lang))
+	check(awaken_btn != null, "a +1 card offers an Awaken button on a later Spirit Smith visit")
+	awaken_btn.pressed.emit()
+	check(int(game.profile.upgrades.get("strike", 0)) == 2, "pressing Awaken upgrades the card to Awakened (+2)")
+
+	game.show_deck_upgrade(game.show_map)
+	check(_find_label_containing(game.root, strike_name + " +2"), "an Awakened card's name shows the +2 suffix")
+	check(_find_label_text(game.root, game.content.ui("ui.awakened_label", game.lang)), "an Awakened card shows the Awakened label instead of a button")
+	check(_find_button_containing(game.root, game.content.ui("ui.awaken_btn", game.lang)) == null, "an Awakened card can no longer be upgraded further, so no Awaken button remains anywhere")
+	game.profile.upgrades = prior_upgrades
+
 	section("== card foil shader application ==")
 	var rare_card: Dictionary = game.content.card("phoenixEdge")
 	var rare_face: Panel = game._big_card_face(rare_card, "")

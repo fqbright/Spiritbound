@@ -879,7 +879,7 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	stack.add_theme_constant_override("separation", 4)
 	info_box.add_child(stack)
 
-	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +" if up_lvl > 0 else "")
+	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else "")
 	var name_lbl := g._label(name_text, 16, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
 	stack.add_child(name_lbl)
 
@@ -1068,7 +1068,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	info_box.add_child(info_stack)
 
 	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
-	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +" if up_lvl > 0 else "")
+	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else "")
 	var name_lbl := g._label(name_text, 10, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
 	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(name_lbl)
@@ -1368,7 +1368,7 @@ func _pile_card_tile(card: Dictionary) -> Control:
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_box.add_child(stack)
 
-	stack.add_child(g._label(g.content.text(card.nameKey, g.lang) + (" +" if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	stack.add_child(g._label(g._kind_element_line(card), 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var desc := g._label(g._card_description(card), 8, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
