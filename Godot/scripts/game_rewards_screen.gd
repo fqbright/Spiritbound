@@ -1,0 +1,543 @@
+extends RefCounted
+class_name RewardsScreen
+
+# Composition, not inheritance — see MapScreen's header comment (game_map_screen.gd) for
+# why. `g` is the live SpiritGame instance; every reference to shared state or another
+# screen's function goes through it.
+var g: SpiritGame
+
+func _init(game: SpiritGame) -> void:
+	g = game
+
+func show_reward() -> void:
+	g._clear(); g._play_music(false)
+	var page := g._create_page(10)
+	page.alignment = BoxContainer.ALIGNMENT_CENTER
+	page.add_child(g._label(g.t("ui.battle_won"), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var chest := TextureRect.new()
+	var atlas := AtlasTexture.new()
+	atlas.atlas = g._texture("chest-atlas-v1.png")
+	atlas.region = Rect2(0, 0, atlas.atlas.get_width() / 2.0, atlas.atlas.get_height())
+	chest.texture = atlas
+	chest.custom_minimum_size = Vector2(200, 180)
+	chest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	chest.pivot_offset = Vector2(100, 90)
+	page.add_child(chest)
+
+	var open := g._button(g.t("ui.open_chest"), Callable(), g.EMBER, Vector2(220, 52))
+	open.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	open.pressed.connect(func(): _open_chest(chest, atlas, open))
+	page.add_child(open)
+
+func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> void:
+	button.disabled = true
+	g._haptic("heavy")
+	var shake := chest.create_tween()
+	shake.tween_property(chest, "rotation", -0.05, 0.08)
+	shake.tween_property(chest, "rotation", 0.05, 0.08)
+	shake.tween_property(chest, "rotation", -0.03, 0.07)
+	shake.tween_property(chest, "rotation", 0.0, 0.07)
+	await shake.finished
+
+	atlas.region.position.x = atlas.atlas.get_width() / 2.0
+	chest.texture = atlas
+	g._shake_screen(6.0)
+	var pop := chest.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), 0.16)
+	pop.tween_property(chest, "scale", Vector2.ONE, 0.12)
+	await pop.finished
+	await g.get_tree().create_timer(g._battle_delay(0.25)).timeout
+
+	_grant_stage_rewards()
+	g._advance_quest("open_chest", 1)
+	if g.pending_boon_draft:
+		g.pending_boon_draft = false
+		g.show_abyss_boon_draft()
+		return
+	# The chest and its button have done their job; rebuild the page so only the
+	# rewards and the card choice remain on screen.
+	show_reward_details()
+
+# A stage below the unlock frontier has been cleared before. Stages cannot be skipped, so
+# this is a reliable "have I already beaten it" test without tracking a separate set.
+func _is_replay(index: int) -> bool:
+	return index < int(g.profile.unlocked)
+
+func _is_stage_event_claimed(index: int) -> bool:
+	if _is_replay(index): return true
+	return g.profile.get("claimed_stage_events", []).has(index)
+
+func _mark_stage_event_claimed(index: int) -> void:
+	if not g.profile.has("claimed_stage_events") or not g.profile.claimed_stage_events is Array:
+		g.profile.claimed_stage_events = []
+	if not g.profile.claimed_stage_events.has(index):
+		g.profile.claimed_stage_events.append(index)
+		SpiritSave.write(g.profile)
+
+# Compendium discovery is a permanent log, not a live inventory: a card/relic/rune/equipment
+# never un-discovers even in a hypothetical future where it could be lost, and a Bestiary
+# entry has no other tracking array to fall back on. The _x_discovered() helpers below still
+# OR in the existing inventory arrays as a fallback so saves from before this milestone show
+# their already-owned items as discovered without needing a migration pass.
+func _compendium_dict(category: String) -> Dictionary:
+	if not g.profile.get("compendium_discovered") is Dictionary: g.profile.compendium_discovered = {}
+	if not g.profile.compendium_discovered.get(category) is Dictionary: g.profile.compendium_discovered[category] = {}
+	return g.profile.compendium_discovered[category]
+
+func _mark_discovered(category: String, key: String) -> bool:
+	var dict := _compendium_dict(category)
+	if bool(dict.get(key, false)): return false
+	dict[key] = true
+	SpiritSave.write(g.profile)
+	return true
+
+# C4: a small one-time reward the instant a bestiary entry is newly discovered, so filling out
+# the Compendium has immediate in-battle feedback instead of only a percentage on a Camp
+# screen. Fires from every _mark_discovered("bestiary", ...) call site (campaign, Abyss, Daily
+# Trial, and Weekly Challenge battles) — all of which call it right as a battle begins, so this
+# reads to the player as "first time facing this foe," not literally "first kill."
+func _grant_bestiary_discovery_bonus(encounter: Dictionary) -> void:
+	var bonus_gold := 20
+	g.profile.gold += bonus_gold
+	SpiritSave.write(g.profile)
+	_grant_mastery_xp(6)
+	var display_name: String = str(encounter.get("name_en", encounter.get("name", ""))) if g.lang == "en" else str(encounter.get("name", ""))
+	g._toast(g.tf("ui.bestiary_discovery_toast", [display_name, bonus_gold]), Color("9fd8c9"))
+
+func _card_discovered(id: String) -> bool:
+	return bool(_compendium_dict("cards").get(id, false)) or int(g.profile.collection.get(id, 0)) > 0
+
+func _equip_discovered(id: String) -> bool:
+	return bool(_compendium_dict("equipment").get(id, false)) or g.profile.equipment_owned.has(id)
+
+func _rune_discovered(id: String) -> bool:
+	return bool(_compendium_dict("runes").get(id, false)) or int(g.profile.rune_inventory.get(id, 0)) > 0 or g.profile.card_runes.values().has(id)
+
+func _relic_discovered(id: String) -> bool:
+	return bool(_compendium_dict("relics").get(id, false)) or g.profile.relics.has(id)
+
+func _bestiary_discovered(enemy_name: String) -> bool:
+	return bool(_compendium_dict("bestiary").get(enemy_name, false))
+
+func _compendium_totals() -> Vector2i:
+	var discovered := 0
+	var total := 0
+	for c in g.content.cards:
+		if c.get("rarity", "") == "Curse": continue
+		total += 1
+		if _card_discovered(c.id): discovered += 1
+	for e in SpiritContent.EQUIPMENT:
+		total += 1
+		if _equip_discovered(e.id): discovered += 1
+	for r in SpiritContent.RUNES:
+		total += 1
+		if _rune_discovered(r.id): discovered += 1
+	for r in SpiritContent.RELICS:
+		total += 1
+		if _relic_discovered(r.id): discovered += 1
+	for e in SpiritContent.ENEMIES:
+		total += 1
+		if _bestiary_discovered(str(e.name)): discovered += 1
+	return Vector2i(discovered, total)
+
+# Every battle win feeds mastery XP to whichever hero is currently equipped — a boss kill is
+# worth double a regular fight, halved again on a campaign replay, same discount campaign
+# gold already takes. Abyss and Daily Trial wins call this with their own flat amounts since
+# neither has a "kind"/"replay" concept to scale off of.
+func _grant_mastery_xp(amount: int) -> void:
+	if amount <= 0: return
+	var hero_id: String = str(g.profile.hero_class)
+	if not g.profile.get("hero_masteries") is Dictionary: g.profile.hero_masteries = {}
+	var entry: Dictionary = g.profile.hero_masteries.get(hero_id, {"xp": 0})
+	var before_level: int = g.content.mastery_level_for_xp(int(entry.get("xp", 0)))
+	entry.xp = int(entry.get("xp", 0)) + amount
+	g.profile.hero_masteries[hero_id] = entry
+	var after_level: int = g.content.mastery_level_for_xp(int(entry.xp))
+	if after_level > before_level:
+		g._toast(g.tf("ui.mastery_levelup_toast", [g.content.hero_name(g.content.hero_class(hero_id), g.lang), after_level]), g.GOLD)
+
+func _current_hero_mastery_bonuses() -> Dictionary:
+	var hero_id: String = str(g.profile.hero_class)
+	var xp: int = int(g.profile.get("hero_masteries", {}).get(hero_id, {}).get("xp", 0))
+	return g.content.mastery_bonuses(hero_id, g.content.mastery_level_for_xp(xp))
+
+# Battle screen header/background source of truth: campaign battles index straight into
+# g.content.encounters, while Abyss and the Daily Trial are their own procedural tracks that
+# don't live in that array (g.current_stage is left at 0 for both, same placeholder abyss
+# already used before this existed).
+func _current_encounter() -> Dictionary:
+	if g.in_abyss: return g.content.abyss_encounter(int(g.profile.get("abyss_floor", 1)))
+	if g.in_daily_trial: return g.content.daily_trial_encounter(int(g.profile.daily_trial_record.get("stage", 0)) + 1)
+	if g.in_weekly_challenge: return g.content.weekly_challenge_encounter(int(g.profile.weekly_challenge_record.get("stage", 0)) + 1)
+	return g.content.encounters[g.current_stage]
+
+func _current_stage_label() -> String:
+	if g.in_abyss: return g.tf("ui.abyss_stage_label_fmt", int(g.profile.get("abyss_floor", 1)))
+	if g.in_daily_trial: return g.tf("ui.daily_trial_stage_label_fmt", [int(g.profile.daily_trial_record.get("stage", 0)) + 1, SpiritContent.DAILY_TRIAL_STAGES])
+	if g.in_weekly_challenge: return g.tf("ui.weekly_challenge_stage_label_fmt", [int(g.profile.weekly_challenge_record.get("stage", 0)) + 1, SpiritContent.WEEKLY_CHALLENGE_STAGES])
+	return g.content.stage_name(g.current_stage, g.lang)
+
+func _grant_stage_rewards() -> void:
+	if g.in_abyss:
+		g.in_abyss = false
+		var floor_num: int = int(g.profile.get("abyss_floor", 1))
+		var bonus_mult: float = 1.5 if g.profile.get("abyss_boons", []).has("boon_golden_fortune") else 1.0
+		var gold_gain: int = int(round((25 + floor_num * 5) * bonus_mult))
+		g.profile.gold += gold_gain
+		g.profile.abyss_floor = floor_num + 1
+		g.profile.abyss_record = maxi(int(g.profile.get("abyss_record", 0)), floor_num)
+		g.profile.health = mini(60, int(g.combat.state.player.health) + 15)
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
+		SpiritSave.write(g.profile)
+		g._advance_quest("win_battles", 1)
+		g._advance_quest("earn_gold", gold_gain)
+		_grant_mastery_xp(20)
+		if floor_num % 5 == 0:
+			g.pending_boon_draft = true
+		return
+	if g.in_daily_trial:
+		g.in_daily_trial = false
+		var stage_num: int = int(g.profile.daily_trial_record.stage) + 1
+		var gold_gain: int = int(g.content.daily_trial_encounter(stage_num).reward)
+		g.profile.gold += gold_gain
+		g.profile.daily_trial_record.stage = stage_num
+		g.profile.daily_trial_record.best_stage = maxi(int(g.profile.daily_trial_record.get("best_stage", 0)), stage_num)
+		g.profile.health = mini(60, int(g.combat.state.player.health) + 8)
+		var completed: bool = stage_num >= SpiritContent.DAILY_TRIAL_STAGES
+		if completed:
+			g.profile.daily_trial_record.badges = int(g.profile.daily_trial_record.get("badges", 0)) + 1
+			var streak: int = int(g.profile.daily_trial_record.get("streak", 0)) + 1
+			g.profile.daily_trial_record.streak = streak
+			var streak_claimed: Array = g.profile.daily_trial_record.get("streak_claimed", []).duplicate()
+			for target in [3, 7, 14]:
+				if streak >= target and not streak_claimed.has(target):
+					streak_claimed.append(target)
+					var bonus_gold: int = 100 if target == 3 else (250 if target == 7 else 500)
+					g.profile.gold += bonus_gold
+					g._toast(g.tf("ui.trial_streak_reward_toast", [target, bonus_gold]), g.GOLD)
+			g.profile.daily_trial_record.streak_claimed = streak_claimed
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "daily_trial": true, "daily_trial_stage": stage_num, "daily_trial_completed": completed}
+		SpiritSave.write(g.profile)
+		g._advance_quest("win_battles", 1)
+		g._advance_quest("earn_gold", gold_gain)
+		_grant_mastery_xp(12 + stage_num)
+		return
+	if g.in_weekly_challenge:
+		g.in_weekly_challenge = false
+		var w_stage_num: int = int(g.profile.weekly_challenge_record.stage) + 1
+		var reward_mult: float = float(g.active_modifier.get("reward_mult", 1.0))
+		var w_gold_gain: int = int(round(g.content.weekly_challenge_encounter(w_stage_num).reward * reward_mult))
+		g.profile.gold += w_gold_gain
+		g.profile.weekly_challenge_record.stage = w_stage_num
+		g.profile.weekly_challenge_record.best_stage = maxi(int(g.profile.weekly_challenge_record.get("best_stage", 0)), w_stage_num)
+		g.profile.health = mini(60, int(g.combat.state.player.health) + 8)
+		var w_completed: bool = w_stage_num >= SpiritContent.WEEKLY_CHALLENGE_STAGES
+		if w_completed:
+			g.profile.weekly_challenge_record.badges = int(g.profile.weekly_challenge_record.get("badges", 0)) + 1
+		g.pending_rewards = {"gold": w_gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "weekly_challenge": true, "weekly_challenge_stage": w_stage_num, "weekly_challenge_completed": w_completed}
+		SpiritSave.write(g.profile)
+		g._advance_quest("win_battles", 1)
+		g._advance_quest("earn_gold", w_gold_gain)
+		_grant_mastery_xp(14 + w_stage_num)
+		return
+	var encounter: Dictionary = g.content.encounters[g.current_stage]
+	var multiplier: float = g.active_modifier.get("reward_scale", 1.0)
+	if g.profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
+	var replay := _is_replay(g.current_stage) and not g.is_hard_replay
+	# Farming an old stage pays half and drops no items, so grinding gold stays possible
+	# while re-collecting cards and gear does not.
+	if replay: multiplier *= 0.5
+	g.pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay, "is_hard_replay": g.is_hard_replay}
+	g.profile.gold += int(g.pending_rewards.gold)
+	if not replay:
+		g.profile.health = mini(60, int(g.combat.state.player.health) + 10)
+	else:
+		g.profile.health = int(g.combat.state.player.health)
+	g.profile.unlocked = maxi(int(g.profile.unlocked), mini(g.content.encounters.size() - 1, g.current_stage + 1))
+	g.profile.position = g.current_stage
+	_mark_stage_event_claimed(g.current_stage)
+
+	var kind := g.content.node_kind(g.current_stage)
+	g._advance_quest("win_battles", 1)
+	g._advance_quest("earn_gold", int(g.pending_rewards.gold))
+	if g.content.is_boss_kind(kind) or kind == "elite": g._advance_quest("clear_elite_or_boss", 1)
+	if kind == "greatboss": g._advance_quest("defeat_great_boss", 1)
+	var mastery_xp: int = 24 if g.content.is_boss_kind(kind) else 12
+	if replay: mastery_xp = int(mastery_xp / 2)
+	_grant_mastery_xp(mastery_xp)
+	if replay:
+		g.is_hard_replay = false
+		SpiritSave.write(g.profile)
+		return
+
+	if g.content.is_boss_kind(kind):
+		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
+		var id: String = order[(g.current_stage / 5 + int(g.profile.difficulty) * 2) % order.size()]
+		if not g.profile.equipment_owned.has(id): g.profile.equipment_owned.append(id)
+		g.pending_rewards.equipment = id
+		_mark_discovered("equipment", id)
+		# Great Bosses draw exclusively from the high-stakes boss relic pool (cursedTome,
+		# titanBell, chaosPrism) so those stay rare and mean something; regular bosses draw
+		# from everything else, same rotation as before.
+		var relic_pool: Array = SpiritContent.RELICS
+		if kind == "greatboss":
+			relic_pool = SpiritContent.RELICS.filter(func(r): return SpiritContent.BOSS_RELIC_IDS.has(r.id))
+		else:
+			relic_pool = SpiritContent.RELICS.filter(func(r): return not SpiritContent.BOSS_RELIC_IDS.has(r.id))
+		var relic: Dictionary = relic_pool[(g.current_stage / 5) % relic_pool.size()]
+		if not g.profile.relics.has(relic.id):
+			g.profile.relics.append(relic.id)
+			g.pending_rewards.relic = relic.id
+		_mark_discovered("relics", relic.id)
+	elif kind == "elite":
+		var rune: Dictionary = SpiritContent.RUNES[(g.current_stage / 5 + int(g.profile.difficulty)) % SpiritContent.RUNES.size()]
+		g.profile.rune_inventory[rune.id] = g.profile.rune_inventory.get(rune.id, 0) + 1
+		g.pending_rewards.rune = rune.id
+		_mark_discovered("runes", rune.id)
+	g.is_hard_replay = false
+	SpiritSave.write(g.profile)
+
+func show_reward_details() -> void:
+	g._clear(); g._play_music(false)
+	var page := g._create_page(8)
+	page.add_child(g._label(g.t("ui.battle_won"), 24, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+
+	if g.current_stage < 3 or int(g.profile.unlocked) <= 3:
+		var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
+		if not stats.is_empty():
+			page.add_child(g._build_victory_recap_card(stats))
+
+	var spoils := HBoxContainer.new()
+	spoils.alignment = BoxContainer.ALIGNMENT_CENTER
+	spoils.add_theme_constant_override("separation", 14)
+	page.add_child(spoils)
+	spoils.add_child(g._label(g.tf("ui.reward_gold_line", int(g.pending_rewards.get("gold", 0))), 15, g.GOLD))
+	if not g.pending_rewards.get("replay", false):
+		spoils.add_child(g._label(g.t("ui.reward_heal_line"), 13, g.JADE))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	var equip_id := str(g.pending_rewards.get("equipment", ""))
+	if not equip_id.is_empty():
+		var item := g.content.equipment(equip_id)
+		list.add_child(_reward_item(g.tf("ui.boss_equip_title", [item.icon, g._equip_name(item)]), g._equip_detail(item), g.GOLD))
+	var relic_id := str(g.pending_rewards.get("relic", ""))
+	if not relic_id.is_empty():
+		var relic := g.content.relic(relic_id)
+		list.add_child(_reward_item(g.tf("ui.relic_reward_title", [relic.icon, g._relic_name(relic)]), g._relic_detail(relic), Color(relic.color)))
+	var rune_id := str(g.pending_rewards.get("rune", ""))
+	if not rune_id.is_empty():
+		var rune := g.content.rune(rune_id)
+		list.add_child(_reward_item(g.tf("ui.elite_rune_title", [rune.icon, g._rune_name(rune)]), g._rune_detail(rune), Color(rune.color)))
+
+	if bool(g.pending_rewards.get("replay", false)):
+		list.add_child(g._label(g.t("ui.reward_replay_note"), 12, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		page.add_child(g._button(g.t("ui.return_map"), _finish_reward, g.EMBER, Vector2(0, 50)))
+		return
+
+	if bool(g.pending_rewards.get("daily_trial", false)):
+		if bool(g.pending_rewards.get("daily_trial_completed", false)):
+			list.add_child(g._label(g.t("ui.daily_trial_complete"), 14, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER, true))
+		list.add_child(g._label(g.tf("ui.daily_trial_progress_reward_fmt", int(g.pending_rewards.get("daily_trial_stage", 0))), 12, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
+		page.add_child(g._button(g.t("ui.return_map"), _finish_reward, g.EMBER, Vector2(0, 50)))
+		return
+
+	if bool(g.pending_rewards.get("weekly_challenge", false)):
+		if bool(g.pending_rewards.get("weekly_challenge_completed", false)):
+			list.add_child(g._label(g.t("ui.weekly_challenge_complete"), 14, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER, true))
+		list.add_child(g._label(g.tf("ui.weekly_challenge_progress_reward_fmt", int(g.pending_rewards.get("weekly_challenge_stage", 0))), 12, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
+		page.add_child(g._button(g.t("ui.return_map"), _finish_reward, g.EMBER, Vector2(0, 50)))
+		return
+
+	list.add_child(g._label(g.t("ui.reward_choose"), 13, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	var options: Array = g.content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
+	for offset in 3:
+		list.add_child(_reward_card_row(options[(g.current_stage + offset) % options.size()]))
+
+func _reward_card_row(card: Dictionary) -> Control:
+	var accent := g._card_color(card)
+	var owned: int = int(g.profile.collection.get(card.id, 0))
+	var in_deck: int = g.profile.deck.count(card.id)
+
+	var panel := Panel.new()
+	panel.custom_minimum_size.y = 126
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("11242a"), 12, accent))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 8)
+	panel.add_child(pad)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	pad.add_child(row)
+
+	var art_holder := Control.new()
+	art_holder.custom_minimum_size = Vector2(76, 106)
+	art_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(art_holder)
+	art_holder.add_child(g._card_art_panel(card.id, Vector2(76, 106)))
+	var badge := g._cost_badge(int(card.cost), accent, 24)
+	badge.position = Vector2(3, 3)
+	art_holder.add_child(badge)
+
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 2)
+	row.add_child(right)
+
+	right.add_child(g._label(g.content.text(card.nameKey, g.lang), 15, g.TEXT))
+	right.add_child(g._label("%s · %s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("element.%s" % card.get("element", "spirit")), card.rarity], 9, g.GOLD))
+	var desc := g._label(g._card_description(card), 11, Color("cfe3e0"), HORIZONTAL_ALIGNMENT_LEFT, true)
+	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(desc)
+	right.add_child(g._label("%s · %s" % [g.tf("ui.reward_owned", owned), g.tf("ui.reward_in_deck", in_deck)], 9, g.MUTED))
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	right.add_child(actions)
+	var collect := g._button(g.t("ui.reward_collect"), func(): _collect_card(card), Color("24444b"), Vector2(0, 38))
+	collect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(collect)
+	var add := g._button(g.t("ui.reward_smart_add"), func(): _smart_add_card(card), Color("2f5c3f"), Vector2(0, 38))
+	add.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(add)
+
+	return panel
+
+func _collect_card(card: Dictionary) -> void:
+	if int(g.profile.collection.get(card.id, 0)) == 0: g._advance_quest("collect_cards", 1)
+	g.profile.collection[card.id] = g.profile.collection.get(card.id, 0) + 1
+	_mark_discovered("cards", card.id)
+	SpiritSave.write(g.profile)
+	g._toast(g.tf("ui.reward_collected", g.content.text(card.nameKey, g.lang)), g.JADE)
+	_finish_reward()
+
+# Adds the card to the deck, and when the deck is already at 25 drops the weakest card
+# to make room — starters first, then whatever scores lowest.
+func _smart_add_card(card: Dictionary) -> void:
+	if int(g.profile.collection.get(card.id, 0)) == 0: g._advance_quest("collect_cards", 1)
+	g.profile.collection[card.id] = g.profile.collection.get(card.id, 0) + 1
+	_mark_discovered("cards", card.id)
+	if g.profile.deck.size() < 25:
+		g.profile.deck.append(card.id)
+		SpiritSave.write(g.profile)
+		g._toast(g.tf("ui.reward_added", g.content.text(card.nameKey, g.lang)), g.JADE)
+		_finish_reward()
+		return
+
+	var worst := -1
+	var worst_score := INF
+	for i in g.profile.deck.size():
+		var existing := g.content.card(g.profile.deck[i])
+		if existing.is_empty(): continue
+		var score := g._card_build_score(existing)
+		if str(existing.get("rarity", "")) == "Starter": score -= 100.0
+		# Prefer not to cut a copy of the very card being added.
+		if str(existing.id) == str(card.id): score += 60.0
+		if score < worst_score:
+			worst_score = score
+			worst = i
+	if worst < 0: worst = 0
+	var replaced := g.content.card(g.profile.deck[worst])
+	g.profile.deck[worst] = card.id
+	SpiritSave.write(g.profile)
+	g._toast(g.tf("ui.reward_replaced", [g.content.text(card.nameKey, g.lang), g.content.text(replaced.nameKey, g.lang)]), g.JADE)
+	_finish_reward()
+
+func _reward_item(title: String, detail: String, color: Color) -> PanelContainer:
+	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(340,54); panel.add_theme_stylebox_override("panel",g._panel(Color("193839"),12,color)); var stack := VBoxContainer.new(); panel.add_child(stack); stack.add_child(g._label(title, 12, color, HORIZONTAL_ALIGNMENT_CENTER)); stack.add_child(g._label(detail, 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)); return panel
+
+func _finish_reward() -> void:
+	SpiritSave.write(g.profile); g.show_map()
+
+func show_event(index: int, kind: String) -> void:
+	g._clear(); g._play_music(false)
+	g._back_action = g.show_map
+	var page := g._create_page(12)
+	page.alignment = BoxContainer.ALIGNMENT_CENTER
+	var title: String
+	if kind == "event": title = g.t("ui.event_traveler")
+	elif kind == "merchant": title = g.t("ui.event_merchant")
+	elif kind == "rest": title = g.t("ui.rest_title")
+	else: title = g.t("ui.event_default")
+	page.add_child(g._label("✦", 48, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(g._label(title, 21, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(g._label(g.t("ui.rest_prompt") if kind == "rest" else g.t("ui.event_prompt"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	if kind == "event":
+		page.add_child(g._button(g.t("ui.event_blood_pact"), func():
+			g.profile.health = maxi(1, g.profile.health - 15)
+			g.profile.gold += 60
+			g._advance_quest("earn_gold", 60)
+			_mark_stage_event_claimed(index)
+			SpiritSave.write(g.profile)
+			g._haptic("heavy")
+			g.begin_battle(index)
+		, Color("591d1d"), Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.event_spirit_blessing"), func():
+			g.profile.health = mini(60, g.profile.health + 18)
+			_mark_stage_event_claimed(index)
+			SpiritSave.write(g.profile)
+			g._haptic("tap")
+			g.begin_battle(index)
+		, Color("21594e"), Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.rest_smith_choice"), func():
+			g.show_deck_upgrade(func(): show_event(index, "event"), func():
+				_mark_stage_event_claimed(index)
+				g.begin_battle(index)
+			)
+		, g.EMBER, Vector2(300, 48)))
+	elif kind == "rest":
+		page.add_child(g._button(g.t("ui.rest_heal_choice"), func():
+			g.profile.health = mini(60, g.profile.health + 20)
+			_mark_stage_event_claimed(index)
+			SpiritSave.write(g.profile)
+			g._haptic("tap")
+			g.begin_battle(index)
+		, Color("21594e"), Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.rest_purify_choice"), func():
+			g.show_deck_purge(func(): show_event(index, "rest"), 0, func():
+				_mark_stage_event_claimed(index)
+				g.begin_battle(index)
+			)
+		, Color("4a285d"), Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.rest_smith_choice"), func():
+			g.show_deck_upgrade(func(): show_event(index, "rest"), func():
+				_mark_stage_event_claimed(index)
+				g.begin_battle(index)
+			)
+		, g.GOLD, Vector2(300, 48)))
+	else:
+		page.add_child(g._button(g.t("ui.event_opt_potion"), func():
+			if g.profile.gold >= 30:
+				g.profile.gold -= 30
+				g.profile.health = mini(60, g.profile.health + 25)
+				_mark_stage_event_claimed(index)
+				SpiritSave.write(g.profile)
+				g._haptic("tap")
+			g.begin_battle(index)
+		, g.EMBER, Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.shop_purge_service") + " · ◆50", func():
+			if g.profile.gold >= 50:
+				g.show_deck_purge(func(): show_event(index, "merchant"), 50, func():
+					_mark_stage_event_claimed(index)
+					g.begin_battle(index)
+				)
+			else:
+				g._toast(g.t("ui.shop_no_gold"))
+		, Color("3d2154"), Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.event_opt_direct"), func(): g.begin_battle(index), Color("21594e"), Vector2(300, 48)))
+
+	page.add_child(g._button(g.t("ui.return_map"), g.show_map, Color("17363e"), Vector2(170, 42)))
+
