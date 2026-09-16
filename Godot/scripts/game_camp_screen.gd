@@ -638,75 +638,117 @@ func _compendium_section() -> Control:
 
 	return panel
 
-func _card_banner_texture(path: String, unlocked: bool = true) -> TextureRect:
-	var tex_rect := TextureRect.new()
-	tex_rect.name = "BannerBg"
-	if ResourceLoader.exists(path):
-		tex_rect.texture = load(path)
-	tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	tex_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tex_rect.modulate = Color(1.0, 1.0, 1.0, 0.40) if unlocked else Color(0.35, 0.35, 0.4, 0.18)
-	return tex_rect
+func _split_horizontal_gradient(bg_color: Color) -> GradientTexture2D:
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([bg_color, bg_color, Color(bg_color.r, bg_color.g, bg_color.b, 0.0)])
+	grad.offsets = PackedFloat32Array([0.0, 0.46, 0.74])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill_from = Vector2(0.0, 0.0)
+	tex.fill_to = Vector2(1.0, 0.0)
+	tex.width = 256
+	tex.height = 16
+	return tex
+
+func _split_card_frame(banner_path: String, unlocked: bool, bg_color: Color, border_color: Color, min_height: float = 126.0) -> Dictionary:
+	var panel := PanelContainer.new()
+	panel.clip_contents = true
+	panel.custom_minimum_size = Vector2(0, min_height)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(bg_color, 14, border_color))
+
+	# 1. Art Background (Full rect, STRETCH_KEEP_ASPECT_COVERED)
+	var banner := TextureRect.new()
+	banner.name = "BannerBg"
+	if ResourceLoader.exists(banner_path):
+		banner.texture = load(banner_path)
+	banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.modulate = Color(1.0, 1.0, 1.0, 0.95) if unlocked else Color(0.45, 0.45, 0.5, 0.35)
+	panel.add_child(banner)
+
+	# 2. Left-to-Right Horizontal Fade Scrim (Dark solid on left 46%, soft fade 46%-74%, transparent 74%-100%)
+	var scrim := TextureRect.new()
+	scrim.name = "SplitScrim"
+	scrim.texture = _split_horizontal_gradient(bg_color)
+	scrim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scrim.stretch_mode = TextureRect.STRETCH_SCALE
+	scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(scrim)
+
+	# 3. Content Pad: Left info column + Right spacer
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pad.add_theme_constant_override("margin_left", 14)
+	pad.add_theme_constant_override("margin_right", 12)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(pad)
+
+	var hsplit := HBoxContainer.new()
+	hsplit.add_theme_constant_override("separation", 8)
+	pad.add_child(hsplit)
+
+	var left_stack := VBoxContainer.new()
+	left_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_stack.size_flags_stretch_ratio = 1.35
+	left_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	left_stack.add_theme_constant_override("separation", 4)
+	hsplit.add_child(left_stack)
+
+	var right_spacer := Control.new()
+	right_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_spacer.size_flags_stretch_ratio = 0.95
+	right_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hsplit.add_child(right_spacer)
+
+	return {"panel": panel, "left": left_stack, "bg": banner}
 
 func _daily_trial_section() -> Control:
 	g._ensure_daily_trial_current()
 	var unlocked := int(g.profile.unlocked) >= 5
-	var panel := PanelContainer.new()
-	panel.clip_contents = true
-	panel.custom_minimum_size = Vector2(0, 130)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", g._panel(Color("241a10") if unlocked else Color("181412"), 14, Color("ffb765") if unlocked else Color("2a3d42")))
+	var bg_col := Color("1e1710") if unlocked else Color("141210")
+	var border_col := Color("ffb765") if unlocked else Color("2a3d42")
+	var frame := _split_card_frame("res://assets/banners/banner_daily_trial.png", unlocked, bg_col, border_col, 130.0)
+	var panel: PanelContainer = frame.panel
+	var left: VBoxContainer = frame.left
 
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_daily_trial.png", unlocked))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var stack := VBoxContainer.new()
-	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.add_theme_constant_override("separation", 5)
-	pad.add_child(stack)
-
-	stack.add_child(g._label(g.t("ui.daily_trial_title"), 16, Color("ffb765") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	left.add_child(g._label(g.t("ui.daily_trial_title"), 15, Color("ffb765") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 	if not unlocked:
-		stack.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
-		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_daily_trial, Color("2d2218"), Vector2(240, 40))
+		left.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_daily_trial, Color("2d2218"), Vector2(160, 36))
 		enter_btn.name = "DailyTrialEnterBtn"
 		enter_btn.disabled = true
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		stack.add_child(enter_btn)
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
 		return panel
-
-	stack.add_child(g._label(g.t("ui.daily_trial_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	var tags: Array = g.content.daily_trial_tags(int(g.profile.daily_trial_record.day))
 	var tag_names: Array = []
 	for tag in tags: tag_names.append(g.content.ui(tag.nameKey, g.lang))
 	var sep: String = ", " if g.lang == "en" else "、"
-	stack.add_child(g._label("%s: %s" % [g.t("ui.daily_trial_modifiers_title"), sep.join(tag_names)], 9, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_CENTER, true))
+	left.add_child(g._label("%s: %s" % [g.t("ui.daily_trial_modifiers_title"), sep.join(tag_names)], 9, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var stage_num: int = int(g.profile.daily_trial_record.stage)
 	var stats := HBoxContainer.new()
-	stats.alignment = BoxContainer.ALIGNMENT_CENTER
-	stats.add_theme_constant_override("separation", 10)
-	stats.add_child(g._label(g.tf("ui.daily_trial_progress_fmt", stage_num), 11, g.GOLD))
-	stats.add_child(g._label(g.tf("ui.daily_trial_best_fmt", int(g.profile.daily_trial_record.get("best_stage", 0))), 11, g.JADE))
-	stats.add_child(g._label(g.tf("ui.daily_trial_badges_fmt", int(g.profile.daily_trial_record.get("badges", 0))), 11, Color("ffd8a8")))
-	stats.add_child(g._label(g.tf("ui.daily_trial_streak_fmt", int(g.profile.daily_trial_record.get("streak", 0))), 11, Color("ff9868")))
-	stack.add_child(stats)
-	stack.add_child(_daily_trial_trend_chart())
+	stats.alignment = BoxContainer.ALIGNMENT_BEGIN
+	stats.add_theme_constant_override("separation", 8)
+	stats.add_child(g._label(g.tf("ui.daily_trial_progress_fmt", stage_num), 10, g.GOLD))
+	stats.add_child(g._label(g.tf("ui.daily_trial_best_fmt", int(g.profile.daily_trial_record.get("best_stage", 0))), 10, g.JADE))
+	stats.add_child(g._label(g.tf("ui.daily_trial_streak_fmt", int(g.profile.daily_trial_record.get("streak", 0))), 10, Color("ff9868")))
+	left.add_child(stats)
+	left.add_child(_daily_trial_trend_chart())
 
 	if stage_num >= SpiritContent.DAILY_TRIAL_STAGES:
-		stack.add_child(g._label(g.t("ui.daily_trial_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		left.add_child(g._label(g.t("ui.daily_trial_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	else:
-		var enter_btn := g._button(g.t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(240, 40))
+		var enter_btn := g._button(g.t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(160, 36))
 		enter_btn.name = "DailyTrialEnterBtn"
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		stack.add_child(enter_btn)
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
 
 	return panel
 
@@ -752,56 +794,41 @@ func _daily_trial_trend_chart() -> Control:
 func _weekly_challenge_section() -> Control:
 	g._ensure_weekly_challenge_current()
 	var unlocked := int(g.profile.unlocked) >= 5
-	var panel := PanelContainer.new()
-	panel.clip_contents = true
-	panel.custom_minimum_size = Vector2(0, 130)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", g._panel(Color("1a2410") if unlocked else Color("181412"), 14, Color("c8e065") if unlocked else Color("2a3d42")))
+	var bg_col := Color("141c10") if unlocked else Color("141210")
+	var border_col := Color("c8e065") if unlocked else Color("2a3d42")
+	var frame := _split_card_frame("res://assets/banners/banner_weekly_challenge.png", unlocked, bg_col, border_col, 130.0)
+	var panel: PanelContainer = frame.panel
+	var left: VBoxContainer = frame.left
 
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_weekly_challenge.png", unlocked))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var stack := VBoxContainer.new()
-	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.add_theme_constant_override("separation", 5)
-	pad.add_child(stack)
-
-	stack.add_child(g._label(g.t("ui.weekly_challenge_title"), 16, Color("c8e065") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	left.add_child(g._label(g.t("ui.weekly_challenge_title"), 15, Color("c8e065") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 	if not unlocked:
-		stack.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
-		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_weekly_challenge, Color("2d2218"), Vector2(240, 40))
+		left.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_weekly_challenge, Color("2d2218"), Vector2(160, 36))
 		enter_btn.name = "WeeklyChallengeEnterBtn"
 		enter_btn.disabled = true
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		stack.add_child(enter_btn)
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
 		return panel
-
-	stack.add_child(g._label(g.t("ui.weekly_challenge_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	var week: int = int(g.profile.weekly_challenge_record.week)
 	var tag: Dictionary = g.content.weekly_challenge_tag(week)
-	stack.add_child(g._label("%s: %s" % [g.t("ui.weekly_challenge_modifier_title"), g.content.ui(tag.nameKey, g.lang)], 9, Color("e0f0a8"), HORIZONTAL_ALIGNMENT_CENTER, true))
+	left.add_child(g._label("%s: %s" % [g.t("ui.weekly_challenge_modifier_title"), g.content.ui(tag.nameKey, g.lang)], 9, Color("e0f0a8"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var stage_num: int = int(g.profile.weekly_challenge_record.stage)
 	var stats := HBoxContainer.new()
-	stats.alignment = BoxContainer.ALIGNMENT_CENTER
-	stats.add_theme_constant_override("separation", 10)
-	stats.add_child(g._label(g.tf("ui.weekly_challenge_progress_fmt", stage_num), 11, g.GOLD))
-	stats.add_child(g._label(g.tf("ui.weekly_challenge_best_fmt", int(g.profile.weekly_challenge_record.get("best_stage", 0))), 11, g.JADE))
-	stats.add_child(g._label(g.tf("ui.weekly_challenge_badges_fmt", int(g.profile.weekly_challenge_record.get("badges", 0))), 11, Color("e0f0a8")))
-	stack.add_child(stats)
+	stats.alignment = BoxContainer.ALIGNMENT_BEGIN
+	stats.add_theme_constant_override("separation", 8)
+	stats.add_child(g._label(g.tf("ui.weekly_challenge_progress_fmt", stage_num), 10, g.GOLD))
+	stats.add_child(g._label(g.tf("ui.weekly_challenge_best_fmt", int(g.profile.weekly_challenge_record.get("best_stage", 0))), 10, g.JADE))
+	left.add_child(stats)
 
 	if stage_num >= SpiritContent.WEEKLY_CHALLENGE_STAGES:
-		stack.add_child(g._label(g.t("ui.weekly_challenge_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		left.add_child(g._label(g.t("ui.weekly_challenge_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	else:
-		var enter_btn := g._button(g.t("ui.weekly_challenge_enter"), begin_weekly_challenge, Color("4a5a20"), Vector2(240, 40))
+		var enter_btn := g._button(g.t("ui.weekly_challenge_enter"), begin_weekly_challenge, Color("4a5c18"), Vector2(160, 36))
 		enter_btn.name = "WeeklyChallengeEnterBtn"
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		stack.add_child(enter_btn)
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
 
 	return panel
 
@@ -909,51 +936,38 @@ func _hero_archetypes_section() -> Control:
 
 func _abyss_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 10
-	var panel := PanelContainer.new()
-	panel.clip_contents = true
-	panel.custom_minimum_size = Vector2(0, 110)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bg_col := Color("1b1024") if unlocked else Color("141018")
 	var border_col := Color("c79bff") if unlocked else Color("2a3d42")
-	panel.add_theme_stylebox_override("panel", g._panel(Color("1b1024") if unlocked else Color("141018"), 14, border_col))
+	var frame := _split_card_frame("res://assets/banners/banner_abyss.png", unlocked, bg_col, border_col, 116.0)
+	var panel: PanelContainer = frame.panel
+	var left: VBoxContainer = frame.left
 
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_abyss.png", unlocked))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var stack := VBoxContainer.new()
-	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.add_theme_constant_override("separation", 6)
-	pad.add_child(stack)
-
-	stack.add_child(g._label(g.t("ui.abyss_title"), 16, Color("e0b8ff") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	left.add_child(g._label(g.t("ui.abyss_title"), 15, Color("e0b8ff") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 	if not unlocked:
-		stack.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch2"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
-		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_abyss_battle, Color("2d1b33"), Vector2(240, 40))
+		left.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch2"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_abyss_battle, Color("2d1b33"), Vector2(160, 36))
 		enter_btn.name = "AbyssEnterBtn"
 		enter_btn.disabled = true
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		stack.add_child(enter_btn)
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
 		return panel
 
-	stack.add_child(g._label(g.t("ui.abyss_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	left.add_child(g._label(g.t("ui.abyss_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var floor_num: int = int(g.profile.get("abyss_floor", 1))
 	var record_num: int = int(g.profile.get("abyss_record", 0))
 
 	var stats := HBoxContainer.new()
-	stats.alignment = BoxContainer.ALIGNMENT_CENTER
-	stats.add_theme_constant_override("separation", 16)
-	stats.add_child(g._label(g.tf("ui.abyss_floor_fmt", floor_num), 11, g.GOLD))
-	stats.add_child(g._label(g.tf("ui.abyss_record_fmt", record_num), 11, g.JADE))
-	stack.add_child(stats)
+	stats.alignment = BoxContainer.ALIGNMENT_BEGIN
+	stats.add_theme_constant_override("separation", 12)
+	stats.add_child(g._label(g.tf("ui.abyss_floor_fmt", floor_num), 10, g.GOLD))
+	stats.add_child(g._label(g.tf("ui.abyss_record_fmt", record_num), 10, g.JADE))
+	left.add_child(stats)
 
-	var enter_btn := g._button(g.t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(240, 40))
+	var enter_btn := g._button(g.t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(160, 36))
 	enter_btn.name = "AbyssEnterBtn"
-	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	stack.add_child(enter_btn)
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
 
 	return panel
 
@@ -964,51 +978,38 @@ func _abyss_section() -> Control:
 # Trial/Weekly Challenge use.
 func _boss_rush_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 5
-	var panel := PanelContainer.new()
-	panel.clip_contents = true
-	panel.custom_minimum_size = Vector2(0, 110)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bg_col := Color("241407") if unlocked else Color("181210")
 	var border_col := Color("ff9a4c") if unlocked else Color("2a3d42")
-	panel.add_theme_stylebox_override("panel", g._panel(Color("241407") if unlocked else Color("181210"), 14, border_col))
+	var frame := _split_card_frame("res://assets/banners/banner_boss_rush.png", unlocked, bg_col, border_col, 116.0)
+	var panel: PanelContainer = frame.panel
+	var left: VBoxContainer = frame.left
 
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_boss_rush.png", unlocked))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var stack := VBoxContainer.new()
-	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.add_theme_constant_override("separation", 6)
-	pad.add_child(stack)
-
-	stack.add_child(g._label(g.t("ui.boss_rush_title"), 16, g.EMBER if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	left.add_child(g._label(g.t("ui.boss_rush_title"), 15, g.EMBER if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 	if not unlocked:
-		stack.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
-		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_boss_rush_battle, Color("2d1f14"), Vector2(240, 40))
+		left.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_boss_rush_battle, Color("2d1f14"), Vector2(160, 36))
 		enter_btn.name = "BossRushEnterBtn"
 		enter_btn.disabled = true
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		stack.add_child(enter_btn)
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
 		return panel
 
-	stack.add_child(g._label(g.t("ui.boss_rush_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	left.add_child(g._label(g.t("ui.boss_rush_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var floor_num: int = int(g.profile.get("boss_rush_floor", 1))
 	var record_num: int = int(g.profile.get("boss_rush_record", 0))
 
 	var stats := HBoxContainer.new()
-	stats.alignment = BoxContainer.ALIGNMENT_CENTER
-	stats.add_theme_constant_override("separation", 16)
-	stats.add_child(g._label(g.tf("ui.boss_rush_floor_fmt", floor_num), 11, g.GOLD))
-	stats.add_child(g._label(g.tf("ui.boss_rush_record_fmt", record_num), 11, g.JADE))
-	stack.add_child(stats)
+	stats.alignment = BoxContainer.ALIGNMENT_BEGIN
+	stats.add_theme_constant_override("separation", 12)
+	stats.add_child(g._label(g.tf("ui.boss_rush_floor_fmt", floor_num), 10, g.GOLD))
+	stats.add_child(g._label(g.tf("ui.boss_rush_record_fmt", record_num), 10, g.JADE))
+	left.add_child(stats)
 
-	var enter_btn := g._button(g.t("ui.boss_rush_enter"), begin_boss_rush_battle, Color("6b3410"), Vector2(240, 40))
+	var enter_btn := g._button(g.t("ui.boss_rush_enter"), begin_boss_rush_battle, Color("6b3410"), Vector2(160, 36))
 	enter_btn.name = "BossRushEnterBtn"
-	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	stack.add_child(enter_btn)
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
 
 	return panel
 
@@ -1049,52 +1050,40 @@ func begin_boss_rush_battle() -> void:
 # be farmed, and profile.health is left completely untouched on the way out (_leave_battle and
 # _advance_to_reward both special-case in_sandbox before either would write to it).
 func _sandbox_section() -> Control:
-	var panel := PanelContainer.new()
+	var bg_col := Color("0b181c")
+	var border_col := Color("5ec9d6")
+	var frame := _split_card_frame("res://assets/banners/banner_sandbox.png", true, bg_col, border_col, 130.0)
+	var panel: PanelContainer = frame.panel
 	panel.name = "SandboxSection"
-	panel.clip_contents = true
-	panel.custom_minimum_size = Vector2(0, 130)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", g._panel(Color("0d1f24"), 14, Color("5ec9d6")))
+	var left: VBoxContainer = frame.left
 
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_sandbox.png", true))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var stack := VBoxContainer.new()
-	stack.alignment = BoxContainer.ALIGNMENT_CENTER
-	stack.add_theme_constant_override("separation", 6)
-	pad.add_child(stack)
-
-	stack.add_child(g._label(g.t("ui.sandbox_title"), 16, Color("7fe3ee"), HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(g._label(g.t("ui.sandbox_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	left.add_child(g._label(g.t("ui.sandbox_title"), 15, Color("7fe3ee"), HORIZONTAL_ALIGNMENT_LEFT))
+	left.add_child(g._label(g.t("ui.sandbox_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var max_stage: int = int(g.profile.unlocked)
 	g.sandbox_stage = clampi(g.sandbox_stage, 0, max_stage)
 
 	var picker := HBoxContainer.new()
-	picker.alignment = BoxContainer.ALIGNMENT_CENTER
-	picker.add_theme_constant_override("separation", 10)
-	var prev_btn := g._button("◀", func(): g.sandbox_stage = maxi(0, g.sandbox_stage - 1); show_camp(), Color("17363e"), Vector2(36, 34))
+	picker.alignment = BoxContainer.ALIGNMENT_BEGIN
+	picker.add_theme_constant_override("separation", 8)
+	var prev_btn := g._button("◀", func(): g.sandbox_stage = maxi(0, g.sandbox_stage - 1); show_camp(), Color("17363e"), Vector2(32, 32))
 	prev_btn.name = "SandboxPrevBtn"
 	prev_btn.disabled = g.sandbox_stage <= 0
 	picker.add_child(prev_btn)
-	var stage_lbl := g._label(g.content.stage_name(g.sandbox_stage, g.lang), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	var stage_lbl := g._label(g.content.stage_name(g.sandbox_stage, g.lang), 11, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	stage_lbl.name = "SandboxStageLabel"
-	stage_lbl.custom_minimum_size = Vector2(150, 0)
+	stage_lbl.custom_minimum_size = Vector2(110, 0)
 	picker.add_child(stage_lbl)
-	var next_btn := g._button("▶", func(): g.sandbox_stage = mini(max_stage, g.sandbox_stage + 1); show_camp(), Color("17363e"), Vector2(36, 34))
+	var next_btn := g._button("▶", func(): g.sandbox_stage = mini(max_stage, g.sandbox_stage + 1); show_camp(), Color("17363e"), Vector2(32, 32))
 	next_btn.name = "SandboxNextBtn"
 	next_btn.disabled = g.sandbox_stage >= max_stage
 	picker.add_child(next_btn)
-	stack.add_child(picker)
+	left.add_child(picker)
 
-	var enter_btn := g._button(g.t("ui.sandbox_enter"), func(): begin_sandbox_battle(g.sandbox_stage), Color("0f4a52"), Vector2(240, 40))
+	var enter_btn := g._button(g.t("ui.sandbox_enter"), func(): begin_sandbox_battle(g.sandbox_stage), Color("0f4a52"), Vector2(160, 36))
 	enter_btn.name = "SandboxEnterBtn"
-	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	stack.add_child(enter_btn)
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
 
 	return panel
 
@@ -1268,31 +1257,13 @@ func _season_pass_banner() -> Control:
 	var xp_in_level: int = xp % 200 if lvl < 20 else 200
 	var xp_req: int = 200
 
-	var panel := PanelContainer.new()
+	var frame := _split_card_frame("res://assets/banners/banner_season_pass.png", true, Color("0e1c22"), g.GOLD, 106.0)
+	var panel: PanelContainer = frame.panel
 	panel.name = "SeasonPassBanner"
-	panel.clip_contents = true
-	var pstyle := g._panel(Color("10242b"), 12, g.GOLD)
-	panel.add_theme_stylebox_override("panel", pstyle)
-
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_season_pass.png", true))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
-	for side in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	pad.add_child(row)
-
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 3)
-	row.add_child(info)
+	var left: VBoxContainer = frame.left
 
 	var title_lbl := g._label(g.t("ui.season_pass_banner_title"), 13, g.GOLD)
-	info.add_child(title_lbl)
+	left.add_child(title_lbl)
 
 	var progress_row := HBoxContainer.new()
 	progress_row.add_theme_constant_override("separation", 8)
@@ -1300,18 +1271,18 @@ func _season_pass_banner() -> Control:
 	progress_row.add_child(lvl_lbl)
 	var xp_lbl := g._label("%d / %d XP" % [xp_in_level, xp_req], 10, g.JADE)
 	progress_row.add_child(xp_lbl)
-	info.add_child(progress_row)
+	left.add_child(progress_row)
 
-	var bar := g._stat_bar(140.0, 10.0, xp_in_level, xp_req, g.GOLD, "", 8)
+	var bar := g._stat_bar(130.0, 10.0, xp_in_level, xp_req, g.GOLD, "", 8)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_child(bar)
+	left.add_child(bar)
 
-	var btn_view := g._button(g.t("ui.season_pass_view"), show_season_pass, g.EMBER, Vector2(80, 36))
+	var btn_view := g._button(g.t("ui.season_pass_view"), show_season_pass, g.EMBER, Vector2(100, 32))
 	btn_view.name = "SeasonPassViewBtn"
-	btn_view.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	btn_view.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	if _has_claimable_season_pass_reward():
-		g._add_notification_dot(btn_view, Vector2(80, 36))
-	row.add_child(btn_view)
+		g._add_notification_dot(btn_view, Vector2(100, 32))
+	left.add_child(btn_view)
 
 	return panel
 
@@ -1515,40 +1486,20 @@ func _draft_arena_section() -> Control:
 	section.name = "DraftArenaSection"
 	section.add_theme_constant_override("separation", 6)
 
-	var panel := PanelContainer.new()
-	panel.clip_contents = true
-	panel.custom_minimum_size = Vector2(0, 100)
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var pstyle := g._panel(Color("16242c"), 12, g.GOLD)
-	panel.add_theme_stylebox_override("panel", pstyle)
+	var frame := _split_card_frame("res://assets/banners/banner_draft_arena.png", true, Color("101b22"), g.GOLD, 116.0)
+	var panel: PanelContainer = frame.panel
+	var left: VBoxContainer = frame.left
 
-	panel.add_child(_card_banner_texture("res://assets/banners/banner_draft_arena.png", true))
-
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
-	for side in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-	panel.add_child(pad)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	pad.add_child(row)
-
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 3)
-	row.add_child(info)
-
-	info.add_child(g._label(g.t("ui.draft_arena_title"), 14, g.GOLD))
-	info.add_child(g._label(g.t("ui.draft_arena_sub"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	left.add_child(g._label(g.t("ui.draft_arena_title"), 14, g.GOLD))
+	left.add_child(g._label(g.t("ui.draft_arena_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	if is_active:
-		info.add_child(g._label(g.tf("ui.draft_win_fmt", [wins, losses]), 11, g.JADE))
+		left.add_child(g._label(g.tf("ui.draft_win_fmt", [wins, losses]), 11, g.JADE))
 
 	var action_btn_text: String = g.tf("ui.draft_continue_btn", wins) if is_active else g.t("ui.draft_start_btn")
-	var btn := g._button(action_btn_text, show_spirit_draft, g.EMBER, Vector2(100, 42))
+	var btn := g._button(action_btn_text, show_spirit_draft, g.EMBER, Vector2(130, 36))
 	btn.name = "DraftArenaEnterBtn"
-	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(btn)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(btn)
 
 	section.add_child(panel)
 	return section
