@@ -24,6 +24,7 @@ func show_compendium() -> void:
 		["relics", g.t("ui.relic_title")],
 		["bestiary", g.t("ui.compendium_tab_bestiary")],
 		["achievements", g.t("ui.compendium_tab_achievements")],
+		["chronicle", g.t("ui.compendium_tab_chronicle")],
 	], g.compendium_tab, func(id): g.compendium_tab = id; show_compendium()))
 
 	var scroll := TouchScrollContainer.new()
@@ -41,7 +42,8 @@ func show_compendium() -> void:
 		"runes": _build_compendium_runes(list)
 		"relics": _build_compendium_relics(list)
 		"bestiary": _build_compendium_bestiary(list)
-		_: _build_compendium_achievements(list)
+		"achievements": _build_compendium_achievements(list)
+		_: _build_compendium_chronicle(list)
 
 func _build_compendium_milestones_bar(pct: int) -> Control:
 	var bar_panel := PanelContainer.new()
@@ -98,7 +100,7 @@ func _claim_compendium_milestone(target: int) -> void:
 # generic "undiscovered" label) and one detail line on the right. Discovered items get their
 # real color as the border accent; undiscovered ones fall back to a flat, uninformative gray
 # so nothing about a locked entry's rarity or theme leaks through before it's actually found.
-func _compendium_row(badge: Control, title: String, detail: String, discovered: bool, accent: Color) -> Control:
+func _compendium_row(badge: Control, title: String, detail: String, discovered: bool, accent: Color, locked_label := "") -> Control:
 	var panel := Panel.new()
 	panel.custom_minimum_size.y = 68
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -124,7 +126,7 @@ func _compendium_row(badge: Control, title: String, detail: String, discovered: 
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	texts.add_theme_constant_override("separation", 2)
 	row.add_child(texts)
-	texts.add_child(g._label(title if discovered else g.t("ui.compendium_locked"), 13, g.TEXT if discovered else g.MUTED))
+	texts.add_child(g._label(title if discovered else (locked_label if not locked_label.is_empty() else g.t("ui.compendium_locked")), 13, g.TEXT if discovered else g.MUTED))
 	if discovered and not detail.is_empty():
 		var detail_lbl := g._label(detail, 9, g.JADE, HORIZONTAL_ALIGNMENT_LEFT, true)
 		detail_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -184,6 +186,30 @@ func _build_compendium_bestiary(list: VBoxContainer) -> void:
 		else:
 			badge = _compendium_locked_badge()
 		list.add_child(_compendium_row(badge, name_str, g.content.enemy_lore(enemy, g.lang), discovered, Color(enemy.get("tint", "83e4c1"))))
+
+# Unlocked in lockstep with the map's own chapter-lock rule (chapter * 5 <= profile.unlocked,
+# same check game_map_screen.gd's _add_map_chapter uses) rather than a separate discovery
+# flag, so a fresh save's Chronicle tab fills in exactly as fast as the player actually travels
+# — no migration needed for existing saves either, since it reads progress already there.
+func _build_compendium_chronicle(list: VBoxContainer) -> void:
+	var chapter_count: int = SpiritContent.CHAPTER_NAMES_ZH.size()
+	var unlocked_n: int = clampi(int(g.profile.unlocked) / 5 + 1, 0, chapter_count)
+	list.add_child(g._label(g.tf("ui.compendium_progress", [unlocked_n, chapter_count]), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	for chapter in range(chapter_count):
+		var discovered: bool = chapter * 5 <= int(g.profile.unlocked)
+		var badge: Control
+		if discovered:
+			var tex := TextureRect.new()
+			tex.texture = g._get_chapter_map_texture(chapter)
+			tex.custom_minimum_size = Vector2(46, 60)
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			tex.clip_contents = true
+			badge = tex
+		else:
+			badge = _compendium_locked_badge()
+		var title: String = "%d · %s" % [chapter + 1, g.content.chapter_name(chapter, g.lang)]
+		list.add_child(_compendium_row(badge, title, g.content.chapter_lore(chapter, g.lang), discovered, g.JADE, g.t("ui.chronicle_locked")))
 
 func _build_compendium_achievements(list: VBoxContainer) -> void:
 	if not g.profile.get("achievements_unlocked") is Dictionary: g.profile.achievements_unlocked = {}

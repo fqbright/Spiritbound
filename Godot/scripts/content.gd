@@ -21,6 +21,117 @@ const CHAPTER_NAMES_EN = [
 ]
 const WAYPOINT_ZH = ["入口", "渡口", "神社", "要塞", "王座"]
 const WAYPOINT_EN = ["Trailhead", "Crossing", "Shrine", "Stronghold", "Crown"]
+
+# One chronicle entry per chapter, unlocked in step with the map's own chapter-lock rule
+# (chapter * 5 <= profile.unlocked) rather than any separate flag — reads as a travelogue the
+# player fills in just by playing, with no extra bookkeeping of its own. The 50 chapters read
+# as five 10-chapter realms tracing one arc: wake in the mortal Mistwood, descend into the
+# sunken/undead depths, climb into a storm-wracked sky realm, pass beyond it into lightless
+# void, and finally reach the primordial realm where the world was both forged and will end.
+const CHAPTER_LORE_ZH = [
+	"灵狐初醒之地，终年不散的浓雾中藏着最早的低阶亡魂。",
+	"河水早已被战火染成灰烬色，三角洲上仍能听见旧日战鼓的余音。",
+	"山峰终年悬着雷云，传说峰顶封印着一头未曾苏醒的雷兽。",
+	"废弃的边境要塞，如今只有披着岩甲的哨兵仍在履行早已无人下达的命令。",
+	"荆棘吞没了所有旧日道路，唯有循着灵光才能找到穿行的缝隙。",
+	"退潮时露出的滩涂上，散落着无数微弱灵魂随波而来又随波而去。",
+	"供奉着古老灵狐一族的圣域，翠玉神像的裂缝里渗出微弱却持续的灵气。",
+	"长原上的幻雾能重现旅人最深的记忆，也最擅长把它们变成陷阱。",
+	"活火山的怒焰从未真正熄灭，山腹中沉睡着一头以怒火为食的古兽。",
+	"传说中万物最初被锻造成形之地，如今熔炉仍在运转，锻造着不该存在的东西。",
+	"一座曾经辉煌的城市沉入地底，如今只剩残垣间游荡的旧日居民。",
+	"看似平静的深渊水面下，暗涌裹挟着无数不愿沉睡的怨灵。",
+	"回廊无始无终，亡灵们仍在其中重复着死前最后一刻的动作。",
+	"每当血月升起，峡谷的岩壁便会渗出暗红色的、拒绝干涸的液体。",
+	"沼泽的酸雾能在几日内蚀穿骨骼，也正因此格外偏爱瘴气生物栖居。",
+	"一座葬着整座古国的墓园，安静得连脚步声都显得多余。",
+	"断崖间的风声撕扯着经过的每一缕灵魂，据说崖底堆满了被撕碎的记忆。",
+	"深渊底部彻底断绝了阳光，连灵狐一族的灵火也只能勉强照亮脚下。",
+	"荒原上的影子会独立于主人行动，且格外贪婪地吞噬其他灵魂的影子。",
+	"深渊尽头的王座早已空置千年，但王座本身仍在散发着统御一切亡灵的意志。",
+	"孤峰刺穿云海，站在峰顶能望见脚下整片大陆，也能望见头顶更高的风暴。",
+	"天堑中终年游走着实体化的雷电，劈开的不只是岩石，还有闯入者的运气。",
+	"断岭被烈风打磨了千万年，风声中仍能辨出远古灵兽振翅的回音。",
+	"荒漠中散落着坠落星辰的碎片，每一块都还带着来自天外的余温。",
+	"冰原上空的极光并非天象，而是无数被冻结的灵魂仍在无声呐喊的光。",
+	"回廊悬浮于云层之上，据说是古代天工匠人为守护苍穹而建的最后防线。",
+	"天穹上的裂隙从未愈合，透过裂隙能瞥见另一重天空，以及不属于此界的目光。",
+	"圣域由陨石建成，古代祭司在此观测星轨，直到星轨本身开始观测他们。",
+	"一座悬浮的天牢，囚禁的对象早已逃脱，只剩回音仍在履行看守的职责。",
+	"自封为苍穹主宰者的宝座悬于风暴眼中央，风暴本身就是它的意志延伸。",
+	"越过苍穹尽头便是彻底的虚无，连灵火在此也只能勉强维持一豆微光。",
+	"传说万物终将坠入的归墟就藏在这片虚空深处，暗流正缓缓将一切拖向那里。",
+	"回廊中的一切声音、色彩与记忆都在缓慢湮灭，唯有意志足够坚定者才能留下痕迹。",
+	"深渊彻底吞噬光线，包括从外界带入的灵火——你只能凭感觉战斗。",
+	"一整座曾经存在过的世界，如今只剩孤岛大小的残片漂浮在虚空中。",
+	"裂痕深处传出的低语声，据说是无数破碎世界临死前最后的记录。",
+	"秘境守护着归墟的入口，历代守护者最终都选择了坠入，而非继续守护。",
+	"窟中封存着万千灵魂的残响，据说数量恰好等于这个世界曾经失去的一切。",
+	"此地连湮灭本身都开始产生回音，仿佛虚无也在害怕被彻底遗忘。",
+	"归墟主宰从不言语，因为在它统治的领域里，语言本身早已失去意义。",
+	"裂隙深处仍残留着世界诞生瞬间的余温，触碰它的手会短暂忘记时间的存在。",
+	"回廊尚未被秩序整理过，脚下的路会随着走过它的意志而改变形状。",
+	"每一颗星辰最初都在此炉中锻造，如今炉火仍未熄灭，只是不再锻造星辰。",
+	"此地时间不再流动，所有曾经发生过的战斗都在永恒回音中反复上演。",
+	"巨眼俯瞰着所有平行存在的世界，据说它眨眼的间隙，便是一整个世界的终结。",
+	"深渊既是世界诞生之处，也是世界最终归于虚无之处——起点与终点在此重叠。",
+	"裂境中过去、现在与未来同时存在，稍有不慎便会与另一个时间线的自己交手。",
+	"所有曾经存在过的灵魂最终都会汇聚于此，包括那些尚未死去、却注定要来的。",
+	"世界诞生时发出的第一声回响仍未消散，越靠近尽头，回响就越清晰。",
+	"万象的终焉，也是万象的起点——传说灵狐一族最初的记忆，就诞生于此地即将崩塌的瞬间。",
+]
+const CHAPTER_LORE_EN = [
+	"Where the fox spirit first wakes — a fog that never lifts, and the first restless dead hiding in it.",
+	"The river ran to ash generations ago; the delta still echoes with the drums of a war no one remembers starting.",
+	"Thunderheads never leave these peaks — legend says something enormous sleeps beneath the highest one.",
+	"An abandoned border fortress where stone-clad sentries still stand a post no one has ordered them to hold in centuries.",
+	"Thorns have swallowed every old road — only a trace of spirit-light still finds a way through.",
+	"At low tide the flats fill with countless faint spirits, washed in and out like driftwood.",
+	"A sanctuary built for the ancient fox-spirit line — faint power still seeps from the cracks in its jade idols.",
+	"The mirage-fog here conjures a traveler's deepest memories — and is just as good at turning them into traps.",
+	"The caldera's fury never truly cools — something ancient sleeps in its belly, feeding on the rage itself.",
+	"Where the world itself was said to be first forged — the furnace still burns, shaping things that were never meant to exist.",
+	"A once-glorious city sank into the earth; only its former residents still wander the ruins.",
+	"Beneath a deceptively calm surface, hidden currents drag countless restless spirits who refuse to sleep.",
+	"A corridor with no beginning and no end, where the dead endlessly relive the instant before they died.",
+	"Whenever the bloodmoon rises, the canyon walls weep a dark red fluid that never dries.",
+	"Its acid mist can eat through bone in days — which is exactly why miasma-born things call it home.",
+	"A necropolis holding an entire fallen kingdom, so silent that even footsteps feel like an intrusion.",
+	"The wind between these cliffs tears at every passing soul — the base is said to be piled with shredded memories.",
+	"No light has ever reached the bottom of this abyss — even foxfire can barely hold back the dark underfoot.",
+	"Shadows here move on their own, and hunger — quite literally — for other souls' shadows.",
+	"The throne at the abyss's end has sat empty for a thousand years — yet it still radiates the will to command every restless dead.",
+	"A lone peak piercing the cloud-sea — from its summit you can see the whole continent below, and a bigger storm above.",
+	"Solid lightning roams this rift year-round, splitting stone — and the luck of anyone foolish enough to enter.",
+	"Ground down by gales for ten thousand years, the ridge's wind still carries the echo of an ancient spirit-beast's wingbeats.",
+	"Fallen star-fragments litter this desert, each one still faintly warm with heat from somewhere beyond the sky.",
+	"The aurora here isn't weather — it's the silent, frozen scream of countless trapped spirits, still glowing.",
+	"A corridor suspended above the clouds, said to be the last line the old sky-artificers built to guard the heavens.",
+	"A fissure in the sky itself that never healed — through it, glimpses of another heaven, and eyes that don't belong to this one.",
+	"Built from meteoric stone — ancient priests once charted the stars here, until the stars began charting them back.",
+	"A floating prison whose prisoner escaped long ago — only the echo of its wardens still keeps watch.",
+	"The self-proclaimed sovereign's throne hangs at the eye of the storm — the storm itself is just an extension of its will.",
+	"Past the edge of the sky lies pure nothing — even foxfire barely holds on to a single flickering point of light.",
+	"The mythic Netherfall — where all things are said to finally fall — hides in this void, and its current is slowly dragging everything toward it.",
+	"Every sound, color, and memory here slowly erodes into nothing — only the strongest will leaves any trace at all.",
+	"This abyss devours all light, including foxfire carried in from outside — you fight here by feel alone.",
+	"An entire world that once existed, now shrunk to a single drifting island-sized fragment in the void.",
+	"A low whisper drifts from deep in the rift — said to be the last recorded words of countless shattered worlds.",
+	"A sanctum guarding the Netherfall's entrance — every guardian before this one eventually chose to fall in rather than keep watching.",
+	"A chamber holding the residual echoes of ten thousand souls — said to number exactly everything this world has ever lost.",
+	"Even oblivion itself echoes here, as if the void were afraid of being forgotten completely.",
+	"The Sovereign of the Void never speaks — in the realm it rules, language lost its meaning long ago.",
+	"The rift still holds the warmth of the world's first instant — touch it, and your hand briefly forgets time exists.",
+	"This corridor has never been touched by order — the path underfoot reshapes itself to match whoever's will is strongest.",
+	"Every star was once forged in this furnace — the fire never went out, it simply stopped making stars.",
+	"Time doesn't pass here — every battle that ever happened just keeps replaying, forever.",
+	"A vast eye watching over every parallel world at once — a single blink, they say, is long enough to end one.",
+	"The abyss where the world was born is the same abyss it will return to — beginning and end, folded into one place.",
+	"Past, present, and future all coexist in this rift — one wrong step, and you're fighting a version of yourself from another timeline.",
+	"Every spirit that has ever existed eventually converges here — including those not yet dead, but already destined to arrive.",
+	"The very first sound the world ever made still hasn't faded — the closer you get to the end, the clearer it rings.",
+	"The end of all things is also their beginning — legend holds that the fox spirits' very first memory was born in this place's final, collapsing instant.",
+]
 const ENEMIES = [
 	{"name":"雾林守卫", "name_en":"Mistwood Sentinel", "art":"sentinel-v1.jpg", "tint":"83e4c1", "lore":"游荡于雾林间的古老哨兵，行动迟缓但极难被击溃。", "lore_en":"An ancient sentinel wandering the misty woods — slow, but brutally hard to bring down."},
 	{"name":"提灯石卫", "name_en":"Lanternstone Keeper", "art":"lanternstone-keeper-v1.jpg", "tint":"75d7d2", "lore":"以石灯照亮回廊的守望者，偏好稳固防御与反复布阵。", "lore_en":"A watcher lighting the corridors with stone lanterns, favoring steady defense over aggression."},
@@ -184,6 +295,11 @@ func chapter_name(chapter: int, language := "zh-Hans") -> String:
 	var index: int = clampi(chapter, 0, CHAPTER_NAMES_ZH.size() - 1)
 	if language == "zh-Hans": return CHAPTER_NAMES_ZH[index]
 	return CHAPTER_NAMES_EN[index]
+
+func chapter_lore(chapter: int, language := "zh-Hans") -> String:
+	var index: int = clampi(chapter, 0, CHAPTER_LORE_ZH.size() - 1)
+	if language == "zh-Hans": return CHAPTER_LORE_ZH[index]
+	return CHAPTER_LORE_EN[index]
 
 func waypoint_name(level: int, language := "zh-Hans") -> String:
 	var index: int = clampi(level, 0, WAYPOINT_ZH.size() - 1)
@@ -1110,6 +1226,8 @@ const UI_TEXT = {
 	"ui.login_reward_tier_fmt": {"zh-Hans":"登录满 %d 天", "en":"Log in %d days"},
 	"ui.login_reward_claimed_toast": {"zh-Hans":"登录奖励 +%d 金币", "en":"Login reward +%d gold"},
 	"ui.compendium_tab_achievements": {"zh-Hans":"成就", "en":"Achievements"},
+	"ui.compendium_tab_chronicle": {"zh-Hans":"编年史", "en":"Chronicle"},
+	"ui.chronicle_locked": {"zh-Hans":"尚未抵达", "en":"Not yet reached"},
 	"ui.camp_tab_character": {"zh-Hans":"角色", "en":"Character"},
 	"ui.camp_tab_challenges": {"zh-Hans":"挑战", "en":"Challenges"},
 	"ui.camp_tab_collection": {"zh-Hans":"收藏", "en":"Collection"},

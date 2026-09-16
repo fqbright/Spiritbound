@@ -1600,6 +1600,25 @@ func _run() -> void:
 	await process_frame
 	check(game.root.get_child_count() > 0, "Bestiary tab renders")
 
+	section("== world lore: chronicle compendium tab ==")
+	check(_find_button_containing(game.root, game.content.ui("ui.compendium_tab_chronicle", game.lang)) != null, "Chronicle tab button exists")
+	var prior_unlocked: int = int(game.profile.unlocked)
+	game.profile.unlocked = 0
+	game.compendium_tab = "chronicle"
+	game.show_compendium()
+	await process_frame
+	check(_find_label_containing(game.root, game.content.chapter_name(0, game.lang)), "chapter 1, always reached, shows its real name in the Chronicle")
+	check(_find_label_text(game.root, game.content.chapter_lore(0, game.lang)), "chapter 1's chronicle entry text renders")
+	check(_find_label_text(game.root, game.t("ui.chronicle_locked")), "an unreached chapter shows the chronicle-specific locked label")
+	check(not _find_label_text(game.root, game.content.chapter_lore(49, game.lang)), "chapter 50's lore stays hidden before it's reached")
+
+	game.profile.unlocked = 49 * 5
+	game.show_compendium()
+	await process_frame
+	check(_find_label_containing(game.root, game.content.chapter_name(49, game.lang)), "reaching chapter 50 reveals its real name in the Chronicle")
+	check(_find_label_text(game.root, game.content.chapter_lore(49, game.lang)), "reaching chapter 50 reveals its chronicle entry text")
+	game.profile.unlocked = prior_unlocked
+
 	# A synthetic key is used here (rather than a real card/equipment id) so the check doesn't
 	# depend on what earlier sections in this same long-running suite already collected or
 	# fought — this suite shares one profile across every section.

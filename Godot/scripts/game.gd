@@ -1068,6 +1068,7 @@ func _has_claimable_camp_reward() -> bool: return _map_screen._has_claimable_cam
 func _claimable_reward_count() -> int: return _map_screen._claimable_reward_count()
 func _chapter_waypoints(chapter: int) -> Array: return _map_screen._chapter_waypoints(chapter)
 func _chapter_has_unique_art(chapter: int) -> bool: return _map_screen._chapter_has_unique_art(chapter)
+func _get_chapter_map_texture(chapter: int) -> Texture2D: return _map_screen._get_chapter_map_texture(chapter)
 func _map_point(index: int) -> Vector2: return _map_screen._map_point(index)
 func _build_road_curve(points: PackedVector2Array) -> Curve2D: return _map_screen._build_road_curve(points)
 func _get_road_texture() -> NoiseTexture2D: return _map_screen._get_road_texture()
