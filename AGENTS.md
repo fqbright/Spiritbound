@@ -51,6 +51,10 @@ attached, say so rather than claiming a change was visually verified.
    already tracked; just do not add to the churn.
 5. **State how you verified.** Headless-only is acceptable. Claiming a visual check you did
    not perform is not.
+6. **Always consult and leverage the workspace skills in `.agents/skills/`**:
+   - Modifying UI, GDScript, or screen layouts: Consult `.agents/skills/godot-game-dev/SKILL.md`.
+   - Deploying to physical iOS or debugging devicectl: Consult `.agents/skills/ios-device-deploy/SKILL.md`.
+   - Designing/tuning cards, relics, energy curves, or build scores: Consult `.agents/skills/spiritbound-balance-design/SKILL.md`.
 
 ## Traps that have already cost time here
 
