@@ -2083,6 +2083,89 @@ func _run() -> void:
 	check(draft_deck.has(first_card_id), "picked card is added to arena draft deck")
 	check(int(game.profile.draft_arena.round) == 2, "draft round advances to 2 after pick")
 
+	section("== UI Clickability & Occlusion Suite ==")
+	# 1. Map Header Buttons (Quest, Camp, Settings)
+	game.show_map()
+	await process_frame
+	await process_frame
+	var chk_quest_btn: Control = game.root.find_child("QuestButton", true, false) as Control
+	check_clickable(chk_quest_btn, "Map QuestButton")
+	var chk_camp_btn: Control = game.root.find_child("CampButton", true, false) as Control
+	check_clickable(chk_camp_btn, "Map CampButton")
+	var chk_settings_btn: Control = game.root.find_child("SettingsButton", true, false) as Control
+	check_clickable(chk_settings_btn, "Map SettingsButton")
+
+	# Test tapping QuestButton
+	tap_button(chk_quest_btn, "Map QuestButton")
+	await process_frame
+	check(game.root.find_child("SeasonPassBanner", true, false) != null, "QuestButton click opens Quests screen")
+
+	# Test tapping CampButton
+	game.camp_tab = "character"
+	game.show_map()
+	await process_frame
+	chk_camp_btn = game.root.find_child("CampButton", true, false) as Control
+	tap_button(chk_camp_btn, "Map CampButton")
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.camp_title", game.lang)), "CampButton click opens Camp screen")
+
+	# Test tapping SettingsButton
+	game.show_map()
+	await process_frame
+	chk_settings_btn = game.root.find_child("SettingsButton", true, false) as Control
+	tap_button(chk_settings_btn, "Map SettingsButton")
+	await process_frame
+	check(game.overlay.find_child("SettingsModal", true, false) != null, "SettingsButton click opens SettingsModal")
+
+	# Inside SettingsModal: check all interactive buttons
+	var chk_settings_modal: Node = game.overlay.find_child("SettingsModal", true, false)
+	if chk_settings_modal != null:
+		var chk_close_btn: Control = chk_settings_modal.find_child("SettingsCloseBtn", true, false) as Control
+		check_clickable(chk_close_btn, "SettingsCloseBtn")
+		var chk_motion_toggle: Control = chk_settings_modal.find_child("ReduceMotionToggleBtn", true, false) as Control
+		check_clickable(chk_motion_toggle, "ReduceMotionToggleBtn")
+		var chk_apple_login: Control = chk_settings_modal.find_child("SignInWithAppleBtn", true, false) as Control
+		check_clickable(chk_apple_login, "SignInWithAppleBtn in Settings")
+		tap_button(chk_close_btn, "SettingsCloseBtn")
+		await process_frame
+		check(game.overlay.find_child("SettingsModal", true, false) == null, "SettingsCloseBtn click dismisses modal")
+
+	# 2. Stage Replay Modal Clickability
+	game._show_replay_mode_prompt(0)
+	await process_frame
+	var chk_replay_modal: Node = game.overlay.find_child("ReplayModal", true, false)
+	check(chk_replay_modal != null, "ReplayModal opens on stage replay prompt")
+	if chk_replay_modal != null:
+		var chk_replay_normal: Control = chk_replay_modal.find_child("ReplayNormalBtn", true, false) as Control
+		check_clickable(chk_replay_normal, "ReplayNormalBtn")
+		var chk_replay_hard: Control = chk_replay_modal.find_child("ReplayHardBtn", true, false) as Control
+		check_clickable(chk_replay_hard, "ReplayHardBtn")
+		var chk_replay_close: Control = chk_replay_modal.find_child("ReplayCloseBtn", true, false) as Control
+		check_clickable(chk_replay_close, "ReplayCloseBtn")
+		tap_button(chk_replay_close, "ReplayCloseBtn")
+		await process_frame
+		check(game.overlay.find_child("ReplayModal", true, false) == null, "ReplayCloseBtn click dismisses ReplayModal")
+
+	# 3. Deck Import Modal Clickability
+	game.show_deck()
+	await process_frame
+	var chk_export_btn: Control = game.root.find_child("DeckExportBtn", true, false) as Control
+	check_clickable(chk_export_btn, "DeckExportBtn")
+	var chk_import_btn: Control = game.root.find_child("DeckImportBtn", true, false) as Control
+	check_clickable(chk_import_btn, "DeckImportBtn")
+	tap_button(chk_import_btn, "DeckImportBtn")
+	await process_frame
+	var chk_import_modal: Node = game.overlay.find_child("DeckImportModal", true, false)
+	check(chk_import_modal != null, "DeckImportModal opens on import button tap")
+	if chk_import_modal != null:
+		var chk_import_confirm: Control = chk_import_modal.find_child("DeckImportConfirmBtn", true, false) as Control
+		check_clickable(chk_import_confirm, "DeckImportConfirmBtn")
+		var chk_import_close: Control = chk_import_modal.find_child("DeckImportCloseBtn", true, false) as Control
+		check_clickable(chk_import_close, "DeckImportCloseBtn")
+		tap_button(chk_import_close, "DeckImportCloseBtn")
+		await process_frame
+		check(game.overlay.find_child("DeckImportModal", true, false) == null, "DeckImportCloseBtn click dismisses modal")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
@@ -2101,6 +2184,100 @@ func _effective_z(node: Node) -> int:
 		if current is CanvasItem: total += (current as CanvasItem).z_index
 		current = current.get_parent()
 	return total
+
+# Determines if node_a draws on top of node_b in Godot's 2D canvas rendering order.
+func _is_drawn_above(node_a: Control, node_b: Control) -> bool:
+	var za := _effective_z(node_a)
+	var zb := _effective_z(node_b)
+	if za != zb:
+		return za > zb
+	var path_a: Array = []
+	var curr: Node = node_a
+	while curr != null:
+		path_a.append(curr)
+		curr = curr.get_parent()
+	var path_b: Array = []
+	curr = node_b
+	while curr != null:
+		path_b.append(curr)
+		curr = curr.get_parent()
+	var lca: Node = null
+	for na in path_a:
+		if na in path_b:
+			lca = na
+			break
+	if lca == null:
+		return false
+	var idx_a := path_a.find(lca)
+	var idx_b := path_b.find(lca)
+	if idx_a > 0 and idx_b > 0:
+		var branch_a: Node = path_a[idx_a - 1]
+		var branch_b: Node = path_b[idx_b - 1]
+		return branch_a.get_index() > branch_b.get_index()
+	return false
+
+# Physical hit-test & occlusion checker: verifies a Control can genuinely receive
+# touch/click input on a mobile screen without being obscured, zero-sized, or blocked.
+func find_occlusion(target: Control) -> String:
+	if target == null:
+		return "target node is null"
+	if not target.is_inside_tree():
+		return "target is not inside scene tree"
+	if not target.is_visible_in_tree():
+		return "target is not visible in tree"
+	if target is BaseButton and (target as BaseButton).disabled:
+		return "button is disabled"
+	if target.size.x < 4.0 or target.size.y < 4.0:
+		return "button size is too small or collapsed (%s)" % str(target.size)
+	
+	var rect := target.get_global_rect()
+	var center := rect.get_center()
+	
+	if center.x < 0.0 or center.x > 390.0 or center.y < 0.0 or center.y > 844.0:
+		return "button center %s is outside viewport bounds (390x844)" % str(center)
+	
+	# 1. Check all descendants of target for MOUSE_FILTER_STOP that cover center
+	var stack: Array = [target]
+	while not stack.is_empty():
+		var curr: Node = stack.pop_back()
+		if curr != target and curr is Control:
+			var c := curr as Control
+			if c.is_visible_in_tree() and c.mouse_filter == Control.MOUSE_FILTER_STOP:
+				if c.get_global_rect().has_point(center):
+					return "decorative child '%s' (%s) has MOUSE_FILTER_STOP, swallowing tap" % [c.name, c.get_class()]
+		for child in curr.get_children():
+			stack.append(child)
+	
+	# 2. Check all other controls in scene tree that draw above target and cover its center
+	var root_node := target.get_tree().root
+	stack = [root_node]
+	while not stack.is_empty():
+		var curr: Node = stack.pop_back()
+		if curr is Control:
+			var c := curr as Control
+			if c.is_visible_in_tree() and c.mouse_filter == Control.MOUSE_FILTER_STOP:
+				if c != target and not c.is_ancestor_of(target) and not target.is_ancestor_of(c):
+					if c.get_global_rect().has_point(center):
+						if _is_drawn_above(c, target):
+							return "occluded by '%s' (%s, z=%d) with MOUSE_FILTER_STOP" % [c.name, c.get_class(), _effective_z(c)]
+		for child in curr.get_children():
+			stack.append(child)
+	
+	return ""
+
+func check_clickable(target: Control, desc: String) -> bool:
+	if target == null:
+		check(false, "%s exists and is clickable" % desc)
+		return false
+	var err := find_occlusion(target)
+	var ok := err.is_empty()
+	check(ok, "%s is physically clickable (unblocked): %s" % [desc, "OK" if ok else err])
+	return ok
+
+func tap_button(target: Control, desc: String) -> void:
+	if check_clickable(target, desc):
+		if target.has_signal("pressed"):
+			target.emit_signal("pressed")
 
 func _max_z(node: Node) -> int:
 	var best := _effective_z(node)
