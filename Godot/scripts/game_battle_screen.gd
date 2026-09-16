@@ -378,13 +378,17 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 
 	var weakened: bool = int(enemy.get("weak", 0)) > 0
 	var idle := sprite.create_tween().set_loops()
-	# Weak visibly saps the enemy's energy: a slower, shallower bob instead of the usual bounce.
+	# Organic breathing: Y bobbing + thoracic squash & stretch
 	if weakened:
-		idle.tween_property(sprite, "position:y", sprite.position.y - 2.0, 1.6).set_trans(Tween.TRANS_SINE)
-		idle.tween_property(sprite, "position:y", sprite.position.y + 1.0, 1.8).set_trans(Tween.TRANS_SINE)
+		idle.tween_property(sprite, "position:y", sprite.position.y - 2.0, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.99, scale_factor * 1.015), 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 1.0, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.01, scale_factor * 0.985), 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	else:
-		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
-		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_apply_status_fx(unit, sprite, sprite.position, spr_size.x / 2.0, enemy)
 
 	# Intent banner: just the drawn icon (already distinct per intent kind — shield for
@@ -1558,29 +1562,177 @@ func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 # Stays synchronous so callers get a real bool back; the animation runs in _resolve_play.
 func _attempt_play_card(hand_index: int, target: int) -> bool:
 	if g.combat == null or g.combat.state.phase != "player" or g.resolving: return false
+	var card_id: String = str(g.combat.state.hand[hand_index].card_id) if hand_index < g.combat.state.hand.size() else ""
+	var card: Dictionary = g.content.card(card_id)
 	var before: Array = []
 	for enemy in g.combat.state.enemies: before.append(int(enemy.health))
 	var player_shield_before: int = int(g.combat.state.player.shield)
+	var player_health_before: int = int(g.combat.state.player.health)
+	var player_focus_before: int = int(g.combat.state.player.get("focus", 0))
+	var player_strength_before: int = int(g.combat.state.player.get("strength", 0))
 	if not g.combat.play(hand_index, target):
 		g._toast(g.t("ui.target_invalid"))
 		return false
 	g.selected_card = -1
 	g.resolving = true
-	_resolve_play(before, player_shield_before)
+	_resolve_play(before, player_shield_before, player_health_before, player_focus_before, player_strength_before, card)
 	return true
 
-func _resolve_play(before: Array, player_shield_before: int = 0) -> void:
+func _resolve_play(before: Array, player_shield_before: int = 0, player_health_before: int = 0, player_focus_before: int = 0, player_strength_before: int = 0, card: Dictionary = {}) -> void:
+	# 1. Shield Gain Animation (Spirit Aegis Crest -> Character -> Barrier Ring)
 	var player_shield_after: int = int(g.combat.state.player.shield)
 	var shield_gained: int = player_shield_after - player_shield_before
 	if shield_gained > 0:
 		await _animate_player_shield_gain(shield_gained)
 
+	# 2. Heal Animation (Jade Celestial Lotus)
+	var player_health_after: int = int(g.combat.state.player.health)
+	var health_gained: int = player_health_after - player_health_before
+	if health_gained > 0:
+		await _animate_player_heal(health_gained)
+
+	# 3. Focus / Strength Buff Animation (Ascending Golden Qi Pillar)
+	var focus_gained: int = int(g.combat.state.player.get("focus", 0)) - player_focus_before
+	var strength_gained: int = int(g.combat.state.player.get("strength", 0)) - player_strength_before
+	if focus_gained > 0:
+		var focus_text: String = "+%d %s" % [focus_gained, g.t("desc.focus") if g.lang == "zh-Hans" else "Focus"]
+		await _animate_player_buff(focus_text)
+	elif strength_gained > 0:
+		var str_text: String = "+%d %s" % [strength_gained, g.t("desc.strength") if g.lang == "zh-Hans" else "Strength"]
+		await _animate_player_buff(str_text)
+
+	# 4. Attack Slashes & Hits on Enemies (Curved Blade Arc / Beast Claws)
+	var card_id: String = str(card.get("id", ""))
 	for i in g.combat.state.enemies.size():
 		if i < before.size() and before[i] > g.combat.state.enemies[i].health:
+			_animate_attack_slash(i, card_id)
 			await _animate_enemy_hit(i, before[i] - g.combat.state.enemies[i].health, g.combat.state.enemies[i].health <= 0)
+
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
+
+func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
+	if g.overlay == null or g.get_tree() == null: return
+	var box: Control = null
+	for candidate in g.enemy_boxes:
+		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index")) == enemy_index:
+			box = candidate
+			break
+	if box == null: return
+
+	var enemy_pos: Vector2 = box.global_position + box.size / 2.0
+	var is_claw: bool = card_id.contains("claw") or card_id.contains("ember") or card_id.contains("wild")
+	var vfx_path := "res://assets/vfx/spirit_claw_scratch.png" if is_claw else "res://assets/vfx/spirit_slash_arc.png"
+	if not ResourceLoader.exists(vfx_path): return
+
+	var slash := Sprite2D.new()
+	slash.name = "AnimSlashVFX"
+	slash.texture = load(vfx_path)
+	slash.position = enemy_pos
+	slash.z_index = 380
+	slash.scale = Vector2(0.04, 0.04)
+	slash.rotation_degrees = randf_range(-15.0, 15.0)
+	g.overlay.add_child(slash)
+
+	var dur_slash: float = g._battle_delay(0.18)
+	var tween := slash.create_tween().set_parallel(true)
+	var target_scale := 0.22 if is_claw else 0.20
+	tween.tween_property(slash, "scale", Vector2(target_scale, target_scale), dur_slash).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(slash, "rotation_degrees", slash.rotation_degrees + (18.0 if is_claw else 24.0), dur_slash)
+	tween.tween_property(slash, "modulate:a", 0.0, dur_slash * 0.5).set_delay(dur_slash * 0.5)
+	await tween.finished
+	slash.queue_free()
+
+func _animate_player_heal(amount: int) -> void:
+	if g.overlay == null or g.get_tree() == null: return
+	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_node == null or not is_instance_valid(player_node): return
+
+	var target_pos: Vector2 = player_node.global_position
+	g._haptic("light")
+
+	if ResourceLoader.exists("res://assets/vfx/spirit_heal_lotus.png"):
+		var lotus := Sprite2D.new()
+		lotus.name = "AnimHealLotus"
+		lotus.texture = load("res://assets/vfx/spirit_heal_lotus.png")
+		lotus.position = target_pos
+		lotus.scale = Vector2(0.02, 0.02)
+		lotus.z_index = 360
+		lotus.modulate = Color(1.2, 1.6, 1.3, 0.9)
+		g.overlay.add_child(lotus)
+
+		var dur: float = g._battle_delay(0.32)
+		var tween := lotus.create_tween().set_parallel(true)
+		tween.tween_property(lotus, "scale", Vector2(0.16, 0.16), dur).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(lotus, "rotation_degrees", 60.0, dur)
+		tween.tween_property(lotus, "modulate:a", 0.0, dur * 0.4).set_delay(dur * 0.6)
+		tween.chain().tween_callback(lotus.queue_free)
+
+	_flash_hit(player_node, Color("80ffc0"))
+	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
+	var swell := player_node.create_tween()
+	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.08, base_scale * 1.08), g._battle_delay(0.12)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.16)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+	var popup := g._label("+%d ♥" % amount, 30, Color("80ffb0"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = target_pos - Vector2(50, 36)
+	popup.size = Vector2(100, 34)
+	popup.z_index = 380
+	popup.scale = Vector2(0.5, 0.5)
+	popup.pivot_offset = Vector2(50, 17)
+	g.overlay.add_child(popup)
+	var pop_tween := popup.create_tween().set_parallel(true)
+	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.12)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.45))
+	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45)).set_delay(g._battle_delay(0.18))
+	pop_tween.chain().tween_callback(popup.queue_free)
+	await g.get_tree().create_timer(g._battle_delay(0.24)).timeout
+
+func _animate_player_buff(text: String) -> void:
+	if g.overlay == null or g.get_tree() == null: return
+	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_node == null or not is_instance_valid(player_node): return
+
+	var target_pos: Vector2 = player_node.global_position
+	g._haptic("light")
+
+	if ResourceLoader.exists("res://assets/vfx/spirit_buff_pillar.png"):
+		var pillar := Sprite2D.new()
+		pillar.name = "AnimBuffPillar"
+		pillar.texture = load("res://assets/vfx/spirit_buff_pillar.png")
+		pillar.position = target_pos + Vector2(0, -10)
+		pillar.scale = Vector2(0.04, 0.01)
+		pillar.z_index = 360
+		pillar.modulate = Color(1.5, 1.3, 0.8, 0.95)
+		g.overlay.add_child(pillar)
+
+		var dur: float = g._battle_delay(0.34)
+		var tween := pillar.create_tween().set_parallel(true)
+		tween.tween_property(pillar, "scale", Vector2(0.14, 0.22), dur * 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(pillar, "position:y", target_pos.y - 45.0, dur)
+		tween.tween_property(pillar, "modulate:a", 0.0, dur * 0.4).set_delay(dur * 0.6)
+		tween.chain().tween_callback(pillar.queue_free)
+
+	_flash_hit(player_node, Color("ffe066"))
+	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
+	var swell := player_node.create_tween()
+	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.12, base_scale * 1.12), g._battle_delay(0.14)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.18)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+	var popup := g._label(text, 26, Color("ffe066"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = target_pos - Vector2(60, 36)
+	popup.size = Vector2(120, 34)
+	popup.z_index = 380
+	popup.scale = Vector2(0.5, 0.5)
+	popup.pivot_offset = Vector2(60, 17)
+	g.overlay.add_child(popup)
+	var pop_tween := popup.create_tween().set_parallel(true)
+	pop_tween.tween_property(popup, "scale", Vector2(1.2, 1.2), g._battle_delay(0.12)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.45))
+	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45)).set_delay(g._battle_delay(0.18))
+	pop_tween.chain().tween_callback(popup.queue_free)
+	await g.get_tree().create_timer(g._battle_delay(0.24)).timeout
 
 func _animate_player_shield_gain(amount: int) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -1923,6 +2075,22 @@ func _animate_player_hit(amount: int) -> void:
 	if player_node:
 		_flash_hit(player_node, Color("ff5c4a"))
 		_squash_impact(player_node, float(player_node.get_meta("base_scale", 1.0)), 0.24)
+		if ResourceLoader.exists("res://assets/vfx/spirit_slash_arc.png"):
+			var slash := Sprite2D.new()
+			slash.name = "AnimPlayerHitSlash"
+			slash.texture = load("res://assets/vfx/spirit_slash_arc.png")
+			slash.position = player_node.global_position
+			slash.rotation_degrees = -35.0
+			slash.scale = Vector2(0.05, 0.05)
+			slash.z_index = 350
+			slash.modulate = Color(1.8, 0.35, 0.25, 0.95)
+			g.overlay.add_child(slash)
+
+			var slash_tw := slash.create_tween().set_parallel(true)
+			slash_tw.tween_property(slash, "scale", Vector2(0.22, 0.22), 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			slash_tw.tween_property(slash, "rotation_degrees", -10.0, 0.18)
+			slash_tw.tween_property(slash, "modulate:a", 0.0, 0.10).set_delay(0.08)
+			slash_tw.chain().tween_callback(slash.queue_free)
 
 	await tween.finished
 	popup.queue_free()
