@@ -1273,6 +1273,13 @@ func _run() -> void:
 	game._grant_mastery_xp(800)
 	check(game.content.mastery_level_for_xp(int(game.profile.hero_masteries.miasma_witch.xp)) == 5, "miasma_witch can reach mastery level 5 like any other hero")
 
+	section("== growth roadmap D1: on-card synergy tags ==")
+	check(game._card_synergy_tags(game.content.card("foxfire")) == "🔥", "foxfire's synergy tag is exactly the burn glyph")
+	check(game._card_synergy_tags(game.content.card("toxinDart")) == "☣", "toxinDart's synergy tag is the poison glyph, not a second one for its plain damage")
+	check(game._card_synergy_tags(game.content.card("strike")) == "", "strike (plain damage only) has no synergy tags")
+	check(game._card_synergy_tags(game.content.card("spiritNova")) == "🌀 ⚔", "spiritNova gets both its weak and cleave tags")
+	check("🔥" in game._kind_element_line(game.content.card("foxfire")), "the kind/element line used across every card face appends the synergy tags")
+
 	section("== repeated stage rewards & event claiming ==")
 	check(not game._is_stage_event_claimed(42), "unvisited stage 42 event is not claimed")
 	game._mark_stage_event_claimed(42)

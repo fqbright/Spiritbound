@@ -3176,7 +3176,7 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	var name_lbl := _label(name_text, 16, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
 	stack.add_child(name_lbl)
 
-	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	var kind_lbl := _label(_kind_element_line(card), 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
 	stack.add_child(kind_lbl)
 
 	var desc_lbl := _label(_card_description(card), 13, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
@@ -3366,7 +3366,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(name_lbl)
 
-	var kind_lbl := _label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 7, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	var kind_lbl := _label(_kind_element_line(card), 7, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
 	kind_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(kind_lbl)
 
@@ -3662,7 +3662,7 @@ func _pile_card_tile(card: Dictionary) -> Control:
 	info_box.add_child(stack)
 
 	stack.add_child(_label(content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else ""), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(_kind_element_line(card), 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var desc := _label(_card_description(card), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
 	desc.custom_minimum_size.y = 48
@@ -4839,7 +4839,7 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	info_box.add_child(stack)
 
 	stack.add_child(_label(content.text(card.nameKey, lang), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(_kind_element_line(card), 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	var desc := _label(_card_description(card), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
 	desc.custom_minimum_size.y = 24
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -5134,7 +5134,7 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 
 	var up_lvl: int = int(profile.upgrades.get(card.id, 0))
 	stack.add_child(_label(content.text(card.nameKey, lang) + (" +" if up_lvl > 0 else ""), 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(_label("%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))], 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(_kind_element_line(card), 8, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var desc := _label(_card_description(card), 8, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
 	desc.custom_minimum_size.y = 24
@@ -6258,6 +6258,35 @@ func _unique(values: Array) -> Array:
 
 func _card_color(card: Dictionary) -> Color:
 	return {"Attack":Color("d95d37"),"Skill":Color("50b99b"),"Power":Color("a75bd6"),"Tactic":Color("4d9dd6"),"Curse":Color("6b3fa0")}.get(card.get("kind","Skill"),JADE)
+
+# Small icon glyphs hinting at deck-building synergy (growth roadmap D1) — Flame/Gale
+# Resonance, hero mastery perks, and enemy-count considerations all key off a card doing one
+# of these things, and remembering which of 39 cards qualifies is exactly the "recognize
+# synergy while building a deck" gap the growth report called out. Derived fresh from the
+# card's own effects/special every call rather than stored as separate data, so it can never
+# drift out of sync with what the card actually does — only status/special tags that map to a
+# real existing system are included; plain damage/shield/heal aren't "synergy," they're just
+# what most cards do.
+func _card_synergy_tags(card: Dictionary) -> String:
+	var tags: Array = []
+	for effect in card.get("effects", []):
+		var op: String = str(effect.get("operation", ""))
+		if op == "status":
+			var glyph: String = {"burn":"🔥","poison":"☣","vulnerable":"💢","weak":"🌀","strength":"💪"}.get(str(effect.get("status", "")), "")
+			if not glyph.is_empty() and not tags.has(glyph): tags.append(glyph)
+		elif op == "draw" and not tags.has("🃏"):
+			tags.append("🃏")
+	var special: String = str(card.get("special", ""))
+	var special_glyph: String = {"cleave":"⚔","critical":"✹"}.get(special, "")
+	if not special_glyph.is_empty() and not tags.has(special_glyph): tags.append(special_glyph)
+	return " ".join(tags)
+
+# Appends the synergy-tag glyphs to an existing "Kind · Element" line, with no trailing
+# separator when a card has none — used by every card-face render site that shows that line.
+func _kind_element_line(card: Dictionary) -> String:
+	var base := "%s · %s" % [t("kind.%s" % card.get("kind", "Skill")), t("element.%s" % card.get("element", "spirit"))]
+	var tags := _card_synergy_tags(card)
+	return base if tags.is_empty() else "%s  %s" % [base, tags]
 
 func _rune_color(id: String, fallback: Color) -> Color:
 	var rune := content.rune(id); return fallback if rune.is_empty() else Color(rune.color)

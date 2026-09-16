@@ -110,11 +110,25 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 ## Medium-high impact
 
-- `[ ]` **D1 — 卡牌协同标签可视化 (on-card archetype tags)**
-  A small icon on each card face indicating its archetype (🔥 burn / 🛡 shield / ⚡ draw /
-  etc.) so players can recognize synergy while building a deck without memorizing all 36+
-  cards. Pure content + `_card_view`/`_big_card_face` rendering change, no engine work.
-  *Builds on:* `content.gd` card data (add a `tags: Array` field), `_card_view()`.
+- `[x]` **D1 — 卡牌协同标签可视化 (on-card synergy tags)** — done 2026-09-15
+  `_card_synergy_tags(card)` derives glyphs (🔥burn ☣poison 💢vulnerable 🌀weak 💪strength
+  🃏draw ⚔cleave ✹critical) straight from a card's own `effects`/`special` every call, rather
+  than hand-authoring a separate `tags` field the report originally sketched — a derived
+  function can never drift out of sync with what the card actually does, which a stored data
+  field could. Only tags that map to a real existing system are included (a rune set, a hero
+  mastery perk, or "hits every enemy" for elite/add-heavy fights) — plain damage/shield/heal
+  aren't synergy signals, they're just what most cards do, so they're deliberately excluded.
+  Wired into the shared `_kind_element_line()` helper, which replaced 5 duplicated inline
+  `"%s · %s" % [kind, element]` label calls across `_big_card_face`, `_card_view`,
+  `_pile_card_tile`, `_shop_card_tile`, and `_deck_card_tile` — the deck builder and shop were
+  the two the report's own framing cared about most ("recognize synergy while building a
+  deck"), the other three came along for free once the line was shared. Left `show_deck_purge`/
+  `show_deck_upgrade` (which show kind+rarity, not kind+element — a different line entirely)
+  and the Compendium's card tab untouched for this pass; a future pass could extend
+  `_kind_element_line()` or a sibling helper to those without new design work.
+  *Built on:* `content.gd` card `effects`/`special` data (no schema change). 226/0 rules
+  unaffected (this is 100% a game.gd rendering concern — correctly zero rules-engine change),
+  UI smoke +5 checks, 0 failures.
 - `[ ]` **B4 — 本地推送提醒 (local iOS notifications)**
   Remind players when a login-streak day or daily quest is about to expire. **Needs a native
   iOS bridge** (Godot has no built-in local-notification API) — likely a small GDExtension or
@@ -216,6 +230,22 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — D1 on-card synergy tags shipped
+Deliberately deviated from the report's own sketch ("add a `tags: Array` field" to card data)
+in favor of deriving tags from `effects`/`special` at render time — a stored field is one more
+thing to keep in sync by hand across 39 cards (and counting, after D3), and a mistake there is
+a silent content bug no test would catch unless someone thought to assert every card's tags
+individually. A derived function is self-verifying by construction. If a future card effect
+type needs a tag that doesn't map cleanly to `_card_synergy_tags()`'s current match arms, add
+a case there — don't reach for a stored field as the easier-looking shortcut.
+An easy trap hit while writing this one's test_runner.gd coverage before catching it: this is
+purely a `game.gd` rendering concern, and `test_runner.gd` never instantiates `SpiritGame` at
+all (only `SpiritContent`/`SpiritCombat` directly) — so `game._card_synergy_tags(...)` isn't
+callable there no matter how "just testing a pure function" it feels. The test moved to
+`ui_smoke.gd` instead. AGENTS.md rule 3 already says this explicitly ("screen changes go in
+ui_smoke.gd") — worth re-reading before assuming a new helper's test suite based on how
+stateless the helper feels rather than which script actually defines it.
 
 ### 2026-09-15 — D3 fourth hero archetype (Miasma Witch) shipped, portrait deferred
 This is the first item on this roadmap that shipped with a **known, deliberate, documented
