@@ -4,6 +4,7 @@ class_name SpiritGame
 var content := SpiritContent.new()
 var profile: Dictionary
 var combat: SpiritCombat
+var battle_log: BattleLog
 var current_stage := 0
 var active_modifier: Dictionary = {}
 var root: Control
@@ -1156,6 +1157,7 @@ func _current_encounter() -> Dictionary: return _rewards_screen._current_encount
 func _current_stage_label() -> String: return _rewards_screen._current_stage_label()
 func _grant_stage_rewards() -> void: _rewards_screen._grant_stage_rewards()
 func show_reward_details() -> void: _rewards_screen.show_reward_details()
+func show_battle_log() -> void: _rewards_screen.show_battle_log()
 func _collect_card(card: Dictionary) -> void: _rewards_screen._collect_card(card)
 func _smart_add_card(card: Dictionary) -> void: _rewards_screen._smart_add_card(card)
 func show_event(index: int, kind: String) -> void: _rewards_screen.show_event(index, kind)
@@ -1412,6 +1414,7 @@ func show_settings() -> void:
 	list.add_child(account_box)
 
 func _close_settings() -> void:
+	if overlay == null: return
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
 	if existing:
 		if existing.get_parent(): existing.get_parent().remove_child(existing)

@@ -959,6 +959,14 @@ func run() -> void:
 	check(int(g_pass.profile.season_pass.xp) == 250, "season pass reaches 250 XP")
 	check(int(g_pass.profile.season_pass.level) == 2, "season pass levels up to Lv.2 at 200+ XP")
 
+	var log := BattleLog.new()
+	check(log.entries.is_empty(), "a fresh BattleLog starts with no entries")
+	log.record("card", {"card": "strike", "damage": 6}, 1)
+	log.record("hit", {"enemy": 0, "amount": 6}, 1)
+	check(log.entries.size() == 2, "BattleLog.record() appends one entry per call")
+	check(str(log.entries[0].kind) == "card" and int(log.entries[0].turn) == 1, "a recorded entry keeps its kind and turn")
+	check(int(log.entries[1].payload.get("amount", 0)) == 6, "a recorded entry's payload is preserved")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

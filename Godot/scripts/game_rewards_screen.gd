@@ -327,6 +327,11 @@ func show_reward_details() -> void:
 	var page := g._create_page(8)
 	page.add_child(g._label(g.t("ui.battle_won"), 24, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 
+	if g.battle_log and not g.battle_log.entries.is_empty():
+		var log_btn := g._button(g.t("ui.battle_log_view_btn"), show_battle_log, Color("17363e"), Vector2(0, 36))
+		log_btn.name = "ViewBattleLogBtn"
+		page.add_child(log_btn)
+
 	if g.current_stage < 3 or int(g.profile.unlocked) <= 3:
 		var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
 		if not stats.is_empty():
@@ -563,4 +568,66 @@ func show_event(index: int, kind: String) -> void:
 		page.add_child(g._button(g.t("ui.event_opt_direct"), func(): g.begin_battle(index), Color("21594e"), Vector2(300, 48)))
 
 	page.add_child(g._button(g.t("ui.return_map"), g.show_map, Color("17363e"), Vector2(170, 42)))
+
+# A turn-by-turn readout of everything combat.gd's `event` signal fired during the just-
+# finished fight (BattleLog just records kind/payload/turn as they happen — see battle_log.gd —
+# so this is purely a rendering pass over that structured history, correct in whichever
+# language is active now regardless of what was active during the fight). Reachable from
+# show_reward_details()'s "View Battle Log" button, which only appears when there's anything
+# to show.
+func show_battle_log() -> void:
+	g._clear(); g._play_music(false)
+	var page := g._create_page(8)
+	page.add_child(g._header(g.t("ui.battle_log_title"), "", show_reward_details))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.name = "BattleLogList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 3)
+	scroll.add_child(list)
+
+	if not g.battle_log or g.battle_log.entries.is_empty():
+		list.add_child(g._label(g.t("ui.battle_log_empty"), 12, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		return
+
+	var last_turn := -1
+	for entry in g.battle_log.entries:
+		var turn: int = int(entry.get("turn", 0))
+		if turn != last_turn:
+			list.add_child(g._label(g.tf("ui.log_turn_fmt", turn), 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+			last_turn = turn
+		var line := _format_battle_log_entry(entry)
+		if not line.is_empty():
+			list.add_child(g._label(line, 10, g.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+# One line of human-readable text per recorded event kind, or "" for kinds not worth a line
+# (e.g. "turn" itself, already rendered as the section header above, and "intent" telegraphs,
+# already shown live as the actual outcome events — "hit"/"player_hit" — that follow them).
+func _format_battle_log_entry(entry: Dictionary) -> String:
+	var kind: String = str(entry.get("kind", ""))
+	var payload: Dictionary = entry.get("payload", {})
+	match kind:
+		"card":
+			var card: Dictionary = g.content.card(str(payload.get("card", "")))
+			var card_name: String = g.content.text(card.nameKey, g.lang) if not card.is_empty() else str(payload.get("card", ""))
+			var damage: int = int(payload.get("damage", 0))
+			return g.tf("ui.log_card_damage_fmt", [card_name, damage]) if damage > 0 else g.tf("ui.log_card_play_fmt", card_name)
+		"hit": return g.tf("ui.log_hit_fmt", int(payload.get("amount", 0)))
+		"death": return g.t("ui.log_death")
+		"player_hit": return g.tf("ui.log_player_hit_fmt", int(payload.get("amount", 0)))
+		"player_burn": return g.tf("ui.log_player_burn_fmt", int(payload.get("amount", 0)))
+		"equipment":
+			var item: Dictionary = g.content.equipment(str(payload.get("id", "")))
+			return g.tf("ui.log_equipment_fmt", g._equip_name(item)) if not item.is_empty() else ""
+		"thorns": return g.tf("ui.log_thorns_fmt", int(payload.get("amount", 0)))
+		"revive": return g.tf("ui.log_revive_fmt", int(payload.get("amount", 0)))
+		"dodge": return g.t("ui.log_dodge")
+		"rune_set": return g.t("ui.log_rune_set")
+		"boss_phase":
+			return "✦ %s" % (str(payload.get("name_en", "")) if g.lang == "en" else str(payload.get("name", "")))
+		_: return ""
 

@@ -42,6 +42,7 @@ func begin_battle(index: int) -> void:
 	if g.in_draft_battle and g.profile.get("draft_arena", {}).get("deck", []).size() >= 15:
 		battle_deck = g.profile.draft_arena.deck
 	g.combat.create(seed,g.content.encounters[index],battle_deck,int(g.profile.health),g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
 	g.combat.event.connect(_combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[index].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[index])
@@ -1694,6 +1695,7 @@ func _animate_player_hit(amount: int) -> void:
 	popup.queue_free()
 
 func _combat_event(kind: String, payload: Dictionary) -> void:
+	if g.battle_log: g.battle_log.record(kind, payload, int(g.combat.state.get("turn", 0)) if g.combat else 0)
 	if kind == "intent":
 		var style := _intent_style({"kind": payload.kind, "amount": payload.amount})
 		var tip: String = {"defend": "ui.intent_tip_defend", "empower": "ui.intent_tip_empower", "curse": "ui.intent_tip_curse"}.get(str(payload.kind), "")

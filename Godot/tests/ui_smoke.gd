@@ -1809,6 +1809,37 @@ func _run() -> void:
 	await process_frame
 	check(game.root.find_child("VictoryRecapCard", true, false) != null, "VictoryRecapCard renders for early victory stages")
 
+	# Battle Log: a structured, replayable record of everything combat.gd's `event` signal
+	# fired during the fight, recorded by a separate listener (battle_log.gd) alongside
+	# game_battle_screen.gd's own animation dispatcher — reachable via the reward screen's
+	# "View Battle Log" button.
+	game.begin_battle(0)
+	await process_frame
+	check(game.battle_log != null, "begin_battle() creates a fresh battle_log")
+	check(game.battle_log.entries.is_empty(), "a fresh battle_log starts empty before any event fires")
+	game._attempt_play_card(0, -1)
+	await process_frame
+	check(not game.battle_log.entries.is_empty(), "playing a card records at least one battle_log entry")
+	var found_card_entry := false
+	for entry in game.battle_log.entries:
+		if str(entry.get("kind", "")) == "card": found_card_entry = true
+	check(found_card_entry, "a played card is recorded with kind 'card'")
+	# Let any in-flight hit/impact animation the card triggered finish before _clear()ing the
+	# battle scene out from under it — same "previously freed" race this suite's own earlier
+	# sections already documented for exactly this reason.
+	var log_wait := 0.0
+	while game.resolving and log_wait < 8.0:
+		await create_timer(0.1).timeout
+		log_wait += 0.1
+	game.combat.state.phase = "won"
+	game.show_reward_details()
+	await process_frame
+	check(game.root.find_child("ViewBattleLogBtn", true, false) != null, "View Battle Log button appears once the log has entries")
+	game.show_battle_log()
+	await process_frame
+	check(game.root.find_child("BattleLogList", true, false) != null, "battle log screen renders its entry list")
+	check(_find_label_containing(game.root, game.content.ui("ui.battle_log_title", game.lang)), "battle log screen shows its title")
+
 	# D2: Opt-in hard replay
 	game.profile.unlocked = 5
 	game.begin_hard_replay(2)

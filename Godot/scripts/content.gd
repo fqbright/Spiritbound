@@ -1251,6 +1251,21 @@ const UI_TEXT = {
 	"desc.soul_pyre": {"zh-Hans":"对所有敌人造成 %d 点伤害并施加 2 层灼烧，抽 1 张牌。", "en":"Deal %d damage and 2 Burn to all enemies. Draw 1 card."},
 	"desc.gale_barrier": {"zh-Hans":"获得 %d 点护盾，本回合获得 1 点额外能量。", "en":"Gain %d Shield and +1 Energy this turn."},
 	"desc.miasma_shield": {"zh-Hans":"获得 %d 点护盾，回复 3 点生命。", "en":"Gain %d Shield and recover 3 Health."},
+	"ui.battle_log_title": {"zh-Hans":"战报详情", "en":"Battle Log"},
+	"ui.battle_log_view_btn": {"zh-Hans":"查看战报", "en":"View Battle Log"},
+	"ui.battle_log_empty": {"zh-Hans":"暂无战斗记录。", "en":"No battle events recorded."},
+	"ui.log_turn_fmt": {"zh-Hans":"── 第 %d 回合 ──", "en":"── Turn %d ──"},
+	"ui.log_card_damage_fmt": {"zh-Hans":"打出「%s」，造成 %d 点伤害", "en":"Played %s, dealt %d damage"},
+	"ui.log_card_play_fmt": {"zh-Hans":"打出「%s」", "en":"Played %s"},
+	"ui.log_hit_fmt": {"zh-Hans":"敌方受到 %d 点伤害", "en":"Enemy took %d damage"},
+	"ui.log_death": {"zh-Hans":"敌人被击败", "en":"Enemy defeated"},
+	"ui.log_player_hit_fmt": {"zh-Hans":"你受到 %d 点伤害", "en":"You took %d damage"},
+	"ui.log_player_burn_fmt": {"zh-Hans":"灼烧造成 %d 点伤害", "en":"Burn dealt %d damage"},
+	"ui.log_equipment_fmt": {"zh-Hans":"%s 效果触发", "en":"%s triggered"},
+	"ui.log_thorns_fmt": {"zh-Hans":"反伤造成 %d 点伤害", "en":"Thorns dealt %d damage"},
+	"ui.log_revive_fmt": {"zh-Hans":"敌人复活，恢复至 %d 点生命", "en":"Enemy revived with %d HP"},
+	"ui.log_dodge": {"zh-Hans":"敌人闪避了攻击", "en":"Enemy dodged the attack"},
+	"ui.log_rune_set": {"zh-Hans":"符文共鸣触发", "en":"Rune Resonance triggered"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

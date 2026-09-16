@@ -879,6 +879,7 @@ func begin_abyss_battle() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	g.combat.create(seed, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
@@ -903,6 +904,7 @@ func begin_daily_trial() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
@@ -926,6 +928,7 @@ func begin_weekly_challenge() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
