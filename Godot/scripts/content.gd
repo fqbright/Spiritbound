@@ -249,8 +249,7 @@ const HERO_CLASSES = [
 		"name_en": "Miasma Witch",
 		"desc": "操控剧毒瘴气的诡异法师，让敌人在持续侵蚀中衰竭。擅长毒素叠加与资源回收。",
 		"desc_en": "An eerie mage who commands toxic miasma, wearing enemies down through relentless decay. Specializes in stacking Poison and recycling resources.",
-		"sprite": "sentinel",
-		"art_pending": true,
+		"sprite": "miasma_witch",
 		"relic": "bloodJade",
 		"deck": [
 			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
@@ -340,34 +339,36 @@ func abyss_boon(id: String) -> Dictionary:
 # values read an existing profile field directly (mastery level, abyss record, daily trial
 # badges, compendium %, relic count, distinct cards owned) since those are already permanent
 # running totals with nothing to duplicate.
+const ACHIEVEMENT_TIERS = ["bronze", "silver", "gold", "platinum"]
+
 const ACHIEVEMENTS = [
-	{"id":"win10","kind":"stat","stat":"win_battles","target":10,"nameKey":"ach.win10.name","descKey":"ach.win10.desc"},
-	{"id":"win50","kind":"stat","stat":"win_battles","target":50,"nameKey":"ach.win50.name","descKey":"ach.win50.desc"},
-	{"id":"win200","kind":"stat","stat":"win_battles","target":200,"nameKey":"ach.win200.name","descKey":"ach.win200.desc"},
-	{"id":"damage10k","kind":"stat","stat":"deal_damage","target":10000,"nameKey":"ach.damage10k.name","descKey":"ach.damage10k.desc"},
-	{"id":"damage100k","kind":"stat","stat":"deal_damage","target":100000,"nameKey":"ach.damage100k.name","descKey":"ach.damage100k.desc"},
-	{"id":"chest10","kind":"stat","stat":"open_chest","target":10,"nameKey":"ach.chest10.name","descKey":"ach.chest10.desc"},
-	{"id":"shop20","kind":"stat","stat":"shop_purchase","target":20,"nameKey":"ach.shop20.name","descKey":"ach.shop20.desc"},
-	{"id":"gold1000","kind":"stat","stat":"earn_gold","target":1000,"nameKey":"ach.gold1000.name","descKey":"ach.gold1000.desc"},
-	{"id":"gold10000","kind":"stat","stat":"earn_gold","target":10000,"nameKey":"ach.gold10000.name","descKey":"ach.gold10000.desc"},
-	{"id":"elite_boss20","kind":"stat","stat":"clear_elite_or_boss","target":20,"nameKey":"ach.elite_boss20.name","descKey":"ach.elite_boss20.desc"},
-	{"id":"greatboss5","kind":"stat","stat":"defeat_great_boss","target":5,"nameKey":"ach.greatboss5.name","descKey":"ach.greatboss5.desc"},
-	{"id":"rune_play50","kind":"stat","stat":"play_runed_cards","target":50,"nameKey":"ach.rune_play50.name","descKey":"ach.rune_play50.desc"},
-	{"id":"collect20","kind":"card_collection","target":20,"nameKey":"ach.collect20.name","descKey":"ach.collect20.desc"},
+	{"id":"win10","kind":"stat","stat":"win_battles","target":10,"tier":"bronze","nameKey":"ach.win10.name","descKey":"ach.win10.desc"},
+	{"id":"win50","kind":"stat","stat":"win_battles","target":50,"tier":"silver","nameKey":"ach.win50.name","descKey":"ach.win50.desc"},
+	{"id":"win200","kind":"stat","stat":"win_battles","target":200,"tier":"gold","nameKey":"ach.win200.name","descKey":"ach.win200.desc"},
+	{"id":"damage10k","kind":"stat","stat":"deal_damage","target":10000,"tier":"bronze","nameKey":"ach.damage10k.name","descKey":"ach.damage10k.desc"},
+	{"id":"damage100k","kind":"stat","stat":"deal_damage","target":100000,"tier":"gold","nameKey":"ach.damage100k.name","descKey":"ach.damage100k.desc"},
+	{"id":"chest10","kind":"stat","stat":"open_chest","target":10,"tier":"bronze","nameKey":"ach.chest10.name","descKey":"ach.chest10.desc"},
+	{"id":"shop20","kind":"stat","stat":"shop_purchase","target":20,"tier":"bronze","nameKey":"ach.shop20.name","descKey":"ach.shop20.desc"},
+	{"id":"gold1000","kind":"stat","stat":"earn_gold","target":1000,"tier":"bronze","nameKey":"ach.gold1000.name","descKey":"ach.gold1000.desc"},
+	{"id":"gold10000","kind":"stat","stat":"earn_gold","target":10000,"tier":"silver","nameKey":"ach.gold10000.name","descKey":"ach.gold10000.desc"},
+	{"id":"elite_boss20","kind":"stat","stat":"clear_elite_or_boss","target":20,"tier":"silver","nameKey":"ach.elite_boss20.name","descKey":"ach.elite_boss20.desc"},
+	{"id":"greatboss5","kind":"stat","stat":"defeat_great_boss","target":5,"tier":"gold","nameKey":"ach.greatboss5.name","descKey":"ach.greatboss5.desc"},
+	{"id":"rune_play50","kind":"stat","stat":"play_runed_cards","target":50,"tier":"silver","nameKey":"ach.rune_play50.name","descKey":"ach.rune_play50.desc"},
+	{"id":"collect20","kind":"card_collection","target":20,"tier":"bronze","nameKey":"ach.collect20.name","descKey":"ach.collect20.desc"},
 	# target == cards.size() (all of them collectible today, since decay_blight/void_curse
 	# currently live in core.json's "statuses" array rather than "cards" — see the spawned
 	# task about moving them). If that move happens, this target must drop by 2 (or the
 	# card_collection progress reader must start excluding rarity=="Curse"), or 100% collection
 	# becomes permanently impossible.
-	{"id":"collect_all","kind":"card_collection","target":39,"nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
-	{"id":"relics_all","kind":"relic_count","target":11,"nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
-	{"id":"mastery5","kind":"mastery_level","target":5,"nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
-	{"id":"abyss10","kind":"abyss_floor","target":10,"nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
-	{"id":"abyss30","kind":"abyss_floor","target":30,"nameKey":"ach.abyss30.name","descKey":"ach.abyss30.desc"},
-	{"id":"trial_badges5","kind":"daily_trial_badges","target":5,"nameKey":"ach.trial_badges5.name","descKey":"ach.trial_badges5.desc"},
-	{"id":"trial_badges20","kind":"daily_trial_badges","target":20,"nameKey":"ach.trial_badges20.name","descKey":"ach.trial_badges20.desc"},
-	{"id":"compendium50","kind":"compendium_percent","target":50,"nameKey":"ach.compendium50.name","descKey":"ach.compendium50.desc"},
-	{"id":"compendium100","kind":"compendium_percent","target":100,"nameKey":"ach.compendium100.name","descKey":"ach.compendium100.desc"},
+	{"id":"collect_all","kind":"card_collection","target":39,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
+	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
+	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
+	{"id":"abyss30","kind":"abyss_floor","target":30,"tier":"platinum","nameKey":"ach.abyss30.name","descKey":"ach.abyss30.desc"},
+	{"id":"trial_badges5","kind":"daily_trial_badges","target":5,"tier":"bronze","nameKey":"ach.trial_badges5.name","descKey":"ach.trial_badges5.desc"},
+	{"id":"trial_badges20","kind":"daily_trial_badges","target":20,"tier":"gold","nameKey":"ach.trial_badges20.name","descKey":"ach.trial_badges20.desc"},
+	{"id":"compendium50","kind":"compendium_percent","target":50,"tier":"silver","nameKey":"ach.compendium50.name","descKey":"ach.compendium50.desc"},
+	{"id":"compendium100","kind":"compendium_percent","target":100,"tier":"platinum","nameKey":"ach.compendium100.name","descKey":"ach.compendium100.desc"},
 ]
 
 const HERO_MASTERY_XP_FOR_LEVEL = [60, 150, 300, 500, 800]

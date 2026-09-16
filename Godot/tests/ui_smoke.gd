@@ -433,6 +433,14 @@ func _run() -> void:
 					break
 	check(found_shadow, "stage 0's pin casts a ground shadow at its road point")
 
+	# Each node kind now shows its own painted marker (pin_<kind>.png) instead of a flat-color
+	# badge with a generic rune overlay — check the two ends of the kind spectrum actually pick
+	# different art rather than both silently falling back to the same texture.
+	check(game.content.node_kind(0) == "battle", "stage 0 is a plain battle node")
+	check(_find_texture_rect_ending_with(game.root, "pin_normal.png"), "stage 0's pin uses the plain-battle painted marker")
+	check(game.content.node_kind(4) == "boss", "stage 4 (chapter 0, level 5) is a boss node")
+	check(_find_texture_rect_ending_with(game.root, "pin_boss.png"), "a boss stage's pin uses the boss-specific painted marker")
+
 	section("== deck ==")
 	game.show_deck()
 	await process_frame
@@ -551,8 +559,13 @@ func _run() -> void:
 	game.begin_battle(4)
 	await process_frame
 	check(game.overlay.get_node_or_null("BattleTutorial") == null, "a later battle does not re-show the tutorial once seen")
+	# Battle backgrounds are now keyed by within-chapter level (matching the battle music's own
+	# per-level theme) rather than the old per-encounter variety-rotation index — stage 4 is
+	# chapter 0's boss (level 5, stage_lvl 4) and should show the "Crown" background.
+	check(_find_texture_rect_ending_with(game.root, "battle_stage_4.png"), "a level-5 boss battle shows the Crown-themed background")
 	game.begin_battle(0)
 	await process_frame
+	check(_find_texture_rect_ending_with(game.root, "battle_stage_0.png"), "a level-1 battle shows the Trailhead-themed background")
 
 	# Health bar must actually shrink with the enemy's health.
 	var enemy_box: Control = game.enemy_boxes[0]
@@ -1049,6 +1062,13 @@ func _run() -> void:
 	game.profile.claimed_stage_events = saved_claimed_events
 	game.profile.relics = saved_relics
 
+	# All 11 relics now have painted icons (relic_<id>.png), same treatment equipment/runes
+	# already had — _relic_icon_badge() should use the real art, not its drawn-sigil fallback.
+	for relic_id in ["foxCharm", "starShard", "ancientSeed", "windChime", "bloodJade", "thunderSeal", "mirrorScale", "emberCore", "cursedTome", "titanBell", "chaosPrism"]:
+		check(ResourceLoader.exists("res://assets/icons/relic_%s.png" % relic_id), "%s has a painted relic icon asset" % relic_id)
+	var fox_charm_badge: Panel = game._relic_icon_badge(game.content.relic("foxCharm"), Color.WHITE)
+	check(_find_texture_rect_ending_with(fox_charm_badge, "relic_foxCharm.png"), "_relic_icon_badge renders the painted icon for a relic that has one")
+
 	var target_card: Dictionary = game.content.card("moonfang")
 	game.profile.deck = []
 	for i in 25: game.profile.deck.append("strike")
@@ -1393,7 +1413,14 @@ func _run() -> void:
 	game.show_camp()
 	await process_frame
 	check(_find_label_text(game.root, game.content.hero_name(game.content.hero_class("miasma_witch"), game.lang)), "Miasma Witch's name renders in the hero archetypes list")
-	check(_find_label_text(game.root, game.content.ui("ui.hero_art_pending", game.lang)), "the art-pending badge renders for the hero borrowing a placeholder sprite")
+	# Shipped with her own standalone portrait (assets/characters/miasma_witch.png) rather than
+	# the 3x3 atlas everyone else uses (all 9 cells were already spoken for) — the art-pending
+	# placeholder this used to check for is gone now that she has real art, and her sprite key
+	# should resolve to that standalone file, not fall back to a borrowed atlas cell.
+	check(not _find_label_text(game.root, game.content.ui("ui.hero_art_pending", game.lang)), "the art-pending badge no longer renders now that Miasma Witch has her own portrait")
+	check(not bool(game.content.hero_class("miasma_witch").get("art_pending", false)), "miasma_witch's data no longer carries art_pending")
+	check(ResourceLoader.exists("res://assets/characters/miasma_witch.png"), "miasma_witch's standalone portrait file exists")
+	check(game._get_character_texture("miasma_witch") is Texture2D and not (game._get_character_texture("miasma_witch") is AtlasTexture), "miasma_witch's sprite key resolves to her standalone portrait, not an atlas slice")
 	var miasma: Dictionary = game.content.hero_class("miasma_witch")
 	game.profile.hero_class = "miasma_witch"
 	game.profile.deck = miasma.deck.duplicate()
@@ -1688,6 +1715,19 @@ func _run() -> void:
 	await process_frame
 	check(_find_label_text(game.root, game.content.ui("ach.win10.name", game.lang)), "an unlocked achievement's name renders in the Achievements tab")
 	check(_find_label_text(game.root, game.content.ui("ach.win200.name", game.lang)), "a locked achievement still renders (with progress, not hidden)")
+	for ach in SpiritContent.ACHIEVEMENTS:
+		check(SpiritContent.ACHIEVEMENT_TIERS.has(str(ach.get("tier", ""))), "%s has a valid medal tier" % str(ach.id))
+		check(ResourceLoader.exists("res://assets/icons/badge_%s.png" % str(ach.get("tier", ""))), "%s's tier has a matching badge_*.png asset" % str(ach.id))
+	var found_locked_badge_dim := false
+	var found_unlocked_badge_bright := false
+	for child in _find_all_texture_rects(game.root):
+		if child.texture == null: continue
+		var tex_path: String = child.texture.resource_path
+		if not tex_path.contains("badge_"): continue
+		if child.modulate.a < 0.9: found_locked_badge_dim = true
+		else: found_unlocked_badge_bright = true
+	check(found_locked_badge_dim, "a locked achievement's medal badge renders dimmed")
+	check(found_unlocked_badge_bright, "an unlocked achievement's medal badge renders at full brightness")
 
 	section("== phase 3: settings, deck filters, colorblind glyphs, victory recap & hard replays ==")
 	# F2: Settings modal
@@ -1869,3 +1909,10 @@ func _find_texture_rect(node: Node) -> TextureRect:
 		var found := _find_texture_rect(child)
 		if found != null: return found
 	return null
+
+func _find_all_texture_rects(node: Node) -> Array:
+	var out: Array = []
+	if node is TextureRect: out.append(node)
+	for child in node.get_children():
+		out.append_array(_find_all_texture_rects(child))
+	return out

@@ -53,7 +53,13 @@ func show_battle() -> void:
 	var encounter: Dictionary = g._current_encounter()
 	var stage_lvl: int = int(encounter.get("level", 1)) - 1
 	g._clear(); g._play_music(true, stage_lvl); g.enemy_boxes.clear()
-	var bg := g._background(g.BATTLE_BACKGROUNDS[encounter.background],.28); g.root.add_child(bg); g.root.move_child(bg,0)
+	# Keyed by within-chapter level (Trailhead..Crown), the same index _play_music() uses for
+	# the matching battle theme, rather than the old per-encounter "background" rotation index
+	# — that tied visual variety to chapter/stage number with no relationship to the music
+	# playing over it. Clamped the same way _play_music() clamps stream_idx, since Daily
+	# Trial/Weekly Challenge stages run past level 5 with no matching array entry.
+	var bg_index: int = clampi(stage_lvl, 0, g.BATTLE_BACKGROUNDS.size() - 1)
+	var bg := g._background(g.BATTLE_BACKGROUNDS[bg_index],.28); g.root.add_child(bg); g.root.move_child(bg,0)
 	var page := g._create_page(4)
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 44
@@ -95,8 +101,8 @@ func show_battle() -> void:
 			var r_color := Color(relic.color)
 			var r_name: String = g._relic_name(relic)
 			var r_det: String = g._relic_detail(relic)
-			var r_badge := g._sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), r_color, 34)
-			badge_row.add_child(_tap_wrap(r_badge, func(): _show_info_popup(g._sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), r_color, 60), r_name, r_det, r_color)))
+			var r_badge := g._relic_icon_badge(relic, r_color, 34)
+			badge_row.add_child(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
 
 	var enemy_area := Control.new()
 	enemy_area.custom_minimum_size = Vector2(366.0, 205.0)

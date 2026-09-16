@@ -258,7 +258,11 @@ func show_map() -> void:
 	g.traveler = Sprite2D.new()
 	var current_hero: Dictionary = g.content.hero_class(str(g.profile.get("hero_class", "fox_spirit")))
 	g.traveler.texture = g._get_character_texture(str(current_hero.get("sprite", "fox")))
-	g.traveler.scale = Vector2(40.0 / 341.33, 40.0 / 341.33)
+	# Scaled off the actual loaded texture's width, not a hardcoded atlas-cell constant — a
+	# standalone hero portrait (e.g. miasma_witch, 512px) isn't the same pixel size as an
+	# atlas cell (341.33px) and would render at the wrong size against a fixed divisor.
+	var traveler_tex_w: float = float(g.traveler.texture.get_width()) if g.traveler.texture else 341.33
+	g.traveler.scale = Vector2(40.0 / traveler_tex_w, 40.0 / traveler_tex_w)
 	g.traveler.position = _map_point(g.profile.position) - Vector2(0, 26)
 	g.traveler.z_index = 25
 	g.map_canvas.add_child(g.traveler)
@@ -806,17 +810,6 @@ func _add_routes() -> void:
 		walked.points = _build_road_curve(walked_points).get_baked_points()
 		g.map_canvas.add_child(walked)
 
-# (kind, flourish) for the drawn GameIcon on a map pin, keyed by node_kind().
-func _stage_icon_shape(index: int) -> Array:
-	match g.content.node_kind(index):
-		"greatboss": return ["grand_crown", ""]
-		"boss": return ["crown", ""]
-		"elite": return ["none", "sparkle"]
-		"event": return ["orb", ""]
-		"merchant": return ["coin_stack", ""]
-		"rest": return ["campfire", ""]
-		_: return ["crossed_swords", ""]
-
 func _add_stage_pin(index: int) -> void:
 	var encounter: Dictionary = g.content.encounters[index]
 	var point := _map_point(index)
@@ -877,48 +870,64 @@ func _add_stage_pin(index: int) -> void:
 	pin.disabled = locked
 	pin.z_index = 10
 	pin.focus_mode = Control.FOCUS_NONE
-	pin.add_theme_stylebox_override("normal", g._panel(bg_color, 16, border_color))
-	pin.add_theme_stylebox_override("hover", g._panel(bg_color.lightened(0.12), 16, g.EMBER))
-	pin.add_theme_stylebox_override("pressed", g._panel(bg_color.darkened(0.15), 16, g.GOLD))
-	pin.add_theme_stylebox_override("disabled", g._panel(bg_color, 16, Color("2b393d")))
+	# Flat color styleboxes are gone now that the painted pin art below carries the kind's own
+	# ring/color identity — kept as fully transparent fills (border still shows on hover/press
+	# for touch feedback) rather than removed outright, so tapping still reads as responsive.
+	pin.add_theme_stylebox_override("normal", g._panel(Color.TRANSPARENT, 16))
+	pin.add_theme_stylebox_override("hover", g._panel(Color(1, 1, 1, 0.08), 16, g.EMBER))
+	pin.add_theme_stylebox_override("pressed", g._panel(Color(1, 1, 1, 0.14), 16, g.GOLD))
+	pin.add_theme_stylebox_override("disabled", g._panel(Color.TRANSPARENT, 16))
 	pin.pressed.connect(func(): g._on_pin_pressed(index))
 	g.map_canvas.add_child(pin)
 
-	if g._map_pin_rune_tex == null: g._map_pin_rune_tex = load("res://assets/map_pin_rune.png")
-	var rune_overlay := TextureRect.new()
-	rune_overlay.texture = g._map_pin_rune_tex
-	rune_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	rune_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	rune_overlay.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	rune_overlay.modulate = Color(border_color.r, border_color.g, border_color.b, 0.75 if not locked else 0.35)
-	rune_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pin.add_child(rune_overlay)
+	# Each node kind gets its own painted marker (pin_boss/pin_elite/pin_event/pin_greatboss/
+	# pin_merchant/pin_normal/pin_rest.png — content.node_kind()'s own vocabulary, so no
+	# separate mapping table) instead of the old flat badge + generic rune overlay + a
+	# procedurally-drawn kind icon on top; the painted art already bakes in a kind-specific
+	# ring and icon, so drawing the GameIcon shape over it would just double up. Falls back to
+	# the generic map_pin_rune.png overlay on the old flat badge if a kind's art is missing.
+	var pin_art_path := "res://assets/icons/pin_%s.png" % kind
+	if kind == "" or not ResourceLoader.exists(pin_art_path): pin_art_path = "res://assets/icons/pin_normal.png"
+	var pin_overlay := TextureRect.new()
+	if ResourceLoader.exists(pin_art_path):
+		pin_overlay.texture = load(pin_art_path)
+		pin_overlay.modulate = Color(0.45, 0.45, 0.45, 0.7) if locked else Color.WHITE
+	else:
+		if g._map_pin_rune_tex == null: g._map_pin_rune_tex = load("res://assets/map_pin_rune.png")
+		pin_overlay.texture = g._map_pin_rune_tex
+		pin_overlay.modulate = Color(border_color.r, border_color.g, border_color.b, 0.75 if not locked else 0.35)
+	pin_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pin_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pin_overlay.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pin_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pin.add_child(pin_overlay)
 
 	var pin_stack := VBoxContainer.new()
 	pin_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	pin_stack.add_theme_constant_override("separation", -1)
-	pin_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	pin_stack.alignment = BoxContainer.ALIGNMENT_END
 	pin_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pin.add_child(pin_stack)
 	if locked:
+		pin_stack.alignment = BoxContainer.ALIGNMENT_CENTER
 		pin_stack.add_child(g._label("🔒", 12, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	else:
-		var icon_size := 26.0
-		if is_boss: icon_size = 38.0 if is_great else 30.0
-		var shape: Array = _stage_icon_shape(index)
-		var stage_icon := GameIcon.new()
-		stage_icon.kind = str(shape[0])
-		stage_icon.flourish = str(shape[1])
-		stage_icon.icon_color = border_color
-		stage_icon.custom_minimum_size = Vector2(icon_size, icon_size)
-		stage_icon.size = stage_icon.custom_minimum_size
-		var icon_holder := CenterContainer.new()
-		icon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_holder.add_child(stage_icon)
-		pin_stack.add_child(icon_holder)
-	pin_stack.add_child(g._label("%d-%d" % [encounter.chapter, encounter.level], 14 if is_boss else 12, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-	if is_boss and not locked:
-		pin_stack.add_child(g._label(g.t("ui.node_greatboss") if is_great else g.t("ui.node_boss"), 9, border_color, HORIZONTAL_ALIGNMENT_CENTER))
+		# The number/rank labels sit in a small solid strip at the bottom of the badge — the
+		# painted art behind them is busy enough that plain shadowed text (which is all this
+		# used before) got hard to read once the flat single-color badge went away.
+		var label_strip := PanelContainer.new()
+		label_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		label_strip.add_theme_stylebox_override("panel", g._panel(Color(0, 0, 0, 0.4), 6))
+		var label_pad := MarginContainer.new()
+		for side in ["left", "right"]: label_pad.add_theme_constant_override("margin_%s" % side, 4)
+		label_strip.add_child(label_pad)
+		var label_stack := VBoxContainer.new()
+		label_stack.add_theme_constant_override("separation", 0)
+		label_pad.add_child(label_stack)
+		label_stack.add_child(g._label("%d-%d" % [encounter.chapter, encounter.level], 13 if is_boss else 11, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		if is_boss:
+			label_stack.add_child(g._label(g.t("ui.node_greatboss") if is_great else g.t("ui.node_boss"), 8, border_color, HORIZONTAL_ALIGNMENT_CENTER))
+		pin_stack.add_child(label_strip)
 
 	if is_current and not locked:
 		var halo := pin.create_tween().set_loops()

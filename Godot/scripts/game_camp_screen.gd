@@ -166,7 +166,7 @@ func _build_compendium_relics(list: VBoxContainer) -> void:
 	for relic in SpiritContent.RELICS:
 		var discovered := g._relic_discovered(relic.id)
 		var badge: Control = _compendium_locked_badge()
-		if discovered: badge = g._sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), Color(relic.color), 46)
+		if discovered: badge = g._relic_icon_badge(relic, Color(relic.color), 46)
 		list.add_child(_compendium_row(badge, g._relic_name(relic), g._relic_detail(relic), discovered, Color(relic.color)))
 
 func _build_compendium_bestiary(list: VBoxContainer) -> void:
@@ -209,10 +209,27 @@ func _build_compendium_achievements(list: VBoxContainer) -> void:
 		for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
 		panel.add_child(pad)
 
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		pad.add_child(row)
+
+		var badge_holder := CenterContainer.new()
+		badge_holder.custom_minimum_size = Vector2(44, 44)
+		var badge_tex := TextureRect.new()
+		badge_tex.texture = load("res://assets/icons/badge_%s.png" % str(ach.get("tier", "bronze")))
+		badge_tex.custom_minimum_size = Vector2(40, 40)
+		badge_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		badge_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		badge_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if not unlocked: badge_tex.modulate = Color(0.5, 0.5, 0.5, 0.5)
+		badge_holder.add_child(badge_tex)
+		row.add_child(badge_holder)
+
 		var texts := VBoxContainer.new()
 		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.add_theme_constant_override("separation", 4)
-		pad.add_child(texts)
+		row.add_child(texts)
 
 		var title_row := HBoxContainer.new()
 		title_row.add_theme_constant_override("separation", 8)
@@ -509,7 +526,7 @@ func _relics_section() -> Control:
 		relic_row.add_theme_constant_override("separation", 10)
 		pad.add_child(relic_row)
 		var holder := CenterContainer.new()
-		holder.add_child(g._sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, 38))
+		holder.add_child(g._relic_icon_badge(relic, color, 38))
 		relic_row.add_child(holder)
 		var texts := VBoxContainer.new()
 		texts.alignment = BoxContainer.ALIGNMENT_CENTER

@@ -93,7 +93,7 @@ const EMBER = Color("ff9a4c")
 const GOLD = Color("dab56e")
 const TEXT = Color("f7f3e8")
 const MUTED = Color("bdd0d0")
-const BATTLE_BACKGROUNDS = ["battlefield-v1.jpg","lantern-marsh-v1.jpg","rune-ravine-v1.jpg","ember-cliff-v1.jpg","mountain-forge-v1.jpg"]
+const BATTLE_BACKGROUNDS = ["battle_stage_0.png","battle_stage_1.png","battle_stage_2.png","battle_stage_3.png","battle_stage_4.png"]
 
 # The map is full-bleed: it spans the whole 390pt screen rather than sitting inside the
 # page margins every other screen uses.
@@ -242,6 +242,12 @@ const CARD_ATLAS_2_POS = {
 }
 
 func _get_character_texture(key: String) -> Texture2D:
+	# Standalone portraits (a hero that doesn't fit the fixed 3x3 atlas, e.g. miasma_witch)
+	# take priority over the atlas — checked by exact key match so every existing atlas key
+	# ("fox", "sentinel", ...) falls through unchanged since none of them name a real file here.
+	var standalone_path := "res://assets/characters/%s.png" % key
+	if ResourceLoader.exists(standalone_path):
+		return load(standalone_path)
 	if _char_atlas_tex == null:
 		_char_atlas_tex = load("res://assets/characters/character-atlas-v3.png")
 	if not CHAR_KEYS.has(key):
@@ -787,6 +793,27 @@ func _rune_icon_badge(rune: Dictionary, color: Color, diameter := 36) -> Panel:
 
 func _sigil_icon_badge(mark: String, color: Color, diameter := 44) -> Panel:
 	return _drawn_icon_badge("sigil", mark, color, diameter, color)
+
+func _relic_icon_badge(relic: Dictionary, color: Color, diameter := 44) -> Panel:
+	var relic_id: String = str(relic.get("id", ""))
+	var icon_path := "res://assets/icons/relic_%s.png" % relic_id
+	if not relic_id.is_empty() and ResourceLoader.exists(icon_path):
+		var badge := Panel.new()
+		badge.custom_minimum_size = Vector2(diameter, diameter)
+		badge.size = badge.custom_minimum_size
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
+		style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+		badge.add_theme_stylebox_override("panel", style)
+		var tr := TextureRect.new()
+		tr.texture = load(icon_path)
+		tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_child(tr)
+		return badge
+	return _sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, diameter)
 
 func _create_page(separation := 6) -> VBoxContainer:
 	var margin := MarginContainer.new()
