@@ -275,6 +275,32 @@ func _run() -> void:
 	if camp_btn != null:
 		var camp_icon := _find_by_script(camp_btn, game.GameIcon)
 		check(camp_icon != null and str(camp_icon.kind) == "profile", "the camp entry point uses a profile icon")
+
+	# Compendium milestones (50/80/100% discovery) are the one claimable Camp reward — force
+	# full discovery directly rather than relying on whatever % this long-running suite's
+	# ambient collection/relic state happens to sit at by this point.
+	var saved_compendium_discovered: Dictionary = game.profile.compendium_discovered.duplicate(true)
+	var saved_milestones_claimed: Array = game.profile.get("compendium_milestones_claimed", []).duplicate()
+	for c in game.content.cards:
+		if str(c.get("rarity", "")) != "Curse": game._compendium_dict("cards")[c.id] = true
+	for e in SpiritContent.EQUIPMENT: game._compendium_dict("equipment")[e.id] = true
+	for r in SpiritContent.RUNES: game._compendium_dict("runes")[r.id] = true
+	for r in SpiritContent.RELICS: game._compendium_dict("relics")[r.id] = true
+	for e in SpiritContent.ENEMIES: game._compendium_dict("bestiary")[e.name] = true
+	game.profile.compendium_milestones_claimed = []
+	check(game._has_claimable_camp_reward(), "a reached-but-unclaimed Compendium milestone is claimable")
+	game.show_map()
+	await process_frame
+	var camp_btn_ready: Node = game.root.find_child("CampButton", true, false)
+	check(camp_btn_ready != null and camp_btn_ready.get_node_or_null("NotificationDot") != null, "the camp entry point shows a red dot when a Compendium milestone is claimable")
+	game.profile.compendium_milestones_claimed = [50, 80, 100]
+	check(not game._has_claimable_camp_reward(), "once every milestone is claimed there is nothing left to flag")
+	game.show_map()
+	await process_frame
+	var camp_btn_done: Node = game.root.find_child("CampButton", true, false)
+	check(camp_btn_done != null and camp_btn_done.get_node_or_null("NotificationDot") == null, "the camp dot goes away once every milestone is claimed")
+	game.profile.compendium_discovered = saved_compendium_discovered
+	game.profile.compendium_milestones_claimed = saved_milestones_claimed
 	var deck_dock_btn := _find_button_containing(game.root, game.content.ui("ui.deck_btn", game.lang))
 	check(deck_dock_btn != null and deck_dock_btn.get_node_or_null("NotificationDot") != null, "an owned-but-unused card shows a red dot on the deck dock button")
 

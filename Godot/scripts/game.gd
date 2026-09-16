@@ -1156,6 +1156,18 @@ func _has_claimable_quest() -> bool:
 				return true
 	return false
 
+# Drives the red notification dot on the Camp entry point — true the moment a Compendium
+# collection-milestone reward (50/80/100%) is reached and not yet claimed. Camp itself never
+# had a notification dot before this; the Compendium milestones bar existed with no way to
+# tell from the map that a reward was sitting there unclaimed.
+func _has_claimable_camp_reward() -> bool:
+	var totals: Vector2i = _compendium_totals()
+	var pct: int = int(round(100.0 * float(totals.x) / maxf(1.0, float(totals.y))))
+	var claimed: Array = profile.get("compendium_milestones_claimed", [])
+	for target in [50, 80, 100]:
+		if pct >= target and not claimed.has(target): return true
+	return false
+
 # Drives the deck dock button's red dot — true whenever a card sits in the collection with
 # more owned copies than are actually placed in the 25-card deck (a shop buy or a chest
 # reward that never made it in).
@@ -1733,6 +1745,7 @@ func show_map() -> void:
 	camp_icon.position = (btn_size - camp_icon.size) / 2.0
 	camp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn_camp.add_child(camp_icon)
+	if _has_claimable_camp_reward(): _add_notification_dot(btn_camp, btn_size)
 	header.add_child(btn_camp)
 
 	# Language and audio-mute now live in show_settings() (F2, via _change_language()/
