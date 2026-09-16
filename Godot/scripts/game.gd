@@ -1187,6 +1187,7 @@ func _current_stage_label() -> String: return _rewards_screen._current_stage_lab
 func _grant_stage_rewards() -> void: _rewards_screen._grant_stage_rewards()
 func show_reward_details() -> void: _rewards_screen.show_reward_details()
 func show_battle_log() -> void: _rewards_screen.show_battle_log()
+func show_run_recap() -> void: _rewards_screen.show_run_recap()
 func _collect_card(card: Dictionary) -> void: _rewards_screen._collect_card(card)
 func _smart_add_card(card: Dictionary) -> void: _rewards_screen._smart_add_card(card)
 func show_event(index: int, kind: String) -> void: _rewards_screen.show_event(index, kind)

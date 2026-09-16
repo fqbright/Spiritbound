@@ -1058,6 +1058,42 @@ func _run() -> void:
 	game._grant_stage_rewards()
 	check(SpiritContent.BOSS_RELIC_IDS.has(str(game.pending_rewards.relic)), "a great boss kill grants one of the high-stakes boss relics, got '%s'" % str(game.pending_rewards.relic))
 
+	# E2: a fresh Great Boss kill flags a shareable Run Recap card in the reward flow.
+	check(bool(game.pending_rewards.get("great_boss_kill", false)), "a fresh (non-replay) great boss kill sets pending_rewards.great_boss_kill")
+	game.show_reward_details()
+	await process_frame
+	var recap_entry_btn: Button = game.root.find_child("ViewRunRecapBtn", true, false) as Button
+	check(recap_entry_btn != null, "ViewRunRecapBtn renders in the reward details screen after a great boss kill")
+	recap_entry_btn.pressed.emit()
+	await process_frame
+	check(game.root.find_child("RunRecapCard", true, false) != null, "show_run_recap() renders the recap card")
+	check(_find_label_text(game.root, game.content.hero_name(game.content.hero_class(str(game.profile.hero_class)), game.lang)), "the recap card shows the current hero's name")
+	var recap_boss_encounter: Dictionary = game.content.encounters[49]
+	var recap_boss_name: String = str(recap_boss_encounter.get("name_en", recap_boss_encounter.name)) if game.lang == "en" else str(recap_boss_encounter.name)
+	check(_find_label_text(game.root, game.tf("ui.run_recap_defeated_fmt", recap_boss_name)), "the recap card names the boss actually defeated")
+	check(game.root.find_child("RunRecapStats", true, false) != null, "the recap card shows the battle-performance stat row")
+	var recap_done_btn: Button = game.root.find_child("RunRecapDoneBtn", true, false) as Button
+	check(recap_done_btn != null, "RunRecapDoneBtn exists to return to the reward flow")
+	recap_done_btn.pressed.emit()
+	await process_frame
+	check(game.root.find_child("RunRecapCard", true, false) == null, "RunRecapDoneBtn returns to show_reward_details, leaving the recap screen")
+
+	# A regular (non-great-boss) win must never offer the recap.
+	game.profile.relics = []
+	game.profile.unlocked = 4
+	game.current_stage = 4
+	game.begin_battle(4)
+	await process_frame
+	var rw2 := 0.0
+	while game.resolving and rw2 < 8.0:
+		await create_timer(0.1).timeout
+		rw2 += 0.1
+	game._grant_stage_rewards()
+	check(not bool(game.pending_rewards.get("great_boss_kill", false)), "a regular boss kill never sets great_boss_kill")
+	game.show_reward_details()
+	await process_frame
+	check(game.root.find_child("ViewRunRecapBtn", true, false) == null, "ViewRunRecapBtn does not render after a regular boss kill")
+
 	game.profile.unlocked = saved_unlocked
 	game.profile.position = saved_position
 	game.profile.claimed_stage_events = saved_claimed_events

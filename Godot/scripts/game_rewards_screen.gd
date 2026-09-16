@@ -324,6 +324,10 @@ func _grant_stage_rewards() -> void:
 		# from everything else, same rotation as before.
 		var relic_pool: Array = SpiritContent.RELICS
 		if kind == "greatboss":
+			# E2: flags this specific win as recap-worthy — checked by show_reward_details() to
+			# offer the shareable Run Recap card. Only a fresh (non-replay) kill reaches this
+			# branch at all, since the `if replay: ... return` above already exited earlier.
+			g.pending_rewards.great_boss_kill = true
 			relic_pool = SpiritContent.RELICS.filter(func(r): return SpiritContent.BOSS_RELIC_IDS.has(r.id))
 		else:
 			relic_pool = SpiritContent.RELICS.filter(func(r): return not SpiritContent.BOSS_RELIC_IDS.has(r.id))
@@ -349,6 +353,11 @@ func show_reward_details() -> void:
 		var log_btn := g._button(g.t("ui.battle_log_view_btn"), show_battle_log, Color("17363e"), Vector2(0, 36))
 		log_btn.name = "ViewBattleLogBtn"
 		page.add_child(log_btn)
+
+	if bool(g.pending_rewards.get("great_boss_kill", false)):
+		var recap_btn := g._button(g.t("ui.run_recap_view_btn"), show_run_recap, g.GOLD, Vector2(0, 36))
+		recap_btn.name = "ViewRunRecapBtn"
+		page.add_child(recap_btn)
 
 	if g.current_stage < 3 or int(g.profile.unlocked) <= 3:
 		var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
@@ -626,6 +635,65 @@ func show_battle_log() -> void:
 		var line := _format_battle_log_entry(entry)
 		if not line.is_empty():
 			list.add_child(g._label(line, 10, g.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+# E2: a composed, screenshot-friendly recap card for a Great Boss kill — pure client-side
+# rendering (no share-sheet API, no server), matching how this game already treats a
+# well-designed screen as "shareable": the player screenshots it themselves. Reuses
+# combat.state.stats exactly like _build_victory_recap_card() does for early stages, since a
+# Great Boss kill happens well past the early-game window that function is gated to.
+func show_run_recap() -> void:
+	g._clear(); g._play_music(false)
+	var page := g._create_page(10)
+	page.add_child(g._header(g.t("ui.run_recap_title"), "", show_reward_details))
+
+	var card := PanelContainer.new()
+	card.name = "RunRecapCard"
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", g._panel(Color("140f08"), 18, g.GOLD))
+	page.add_child(card)
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 18)
+	card.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 10)
+	pad.add_child(stack)
+
+	var hero: Dictionary = g.content.hero_class(str(g.profile.hero_class))
+	var portrait := TextureRect.new()
+	portrait.name = "RunRecapPortrait"
+	portrait.texture = g._get_character_texture(str(hero.get("sprite", "fox")))
+	portrait.custom_minimum_size = Vector2(120, 120)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	stack.add_child(portrait)
+
+	stack.add_child(g._label(g.content.hero_name(hero, g.lang), 18, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var encounter: Dictionary = g.content.encounters[g.current_stage]
+	var boss_name: String = str(encounter.get("name_en", encounter.name)) if g.lang == "en" else str(encounter.name)
+	stack.add_child(g._label(g.tf("ui.run_recap_defeated_fmt", boss_name), 14, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(g.content.chapter_name(g.current_stage / 5, g.lang), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
+	var stat_row := HBoxContainer.new()
+	stat_row.name = "RunRecapStats"
+	stat_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	stat_row.add_theme_constant_override("separation", 16)
+	stat_row.add_child(g._label(g.tf("ui.recap_damage", int(stats.get("damage_dealt", 0))), 12, Color("ff8a8a")))
+	stat_row.add_child(g._label(g.tf("ui.recap_cards", int(stats.get("cards_played", 0))), 12, Color("a8dcff")))
+	stat_row.add_child(g._label(g.tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 12, Color("9fd8ff")))
+	stack.add_child(stat_row)
+
+	stack.add_child(g._label(g.t("ui.run_recap_share_hint"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var done_btn := g._button(g.t("ui.run_recap_done"), show_reward_details, g.EMBER, Vector2(200, 46))
+	done_btn.name = "RunRecapDoneBtn"
+	done_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	page.add_child(done_btn)
 
 # One line of human-readable text per recorded event kind, or "" for kinds not worth a line
 # (e.g. "turn" itself, already rendered as the section header above, and "intent" telegraphs,
