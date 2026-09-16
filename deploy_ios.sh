@@ -68,36 +68,48 @@ if [ "$MODE" == "pck" ]; then
     exit 0
 fi
 
-# Step 3: Find connected iOS device
-echo "📱 [3/4] Locating connected iOS device..."
-# Match the state column as a whole word: "unavailable" also contains "available".
-DEVICE_LINE=$(xcrun devicectl list devices 2>/dev/null | grep -E "[[:space:]]connected[[:space:]]" | head -n 1)
-DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" | head -n 1)
-DEVICE_NAME=$(echo "$DEVICE_LINE" | awk '{print $1" "$2}')
-
-if [ -z "$DEVICE_ID" ]; then
-    echo "⚠️  No physical device connected via devicectl. Building for generic iOS..."
-    DESTINATION="generic/platform=iOS"
-else
-    echo "   Found device: $DEVICE_NAME ($DEVICE_ID)"
-    DESTINATION="id=$DEVICE_ID"
-fi
-
-# Step 4: Build Xcode project
-echo "🔨 [4/4] Building with Xcode (Automatic Signing)..."
+# Step 3: Build Xcode project (always generic/platform=iOS so device lock doesn't block compile)
+echo "🔨 [3/4] Building with Xcode (Automatic Signing)..."
 xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -scheme Spiritbound \
-    -destination "$DESTINATION" \
+    -destination "generic/platform=iOS" \
     -allowProvisioningUpdates \
     build | tail -n 10
 
-if [ -n "$DEVICE_ID" ]; then
-    DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData/Spiritbound-*/Build/Products/Debug-iphoneos -name "Spiritbound.app" -type d 2>/dev/null | head -n 1)
-    if [ -n "$DERIVED_APP" ]; then
-        echo "🚀 Wirelessly installing to $DEVICE_NAME..."
-        xcrun devicectl device install app --device "$DEVICE_ID" "$DERIVED_APP"
-        echo "✨ Launching Spiritbound on $DEVICE_NAME..."
-        xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$BUNDLE_ID"
-        echo "🎉 Game successfully launched on your iPhone!"
-    fi
+# Step 4: Install and launch on device
+echo "📱 [4/4] Locating connected iOS device for install..."
+DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData/Spiritbound-*/Build/Products/Debug-iphoneos -name "Spiritbound.app" -type d 2>/dev/null | head -n 1)
+
+if [ -z "$DERIVED_APP" ]; then
+    echo "❌ Could not find built Spiritbound.app in DerivedData"
+    exit 1
 fi
+
+# Wait up to 10 seconds for device to be connected/unlocked
+DEVICE_LINE=""
+for i in {1..5}; do
+    DEVICE_LINE=$(xcrun devicectl list devices 2>/dev/null | grep -E "[[:space:]]connected[[:space:]]" | head -n 1 || true)
+    if [ -n "$DEVICE_LINE" ]; then
+        break
+    fi
+    echo "   Waiting for device tunnel (please ensure iPhone screen is unlocked)... ($i/5)"
+    sleep 2
+done
+
+if [ -z "$DEVICE_LINE" ]; then
+    DEVICE_LINE=$(xcrun devicectl list devices 2>/dev/null | grep -E "iPhone|iPad" | head -n 1 || true)
+    STATE=$(echo "$DEVICE_LINE" | awk '{print $5}')
+    echo "⚠️  Device found but state is '$STATE' (not 'connected')."
+    echo "   Please UNLOCK your iPhone screen with Face ID/Passcode."
+    echo "   Once unlocked, run: ./deploy_ios.sh"
+    exit 1
+fi
+
+DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" | head -n 1)
+DEVICE_NAME=$(echo "$DEVICE_LINE" | awk '{print $1" "$2}')
+
+echo "🚀 Installing to $DEVICE_NAME ($DEVICE_ID)..."
+xcrun devicectl device install app --device "$DEVICE_ID" "$DERIVED_APP"
+echo "✨ Launching Spiritbound on $DEVICE_NAME..."
+xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$BUNDLE_ID"
+echo "🎉 Game successfully launched on your iPhone!"
