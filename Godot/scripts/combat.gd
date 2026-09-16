@@ -33,8 +33,15 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"gale_used":false,
 		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
 		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier,
-		"hero_bonuses":hero_bonuses.duplicate(true)
+		"hero_bonuses":hero_bonuses.duplicate(true),
+		"encounter":encounter.duplicate(true),
+		"is_great_boss":bool(encounter.get("is_great_boss", false)),
+		"chapter":int(encounter.get("chapter", 1))
 	}
+	if not enemies.is_empty():
+		enemies[0]["is_great_boss"] = state.is_great_boss
+		enemies[0]["phase"] = 1
+		enemies[0]["phase_triggered"] = false
 	if equipment.has("jadePlate"): state.player.shield += 8
 	if equipment.has("focusCharm"): state.player.focus += 1
 	if _has_relic("titanBell"):
@@ -178,7 +185,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 		var other := _other_target(target_index)
 		if other >= 0: dealt += _damage_enemy(other, maxi(1, int(round(_base_damage(card, bonus + resonance) * .4))), false)
 	if rune == "siphon" and dealt > 0: state.player.shield += maxi(1, int(dealt * .25))
-	if rune == "burning" and harmful and state.enemies[target_index].health > 0: state.enemies[target_index].burn += 2
+	if rune == "burning" and harmful and state.enemies[target_index].health > 0 and not state.enemies[target_index].mechanics.get("burn_immune", false): state.enemies[target_index].burn += 2
 	if rune == "guardian": state.player.shield += 4
 	if rune == "cleanse": state.player.burn = 0
 	var element: String = card.get("element","")
@@ -300,9 +307,12 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 			"energy": state.energy += amount
 			"status":
 				var final_amt: int = amount
-				if effect.status == "burn" and state.get("boons", []).has("boon_flame_affinity"): final_amt += 2
-				if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
-				elif target_index >= 0: state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
+				if effect.status == "burn" and target_index >= 0 and bool(state.enemies[target_index].mechanics.get("burn_immune", false)):
+					final_amt = 0
+				elif effect.status == "burn" and state.get("boons", []).has("boon_flame_affinity"): final_amt += 2
+				if final_amt > 0:
+					if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
+					elif target_index >= 0: state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
 	return dealt
 
 func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
@@ -311,6 +321,8 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if enemy.health <= 0: return 0
 	enemy.hits += 1
 	if enemy.mechanics.get("dodge_every",0) > 0 and enemy.hits % enemy.mechanics.dodge_every == 0: emit_signal("event","dodge",{"enemy":index}); return 0
+	if int(enemy.mechanics.get("frost_armor", 0)) > 0:
+		amount = maxi(1, amount - int(enemy.mechanics.frost_armor))
 	# Vulnerable is the counterplay to armor-heavy late enemies: raw damage scales up before
 	# shield absorption, same slot in the pipeline pierce and Stone Spear already use.
 	if int(enemy.get("vulnerable", 0)) > 0: amount = int(round(amount * 1.5))
@@ -318,6 +330,8 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	enemy.shield -= absorbed
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
+	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
+		_trigger_great_boss_phase_2(enemy)
 	# Thorns was carried as encounter data since the 50-stage version but never actually
 	# consulted anywhere — every "thorns" enemy fought identically to one with no mechanic.
 	if dealt > 0 and int(enemy.mechanics.get("thorns", 0)) > 0:
@@ -335,6 +349,45 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 		if _living_count() == 0: state.phase = "won"
 	else: emit_signal("event","hit",{"enemy":index,"amount":dealt})
 	return dealt
+
+func _trigger_great_boss_phase_2(enemy: Dictionary) -> void:
+	enemy.phase = 2
+	enemy.phase_triggered = true
+	var chapter: int = int(state.get("chapter", 1))
+	match chapter:
+		10:
+			enemy.damage += 4
+			enemy.burn = 0
+			enemy.mechanics.burn_immune = true
+			state.player.burn = int(state.player.get("burn", 0)) + 3
+			emit_signal("event", "boss_phase", {"chapter": 10, "phase": 2, "name": "烬火狂怒", "name_en": "Ember Berserk", "desc": "攻击力提升4点，获得灼烧免疫，点燃玩家！", "desc_en": "+4 Damage, Burn Immunity, inflicts 3 Burn on player!"})
+		20:
+			enemy.shield += 25
+			enemy.mechanics.frost_armor = 2
+			emit_signal("event", "boss_phase", {"chapter": 20, "phase": 2, "name": "寒霜要塞", "name_en": "Glacial Bastion", "desc": "获得25点坚冰护盾，受到攻击伤害减少2点！", "desc_en": "Gains 25 Frost Shield, reduces all incoming damage by 2!"})
+		30:
+			state.player.vulnerable = int(state.player.get("vulnerable", 0)) + 2
+			if state.enemies.size() < 3:
+				var clone: Dictionary = _enemy("boss_clone", "暗影化身", "Shadow Avatar", "void-fiend-v2.jpg", maxi(10, int(round(enemy.max_health * 0.35))), maxi(2, int(round(enemy.damage * 0.5))), {})
+				state.enemies.append(clone)
+			emit_signal("event", "boss_phase", {"chapter": 30, "phase": 2, "name": "暗影分身", "name_en": "Shadow Legion", "desc": "召唤暗影化身协助作战，使玩家获得2层易伤！", "desc_en": "Summons a Shadow Clone, inflicts 2 Vulnerable on player!"})
+		40:
+			enemy.mechanics.dodge_every = 2
+			state.player.weak = int(state.player.get("weak", 0)) + 2
+			emit_signal("event", "boss_phase", {"chapter": 40, "phase": 2, "name": "风暴领域", "name_en": "Cyclone Domain", "desc": "开启风暴护体每2次受击闪避1次，使玩家陷入2层虚弱！", "desc_en": "Gains Dodge every 2 hits, inflicts 2 Weak on player!"})
+		50:
+			enemy.burn = 0
+			enemy.poison = 0
+			enemy.vulnerable = 0
+			enemy.weak = 0
+			var drained := _damage_player(6)
+			enemy.health = mini(enemy.max_health, enemy.health + drained)
+			state.draw.push_front({"uid": 9999, "card_id": "void_curse"})
+			emit_signal("event", "boss_phase", {"chapter": 50, "phase": 2, "name": "深渊觉醒", "name_en": "Abyssal Awakening", "desc": "净化全部弱化状态，汲取玩家6点生命，注入虚空诅咒！", "desc_en": "Cleanses all debuffs, drains 6 HP from player, injects Void Curse!"})
+		_:
+			enemy.damage += 3
+			enemy.shield += 15
+			emit_signal("event", "boss_phase", {"chapter": chapter, "phase": 2, "name": "首领狂怒", "name_en": "Boss Enrage", "desc": "首领生命过半，进入二阶段狂暴！", "desc_en": "Boss health below half, enters Phase 2 Enrage!"})
 
 func _damage_player(amount: int) -> int:
 	var absorbed := mini(state.player.shield,amount)
@@ -449,6 +502,7 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 		var critical := 2 if card.get("special", "") == "critical" else 1
 		var hit_amount := int(round(amount * execute * critical))
 		if int(enemy.get("vulnerable", 0)) > 0: hit_amount = int(round(hit_amount * 1.5))
+		if int(enemy.mechanics.get("frost_armor", 0)) > 0: hit_amount = maxi(1, hit_amount - int(enemy.mechanics.frost_armor))
 		var absorbed := 0 if pierce else mini(temp_shield, hit_amount)
 		temp_shield -= absorbed
 		var dealt := mini(temp_hp, hit_amount - absorbed)
@@ -463,6 +517,7 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 			var critical := 2 if card.get("special", "") == "critical" else 1
 			var hit_amount := int(round(amount * execute * critical))
 			if int(enemy.get("vulnerable", 0)) > 0: hit_amount = int(round(hit_amount * 1.5))
+			if int(enemy.mechanics.get("frost_armor", 0)) > 0: hit_amount = maxi(1, hit_amount - int(enemy.mechanics.frost_armor))
 			var absorbed := 0 if pierce else mini(temp_shield, hit_amount)
 			temp_shield -= absorbed
 			var dealt := mini(temp_hp, hit_amount - absorbed)

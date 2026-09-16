@@ -142,12 +142,16 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   exclusive card back. Needs real design decisions (what resets, what's kept, what the actual
   reward is) — sketch the exact mechanic before implementing.
   *Builds on:* `profile.difficulty` (A0-A5) ladder as the closest existing analog.
-- `[ ]` **D4 — 大首领专属机制 (unique Great Boss phase mechanics)**
-  Each of the 5 Great Bosses (every 10th chapter) currently differs only by stat scaling +
-  generic mechanic flags. Give each one a real scripted phase transition (e.g. "immune to
-  Burn below half HP", "summons an add every 5 turns"). Content-heavy: 5 new mechanic branches
-  in `combat.gd`'s intent/mechanics resolution, keyed by chapter number.
-  *Builds on:* `content._chapter_mechanics()`'s existing `is_great_boss` branch.
+- `[x]` **D4 — 大首领专属机制 (unique Great Boss phase mechanics)** — done 2026-09-15
+  Each of the 5 Great Bosses (Chapters 10, 20, 30, 40, 50 at Stage 50, 100, 150, 200, 250)
+  features a unique scripted Phase 2 transition when HP falls below 50%:
+  - Ch. 10 (Ember Lord): "Ember Berserk" (+4 damage, clears burn and becomes burn-immune, ignites player with 3 burn).
+  - Ch. 20 (Frost Titan): "Glacial Bastion" (+25 shield, gains frost_armor=2 reducing all incoming hit damage by 2).
+  - Ch. 30 (Shadow Sovereign): "Shadow Legion" (inflicts 2 Vulnerable on player, summons Shadow Clone add).
+  - Ch. 40 (Gale Wyrm): "Cyclone Domain" (gains dodge_every=2, inflicts 2 Weak on player).
+  - Ch. 50 (Abyssal Primordial): "Abyssal Awakening" (cleanses all debuffs, drains 6 HP from player, shuffles Void Curse into player's draw pile).
+  Displays animated cinematic `BossPhaseBanner` during battle. 247/0 rules (+20 checks), UI smoke passing.
+  *Built on:* `combat.gd`'s `_trigger_great_boss_phase_2()`, `BossPhaseBanner` in `game.gd`.
 
 ## Medium impact
 
@@ -230,6 +234,20 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — D4 Great Boss Phase 2 mechanics shipped & core.json curses bug fixed
+1. Fixed core.json curse cards placement: `decay_blight` and `void_curse` were moved from
+the `"statuses"` array into `"cards"` array. Updated shop/reward filters to cleanly exclude
+`rarity == "Curse"`, ensuring `collect_all` achievement remains at 39 collectible cards.
+2. D4 Great Boss Phase Transitions: all 5 Great Bosses (Chapters 10, 20, 30, 40, 50) feature
+scripted Phase 2 mechanics triggering at <=50% HP threshold in `combat.gd`:
+- Ch.10 Ember Lord: +4 damage, clears burn, becomes burn_immune, ignites player with 3 burn.
+- Ch.20 Frost Titan: gains 25 shield, gains `frost_armor=2` (reducing all incoming damage by 2).
+- Ch.30 Shadow Sovereign: inflicts 2 Vulnerable, spawns Shadow Clone minion.
+- Ch.40 Gale Wyrm: gains `dodge_every=2`, inflicts 2 Weak on player.
+- Ch.50 Abyssal Primordial: cleanses debuffs, drains 6 HP from player, pushes Void Curse into draw pile.
+Cinematic `BossPhaseBanner` displays on phase transition in `game.gd`. 247/0 rules (+20 checks),
+UI smoke passed.
 
 ### 2026-09-15 — D1 on-card synergy tags shipped
 Deliberately deviated from the report's own sketch ("add a `tags: Array` field" to card data)

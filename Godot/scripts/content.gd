@@ -582,7 +582,7 @@ func roll_quests(catalog: Array, count: int, period_seed: int) -> Array:
 # same discounted slot until the next reset, rather than a fresh random shuffle on every
 # visit to the shop.
 func roll_shop_stock(day_seed: int, count: int) -> Dictionary:
-	var pool: Array = cards.filter(func(c): return c.rarity != "Starter")
+	var pool: Array = cards.filter(func(c): return c.rarity != "Starter" and c.get("rarity", "") != "Curse")
 	var indices := _shuffled_indices(pool.size(), day_seed)
 	var picked: Array = []
 	for i in mini(count, indices.size()): picked.append(pool[indices[i]])

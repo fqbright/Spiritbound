@@ -763,6 +763,28 @@
         }
       ],
       "special": "recycleDiscard"
+    },
+    {
+      "id": "decay_blight",
+      "nameKey": "card.decay_blight",
+      "rarity": "Curse",
+      "pool": "Curse",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [],
+      "kind": "Curse",
+      "element": "void"
+    },
+    {
+      "id": "void_curse",
+      "nameKey": "card.void_curse",
+      "rarity": "Curse",
+      "pool": "Curse",
+      "cost": 99,
+      "exhaust": true,
+      "effects": [],
+      "kind": "Curse",
+      "element": "void"
     }
   ],
   "statuses": [
@@ -788,28 +810,6 @@
       "scaleWithStacks": false,
       "decay": 0,
       "nextAttackBonus": 3
-    },
-    {
-      "id": "decay_blight",
-      "nameKey": "card.decay_blight",
-      "rarity": "Curse",
-      "pool": "Curse",
-      "cost": 1,
-      "exhaust": true,
-      "effects": [],
-      "kind": "Curse",
-      "element": "void"
-    },
-    {
-      "id": "void_curse",
-      "nameKey": "card.void_curse",
-      "rarity": "Curse",
-      "pool": "Curse",
-      "cost": 99,
-      "exhaust": true,
-      "effects": [],
-      "kind": "Curse",
-      "element": "void"
     }
   ],
   "startingDeck": [

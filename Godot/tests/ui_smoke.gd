@@ -1381,6 +1381,16 @@ func _run() -> void:
 		await process_frame
 		check(game.profile.abyss_boons.size() == 1, "selecting boon adds it to profile.abyss_boons")
 
+	section("== growth roadmap D4: great boss phase 2 banner ==")
+	game.begin_battle(0)
+	await process_frame
+	game._show_boss_phase_banner("烬火狂怒", "攻击力提升4点，免疫灼烧！")
+	await process_frame
+	var phase_banner := game.overlay.get_node_or_null("BossPhaseBanner") as Control
+	check(phase_banner != null, "BossPhaseBanner appears on boss phase transition")
+	phase_banner.queue_free()
+	await process_frame
+
 	section("== milestone 4: compendium, hero mastery & daily trial ==")
 	game.compendium_tab = "cards"
 	game.show_compendium()

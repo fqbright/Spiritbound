@@ -448,9 +448,11 @@ func run() -> void:
 
 	var invalid_cards := 0
 	for c in content.cards:
+		if c.get("rarity", "") == "Curse": continue
 		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
 			invalid_cards += 1
-	check(invalid_cards == 0 and content.cards.size() == 39, "all 39 cards have valid costs and effects")
+	var curse_cards: Array = content.cards.filter(func(c): return c.get("rarity", "") == "Curse")
+	check(invalid_cards == 0 and content.cards.size() == 41 and curse_cards.size() == 2, "all 39 collectible cards have valid costs/effects and 2 curses exist")
 
 	var invalid_encs := 0
 	for enc in content.encounters:
@@ -707,6 +709,7 @@ func run() -> void:
 	for instance in void_draw.state.hand:
 		if str(instance.card_id) == "void_curse": still_holding_void = true
 	check(not still_holding_void, "void_curse clears itself out of hand by the next turn")
+	check(not content.card("decay_blight").is_empty() and not content.card("void_curse").is_empty(), "content.card() finds both curse cards in core cards array")
 
 	# cursedTome: +1 draw and -2 HP every turn, including turn 1.
 	var tome := SpiritCombat.new(content)
@@ -836,6 +839,63 @@ func run() -> void:
 	poison_start_battle.create(402, encounter(100, 0, 1), Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"poison_start": 2})
 	check(int(poison_start_battle.state.enemies[0].poison) == 2, "poison_start hero bonus applies to the boss at battle start")
 	check(int(poison_start_battle.state.enemies[1].poison) == 2, "poison_start hero bonus applies to adds too")
+
+	# Great Boss Phase 2 transitions:
+	# Chapter 10: Ember Berserk (+4 dmg, burn_immune, ignites player)
+	var gb10 := SpiritCombat.new(content)
+	var enc10 := {"chapter":10,"level":5,"health":100,"damage":10,"reward":50,"name":"烬火巨兽","art":"sentinel-v1.jpg","mechanics":{},"adds":0,"background":0,"is_great_boss":true}
+	gb10.create(510, enc10, Array(content.raw.startingDeck), 60)
+	gb10.state.enemies[0].burn = 3
+	check(gb10.state.enemies[0].phase == 1, "Ch.10 Great Boss starts in phase 1")
+	gb10._damage_enemy(0, 55, true) # reduces HP from 100 to 45 (<= 50%)
+	check(gb10.state.enemies[0].phase == 2, "Ch.10 Great Boss transitions to phase 2 at <=50% HP")
+	check(int(gb10.state.enemies[0].damage) == 14, "Ch.10 Great Boss gains +4 damage (10 -> 14)")
+	check(int(gb10.state.enemies[0].burn) == 0, "Ch.10 Great Boss clears burn on phase 2")
+	check(bool(gb10.state.enemies[0].mechanics.get("burn_immune", false)), "Ch.10 Great Boss becomes burn immune")
+	check(int(gb10.state.player.burn) == 3, "Ch.10 Great Boss ignites player with 3 burn")
+
+	# Chapter 20: Glacial Bastion (+25 shield, frost_armor=2)
+	var gb20 := SpiritCombat.new(content)
+	var enc20 := {"chapter":20,"level":5,"health":100,"damage":10,"reward":50,"name":"寒霜巨灵","art":"sentinel-v1.jpg","mechanics":{},"adds":0,"background":0,"is_great_boss":true}
+	gb20.create(520, enc20, Array(content.raw.startingDeck), 60)
+	gb20._damage_enemy(0, 50, true) # HP 100 -> 50
+	check(gb20.state.enemies[0].phase == 2, "Ch.20 Great Boss enters phase 2")
+	check(int(gb20.state.enemies[0].shield) == 25, "Ch.20 Great Boss gains 25 shield")
+	check(int(gb20.state.enemies[0].mechanics.get("frost_armor", 0)) == 2, "Ch.20 Great Boss gains frost_armor 2")
+	var dealt_armored := gb20._damage_enemy(0, 10, true)
+	check(dealt_armored == 8, "frost_armor 2 reduces 10 damage to 8")
+
+	# Chapter 30: Shadow Legion (player vulnerable=2, clone spawned)
+	var gb30 := SpiritCombat.new(content)
+	var enc30 := {"chapter":30,"level":5,"health":100,"damage":10,"reward":50,"name":"暗影君主","art":"sentinel-v1.jpg","mechanics":{},"adds":0,"background":0,"is_great_boss":true}
+	gb30.create(530, enc30, Array(content.raw.startingDeck), 60)
+	gb30._damage_enemy(0, 52, true)
+	check(gb30.state.enemies[0].phase == 2, "Ch.30 Great Boss enters phase 2")
+	check(int(gb30.state.player.vulnerable) == 2, "Ch.30 Great Boss inflicts 2 vulnerable on player")
+	check(gb30.state.enemies.size() == 2, "Ch.30 Great Boss summons a shadow clone add")
+
+	# Chapter 40: Cyclone Domain (dodge_every=2, player weak=2)
+	var gb40 := SpiritCombat.new(content)
+	var enc40 := {"chapter":40,"level":5,"health":100,"damage":10,"reward":50,"name":"烈风邪龙","art":"sentinel-v1.jpg","mechanics":{},"adds":0,"background":0,"is_great_boss":true}
+	gb40.create(540, enc40, Array(content.raw.startingDeck), 60)
+	gb40._damage_enemy(0, 51, true)
+	check(gb40.state.enemies[0].phase == 2, "Ch.40 Great Boss enters phase 2")
+	check(int(gb40.state.enemies[0].mechanics.get("dodge_every", 0)) == 2, "Ch.40 Great Boss gains dodge_every 2")
+	check(int(gb40.state.player.weak) == 2, "Ch.40 Great Boss inflicts 2 weak on player")
+
+	# Chapter 50: Abyssal Awakening (cleanses debuffs, drains 6 HP, shuffles void_curse)
+	var gb50 := SpiritCombat.new(content)
+	var enc50 := {"chapter":50,"level":5,"health":100,"damage":10,"reward":50,"name":"深渊元祖","art":"sentinel-v1.jpg","mechanics":{},"adds":0,"background":0,"is_great_boss":true}
+	gb50.create(550, enc50, Array(content.raw.startingDeck), 60)
+	gb50.state.enemies[0].burn = 5
+	gb50.state.enemies[0].poison = 4
+	gb50.state.enemies[0].vulnerable = 3
+	var p_hp_before: int = int(gb50.state.player.health)
+	gb50._damage_enemy(0, 60, true) # HP 100 -> 40
+	check(gb50.state.enemies[0].phase == 2, "Ch.50 Great Boss enters phase 2")
+	check(int(gb50.state.enemies[0].burn) == 0 and int(gb50.state.enemies[0].poison) == 0 and int(gb50.state.enemies[0].vulnerable) == 0, "Ch.50 Great Boss cleanses all debuffs")
+	check(int(gb50.state.player.health) == p_hp_before - 6, "Ch.50 Great Boss drains 6 HP from player")
+	check(gb50.state.draw[0].card_id == "void_curse", "Ch.50 Great Boss pushes void_curse into player draw pile")
 
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)

@@ -4002,6 +4002,48 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		if not str(payload.rune).is_empty():
 			_advance_quest("play_runed_cards", 1)
 			var rune := content.rune(payload.rune); _toast("%s %s" % [rune.icon, _rune_name(rune)],Color(rune.color))
+	elif kind == "boss_phase":
+		var p_name: String = payload.get("name_en", "") if lang == "en" else payload.get("name", "")
+		var p_desc: String = payload.get("desc_en", "") if lang == "en" else payload.get("desc", "")
+		_show_boss_phase_banner(p_name, p_desc)
+
+func _show_boss_phase_banner(title: String, subtitle: String) -> void:
+	if overlay == null: return
+	_haptic("heavy")
+	var banner := PanelContainer.new()
+	banner.name = "BossPhaseBanner"
+	banner.z_index = 460
+	banner.custom_minimum_size = Vector2(300, 64)
+	banner.position = Vector2(45, 280)
+	banner.pivot_offset = Vector2(150, 32)
+	banner.scale = Vector2(0.6, 0.6)
+	banner.modulate.a = 0.0
+	var b_style := _panel(Color(0.14, 0.03, 0.05, 0.95), 14, Color("ff5959"))
+	b_style.border_width_left = 2; b_style.border_width_right = 2
+	b_style.border_width_top = 2; b_style.border_width_bottom = 2
+	banner.add_theme_stylebox_override("panel", b_style)
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var b_stack := VBoxContainer.new()
+	b_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	b_stack.add_theme_constant_override("separation", 2)
+	b_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.add_child(b_stack)
+
+	var b_title := _label("⚔ PHASE II · " + title + " ⚔", 16, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+	var b_sub := _label(subtitle, 10, Color("ffc9c9"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	b_stack.add_child(b_title)
+	b_stack.add_child(b_sub)
+	overlay.add_child(banner)
+
+	var tw := banner.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(banner, "scale", Vector2.ONE, _battle_delay(0.25)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(banner, "modulate:a", 1.0, _battle_delay(0.2))
+	var seq := banner.create_tween()
+	seq.tween_interval(_battle_delay(1.5))
+	seq.tween_property(banner, "modulate:a", 0.0, _battle_delay(0.3))
+	seq.tween_callback(banner.queue_free)
 
 func _toast(message: String, color := TEXT) -> void:
 	if overlay == null: return
@@ -4328,7 +4370,7 @@ func show_reward_details() -> void:
 		return
 
 	list.add_child(_label(t("ui.reward_choose"), 13, JADE, HORIZONTAL_ALIGNMENT_CENTER))
-	var options: Array = content.cards.filter(func(card): return card.rarity != "Starter")
+	var options: Array = content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
 	for offset in 3:
 		list.add_child(_reward_card_row(options[(current_stage + offset) % options.size()]))
 
