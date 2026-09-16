@@ -745,6 +745,10 @@ func _run() -> void:
 		check(bool(peek_card.is_previewing), "pressing a card shows the enlarged peek immediately, no delay")
 		await process_frame
 		check(game.overlay.get_node_or_null("HoldPreview") != null, "the peek overlay is actually in the tree")
+		# _modal_backdrop() (the hold-to-peek backdrop) carries the identical overlay-reordering
+		# fix _modal_dialog() does, and independently — this asserts its own call site directly
+		# rather than relying on _modal_dialog()'s coverage elsewhere to imply it also works here.
+		check(game.overlay.get_index() == game.root.get_child_count() - 1, "opening the hold-preview backdrop also moves overlay to be root's last child")
 		var peek_holder: Node = game.overlay.get_node_or_null("HoldPreview")
 		check(peek_holder != null and _find_texture_rect_ending_with(peek_holder, "card_frame_golden_border.png"), "the enlarged peek actually shows the generated ornate frame asset")
 		peek_card.is_held = false
@@ -2178,6 +2182,39 @@ func _run() -> void:
 	var card_back: Texture2D = game._get_card_back_texture()
 	check(card_back != null, "default card back texture is available via _get_card_back_texture")
 
+	section("== occlusion detection mechanism (synthetic, controlled) ==")
+	# The real-screen checks below only ever exercise whatever overlap happens to exist in
+	# today's layout — if a future redesign removes that incidental overlap, those checks
+	# would go on passing without actually testing anything. This constructs the exact
+	# geometry of the original bug directly (two fully-overlapping STOP-filtered buttons,
+	# added in a controlled order) so the detection mechanism itself — and the fix
+	# (move_child to reorder) — stay proven regardless of what any real screen looks like.
+	var victim := Button.new()
+	victim.name = "SyntheticVictim"
+	victim.position = Vector2(20, 20)
+	victim.size = Vector2(40, 40)
+	victim.mouse_filter = Control.MOUSE_FILTER_STOP
+	game.root.add_child(victim)
+	var occluder := Button.new()
+	occluder.name = "SyntheticOccluder"
+	occluder.position = Vector2(20, 20)
+	occluder.size = Vector2(40, 40)
+	occluder.mouse_filter = Control.MOUSE_FILTER_STOP
+	game.root.add_child(occluder)
+	await process_frame
+
+	check(_wins_input_over(occluder, victim), "a later-added sibling wins input priority with no z_index difference (plain tree order)")
+	victim.z_index = 600
+	check(_wins_input_over(occluder, victim), "a later-added sibling STILL wins input priority even against a much higher z_index — this is the exact assumption the original buggy occlusion check got backwards")
+	check(not find_occlusion(victim).is_empty(), "find_occlusion correctly flags the high-z_index victim as blocked by the later, input-priority-winning sibling")
+
+	game.root.move_child(victim, game.root.get_child_count() - 1)
+	check(find_occlusion(victim).is_empty(), "moving the victim to be root's last child (the actual production fix) resolves the occlusion, proving the fix mechanism itself, not just the detection")
+
+	victim.queue_free()
+	occluder.queue_free()
+	await process_frame
+
 	section("== UI Clickability & Occlusion Suite ==")
 	# 1. Map Header Buttons (Quest, Camp, Settings)
 	game.show_map()
@@ -2221,6 +2258,7 @@ func _run() -> void:
 	# Inside SettingsModal: check all interactive buttons
 	var chk_settings_modal: Node = game.overlay.find_child("SettingsModal", true, false)
 	if chk_settings_modal != null:
+		_sweep_buttons_clickable(chk_settings_modal, "SettingsModal")
 		var chk_close_btn: Control = chk_settings_modal.find_child("SettingsCloseBtn", true, false) as Control
 		check_clickable(chk_close_btn, "SettingsCloseBtn")
 		var chk_motion_toggle: Control = chk_settings_modal.find_child("ReduceMotionToggleBtn", true, false) as Control
@@ -2237,6 +2275,7 @@ func _run() -> void:
 	var chk_replay_modal: Node = game.overlay.find_child("ReplayModal", true, false)
 	check(chk_replay_modal != null, "ReplayModal opens on stage replay prompt")
 	if chk_replay_modal != null:
+		_sweep_buttons_clickable(chk_replay_modal, "ReplayModal")
 		var chk_replay_normal: Control = chk_replay_modal.find_child("ReplayNormalBtn", true, false) as Control
 		check_clickable(chk_replay_normal, "ReplayNormalBtn")
 		var chk_replay_hard: Control = chk_replay_modal.find_child("ReplayHardBtn", true, false) as Control
@@ -2259,6 +2298,7 @@ func _run() -> void:
 	var chk_import_modal: Node = game.overlay.find_child("DeckImportModal", true, false)
 	check(chk_import_modal != null, "DeckImportModal opens on import button tap")
 	if chk_import_modal != null:
+		_sweep_buttons_clickable(chk_import_modal, "DeckImportModal")
 		var chk_import_confirm: Control = chk_import_modal.find_child("DeckImportConfirmBtn", true, false) as Control
 		check_clickable(chk_import_confirm, "DeckImportConfirmBtn")
 		var chk_import_close: Control = chk_import_modal.find_child("DeckImportCloseBtn", true, false) as Control
@@ -2266,6 +2306,30 @@ func _run() -> void:
 		tap_button(chk_import_close, "DeckImportCloseBtn")
 		await process_frame
 		check(game.overlay.find_child("DeckImportModal", true, false) == null, "DeckImportCloseBtn click dismisses modal")
+
+	# A broad, name-agnostic safety net across the game's busiest screens: every visible,
+	# enabled button anywhere in each of these has to be occlusion-clean, not just the
+	# specific buttons other checks above remembered to name. This is what would have caught
+	# the modal-tap bug even if none of the specific modals above had been individually
+	# hardcoded — and is what protects any screen this suite doesn't otherwise enumerate.
+	game.show_map()
+	await process_frame
+	_sweep_buttons_clickable(game.root, "Map screen")
+	for tab in ["character", "challenges", "collection"]:
+		game.camp_tab = tab
+		game.show_camp()
+		await process_frame
+		_sweep_buttons_clickable(game.root, "Camp (%s tab)" % tab)
+	game.show_shop()
+	await process_frame
+	_sweep_buttons_clickable(game.root, "Shop screen")
+	game.show_deck()
+	await process_frame
+	_sweep_buttons_clickable(game.root, "Deck screen")
+	game.compendium_tab = "cards"
+	game.show_compendium()
+	await process_frame
+	_sweep_buttons_clickable(game.root, "Compendium screen")
 
 	_restore_save()
 	print("")
@@ -2336,13 +2400,33 @@ func find_occlusion(target: Control) -> String:
 		return "button is disabled"
 	if target.size.x < 4.0 or target.size.y < 4.0:
 		return "button size is too small or collapsed (%s)" % str(target.size)
-	
+	# A full-screen dismiss-anywhere backdrop (_modal_dialog()/_modal_backdrop()'s
+	# ModalBackdropDim/HoldPreview) is *always* partially covered at its own center by the
+	# dialog or peek content stacked on top of it — that's the intended design, not an
+	# accident, and Godot's normal sibling-order dispatch already routes a tap on the dialog
+	# to the dialog and a tap on the surrounding dimmed area to the backdrop. Center-point
+	# testing can't distinguish "covered everywhere" from "covered only at the center where
+	# its own content sits", so this class of node is exempted rather than producing a
+	# structurally-guaranteed false positive on every single modal.
+	if target.name == "ModalBackdropDim" or target.name == "HoldPreview":
+		return ""
+
 	var rect := target.get_global_rect()
 	var center := rect.get_center()
-	
-	if center.x < 0.0 or center.x > 390.0 or center.y < 0.0 or center.y > 844.0:
+
+	# A ScrollContainer descendant legitimately lives outside the currently-visible window —
+	# that's what scrolling is for. Skip the absolute-viewport check for it; the sibling/
+	# ancestor MOUSE_FILTER_STOP checks below still catch a genuine occlusion regardless of
+	# scroll position, since occluder and target are compared at the same current rect either
+	# way.
+	var target_scroll_container: Node = null
+	var ancestor: Node = target.get_parent()
+	while ancestor != null:
+		if ancestor is ScrollContainer: target_scroll_container = ancestor; break
+		ancestor = ancestor.get_parent()
+	if target_scroll_container == null and (center.x < 0.0 or center.x > 390.0 or center.y < 0.0 or center.y > 844.0):
 		return "button center %s is outside viewport bounds (390x844)" % str(center)
-	
+
 	# 1. Check all descendants of target for MOUSE_FILTER_STOP that cover center
 	var stack: Array = [target]
 	while not stack.is_empty():
@@ -2354,8 +2438,14 @@ func find_occlusion(target: Control) -> String:
 					return "decorative child '%s' (%s) has MOUSE_FILTER_STOP, swallowing tap" % [c.name, c.get_class()]
 		for child in curr.get_children():
 			stack.append(child)
-	
-	# 2. Check all other controls in scene tree that draw above target and cover its center
+
+	# 2. Check all other controls in scene tree that draw above target and cover its center.
+	# A fixed-chrome element (a persistent header/footer/dock outside the target's own
+	# ScrollContainer) overlapping a scrolled target at its *current* scroll offset isn't a
+	# real bug — the target moves out from under fixed chrome as the page scrolls, the same
+	# way content flows behind any app's fixed bottom nav bar at a scroll extreme. Only an
+	# occluder that scrolls together with the target (inside that same ScrollContainer, so
+	# the overlap can never be resolved by scrolling) counts as a genuine occlusion.
 	var root_node := target.get_tree().root
 	stack = [root_node]
 	while not stack.is_empty():
@@ -2364,9 +2454,11 @@ func find_occlusion(target: Control) -> String:
 			var c := curr as Control
 			if c.is_visible_in_tree() and c.mouse_filter == Control.MOUSE_FILTER_STOP:
 				if c != target and not c.is_ancestor_of(target) and not target.is_ancestor_of(c):
-					if c.get_global_rect().has_point(center):
-						if _wins_input_over(c, target):
-							return "occluded by '%s' (%s) with MOUSE_FILTER_STOP, which wins input priority by tree order regardless of z_index" % [c.name, c.get_class()]
+					var occluder_shares_scroll: bool = target_scroll_container != null and target_scroll_container.is_ancestor_of(c)
+					if target_scroll_container == null or occluder_shares_scroll:
+						if c.get_global_rect().has_point(center):
+							if _wins_input_over(c, target):
+								return "occluded by '%s' (%s) with MOUSE_FILTER_STOP, which wins input priority by tree order regardless of z_index" % [c.name, c.get_class()]
 		for child in curr.get_children():
 			stack.append(child)
 	
@@ -2385,6 +2477,21 @@ func tap_button(target: Control, desc: String) -> void:
 	if check_clickable(target, desc):
 		if target.has_signal("pressed"):
 			target.emit_signal("pressed")
+
+# A generic, name-agnostic sweep: every visible enabled BaseButton found anywhere under
+# `root` must be occlusion-clean. This is the broad net the hardcoded per-button
+# check_clickable() calls above can't be — a hardcoded list only protects the specific
+# buttons someone remembered to name, while this catches a regression on ANY button, on any
+# screen this is called against, including ones added after this test was written. `context`
+# is just a label prefix so a failure says which screen state it was found in.
+func _sweep_buttons_clickable(root_node: Node, context: String) -> void:
+	var stack: Array = [root_node]
+	while not stack.is_empty():
+		var curr: Node = stack.pop_back()
+		if curr is BaseButton and (curr as Control).is_visible_in_tree() and not (curr as BaseButton).disabled:
+			check_clickable(curr as Control, "%s: %s" % [context, str(curr.name)])
+		for child in curr.get_children():
+			stack.append(child)
 
 func _max_z(node: Node) -> int:
 	var best := _effective_z(node)
