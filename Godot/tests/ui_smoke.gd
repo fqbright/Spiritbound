@@ -47,6 +47,8 @@ func _run() -> void:
 	game.show_account_setup()
 	await process_frame
 	check(game.root.get_child_count() > 0, "account setup screen builds")
+	check(game.root.find_child("SignInWithAppleBtn", true, false) != null, "SignInWithAppleBtn exists in account setup")
+	check(game.root.find_child("SignInWithGoogleBtn", true, false) != null, "SignInWithGoogleBtn exists in account setup")
 	game._create_account("测试驭灵者")
 	await process_frame
 	check(str(game.profile.account.name) == "测试驭灵者", "account name persists")
@@ -240,7 +242,7 @@ func _run() -> void:
 		hop_count += 1
 	var elapsed_sec: float = float(Time.get_ticks_msec() - travel_start_ms) / 1000.0
 	check(int(game.profile.position) == 2, "traveling 2 stages ends at the correct final stage")
-	check(elapsed_sec > 3.5 and elapsed_sec < 4.7, "a 2-stage journey takes ~2 x TRAVEL_SECONDS_PER_STAGE (%.1fs elapsed, expected ~4s)" % elapsed_sec)
+	check(elapsed_sec > 1.5 and elapsed_sec < 2.8, "a 2-stage journey takes ~TOTAL_TRAVEL_SECONDS (%.1fs elapsed, expected ~2s)" % elapsed_sec)
 	# Not checking game.traveler.position here: arriving at stage 2 (an elite battle)
 	# immediately calls begin_battle() -> show_battle() -> _clear(), which frees the whole map
 	# scene graph (traveler included) in the same synchronous step that sets profile.position
@@ -290,16 +292,15 @@ func _run() -> void:
 	var rail: Control = game.root.find_child("MapChallengeRail", true, false) as Control
 	check(rail != null, "the map challenge rail exists")
 	var trial_shortcut: Control = game.root.find_child("MapTrialShortcutBtn", true, false) as Control
-	var abyss_shortcut: Control = game.root.find_child("MapAbyssShortcutBtn", true, false) as Control
-	check(trial_shortcut != null and trial_shortcut.size.x > 20.0, "the Daily Trial rail shortcut has real size")
-	check(abyss_shortcut != null and abyss_shortcut.size.x > 20.0, "the Abyss rail shortcut has real size")
-	if trial_shortcut != null and abyss_shortcut != null:
-		check(trial_shortcut.global_position.y < abyss_shortcut.global_position.y, "the rail stacks its two shortcuts vertically, trial above abyss")
+	check(trial_shortcut != null and trial_shortcut.size.x > 20.0, "the consolidated Challenge rail shortcut has real size")
+	check(game.root.find_child("MapAbyssShortcutBtn", true, false) == null, "duplicate abyss button is removed from right rail")
+	if trial_shortcut != null:
 		check(trial_shortcut.global_position.x > 300.0, "the rail sits toward the right edge of the screen (x=%.0f)" % trial_shortcut.global_position.x)
 	game.camp_tab = "character"
 	trial_shortcut.emit_signal("pressed")
 	await process_frame
-	check(game.camp_tab == "challenges", "tapping the trial rail shortcut opens Camp on the Challenges tab")
+	check(game.camp_tab == "challenges", "tapping the trial rail shortcut opens Challenges")
+	check(_find_label_text(game.root, game.content.ui("ui.challenges_title", game.lang)), "dedicated trial challenges screen renders")
 	game.camp_tab = "character"  # restore: a later section asserts Camp's own default tab
 
 	# Map pins set their own z_index, which beats tree order, so the floating bars have to
@@ -329,13 +330,13 @@ func _run() -> void:
 	check(quest_btn != null, "the quest entry point button exists")
 	if quest_btn != null:
 		check(quest_btn.get_node_or_null("NotificationDot") != null, "a claimable quest shows a red dot on the quest entry point")
-		var quest_icon := _find_by_script(quest_btn, GameIcon)
-		check(quest_icon != null and str(quest_icon.kind) == "quest", "the quest entry point uses a quest icon")
+		var quest_icon := _find_texture_rect(quest_btn)
+		check(quest_icon != null and quest_icon.texture != null, "the quest entry point uses a painted quest icon")
 	var camp_btn: Node = game.root.find_child("CampButton", true, false)
 	check(camp_btn != null, "the camp entry point button exists")
 	if camp_btn != null:
-		var camp_icon := _find_by_script(camp_btn, GameIcon)
-		check(camp_icon != null and str(camp_icon.kind) == "profile", "the camp entry point uses a profile icon")
+		var camp_icon := _find_texture_rect(camp_btn)
+		check(camp_icon != null and camp_icon.texture != null, "the camp entry point uses a painted camp icon")
 
 	# Compendium milestones (50/80/100% discovery) are the one claimable Camp reward — force
 	# full discovery directly rather than relying on whatever % this long-running suite's
@@ -520,12 +521,12 @@ func _run() -> void:
 	await process_frame
 	check(game.root.get_child_count() > 0, "camp page built")
 	check(game.camp_tab == "character", "camp defaults to the character tab")
-	check(_find_button_containing(game.root, game.content.ui("ui.camp_tab_challenges", game.lang)) != null, "camp's challenges tab button exists")
 	check(_find_button_containing(game.root, game.content.ui("ui.camp_tab_collection", game.lang)) != null, "camp's collection tab button exists")
 	game.camp_tab = "challenges"
 	game.show_camp()
 	await process_frame
 	check(not _find_label_text(game.root, game.content.ui("ui.hero_classes_title", game.lang)), "switching to the challenges tab hides the character tab's content")
+	check(_find_label_text(game.root, game.content.ui("ui.challenges_title", game.lang)), "dedicated trial challenges screen renders")
 	game.camp_tab = "character"
 
 	section("== battle ==")
@@ -1743,6 +1744,37 @@ func _run() -> void:
 	var initial_motion: bool = bool(game.profile.get("reduce_motion", false))
 	motion_btn.emit_signal("pressed")
 	check(bool(game.profile.get("reduce_motion", false)) != initial_motion, "toggling reduce motion updates profile")
+	var apple_btn := settings_modal.find_child("SignInWithAppleBtn", true, false) as Button
+	check(apple_btn != null, "SignInWithAppleBtn exists in settings")
+	var google_btn := settings_modal.find_child("SignInWithGoogleBtn", true, false) as Button
+	check(google_btn != null, "SignInWithGoogleBtn exists in settings")
+
+	# Test Apple sign in linking
+	apple_btn.emit_signal("pressed")
+	await process_frame
+	check(SpiritSave.is_cloud_linked(game.profile), "account is cloud linked after pressing SignInWithAppleBtn")
+	check(SpiritSave.account_provider(game.profile) == "apple", "account provider is apple")
+
+	# Verify settings modal refreshed with CloudSyncBtn and SignOutBtn
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
+	check(settings_modal != null, "SettingsModal is open after account link")
+	var cloud_sync_btn := settings_modal.find_child("CloudSyncBtn", true, false) as Button
+	check(cloud_sync_btn != null, "CloudSyncBtn exists when linked")
+	var sign_out_btn := settings_modal.find_child("SignOutBtn", true, false) as Button
+	check(sign_out_btn != null, "SignOutBtn exists when linked")
+
+	# Test Cloud Sync
+	cloud_sync_btn.emit_signal("pressed")
+	await process_frame
+	check(int(game.profile.account.cloud_synced_at) > 0, "cloud_synced_at timestamp updated")
+
+	# Test Sign Out reverting to guest
+	sign_out_btn.emit_signal("pressed")
+	await process_frame
+	check(not SpiritSave.is_cloud_linked(game.profile), "account unlinks back to guest on SignOut")
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
+	check(settings_modal.find_child("SignInWithAppleBtn", true, false) != null, "SignInWithAppleBtn returns after sign out")
+
 	var settings_close := settings_modal.find_child("SettingsCloseBtn", true, false) as Button
 	check(settings_close != null, "SettingsCloseBtn exists")
 	settings_close.emit_signal("pressed")
@@ -1800,6 +1832,64 @@ func _run() -> void:
 			all_cards_have_art = false
 			print("  Missing art for card: %s" % card.id)
 	check(all_cards_have_art, "every single card in core.json has dedicated non-null art")
+
+	section("== researched features: season pass, deck codes & spirit draft arena ==")
+	# 1. Season Pass in Quests
+	game.show_quests()
+	await process_frame
+	var sp_banner: Node = game.root.find_child("SeasonPassBanner", true, false)
+	check(sp_banner != null, "SeasonPassBanner renders in quests screen")
+	var sp_view_btn: Node = game.root.find_child("SeasonPassViewBtn", true, false)
+	check(sp_view_btn != null, "SeasonPassViewBtn exists on banner")
+	game.show_season_pass()
+	await process_frame
+	var claim_all_btn: Node = game.root.find_child("SeasonPassClaimAllBtn", true, false)
+	check(claim_all_btn != null, "SeasonPassClaimAllBtn renders in season pass screen")
+	check(game.root.find_child("SeasonPassTier_1", true, false) != null, "SeasonPassTier_1 renders")
+	check(game.root.find_child("SeasonPassTier_20", true, false) != null, "SeasonPassTier_20 renders")
+
+	# 2. Deck Code Export & Import
+	game.show_deck()
+	await process_frame
+	var export_btn: Node = game.root.find_child("DeckExportBtn", true, false)
+	var import_btn: Node = game.root.find_child("DeckImportBtn", true, false)
+	check(export_btn != null and import_btn != null, "DeckExportBtn and DeckImportBtn exist in deck screen")
+	(export_btn as Button).pressed.emit()
+	await process_frame
+	var clip_deck: String = game._clipboard_get()
+	check(clip_deck.begins_with("SPB1:"), "export deck code copies SPB1: prefixed code to clipboard")
+	(import_btn as Button).pressed.emit()
+	await process_frame
+	var import_modal: Node = game.overlay.find_child("DeckImportModal", true, false)
+	check(import_modal != null, "DeckImportModal dialog opens on overlay")
+	var code_input: LineEdit = game.overlay.find_child("DeckCodeInput", true, false)
+	if code_input and code_input.text.is_empty():
+		code_input.text = clip_deck
+	var confirm_import_btn: Node = game.overlay.find_child("DeckImportConfirmBtn", true, false)
+	check(confirm_import_btn != null, "DeckImportConfirmBtn exists in import dialog")
+	(confirm_import_btn as Button).pressed.emit()
+	await process_frame
+	check(game.overlay.find_child("DeckImportModal", true, false) == null, "DeckImportModal closes after successful import")
+
+	# 3. Spirit Draft Arena
+	game.show_challenges()
+	await process_frame
+	var draft_sec: Node = game.root.find_child("DraftArenaSection", true, false)
+	check(draft_sec != null, "DraftArenaSection renders in challenges screen")
+	var draft_enter_btn: Node = game.root.find_child("DraftArenaEnterBtn", true, false)
+	check(draft_enter_btn != null, "DraftArenaEnterBtn exists in draft section")
+	game.show_spirit_draft()
+	await process_frame
+	var current_pool: Array = game.profile.get("draft_arena", {}).get("current_pool", [])
+	check(current_pool.size() == 3, "spirit draft presents 3 card choices in pick phase")
+	var first_card_id: String = str(current_pool[0])
+	var pick_btn: Node = game.root.find_child("DraftPickBtn_" + first_card_id, true, false)
+	check(pick_btn != null, "DraftPickBtn exists for first offered card choice")
+	(pick_btn as Button).pressed.emit()
+	await process_frame
+	var draft_deck: Array = game.profile.get("draft_arena", {}).get("deck", [])
+	check(draft_deck.has(first_card_id), "picked card is added to arena draft deck")
+	check(int(game.profile.draft_arena.round) == 2, "draft round advances to 2 after pick")
 
 	_restore_save()
 	print("")

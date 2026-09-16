@@ -30,6 +30,7 @@ var in_abyss := false
 var pending_boon_draft := false
 var in_daily_trial := false
 var in_weekly_challenge := false
+var in_draft_battle := false
 var compendium_tab := "cards"
 var camp_tab := "character"
 var battle_speed := 1.0
@@ -38,6 +39,7 @@ var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
 var is_hard_replay: bool = false
+var clipboard_cache: String = ""
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
@@ -137,56 +139,56 @@ const BIOME_PATH_WAYPOINTS = [
 # rule (there the path is the DARKEST feature against glowing lava, not the brightest, which
 # the general detector isn't tuned for). See Docs/GROWTH_ROADMAP.md for the detection script.
 const CHAPTER_PATH_WAYPOINTS = [
-	[Vector2(173, 112), Vector2(211, 208), Vector2(249, 304), Vector2(254, 396), Vector2(249, 480)],  # chapter_0.png
-	[Vector2(207, 112), Vector2(182, 208), Vector2(207, 304), Vector2(218, 396), Vector2(264, 480)],  # chapter_1.png
-	[Vector2(163, 112), Vector2(162, 208), Vector2(211, 304), Vector2(188, 396), Vector2(191, 480)],  # chapter_2.png
-	[Vector2(196, 112), Vector2(178, 208), Vector2(193, 304), Vector2(199, 396), Vector2(156, 480)],  # chapter_3.png
-	[Vector2(159, 112), Vector2(211, 208), Vector2(162, 304), Vector2(165, 396), Vector2(186, 480)],  # chapter_4.png
-	[Vector2(148, 112), Vector2(268, 208), Vector2(203, 304), Vector2(282, 396), Vector2(228, 480)],  # chapter_5.png
-	[Vector2(116, 112), Vector2(144, 208), Vector2(94, 304), Vector2(136, 396), Vector2(144, 480)],  # chapter_6.png
-	[Vector2(200, 112), Vector2(180, 208), Vector2(195, 304), Vector2(175, 396), Vector2(190, 480)],  # chapter_7.png
-	[Vector2(195, 112), Vector2(165, 208), Vector2(175, 304), Vector2(210, 396), Vector2(180, 480)],  # chapter_8.png
-	[Vector2(195, 112), Vector2(236, 208), Vector2(238, 304), Vector2(200, 396), Vector2(196, 480)],  # chapter_9.png
-	[Vector2(224, 112), Vector2(237, 208), Vector2(240, 304), Vector2(250, 396), Vector2(328, 480)],  # chapter_10.png
-	[Vector2(241, 112), Vector2(122, 208), Vector2(186, 304), Vector2(107, 396), Vector2(161, 480)],  # chapter_11.png
-	[Vector2(163, 112), Vector2(208, 208), Vector2(232, 304), Vector2(264, 396), Vector2(238, 480)],  # chapter_12.png
-	[Vector2(182, 112), Vector2(206, 208), Vector2(198, 304), Vector2(227, 396), Vector2(244, 480)],  # chapter_13.png
-	[Vector2(272, 112), Vector2(264, 208), Vector2(278, 304), Vector2(295, 396), Vector2(299, 480)],  # chapter_14.png
-	[Vector2(215, 112), Vector2(172, 208), Vector2(195, 304), Vector2(190, 396), Vector2(233, 480)],  # chapter_15.png
-	[Vector2(163, 112), Vector2(162, 208), Vector2(211, 304), Vector2(182, 396), Vector2(176, 480)],  # chapter_16.png
-	[Vector2(200, 112), Vector2(211, 208), Vector2(223, 304), Vector2(267, 396), Vector2(250, 480)],  # chapter_17.png
-	[Vector2(190, 112), Vector2(205, 208), Vector2(180, 304), Vector2(200, 396), Vector2(175, 480)],  # chapter_18.png
-	[Vector2(193, 112), Vector2(194, 208), Vector2(152, 304), Vector2(191, 396), Vector2(192, 480)],  # chapter_19.png
-	[Vector2(219, 112), Vector2(226, 208), Vector2(177, 304), Vector2(212, 396), Vector2(184, 480)],  # chapter_20.png
-	[Vector2(164, 112), Vector2(162, 208), Vector2(211, 304), Vector2(181, 396), Vector2(176, 480)],  # chapter_21.png
-	[Vector2(267, 112), Vector2(229, 208), Vector2(301, 304), Vector2(290, 396), Vector2(290, 480)],  # chapter_22.png
-	[Vector2(179, 112), Vector2(162, 208), Vector2(151, 304), Vector2(97, 396), Vector2(97, 480)],  # chapter_23.png
-	[Vector2(276, 112), Vector2(294, 208), Vector2(273, 304), Vector2(285, 396), Vector2(278, 480)],  # chapter_24.png
-	[Vector2(157, 112), Vector2(126, 208), Vector2(150, 304), Vector2(154, 396), Vector2(156, 480)],  # chapter_25.png
-	[Vector2(200, 112), Vector2(175, 208), Vector2(190, 304), Vector2(165, 396), Vector2(185, 480)],  # chapter_26.png
-	[Vector2(271, 112), Vector2(246, 208), Vector2(291, 304), Vector2(253, 396), Vector2(257, 480)],  # chapter_27.png
-	[Vector2(196, 112), Vector2(196, 208), Vector2(239, 304), Vector2(197, 396), Vector2(206, 480)],  # chapter_28.png
-	[Vector2(206, 112), Vector2(197, 208), Vector2(142, 304), Vector2(184, 396), Vector2(190, 480)],  # chapter_29.png
-	[Vector2(224, 112), Vector2(265, 208), Vector2(209, 304), Vector2(260, 396), Vector2(305, 480)],  # chapter_30.png
-	[Vector2(148, 112), Vector2(267, 208), Vector2(203, 304), Vector2(282, 396), Vector2(227, 480)],  # chapter_31.png
-	[Vector2(194, 112), Vector2(216, 208), Vector2(194, 304), Vector2(199, 396), Vector2(156, 480)],  # chapter_32.png
-	[Vector2(112, 112), Vector2(95, 208), Vector2(114, 304), Vector2(105, 396), Vector2(110, 480)],  # chapter_33.png
-	[Vector2(241, 112), Vector2(122, 208), Vector2(186, 304), Vector2(107, 396), Vector2(161, 480)],  # chapter_34.png
-	[Vector2(228, 112), Vector2(226, 208), Vector2(178, 304), Vector2(207, 396), Vector2(213, 480)],  # chapter_35.png
-	[Vector2(118, 112), Vector2(143, 208), Vector2(98, 304), Vector2(136, 396), Vector2(131, 480)],  # chapter_36.png
-	[Vector2(234, 112), Vector2(168, 208), Vector2(125, 304), Vector2(126, 396), Vector2(151, 480)],  # chapter_37.png
-	[Vector2(136, 112), Vector2(201, 208), Vector2(271, 304), Vector2(313, 396), Vector2(281, 480)],  # chapter_38.png
-	[Vector2(195, 112), Vector2(243, 208), Vector2(196, 304), Vector2(200, 396), Vector2(197, 480)],  # chapter_39.png
-	[Vector2(208, 112), Vector2(207, 208), Vector2(219, 304), Vector2(220, 396), Vector2(265, 480)],  # chapter_40.png
-	[Vector2(215, 112), Vector2(171, 208), Vector2(196, 304), Vector2(190, 396), Vector2(234, 480)],  # chapter_41.png
-	[Vector2(253, 112), Vector2(211, 208), Vector2(222, 304), Vector2(269, 396), Vector2(249, 480)],  # chapter_42.png
-	[Vector2(163, 112), Vector2(162, 208), Vector2(211, 304), Vector2(181, 396), Vector2(184, 480)],  # chapter_43.png
-	[Vector2(177, 112), Vector2(162, 208), Vector2(225, 304), Vector2(296, 396), Vector2(328, 480)],  # chapter_44.png
-	[Vector2(148, 112), Vector2(267, 208), Vector2(203, 304), Vector2(282, 396), Vector2(228, 480)],  # chapter_45.png
-	[Vector2(272, 112), Vector2(246, 208), Vector2(291, 304), Vector2(253, 396), Vector2(258, 480)],  # chapter_46.png
-	[Vector2(165, 112), Vector2(124, 208), Vector2(180, 304), Vector2(129, 396), Vector2(84, 480)],  # chapter_47.png
-	[Vector2(196, 112), Vector2(195, 208), Vector2(236, 304), Vector2(198, 396), Vector2(197, 480)],  # chapter_48.png
-	[Vector2(193, 112), Vector2(194, 208), Vector2(152, 304), Vector2(190, 396), Vector2(193, 480)],  # chapter_49.png
+	[Vector2(179, 112), Vector2(200, 208), Vector2(191, 304), Vector2(151, 396), Vector2(176, 480)],  # chapter_0.png
+	[Vector2(200, 112), Vector2(160, 208), Vector2(149, 304), Vector2(153, 396), Vector2(157, 480)],  # chapter_1.png
+	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_2.png
+	[Vector2(256, 112), Vector2(217, 208), Vector2(165, 304), Vector2(152, 396), Vector2(188, 480)],  # chapter_3.png
+	[Vector2(160, 112), Vector2(222, 208), Vector2(188, 304), Vector2(213, 396), Vector2(168, 480)],  # chapter_4.png
+	[Vector2(303, 112), Vector2(260, 208), Vector2(224, 304), Vector2(246, 396), Vector2(156, 480)],  # chapter_5.png
+	[Vector2(325, 112), Vector2(250, 208), Vector2(190, 304), Vector2(260, 396), Vector2(135, 480)],  # chapter_6.png
+	[Vector2(236, 112), Vector2(250, 208), Vector2(295, 304), Vector2(298, 396), Vector2(341, 480)],  # chapter_7.png
+	[Vector2(74, 112), Vector2(101, 208), Vector2(48, 304), Vector2(65, 396), Vector2(48, 480)],  # chapter_8.png
+	[Vector2(92, 112), Vector2(96, 208), Vector2(70, 304), Vector2(81, 396), Vector2(83, 480)],  # chapter_9.png
+	[Vector2(284, 112), Vector2(275, 208), Vector2(240, 304), Vector2(233, 396), Vector2(239, 480)],  # chapter_10.png
+	[Vector2(86, 112), Vector2(129, 208), Vector2(167, 304), Vector2(143, 396), Vector2(233, 480)],  # chapter_11.png
+	[Vector2(160, 112), Vector2(222, 208), Vector2(188, 304), Vector2(213, 396), Vector2(168, 480)],  # chapter_12.png
+	[Vector2(189, 112), Vector2(229, 208), Vector2(240, 304), Vector2(227, 396), Vector2(223, 480)],  # chapter_13.png
+	[Vector2(246, 112), Vector2(233, 208), Vector2(215, 304), Vector2(248, 396), Vector2(257, 480)],  # chapter_14.png
+	[Vector2(133, 112), Vector2(172, 208), Vector2(224, 304), Vector2(237, 396), Vector2(201, 480)],  # chapter_15.png
+	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_16.png
+	[Vector2(125, 112), Vector2(103, 208), Vector2(119, 304), Vector2(89, 396), Vector2(134, 480)],  # chapter_17.png
+	[Vector2(238, 112), Vector2(250, 208), Vector2(295, 304), Vector2(297, 396), Vector2(341, 480)],  # chapter_18.png
+	[Vector2(152, 112), Vector2(189, 208), Vector2(190, 304), Vector2(193, 396), Vector2(189, 480)],  # chapter_19.png
+	[Vector2(203, 112), Vector2(170, 208), Vector2(141, 304), Vector2(166, 396), Vector2(180, 480)],  # chapter_20.png
+	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_21.png
+	[Vector2(107, 112), Vector2(107, 208), Vector2(94, 304), Vector2(91, 396), Vector2(48, 480)],  # chapter_22.png
+	[Vector2(237, 112), Vector2(249, 208), Vector2(295, 304), Vector2(297, 396), Vector2(341, 480)],  # chapter_23.png
+	[Vector2(282, 112), Vector2(282, 208), Vector2(285, 304), Vector2(285, 396), Vector2(266, 480)],  # chapter_24.png
+	[Vector2(256, 112), Vector2(217, 208), Vector2(165, 304), Vector2(152, 396), Vector2(188, 480)],  # chapter_25.png
+	[Vector2(193, 112), Vector2(213, 208), Vector2(231, 304), Vector2(197, 396), Vector2(180, 480)],  # chapter_26.png
+	[Vector2(267, 112), Vector2(188, 208), Vector2(177, 304), Vector2(170, 396), Vector2(140, 480)],  # chapter_27.png
+	[Vector2(96, 112), Vector2(106, 208), Vector2(135, 304), Vector2(158, 396), Vector2(153, 480)],  # chapter_28.png
+	[Vector2(194, 112), Vector2(186, 208), Vector2(190, 304), Vector2(180, 396), Vector2(189, 480)],  # chapter_29.png
+	[Vector2(206, 112), Vector2(189, 208), Vector2(198, 304), Vector2(238, 396), Vector2(213, 480)],  # chapter_30.png
+	[Vector2(178, 112), Vector2(259, 208), Vector2(233, 304), Vector2(246, 396), Vector2(156, 480)],  # chapter_31.png
+	[Vector2(256, 112), Vector2(217, 208), Vector2(165, 304), Vector2(152, 396), Vector2(188, 480)],  # chapter_32.png
+	[Vector2(107, 112), Vector2(107, 208), Vector2(103, 304), Vector2(104, 396), Vector2(123, 480)],  # chapter_33.png
+	[Vector2(86, 112), Vector2(130, 208), Vector2(162, 304), Vector2(143, 396), Vector2(233, 480)],  # chapter_34.png
+	[Vector2(229, 112), Vector2(170, 208), Vector2(141, 304), Vector2(166, 396), Vector2(180, 480)],  # chapter_35.png
+	[Vector2(122, 112), Vector2(195, 208), Vector2(207, 304), Vector2(219, 396), Vector2(248, 480)],  # chapter_36.png
+	[Vector2(229, 112), Vector2(166, 208), Vector2(201, 304), Vector2(177, 396), Vector2(221, 480)],  # chapter_37.png
+	[Vector2(192, 112), Vector2(213, 208), Vector2(218, 304), Vector2(192, 396), Vector2(211, 480)],  # chapter_38.png
+	[Vector2(237, 112), Vector2(200, 208), Vector2(199, 304), Vector2(196, 396), Vector2(200, 480)],  # chapter_39.png
+	[Vector2(200, 112), Vector2(157, 208), Vector2(149, 304), Vector2(162, 396), Vector2(166, 480)],  # chapter_40.png
+	[Vector2(133, 112), Vector2(172, 208), Vector2(224, 304), Vector2(237, 396), Vector2(201, 480)],  # chapter_41.png
+	[Vector2(125, 112), Vector2(103, 208), Vector2(119, 304), Vector2(90, 396), Vector2(134, 480)],  # chapter_42.png
+	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_43.png
+	[Vector2(278, 112), Vector2(283, 208), Vector2(295, 304), Vector2(297, 396), Vector2(341, 480)],  # chapter_44.png
+	[Vector2(303, 112), Vector2(259, 208), Vector2(227, 304), Vector2(246, 396), Vector2(156, 480)],  # chapter_45.png
+	[Vector2(267, 112), Vector2(188, 208), Vector2(178, 304), Vector2(170, 396), Vector2(141, 480)],  # chapter_46.png
+	[Vector2(183, 112), Vector2(200, 208), Vector2(191, 304), Vector2(151, 396), Vector2(176, 480)],  # chapter_47.png
+	[Vector2(237, 112), Vector2(200, 208), Vector2(199, 304), Vector2(196, 396), Vector2(200, 480)],  # chapter_48.png
+	[Vector2(194, 112), Vector2(189, 208), Vector2(190, 304), Vector2(187, 396), Vector2(189, 480)],  # chapter_49.png
 ]
 
 const CHAR_KEYS = {
@@ -567,12 +569,29 @@ func _claim_quest(list_name: String, quest_id: String) -> void:
 		if bool(q.get("claimed", false)) or int(q.get("progress", 0)) < int(q.get("target", 0)): return
 		q.claimed = true
 		profile.gold += int(q.get("reward", 0))
+		var pass_xp := 300 if list_name == "weekly_quests" else 100
+		_add_season_xp(pass_xp)
 		SpiritSave.write(profile)
 		_toast(tf("ui.quest_claimed_toast", int(q.get("reward", 0))), GOLD)
 		show_quests()
 		return
 
+func _add_season_xp(amount: int) -> void:
+	if not profile.get("season_pass") is Dictionary:
+		profile.season_pass = {"season_id":1, "season_name":"灵火初醒", "xp":0, "claimed_free":[], "claimed_premium":[], "is_premium":true}
+	var sp: Dictionary = profile.season_pass
+	var current_xp: int = int(sp.get("xp", 0))
+	var old_lvl: int = clampi(1 + int(current_xp / 200), 1, 20)
+	current_xp += amount
+	sp.xp = current_xp
+	var new_lvl: int = clampi(1 + int(current_xp / 200), 1, 20)
+	sp.level = new_lvl
+	if new_lvl > old_lvl:
+		_toast(tf("ui.season_pass_levelup", new_lvl), GOLD)
+	SpiritSave.write(profile)
+
 func show_account_setup() -> void:
+	_close_settings()
 	_clear(); _play_music(false)
 	var backdrop := _background("spirit-world-map-v1.jpg", .34); root.add_child(backdrop); root.move_child(backdrop, 0)
 	var page := _create_page(10)
@@ -602,8 +621,54 @@ func show_account_setup() -> void:
 	field.add_theme_stylebox_override("focus", _panel(Color("14303a"), 12, JADE))
 	page.add_child(field)
 
-	page.add_child(_button(t("ui.account_start"), func(): _create_account(field.text), EMBER, Vector2(0, 52)))
-	var lang_btn := _button(t("ui.lang_toggle"), func(): lang = "en" if lang == "zh-Hans" else "zh-Hans"; profile.language = lang; show_account_setup(), Color("17363e"), Vector2(0, 42))
+	page.add_child(_button(t("ui.account_start"), func(): _create_account(field.text), EMBER, Vector2(0, 50)))
+
+	page.add_child(_label(t("ui.auth_or_continue"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var auth_row := HBoxContainer.new()
+	auth_row.add_theme_constant_override("separation", 8)
+
+	var apple_btn := _button("Apple", func():
+		var chosen_name := field.text.strip_edges()
+		if chosen_name.is_empty(): chosen_name = "灵界探险家"
+		_create_account(chosen_name)
+		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
+	, Color("080808"), Vector2(0, 42))
+	apple_btn.name = "SignInWithAppleBtn"
+	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var apple_icon := TextureRect.new()
+	apple_icon.texture = load("res://assets/icons/icon_apple.png")
+	apple_icon.custom_minimum_size = Vector2(18, 18)
+	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	apple_icon.position = Vector2(10, 12)
+	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	apple_btn.add_child(apple_icon)
+	auth_row.add_child(apple_btn)
+
+	var google_btn := _button("Google", func():
+		var chosen_name := field.text.strip_edges()
+		if chosen_name.is_empty(): chosen_name = "灵界探险家"
+		_create_account(chosen_name)
+		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
+	, Color("f0f2f5"), Vector2(0, 42))
+	google_btn.name = "SignInWithGoogleBtn"
+	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
+	google_btn.add_theme_color_override("font_hover_color", Color("111111"))
+	google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
+	var google_icon := TextureRect.new()
+	google_icon.texture = load("res://assets/icons/icon_google.png")
+	google_icon.custom_minimum_size = Vector2(18, 18)
+	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	google_icon.position = Vector2(10, 12)
+	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	google_btn.add_child(google_icon)
+	auth_row.add_child(google_btn)
+
+	page.add_child(auth_row)
+
+	var lang_btn := _button(t("ui.lang_toggle"), func(): lang = "en" if lang == "zh-Hans" else "zh-Hans"; profile.language = lang; show_account_setup(), Color("17363e"), Vector2(0, 38))
 	page.add_child(lang_btn)
 	field.grab_focus()
 
@@ -898,17 +963,18 @@ func _background(file: String, opacity := .42) -> TextureRect:
 
 func _header(title: String, subtitle: String, back := Callable()) -> HBoxContainer:
 	var bar := HBoxContainer.new()
-	bar.custom_minimum_size.y = 44
+	bar.custom_minimum_size.y = 56
 	bar.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	bar.add_theme_constant_override("separation", 8)
+	bar.add_theme_constant_override("separation", 0)
 	bar.alignment = BoxContainer.ALIGNMENT_BEGIN
-	if back.is_valid():
-		var back_btn := _button("‹", back, Color("17363e"), Vector2(36,34))
-		back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		bar.add_child(back_btn)
-	var copy := VBoxContainer.new()
-	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	# Left side: Logo (map only) + Back button (if present) + Stats box (HP & Gold)
+	var left_box := HBoxContainer.new()
+	left_box.name = "HeaderLeftBox"
+	left_box.add_theme_constant_override("separation", 4)
+	left_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+	# Logo sits at the far left on the map header
 	if title == "SPIRITBOUND":
 		var logo := TextureRect.new()
 		logo.name = "SpiritboundLogo"
@@ -916,28 +982,27 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		logo.texture = logo_tex
 		logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		logo.custom_minimum_size = Vector2(104.0, 36.0)
+		logo.custom_minimum_size = Vector2(168.0, 52.0)
 		logo.size = logo.custom_minimum_size
 		logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		copy.add_child(logo)
-	else:
-		if title != "":
-			copy.add_child(_label(title, 16, TEXT))
-	if subtitle != "":
-		copy.add_child(_label(subtitle, 10, JADE))
-	bar.add_child(copy)
+		left_box.add_child(logo)
+
+	if back.is_valid():
+		var back_btn := _button("‹", back, Color("17363e"), Vector2(34, 34))
+		back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		left_box.add_child(back_btn)
 
 	var stats_box := HBoxContainer.new()
-	stats_box.add_theme_constant_override("separation", 4)
+	stats_box.name = "HeaderStatsBox"
+	stats_box.add_theme_constant_override("separation", 3)
 	stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	stats_box.alignment = BoxContainer.ALIGNMENT_END
 
 	var hp_icon := TextureRect.new()
 	hp_icon.texture = load("res://assets/icons/hud_heart.png")
 	hp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	hp_icon.custom_minimum_size = Vector2(16, 16)
+	hp_icon.custom_minimum_size = Vector2(15, 15)
 	hp_icon.size = hp_icon.custom_minimum_size
 	hp_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -948,14 +1013,14 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	stats_box.add_child(hp_label)
 
 	var sep := Control.new()
-	sep.custom_minimum_size = Vector2(4, 1)
+	sep.custom_minimum_size = Vector2(3, 1)
 	stats_box.add_child(sep)
 
 	var gold_icon := TextureRect.new()
 	gold_icon.texture = load("res://assets/icons/hud_gold.png")
 	gold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	gold_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	gold_icon.custom_minimum_size = Vector2(16, 16)
+	gold_icon.custom_minimum_size = Vector2(15, 15)
 	gold_icon.size = gold_icon.custom_minimum_size
 	gold_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	gold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -965,7 +1030,28 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	gold_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	stats_box.add_child(gold_label)
 
-	bar.add_child(stats_box)
+	left_box.add_child(stats_box)
+	bar.add_child(left_box)
+
+	# Center expand-fill spacer (title text for non-logo screens)
+	var copy := VBoxContainer.new()
+	copy.name = "HeaderCenterBox"
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+	copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if title != "SPIRITBOUND":
+		if title != "":
+			copy.add_child(_label(title, 16, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		if subtitle != "":
+			copy.add_child(_label(subtitle, 10, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	bar.add_child(copy)
+
+	# Right spacer placeholder (replaced by map header buttons in game_map_screen.gd)
+	var right_spacer := Control.new()
+	right_spacer.name = "HeaderRightSpacer"
+	right_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(right_spacer)
+
 	return bar
 
 # Thin delegators onto MapScreen (scripts/game_map_screen.gd) — kept here under their
@@ -984,6 +1070,15 @@ func _map_point(index: int) -> Vector2: return _map_screen._map_point(index)
 func _build_road_curve(points: PackedVector2Array) -> Curve2D: return _map_screen._build_road_curve(points)
 func _get_road_texture() -> NoiseTexture2D: return _map_screen._get_road_texture()
 func _get_terrain_wash_texture(tint_index: int) -> GradientTexture2D: return _map_screen._get_terrain_wash_texture(tint_index)
+func _add_notification_dot(anchor: Control, btn_size: Vector2) -> void: _map_screen._add_notification_dot(anchor, btn_size)
+func _clipboard_set(text: String) -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
+		DisplayServer.clipboard_set(text)
+	clipboard_cache = text
+func _clipboard_get() -> String:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
+		return DisplayServer.clipboard_get()
+	return clipboard_cache
 
 func _toast(message: String, color := TEXT) -> void:
 	if overlay == null: return
@@ -1093,34 +1188,72 @@ func _socket(card_id: String) -> void: _camp_screen._socket(card_id)
 func _format_countdown(target_unix: int) -> String: return _camp_screen._format_countdown(target_unix)
 func show_quests() -> void: _camp_screen.show_quests()
 func show_camp() -> void: _camp_screen.show_camp()
+func show_challenges() -> void: _camp_screen.show_challenges()
 func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
 func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
+func show_season_pass() -> void: _camp_screen.show_season_pass()
+func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
+
+func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Control:
+	var root := Control.new()
+	root.name = node_name
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.z_index = 600
+
+	var dim := Color("040a0c"); dim.a = 0.72
+	var dim_btn := Button.new()
+	dim_btn.name = "ModalBackdropDim"
+	dim_btn.flat = true
+	dim_btn.focus_mode = Control.FOCUS_NONE
+	dim_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim_btn.add_theme_stylebox_override("normal", _panel(dim, 0))
+	dim_btn.add_theme_stylebox_override("hover", _panel(dim, 0))
+	dim_btn.add_theme_stylebox_override("pressed", _panel(dim, 0))
+	dim_btn.add_theme_stylebox_override("focus", _panel(dim, 0))
+	if on_dismiss.is_valid():
+		dim_btn.pressed.connect(on_dismiss)
+	root.add_child(dim_btn)
+	overlay.add_child(root)
+	return root
 
 func show_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
-	if existing: existing.queue_free(); return
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		return
 
-	var modal := _modal_backdrop("SettingsModal", func(): _close_settings())
+	var modal := _modal_dialog("SettingsModal", func(): _close_settings())
 
-	var panel := Panel.new()
-	panel.custom_minimum_size = Vector2(340, 420)
-	panel.size = panel.custom_minimum_size
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.add_theme_stylebox_override("panel", _panel(Color("0e1d22"), 14, GOLD))
-	modal.add_child(panel)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
 
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	pad.add_theme_constant_override("margin_left", 16)
-	pad.add_theme_constant_override("margin_right", 16)
-	pad.add_theme_constant_override("margin_top", 16)
-	pad.add_theme_constant_override("margin_bottom", 16)
-	panel.add_child(pad)
+	var panel := PanelContainer.new()
+	var vp_w: int = int(get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(320, vp_w - 32), 0)
+	var panel_style := _panel(Color("0e1d22"), 14, GOLD)
+	panel_style.content_margin_left = 16
+	panel_style.content_margin_right = 16
+	panel_style.content_margin_top = 16
+	panel_style.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	var max_h: int = mini(520, int(get_viewport_rect().size.y) - 60)
+	scroll.custom_minimum_size = Vector2(mini(288, vp_w - 64), max_h)
+	panel.add_child(scroll)
 
 	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 14)
-	pad.add_child(list)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 12)
+	scroll.add_child(list)
 
 	# Header
 	var head := HBoxContainer.new()
@@ -1189,9 +1322,100 @@ func show_settings() -> void:
 	motion_box.add_child(motion_btn)
 	list.add_child(motion_box)
 
+	# 5. Account & Cloud Save Option
+	var account_box := VBoxContainer.new()
+	account_box.add_theme_constant_override("separation", 6)
+	account_box.add_child(_label(t("ui.settings_account"), 12, GOLD))
+	account_box.add_child(_label(t("ui.settings_account_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var is_linked := SpiritSave.is_cloud_linked(profile)
+	var provider: String = SpiritSave.account_provider(profile)
+
+	if not is_linked:
+		var status_lbl := _label(t("ui.auth_status_guest"), 10, Color("e09c48"))
+		account_box.add_child(status_lbl)
+
+		# Apple Login Button (Authentic iOS dark style with Apple logo)
+		var apple_btn := _button(t("ui.auth_apple"), func():
+			SpiritAuth.sign_in_with_apple(self, func(_ok, _p):
+				_close_settings()
+				show_settings()
+			)
+		, Color("080808"), Vector2(0, 42))
+		apple_btn.name = "SignInWithAppleBtn"
+		var apple_icon := TextureRect.new()
+		apple_icon.texture = load("res://assets/icons/icon_apple.png")
+		apple_icon.custom_minimum_size = Vector2(20, 20)
+		apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		apple_icon.position = Vector2(14, 11)
+		apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		apple_btn.add_child(apple_icon)
+		account_box.add_child(apple_btn)
+
+		# Google Login Button (Authentic light style with Google 4-color 'G')
+		var google_btn := _button(t("ui.auth_google"), func():
+			SpiritAuth.sign_in_with_google(self, func(_ok, _p):
+				_close_settings()
+				show_settings()
+			)
+		, Color("f0f2f5"), Vector2(0, 42))
+		google_btn.name = "SignInWithGoogleBtn"
+		google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
+		google_btn.add_theme_color_override("font_hover_color", Color("111111"))
+		google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
+		var google_icon := TextureRect.new()
+		google_icon.texture = load("res://assets/icons/icon_google.png")
+		google_icon.custom_minimum_size = Vector2(20, 20)
+		google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		google_icon.position = Vector2(14, 11)
+		google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		google_btn.add_child(google_icon)
+		account_box.add_child(google_btn)
+	else:
+		var account_info: Dictionary = profile.get("account", {})
+		var email_str: String = str(account_info.get("email", ""))
+		var uid_str: String = str(account_info.get("user_id", ""))
+		var display_id: String = email_str if not email_str.is_empty() else uid_str.substr(0, 16)
+		var linked_text: String = ""
+		if provider == "apple":
+			linked_text = tf("ui.auth_linked_apple", display_id)
+		else:
+			linked_text = tf("ui.auth_linked_google", display_id)
+
+		var linked_lbl := _label(linked_text, 10, JADE)
+		account_box.add_child(linked_lbl)
+
+		var sync_row := HBoxContainer.new()
+		sync_row.add_theme_constant_override("separation", 8)
+
+		var sync_btn := _button(t("ui.auth_cloud_sync_now"), func():
+			SpiritAuth.sync_cloud_save(self)
+		, Color("1a3d34"), Vector2(0, 38))
+		sync_btn.name = "CloudSyncBtn"
+		sync_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sync_row.add_child(sync_btn)
+
+		var signout_btn := _button(t("ui.auth_sign_out"), func():
+			SpiritAuth.sign_out(self, func(_ok):
+				_close_settings()
+				show_settings()
+			)
+		, Color("3d1f1f"), Vector2(0, 38))
+		signout_btn.name = "SignOutBtn"
+		signout_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sync_row.add_child(signout_btn)
+
+		account_box.add_child(sync_row)
+
+	list.add_child(account_box)
+
 func _close_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
-	if existing: existing.queue_free()
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
 
 func _change_language(new_lang: String) -> void:
 	lang = new_lang
@@ -1230,47 +1454,73 @@ func _on_pin_pressed(index: int) -> void:
 
 func _show_replay_mode_prompt(index: int) -> void:
 	var existing: Node = overlay.get_node_or_null("ReplayModal")
-	if existing: existing.queue_free()
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
 
-	var modal := _modal_backdrop("ReplayModal", func():
+	var modal := _modal_dialog("ReplayModal", func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
-		if ex: ex.queue_free()
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
 	)
 
-	var panel := Panel.new()
-	panel.custom_minimum_size = Vector2(340, 240)
-	panel.size = panel.custom_minimum_size
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.add_theme_stylebox_override("panel", _panel(Color("0f1e23"), 14, Color("34626d")))
-	modal.add_child(panel)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
 
-	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
-	panel.add_child(pad)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 0)
+	var panel_style := _panel(Color("0f1e23"), 14, Color("34626d"))
+	panel_style.content_margin_left = 16
+	panel_style.content_margin_right = 16
+	panel_style.content_margin_top = 14
+	panel_style.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
 
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 10)
-	pad.add_child(list)
+	panel.add_child(list)
 
-	list.add_child(_label(t("ui.replay_modal_title"), 15, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	# Header with title and close button
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	var title_lbl := _label(t("ui.replay_modal_title"), 14, GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title_lbl)
+	var close_btn := _button("✕", func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	, Color("1c333a"), Vector2(32, 32))
+	close_btn.name = "ReplayCloseBtn"
+	head.add_child(close_btn)
+	list.add_child(head)
 
 	var normal_btn := _button(t("ui.replay_normal_title"), func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
-		if ex: ex.queue_free()
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
 		is_hard_replay = false
 		_travel_to(index)
-	, Color("17363e"), Vector2(0, 44))
+	, Color("17363e"), Vector2(0, 42))
 	normal_btn.name = "ReplayNormalBtn"
 	list.add_child(normal_btn)
 	list.add_child(_label(t("ui.replay_normal_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	var hard_btn := _button(t("ui.replay_hard_title"), func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
-		if ex: ex.queue_free()
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
 		is_hard_replay = true
 		_travel_to(index)
-	, EMBER, Vector2(0, 44))
+	, EMBER, Vector2(0, 42))
 	hard_btn.name = "ReplayHardBtn"
 	list.add_child(hard_btn)
 	list.add_child(_label(t("ui.replay_hard_desc"), 9, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_CENTER, true))

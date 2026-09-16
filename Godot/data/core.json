@@ -785,6 +785,163 @@
       "effects": [],
       "kind": "Curse",
       "element": "void"
+    },
+    {
+      "id": "blaze_tempest",
+      "nameKey": "card.blaze_tempest",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 14
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 2
+        },
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "toxic_quake",
+      "nameKey": "card.toxic_quake",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        },
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "frost_surge",
+      "nameKey": "card.frost_surge",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 12
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "soul_pyre",
+      "nameKey": "card.soul_pyre",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "special": "cleave",
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 2
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "gale_barrier",
+      "nameKey": "card.gale_barrier",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 10
+        },
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "gale"
+    },
+    {
+      "id": "miasma_shield",
+      "nameKey": "card.miasma_shield",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 8
+        },
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 3
+        }
+      ],
+      "kind": "Skill",
+      "element": "poison"
     }
   ],
   "statuses": [
@@ -847,6 +1004,12 @@
       "card.focus": "Focus Spirit",
       "card.decay_blight": "Decay Blight",
       "card.void_curse": "Void Curse",
+      "card.blaze_tempest": "Blaze Tempest",
+      "card.toxic_quake": "Toxic Quake",
+      "card.frost_surge": "Frost Surge",
+      "card.soul_pyre": "Soul Pyre",
+      "card.gale_barrier": "Gale Barrier",
+      "card.miasma_shield": "Miasma Shield",
       "battle.subtitle": "The Ember Trial",
       "battle.chapter": "MISTWOOD · TRAINING",
       "battle.stage": "Encounter {current} / {total}",
@@ -1015,6 +1178,12 @@
       "card.focus": "凝神",
       "card.decay_blight": "腐朽枯萎",
       "card.void_curse": "虚空诅咒",
+      "card.blaze_tempest": "裂风劫火",
+      "card.toxic_quake": "地煞毒崩",
+      "card.frost_surge": "霜涛疾涌",
+      "card.soul_pyre": "炼魄灵焰",
+      "card.gale_barrier": "坚风壁垒",
+      "card.miasma_shield": "瘴水迷障",
       "battle.subtitle": "烬火试炼",
       "battle.chapter": "雾林 · 试炼",
       "battle.stage": "第 {current} / {total} 场",

@@ -46,7 +46,7 @@ func show_compendium() -> void:
 func _build_compendium_milestones_bar(pct: int) -> Control:
 	var bar_panel := PanelContainer.new()
 	bar_panel.name = "CompendiumMilestonesBar"
-	bar_panel.custom_minimum_size = Vector2(340, 56)
+	bar_panel.custom_minimum_size = Vector2(0, 56)
 	bar_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar_panel.add_theme_stylebox_override("panel", g._panel(Color("10221c"), 12, Color("356554")))
 
@@ -355,7 +355,12 @@ func _account_panel() -> Control:
 	names.add_theme_constant_override("separation", 1)
 	head.add_child(names)
 	names.add_child(g._label(str(account.get("name", "—")), 15, g.TEXT))
-	names.add_child(g._label(g.t("ui.account_local"), 9, g.JADE))
+	var is_linked := SpiritSave.is_cloud_linked(g.profile)
+	var provider := SpiritSave.account_provider(g.profile)
+	var status_text := g.t("ui.auth_status_guest")
+	if is_linked:
+		status_text = g.tf("ui.auth_status_linked", "Apple" if provider == "apple" else "Google")
+	names.add_child(g._label(status_text, 9, g.JADE if is_linked else Color("e09c48")))
 	var rename_btn := g._button(g.t("ui.account_rename"), g.show_account_setup, Color("17363e"), Vector2(52, 34))
 	rename_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(rename_btn)
@@ -365,10 +370,20 @@ func _account_panel() -> Control:
 	stack.add_child(g._label(g.tf("ui.account_created", created_text), 9, g.MUTED))
 	stack.add_child(g._label("%s · %s" % [g.t("ui.account_id"), str(account.get("id", "—")).substr(0, 13)], 9, g.MUTED))
 
-	var cloud := g._button(g.t("ui.account_cloud"), Callable(), Color("1a2f36"), Vector2(0, 38))
-	cloud.disabled = true
-	stack.add_child(cloud)
-	stack.add_child(g._label(g.t("ui.account_cloud_hint"), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	if is_linked:
+		var cloud := g._button(g.t("ui.auth_cloud_sync_now"), func():
+			SpiritAuth.sync_cloud_save(g)
+		, Color("1a3d34"), Vector2(0, 38))
+		cloud.name = "CampCloudSyncBtn"
+		stack.add_child(cloud)
+		stack.add_child(g._label(g.t("ui.auth_cloud_synced"), 8, g.JADE, HORIZONTAL_ALIGNMENT_LEFT, true))
+	else:
+		var cloud := g._button(g.t("ui.settings_account"), func():
+			g.show_settings()
+		, Color("1a2f36"), Vector2(0, 38))
+		cloud.name = "CampCloudLinkBtn"
+		stack.add_child(cloud)
+		stack.add_child(g._label(g.t("ui.settings_account_desc"), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_LEFT, true))
 	return panel
 
 func show_quests() -> void:
@@ -386,6 +401,7 @@ func show_quests() -> void:
 	scroll.add_child(list)
 
 	g._ensure_login_reward_current()
+	list.add_child(_season_pass_banner())
 	list.add_child(_login_reward_section())
 	g._ensure_quests_current()
 	list.add_child(_quest_section(g.t("ui.quests_daily"), "daily_quests", int(g.profile.get("daily_reset_at", 0))))
@@ -438,15 +454,18 @@ func _login_reward_section() -> Control:
 	return section
 
 func show_camp() -> void:
+	if g.camp_tab == "challenges":
+		show_challenges()
+		return
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
 	var page := g._create_page(6)
 	page.add_child(g._header(g.t("ui.camp_title"), g.t("ui.camp_sub"), g.show_map))
+	var active_tab := g.camp_tab if g.camp_tab in ["character", "collection"] else "character"
 	page.add_child(g._tab_bar([
 		["character", g.t("ui.camp_tab_character")],
-		["challenges", g.t("ui.camp_tab_challenges")],
 		["collection", g.t("ui.camp_tab_collection")],
-	], g.camp_tab, func(id): g.camp_tab = id; show_camp()))
+	], active_tab, func(id): g.camp_tab = id; show_camp()))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
@@ -458,9 +477,25 @@ func show_camp() -> void:
 	scroll.add_child(list)
 
 	match g.camp_tab:
-		"challenges": _build_camp_challenges(list)
 		"collection": _build_camp_collection(list)
 		_: _build_camp_character(list)
+
+func show_challenges() -> void:
+	g._clear(); g._play_music(false)
+	g._back_action = g.show_map
+	var page := g._create_page(6)
+	page.add_child(g._header(g.t("ui.challenges_title"), g.t("ui.challenges_sub"), g.show_map))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 10)
+	scroll.add_child(list)
+
+	_build_camp_challenges(list)
 
 # "Who you are": account identity plus the hero archetype you're actually playing. Split out
 # of what used to be one long show_camp() scroll (account, compendium, hero mastery, daily
@@ -474,6 +509,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 # own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
+	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
 	list.add_child(_weekly_challenge_section())
 	list.add_child(_abyss_section())
@@ -540,7 +576,7 @@ func _relics_section() -> Control:
 func _compendium_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 5
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(340, 64)
+	panel.custom_minimum_size = Vector2(0, 64)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var border_col := Color("8ff5cf") if unlocked else Color("2a3d42")
 	panel.add_theme_stylebox_override("panel", g._panel(Color("142418") if unlocked else Color("101a1c"), 14, border_col))
@@ -578,7 +614,7 @@ func _daily_trial_section() -> Control:
 	g._ensure_daily_trial_current()
 	var unlocked := int(g.profile.unlocked) >= 5
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(340, 130)
+	panel.custom_minimum_size = Vector2(0, 130)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", g._panel(Color("241a10") if unlocked else Color("181412"), 14, Color("ffb765") if unlocked else Color("2a3d42")))
 
@@ -634,7 +670,7 @@ func _weekly_challenge_section() -> Control:
 	g._ensure_weekly_challenge_current()
 	var unlocked := int(g.profile.unlocked) >= 5
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(340, 130)
+	panel.custom_minimum_size = Vector2(0, 130)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", g._panel(Color("1a2410") if unlocked else Color("181412"), 14, Color("c8e065") if unlocked else Color("2a3d42")))
 
@@ -693,7 +729,7 @@ func _hero_archetypes_section() -> Control:
 		var is_selected: bool = h.id == current_class_id
 		var art_pending: bool = bool(h.get("art_pending", false))
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(340, 116 if art_pending else 104)
+		panel.custom_minimum_size = Vector2(0, 116 if art_pending else 104)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var border_col: Color = g.GOLD if is_selected else Color("1a3d44")
 		panel.add_theme_stylebox_override("panel", g._panel(Color("10242b") if not is_selected else Color("153038"), 12, border_col))
@@ -788,7 +824,7 @@ func _hero_archetypes_section() -> Control:
 func _abyss_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 10
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(340, 110)
+	panel.custom_minimum_size = Vector2(0, 110)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var border_col := Color("c79bff") if unlocked else Color("2a3d42")
 	panel.add_theme_stylebox_override("panel", g._panel(Color("1b1024") if unlocked else Color("141018"), 14, border_col))
@@ -957,4 +993,466 @@ func _select_abyss_boon(boon: Dictionary) -> void:
 	SpiritSave.write(g.profile)
 	g._toast(g.tf("ui.boon_acquired_toast", g.content.ui(boon.nameKey, g.lang)))
 	g.show_reward_details()
+
+# =========================================================================
+# 灵界通行证 · 季节远征 (Spirit Pass)
+# =========================================================================
+
+func _has_claimable_season_pass_reward() -> bool:
+	var sp: Dictionary = g.profile.get("season_pass", {})
+	var xp: int = int(sp.get("xp", 0))
+	var current_lvl: int = clampi(1 + int(xp / 200), 1, 20)
+	var claimed_free: Array = sp.get("claimed_free", [])
+	var claimed_premium: Array = sp.get("claimed_premium", [])
+	var is_premium: bool = bool(sp.get("is_premium", true))
+	for l in range(1, current_lvl + 1):
+		if not claimed_free.has(l): return true
+		if is_premium and not claimed_premium.has(l): return true
+	return false
+
+func _season_pass_banner() -> Control:
+	var sp: Dictionary = g.profile.get("season_pass", {})
+	var xp: int = int(sp.get("xp", 0))
+	var lvl: int = clampi(1 + int(xp / 200), 1, 20)
+	var xp_in_level: int = xp % 200 if lvl < 20 else 200
+	var xp_req: int = 200
+
+	var panel := PanelContainer.new()
+	panel.name = "SeasonPassBanner"
+	var pstyle := g._panel(Color("10242b"), 12, g.GOLD)
+	pstyle.content_margin_left = 12
+	pstyle.content_margin_right = 12
+	pstyle.content_margin_top = 10
+	pstyle.content_margin_bottom = 10
+	panel.add_theme_stylebox_override("panel", pstyle)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	panel.add_child(row)
+
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 3)
+	row.add_child(info)
+
+	var title_lbl := g._label(g.t("ui.season_pass_banner_title"), 13, g.GOLD)
+	info.add_child(title_lbl)
+
+	var progress_row := HBoxContainer.new()
+	progress_row.add_theme_constant_override("separation", 8)
+	var lvl_lbl := g._label(g.tf("ui.season_pass_level_fmt", lvl), 11, g.TEXT)
+	progress_row.add_child(lvl_lbl)
+	var xp_lbl := g._label("%d / %d XP" % [xp_in_level, xp_req], 10, g.JADE)
+	progress_row.add_child(xp_lbl)
+	info.add_child(progress_row)
+
+	var bar := g._stat_bar(140.0, 10.0, xp_in_level, xp_req, g.GOLD, "", 8)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_child(bar)
+
+	var btn_view := g._button(g.t("ui.season_pass_view"), show_season_pass, g.EMBER, Vector2(80, 36))
+	btn_view.name = "SeasonPassViewBtn"
+	btn_view.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if _has_claimable_season_pass_reward():
+		g._add_notification_dot(btn_view, Vector2(80, 36))
+	row.add_child(btn_view)
+
+	return panel
+
+func _get_season_pass_rewards(tier: int) -> Dictionary:
+	var free_gold: int = 40 + tier * 15
+	var free_reward: Dictionary = {"type": "gold", "amount": free_gold, "desc": "%d %s" % [free_gold, g.t("ui.gold")]}
+	if tier == 5: free_reward = {"type": "rune", "id": "rune_swift", "desc": "符文·迅捷"}
+	elif tier == 10: free_reward = {"type": "rune", "id": "rune_burning", "desc": "符文·灼热"}
+	elif tier == 15: free_reward = {"type": "rune", "id": "rune_chain", "desc": "符文·连锁"}
+	elif tier == 20: free_reward = {"type": "rune", "id": "rune_vampiric", "desc": "符文·吸血"}
+
+	var prem_gold: int = 80 + tier * 30
+	var prem_reward: Dictionary = {"type": "gold", "amount": prem_gold, "desc": "%d %s" % [prem_gold, g.t("ui.gold")]}
+	if tier == 3: prem_reward = {"type": "equip", "id": "emberBlade", "desc": "烬火长刀"}
+	elif tier == 7: prem_reward = {"type": "equip", "id": "jadePlate", "desc": "翠玉战甲"}
+	elif tier == 10: prem_reward = {"type": "equip", "id": "stormBow", "desc": "逐电长弓"}
+	elif tier == 14: prem_reward = {"type": "equip", "id": "thornArmor", "desc": "荆棘铠甲"}
+	elif tier == 18: prem_reward = {"type": "equip", "id": "focusCharm", "desc": "凝神灵镜"}
+	elif tier == 20: prem_reward = {"type": "equip", "id": "phoenixMail", "desc": "涅槃羽衣"}
+
+	return {"free": free_reward, "premium": prem_reward}
+
+func _apply_pass_reward(reward: Dictionary) -> void:
+	var rtype: String = str(reward.get("type", "gold"))
+	if rtype == "gold":
+		g.profile.gold += int(reward.get("amount", 0))
+	elif rtype == "rune":
+		var rid: String = str(reward.get("id", ""))
+		if not g.profile.runes.has(rid):
+			g.profile.runes.append(rid)
+	elif rtype == "equip":
+		var eid: String = str(reward.get("id", ""))
+		if not g.profile.equipment_owned.has(eid):
+			g.profile.equipment_owned.append(eid)
+
+func _claim_season_pass_tier(tier: int, is_premium: bool) -> void:
+	var sp: Dictionary = g.profile.get("season_pass", {})
+	var r := _get_season_pass_rewards(tier)
+	if not is_premium:
+		var claimed_free: Array = sp.get("claimed_free", [])
+		if not claimed_free.has(tier):
+			claimed_free.append(tier)
+			sp.claimed_free = claimed_free
+			_apply_pass_reward(r.free)
+	else:
+		var claimed_premium: Array = sp.get("claimed_premium", [])
+		if not claimed_premium.has(tier):
+			claimed_premium.append(tier)
+			sp.claimed_premium = claimed_premium
+			_apply_pass_reward(r.premium)
+	SpiritSave.write(g.profile)
+	g._toast(g.t("ui.quest_claimed"), g.GOLD)
+	show_season_pass()
+
+func _claim_all_season_pass() -> void:
+	var sp: Dictionary = g.profile.get("season_pass", {})
+	var xp: int = int(sp.get("xp", 0))
+	var current_lvl: int = clampi(1 + int(xp / 200), 1, 20)
+	var claimed_free: Array = sp.get("claimed_free", []).duplicate()
+	var claimed_premium: Array = sp.get("claimed_premium", []).duplicate()
+	var is_premium: bool = bool(sp.get("is_premium", true))
+	for l in range(1, current_lvl + 1):
+		var r := _get_season_pass_rewards(l)
+		if not claimed_free.has(l):
+			claimed_free.append(l)
+			_apply_pass_reward(r.free)
+		if is_premium and not claimed_premium.has(l):
+			claimed_premium.append(l)
+			_apply_pass_reward(r.premium)
+	sp.claimed_free = claimed_free
+	sp.claimed_premium = claimed_premium
+	SpiritSave.write(g.profile)
+	g._toast(g.t("ui.season_pass_all_claimed_toast"), g.GOLD)
+	show_season_pass()
+
+func show_season_pass() -> void:
+	g._clear(); g._play_music(false)
+	g._back_action = show_quests
+	var page := g._create_page(8)
+	page.add_child(g._header(g.t("ui.season_pass_title"), g.t("ui.season_pass_sub"), show_quests))
+
+	var sp: Dictionary = g.profile.get("season_pass", {})
+	var xp: int = int(sp.get("xp", 0))
+	var current_lvl: int = clampi(1 + int(xp / 200), 1, 20)
+	var claimed_free: Array = sp.get("claimed_free", [])
+	var claimed_premium: Array = sp.get("claimed_premium", [])
+	var is_premium: bool = bool(sp.get("is_premium", true))
+
+	# Top summary card: Level + XP + Claim All button
+	var top_card := PanelContainer.new()
+	var top_style := g._panel(Color("10242b"), 12, g.GOLD)
+	top_style.content_margin_left = 12
+	top_style.content_margin_right = 12
+	top_style.content_margin_top = 8
+	top_style.content_margin_bottom = 8
+	top_card.add_theme_stylebox_override("panel", top_style)
+
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 10)
+	top_card.add_child(top_row)
+
+	var top_info := VBoxContainer.new()
+	top_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_info.add_theme_constant_override("separation", 2)
+	top_row.add_child(top_info)
+
+	top_info.add_child(g._label(g.tf("ui.season_pass_level_fmt", current_lvl), 14, g.GOLD))
+	var xp_in_level: int = xp % 200 if current_lvl < 20 else 200
+	top_info.add_child(g._label(g.tf("ui.season_pass_xp_fmt", [xp_in_level, 200]), 10, g.JADE))
+
+	var claim_all_btn := g._button(g.t("ui.season_pass_claim_all"), _claim_all_season_pass, g.EMBER, Vector2(100, 36))
+	claim_all_btn.name = "SeasonPassClaimAllBtn"
+	claim_all_btn.disabled = not _has_claimable_season_pass_reward()
+	claim_all_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_row.add_child(claim_all_btn)
+	page.add_child(top_card)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	for tier in range(1, 21):
+		list.add_child(_season_pass_tier_row(tier, current_lvl, claimed_free, claimed_premium, is_premium))
+
+func _season_pass_tier_row(tier: int, current_lvl: int, claimed_free: Array, claimed_premium: Array, is_premium: bool) -> Control:
+	var unlocked: bool = tier <= current_lvl
+	var r := _get_season_pass_rewards(tier)
+
+	var card := PanelContainer.new()
+	card.name = "SeasonPassTier_%d" % tier
+	var cstyle := g._panel(Color("0d1e24"), 10, g.GOLD if unlocked else Color("1e3137"))
+	cstyle.content_margin_left = 10; cstyle.content_margin_right = 10
+	cstyle.content_margin_top = 8; cstyle.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", cstyle)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+
+	# Tier Badge
+	var badge_box := VBoxContainer.new()
+	badge_box.custom_minimum_size = Vector2(46, 0)
+	badge_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var tlbl := g._label("Lv.%d" % tier, 13, g.GOLD if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	badge_box.add_child(tlbl)
+	row.add_child(badge_box)
+
+	# Free Track Reward
+	var free_box := VBoxContainer.new()
+	free_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	free_box.add_theme_constant_override("separation", 2)
+	free_box.add_child(g._label(g.t("ui.season_pass_free"), 9, g.MUTED))
+	free_box.add_child(g._label(str(r.free.desc), 11, g.TEXT))
+	var free_claimed: bool = claimed_free.has(tier)
+	if free_claimed:
+		free_box.add_child(g._label("✓ " + g.t("ui.season_pass_claimed"), 9, g.JADE))
+	elif unlocked:
+		var btn_f := g._button(g.t("ui.season_pass_claim"), func(): _claim_season_pass_tier(tier, false), g.EMBER, Vector2(0, 28))
+		btn_f.name = "ClaimFreeTierBtn_%d" % tier
+		free_box.add_child(btn_f)
+	else:
+		free_box.add_child(g._label("🔒 " + g.t("ui.season_pass_locked"), 9, g.MUTED))
+	row.add_child(free_box)
+
+	# Premium Track Reward
+	var prem_box := VBoxContainer.new()
+	prem_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prem_box.add_theme_constant_override("separation", 2)
+	prem_box.add_child(g._label(g.t("ui.season_pass_premium"), 9, g.GOLD))
+	prem_box.add_child(g._label(str(r.premium.desc), 11, Color("ffd794")))
+	var prem_claimed: bool = claimed_premium.has(tier)
+	if prem_claimed:
+		prem_box.add_child(g._label("✓ " + g.t("ui.season_pass_claimed"), 9, g.JADE))
+	elif unlocked and is_premium:
+		var btn_p := g._button(g.t("ui.season_pass_claim"), func(): _claim_season_pass_tier(tier, true), Color("9e6b28"), Vector2(0, 28))
+		btn_p.name = "ClaimPremTierBtn_%d" % tier
+		prem_box.add_child(btn_p)
+	else:
+		prem_box.add_child(g._label("🔒 " + g.t("ui.season_pass_locked"), 9, g.MUTED))
+	row.add_child(prem_box)
+
+	return card
+
+# =========================================================================
+# 三选一竞技场轮抽构筑模式 (Spirit Draft Mode)
+# =========================================================================
+
+func _draft_arena_section() -> Control:
+	var draft_data: Dictionary = g.profile.get("draft_arena", {})
+	var is_active: bool = bool(draft_data.get("active", false))
+	var wins: int = int(draft_data.get("wins", 0))
+	var losses: int = int(draft_data.get("losses", 0))
+
+	var section := VBoxContainer.new()
+	section.name = "DraftArenaSection"
+	section.add_theme_constant_override("separation", 6)
+
+	var panel := PanelContainer.new()
+	var pstyle := g._panel(Color("16242c"), 12, g.GOLD)
+	pstyle.content_margin_left = 12; pstyle.content_margin_right = 12
+	pstyle.content_margin_top = 10; pstyle.content_margin_bottom = 10
+	panel.add_theme_stylebox_override("panel", pstyle)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	panel.add_child(row)
+
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 3)
+	row.add_child(info)
+
+	info.add_child(g._label(g.t("ui.draft_arena_title"), 14, g.GOLD))
+	info.add_child(g._label(g.t("ui.draft_arena_sub"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if is_active:
+		info.add_child(g._label(g.tf("ui.draft_win_fmt", [wins, losses]), 11, g.JADE))
+
+	var action_btn_text: String = g.tf("ui.draft_continue_btn", wins) if is_active else g.t("ui.draft_start_btn")
+	var btn := g._button(action_btn_text, show_spirit_draft, g.EMBER, Vector2(100, 42))
+	btn.name = "DraftArenaEnterBtn"
+	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(btn)
+
+	section.add_child(panel)
+	return section
+
+func show_spirit_draft() -> void:
+	g._clear(); g._play_music(false)
+	g._back_action = show_challenges
+
+	var draft: Dictionary = g.profile.get("draft_arena", {})
+	if draft.is_empty():
+		draft = {"active": false, "wins": 0, "losses": 0, "round": 1, "deck": [], "current_pool": []}
+		g.profile.draft_arena = draft
+
+	var round_num: int = int(draft.get("round", 1))
+	var is_active: bool = bool(draft.get("active", false))
+
+	if is_active and round_num > 7:
+		_show_draft_battle_ready()
+		return
+
+	_show_draft_pick_phase()
+
+func _show_draft_pick_phase() -> void:
+	var draft: Dictionary = g.profile.draft_arena
+	var round_num: int = int(draft.get("round", 1))
+	if round_num == 1 and draft.get("deck", []).is_empty():
+		draft.deck = ["strike", "strike", "strike", "strike", "ward", "ward", "ward", "ward"]
+
+	var current_pool: Array = draft.get("current_pool", [])
+	if current_pool.size() < 3:
+		var non_starter_cards: Array = []
+		for card in g.content.cards:
+			if str(card.rarity) != "Starter" and str(card.get("kind", "")) != "Curse":
+				non_starter_cards.append(card.id)
+		non_starter_cards.shuffle()
+		current_pool = [non_starter_cards[0], non_starter_cards[1], non_starter_cards[2]]
+		draft.current_pool = current_pool
+		SpiritSave.write(g.profile)
+
+	var page := g._create_page(8)
+	page.add_child(g._header(g.t("ui.draft_arena_title"), g.tf("ui.draft_round_fmt", round_num), show_challenges))
+	page.add_child(g._label(g.t("ui.draft_pick_card"), 13, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+
+	var content_col := VBoxContainer.new()
+	content_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_col.add_theme_constant_override("separation", 10)
+	scroll.add_child(content_col)
+
+	# 3 Card Choices
+	for cid in current_pool:
+		var card_id := str(cid)
+		var card: Dictionary = g.content.card(card_id)
+		if card.is_empty(): continue
+
+		var tile := PanelContainer.new()
+		tile.name = "DraftOption_" + card_id
+		var tstyle := g._panel(Color("10242a"), 12, g._card_color(card))
+		tstyle.content_margin_left = 12; tstyle.content_margin_right = 12
+		tstyle.content_margin_top = 10; tstyle.content_margin_bottom = 10
+		tile.add_theme_stylebox_override("panel", tstyle)
+
+		var trow := HBoxContainer.new()
+		trow.add_theme_constant_override("separation", 12)
+		tile.add_child(trow)
+
+		# Small art preview
+		var art := TextureRect.new()
+		art.texture = g._get_card_texture(card_id)
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.custom_minimum_size = Vector2(54, 72)
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		trow.add_child(art)
+
+		var tinfo := VBoxContainer.new()
+		tinfo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tinfo.add_theme_constant_override("separation", 3)
+		trow.add_child(tinfo)
+
+		var cname := g.content.text(card.nameKey, g.lang)
+		tinfo.add_child(g._label("%s (%d 费)" % [cname, int(card.cost)], 13, g.TEXT))
+		tinfo.add_child(g._label(g._card_description(card), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var pick_btn := g._button(g.t("ui.claim"), func(): _pick_draft_card(card_id), g.EMBER, Vector2(74, 38))
+		pick_btn.name = "DraftPickBtn_" + card_id
+		pick_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		trow.add_child(pick_btn)
+
+		content_col.add_child(tile)
+
+	# Current Deck summary at bottom
+	var current_deck: Array = draft.get("deck", [])
+	content_col.add_child(g._label("当前牌组 (%d/15 张): %s" % [current_deck.size(), ", ".join(current_deck)], 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+func _pick_draft_card(card_id: String) -> void:
+	var draft: Dictionary = g.profile.draft_arena
+	var deck: Array = draft.get("deck", [])
+	deck.append(card_id)
+	draft.deck = deck
+	draft.current_pool = []
+	var next_round: int = int(draft.get("round", 1)) + 1
+	draft.round = next_round
+	if next_round > 7:
+		draft.active = true
+		SpiritSave.write(g.profile)
+		g._toast(g.t("ui.draft_deck_ready"), g.GOLD)
+		_show_draft_battle_ready()
+	else:
+		SpiritSave.write(g.profile)
+		show_spirit_draft()
+
+func _show_draft_battle_ready() -> void:
+	g._clear(); g._play_music(false)
+	g._back_action = show_challenges
+
+	var draft: Dictionary = g.profile.draft_arena
+	var wins: int = int(draft.get("wins", 0))
+	var losses: int = int(draft.get("losses", 0))
+
+	var page := g._create_page(10)
+	page.add_child(g._header(g.t("ui.draft_arena_title"), g.t("ui.draft_arena_sub"), show_challenges))
+
+	var card := PanelContainer.new()
+	var cstyle := g._panel(Color("10242a"), 14, g.GOLD)
+	cstyle.content_margin_left = 16; cstyle.content_margin_right = 16
+	cstyle.content_margin_top = 14; cstyle.content_margin_bottom = 14
+	card.add_theme_stylebox_override("panel", cstyle)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	card.add_child(col)
+
+	col.add_child(g._label(g.tf("ui.draft_win_fmt", [wins, losses]), 15, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	col.add_child(g._label("竞技场牌组 (15张):", 12, g.TEXT))
+
+	var deck: Array = draft.get("deck", [])
+	col.add_child(g._label(", ".join(deck), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var start_battle_btn := g._button("迎战第 %d 位灵界对手" % (wins + 1), _start_draft_battle, g.EMBER, Vector2(0, 44))
+	start_battle_btn.name = "DraftStartBattleBtn"
+	col.add_child(start_battle_btn)
+
+	var abandon_btn := g._button(g.t("ui.draft_abandon_btn"), _abandon_draft, Color("3a1c22"), Vector2(0, 36))
+	abandon_btn.name = "DraftAbandonBtn"
+	col.add_child(abandon_btn)
+
+	page.add_child(card)
+
+func _start_draft_battle() -> void:
+	var draft: Dictionary = g.profile.draft_arena
+	var wins: int = int(draft.get("wins", 0))
+	g.in_draft_battle = true
+	var stage_idx: int = mini(g.content.encounters.size() - 1, wins * 2)
+	g.begin_battle(stage_idx)
+
+func _abandon_draft() -> void:
+	var draft: Dictionary = g.profile.draft_arena
+	draft.active = false
+	draft.round = 1
+	draft.deck = []
+	draft.current_pool = []
+	draft.wins = 0
+	draft.losses = 0
+	SpiritSave.write(g.profile)
+	show_challenges()
+
 

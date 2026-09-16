@@ -455,7 +455,7 @@ func run() -> void:
 		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
 			invalid_cards += 1
 	var curse_cards: Array = content.cards.filter(func(c): return c.get("rarity", "") == "Curse")
-	check(invalid_cards == 0 and content.cards.size() == 41 and curse_cards.size() == 2, "all 39 collectible cards have valid costs/effects and 2 curses exist")
+	check(invalid_cards == 0 and content.cards.size() == 47 and curse_cards.size() == 2, "all 45 collectible cards have valid costs/effects and 2 curses exist")
 
 	var invalid_encs := 0
 	for enc in content.encounters:
@@ -899,6 +899,65 @@ func run() -> void:
 	check(int(gb50.state.enemies[0].burn) == 0 and int(gb50.state.enemies[0].poison) == 0 and int(gb50.state.enemies[0].vulnerable) == 0, "Ch.50 Great Boss cleanses all debuffs")
 	check(int(gb50.state.player.health) == p_hp_before - 6, "Ch.50 Great Boss drains 6 HP from player")
 	check(gb50.state.draw[0].card_id == "void_curse", "Ch.50 Great Boss pushes void_curse into player draw pile")
+
+	# Account Authentication & Cloud Save linking tests
+	var test_prof := SpiritSave.defaults(content)
+	check(not SpiritSave.is_cloud_linked(test_prof), "default profile is unlinked guest")
+	check(SpiritSave.account_provider(test_prof) == "guest", "default provider is guest")
+	SpiritSave.link_account(test_prof, "apple", "apple_sub_999", "hero@privaterelay.appleid.com", "驭灵之王")
+	check(SpiritSave.is_cloud_linked(test_prof), "profile is cloud linked after Apple sign in")
+	check(SpiritSave.account_provider(test_prof) == "apple", "account provider is apple")
+	check(str(test_prof.account.email) == "hero@privaterelay.appleid.com", "apple email is preserved")
+	check(str(test_prof.account.name) == "驭灵之王", "account name is preserved")
+	check(int(test_prof.account.linked_at) > 0, "linked_at timestamp is set")
+	check(int(test_prof.account.cloud_synced_at) > 0, "cloud_synced_at timestamp is set")
+
+	SpiritSave.link_account(test_prof, "google", "google_sub_888", "hero@gmail.com")
+	check(SpiritSave.account_provider(test_prof) == "google", "profile upgraded to google provider")
+	check(str(test_prof.account.email) == "hero@gmail.com", "google email is updated")
+
+	SpiritSave.unlink_account(test_prof)
+	check(not SpiritSave.is_cloud_linked(test_prof), "profile successfully unlinked to guest")
+	check(SpiritSave.account_provider(test_prof) == "guest", "provider reverted to guest")
+
+	# Hybrid Dual-Element Cards Tests
+	var b_hybrid := SpiritCombat.new(content)
+	b_hybrid.create(601, content.encounters[0], Array(content.raw.startingDeck), 60)
+	b_hybrid.state.energy = 10
+	b_hybrid._resolve_effects(content.card("blaze_tempest"), 0, 0, 1.0)
+	check(int(b_hybrid.state.enemies[0].burn) == 2, "blaze_tempest inflicts 2 burn")
+	check(int(b_hybrid.state.energy) == 11, "blaze_tempest refunds 1 energy")
+
+	b_hybrid._resolve_effects(content.card("toxic_quake"), 0, 0, 1.0)
+	check(int(b_hybrid.state.enemies[0].poison) == 3, "toxic_quake inflicts 3 poison")
+	check(int(b_hybrid.state.player.shield) == 8, "toxic_quake grants 8 shield")
+
+	var hybrid_hand_before: int = b_hybrid.state.hand.size()
+	b_hybrid._resolve_effects(content.card("frost_surge"), 0, 0, 1.0)
+	check(int(b_hybrid.state.player.shield) == 20, "frost_surge adds 12 shield (total 20)")
+	check(int(b_hybrid.state.enemies[0].weak) == 1, "frost_surge inflicts 1 weak")
+	check(b_hybrid.state.hand.size() == hybrid_hand_before + 2, "frost_surge draws 2 cards")
+
+	b_hybrid._resolve_effects(content.card("gale_barrier"), 0, 0, 1.0)
+	check(int(b_hybrid.state.player.shield) == 30, "gale_barrier adds 10 shield (total 30)")
+	check(int(b_hybrid.state.energy) == 12, "gale_barrier grants 1 energy")
+
+	b_hybrid.state.player.health = 50
+	b_hybrid._resolve_effects(content.card("miasma_shield"), 0, 0, 1.0)
+	check(int(b_hybrid.state.player.shield) == 38, "miasma_shield adds 8 shield (total 38)")
+	check(int(b_hybrid.state.player.health) == 53, "miasma_shield heals 3 health")
+
+	# Season Pass XP Progression Tests
+	var g_pass := SpiritGame.new()
+	g_pass.profile = test_prof
+	check(int(g_pass.profile.season_pass.xp) == 0, "season pass starts at 0 XP")
+	check(int(g_pass.profile.season_pass.get("level", 1)) == 1, "season pass starts at Lv.1")
+	g_pass._add_season_xp(150)
+	check(int(g_pass.profile.season_pass.xp) == 150, "season pass accumulates 150 XP")
+	check(int(g_pass.profile.season_pass.level) == 1, "season pass remains Lv.1 below 200 XP")
+	g_pass._add_season_xp(100)
+	check(int(g_pass.profile.season_pass.xp) == 250, "season pass reaches 250 XP")
+	check(int(g_pass.profile.season_pass.level) == 2, "season pass levels up to Lv.2 at 200+ XP")
 
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)

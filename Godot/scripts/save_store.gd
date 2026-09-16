@@ -9,7 +9,11 @@ static func new_account() -> Dictionary:
 	return {
 		"id": _uuid(),
 		"name": "",
-		"provider": "local",
+		"provider": "guest",
+		"user_id": "",
+		"email": "",
+		"linked_at": 0,
+		"cloud_synced_at": 0,
 		"created_at": int(Time.get_unix_time_from_system()),
 	}
 
@@ -24,7 +28,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[]},"tutorial_seen":false,"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"achievements_unlocked":{},"reduce_motion":false}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[]},"tutorial_seen":false,"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"achievements_unlocked":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]}}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -52,8 +56,17 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not base.get("lifetime_stats") is Dictionary: base.lifetime_stats = {}
 	if not base.get("achievements_unlocked") is Dictionary: base.achievements_unlocked = {}
 	if not base.has("reduce_motion"): base.reduce_motion = false
+	if not base.get("season_pass") is Dictionary:
+		base.season_pass = {"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]}
+	if not base.get("draft_arena") is Dictionary:
+		base.draft_arena = {"active": false, "wins": 0, "losses": 0, "round": 1, "deck": [], "current_pool": []}
 	# Saves written before accounts existed get one on load rather than on next write.
 	if not base.get("account") is Dictionary or not base.account.has("id"): base.account = new_account()
+	if not base.account.has("provider") or base.account.provider == "local": base.account.provider = "guest"
+	if not base.account.has("user_id"): base.account.user_id = ""
+	if not base.account.has("email"): base.account.email = ""
+	if not base.account.has("linked_at"): base.account.linked_at = 0
+	if not base.account.has("cloud_synced_at"): base.account.cloud_synced_at = 0
 	base.schema_version = SCHEMA_VERSION
 	return base
 
@@ -66,6 +79,36 @@ static func write(profile: Dictionary) -> void:
 
 static func has_account_name(profile: Dictionary) -> bool:
 	return not str(profile.get("account", {}).get("name", "")).strip_edges().is_empty()
+
+static func is_cloud_linked(profile: Dictionary) -> bool:
+	var provider: String = str(profile.get("account", {}).get("provider", "guest"))
+	return provider in ["apple", "google"]
+
+static func account_provider(profile: Dictionary) -> String:
+	return str(profile.get("account", {}).get("provider", "guest"))
+
+static func link_account(profile: Dictionary, provider: String, user_id: String, email: String = "", display_name: String = "") -> void:
+	if not profile.get("account") is Dictionary:
+		profile.account = new_account()
+	profile.account.provider = provider
+	profile.account.user_id = user_id
+	if not email.is_empty():
+		profile.account.email = email
+	if not display_name.is_empty() and str(profile.account.get("name", "")).strip_edges().is_empty():
+		profile.account.name = display_name
+	profile.account.linked_at = int(Time.get_unix_time_from_system())
+	profile.account.cloud_synced_at = int(Time.get_unix_time_from_system())
+	write(profile)
+
+static func unlink_account(profile: Dictionary) -> void:
+	if not profile.get("account") is Dictionary:
+		profile.account = new_account()
+	profile.account.provider = "guest"
+	profile.account.user_id = ""
+	profile.account.email = ""
+	profile.account.linked_at = 0
+	profile.account.cloud_synced_at = 0
+	write(profile)
 
 static func reset() -> void:
 	if FileAccess.file_exists(PATH): DirAccess.remove_absolute(PATH)

@@ -38,7 +38,10 @@ func begin_battle(index: int) -> void:
 		g.active_modifier = _modifier(seed, index)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed,g.content.encounters[index],g.profile.deck,int(g.profile.health),g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
+	var battle_deck: Array = g.profile.deck
+	if g.in_draft_battle and g.profile.get("draft_arena", {}).get("deck", []).size() >= 15:
+		battle_deck = g.profile.draft_arena.deck
+	g.combat.create(seed,g.content.encounters[index],battle_deck,int(g.profile.health),g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
 	g.combat.event.connect(_combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[index].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[index])

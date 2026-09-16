@@ -189,7 +189,7 @@ func show_map() -> void:
 	header_holder.offset_left = 0.0
 	header_holder.offset_right = 0.0
 	header_holder.offset_top = 0.0
-	header_holder.offset_bottom = float(g._safe_top()) + 50.0
+	header_holder.offset_bottom = float(g._safe_top()) + 60.0
 	header_holder.add_theme_constant_override("margin_top", g._safe_top())
 	header_holder.add_theme_constant_override("margin_left", 12)
 	header_holder.add_theme_constant_override("margin_right", 12)
@@ -197,47 +197,65 @@ func show_map() -> void:
 	overlay_page.add_child(header_holder)
 
 	var header := g._header("SPIRITBOUND", "")
-	var btn_size := Vector2(36, 34)
+	var existing_spacer: Node = header.get_node_or_null("HeaderRightSpacer")
+	if existing_spacer:
+		existing_spacer.queue_free()
 
-	# Dedicated quest commissions entry point with custom quest icon and claimable notification dot
+	var btn_size := Vector2(34, 34)
+
+	# Dedicated quest commissions entry point with painted quest icon and claimable notification dot
 	var btn_quests := g._button("", g.show_quests, Color("17363e"), btn_size)
 	btn_quests.name = "QuestButton"
 	btn_quests.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var quest_icon := GameIcon.new()
-	quest_icon.kind = "quest"
-	quest_icon.icon_color = g.GOLD
-	quest_icon.custom_minimum_size = Vector2(20, 20)
+	var quest_icon := TextureRect.new()
+	quest_icon.texture = load("res://assets/icons/nav_quest.png")
+	quest_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	quest_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	quest_icon.custom_minimum_size = Vector2(24, 24)
 	quest_icon.size = quest_icon.custom_minimum_size
 	quest_icon.position = (btn_size - quest_icon.size) / 2.0
 	quest_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn_quests.add_child(quest_icon)
 	if _has_claimable_quest(): _add_notification_dot(btn_quests, btn_size)
-	header.add_child(btn_quests)
 
-	# Dedicated explorer camp / dossier & relics entry point
+	# Dedicated explorer camp entry point with painted camp icon
 	var btn_camp := g._button("", g.show_camp, Color("17363e"), btn_size)
 	btn_camp.name = "CampButton"
 	btn_camp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var camp_icon := GameIcon.new()
-	camp_icon.kind = "profile"
-	camp_icon.icon_color = g.GOLD
-	camp_icon.custom_minimum_size = Vector2(20, 20)
+	var camp_icon := TextureRect.new()
+	camp_icon.texture = load("res://assets/icons/nav_camp.png")
+	camp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	camp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	camp_icon.custom_minimum_size = Vector2(24, 24)
 	camp_icon.size = camp_icon.custom_minimum_size
 	camp_icon.position = (btn_size - camp_icon.size) / 2.0
 	camp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn_camp.add_child(camp_icon)
 	if _has_claimable_camp_reward(): _add_notification_dot(btn_camp, btn_size)
-	header.add_child(btn_camp)
 
-	# Language and audio-mute now live in g.show_settings() (F2, via _change_language()/
-	# _toggle_music_settings()) — the top bar kept its own separate g.lang toggle and music
-	# toggle from before that screen existed, which packed the header to the point of
-	# overflowing on narrower devices. Removed both (and their now-dead _toggle_language()/
-	# _toggle_music() handlers) in favor of the one Settings entry point.
-	var btn_settings := g._button("⚙", g.show_settings, Color("17363e"), Vector2(32, 34))
+	# Settings entry point with painted golden gear icon
+	var btn_settings := g._button("", g.show_settings, Color("17363e"), btn_size)
 	btn_settings.name = "SettingsButton"
 	btn_settings.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	header.add_child(btn_settings)
+	var settings_icon := TextureRect.new()
+	settings_icon.texture = load("res://assets/icons/nav_settings.png")
+	settings_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	settings_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	settings_icon.custom_minimum_size = Vector2(24, 24)
+	settings_icon.size = settings_icon.custom_minimum_size
+	settings_icon.position = (btn_size - settings_icon.size) / 2.0
+	settings_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn_settings.add_child(settings_icon)
+
+	var right_box := HBoxContainer.new()
+	right_box.name = "HeaderRightBox"
+	right_box.add_theme_constant_override("separation", 6)
+	right_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right_box.alignment = BoxContainer.ALIGNMENT_END
+	right_box.add_child(btn_quests)
+	right_box.add_child(btn_camp)
+	right_box.add_child(btn_settings)
+	header.add_child(right_box)
 	header_holder.add_child(header)
 
 	_add_map_challenge_rail(overlay_page)
@@ -384,36 +402,25 @@ func _add_map_challenge_rail(parent: Control) -> void:
 	rail.mouse_filter = Control.MOUSE_FILTER_PASS
 	rail_holder.add_child(rail)
 
-	var rail_btn_size := Vector2(44, 44)
-	var trial_unlocked: bool = int(g.profile.unlocked) >= 5
-	var trial_btn := g._button("", _open_camp_challenges, Color("241a10"), rail_btn_size)
-	trial_btn.name = "MapTrialShortcutBtn"
-	var trial_icon := GameIcon.new()
-	trial_icon.kind = "scroll"
-	trial_icon.icon_color = Color("ffb765") if trial_unlocked else Color("4a4238")
-	trial_icon.custom_minimum_size = Vector2(24, 24)
-	trial_icon.size = trial_icon.custom_minimum_size
-	trial_icon.position = (rail_btn_size - trial_icon.size) / 2.0
-	trial_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	trial_btn.add_child(trial_icon)
-	rail.add_child(trial_btn)
-
-	var abyss_unlocked: bool = int(g.profile.unlocked) >= 10
-	var abyss_btn := g._button("", _open_camp_challenges, Color("1b1024"), rail_btn_size)
-	abyss_btn.name = "MapAbyssShortcutBtn"
-	var abyss_icon := GameIcon.new()
-	abyss_icon.kind = "orb"
-	abyss_icon.icon_color = Color("c79bff") if abyss_unlocked else Color("4a4238")
-	abyss_icon.custom_minimum_size = Vector2(24, 24)
-	abyss_icon.size = abyss_icon.custom_minimum_size
-	abyss_icon.position = (rail_btn_size - abyss_icon.size) / 2.0
-	abyss_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	abyss_btn.add_child(abyss_icon)
-	rail.add_child(abyss_btn)
+	var rail_btn_size := Vector2(46, 46)
+	var challenge_unlocked: bool = int(g.profile.unlocked) >= 5
+	var challenge_btn := g._button("", _open_camp_challenges, Color("241a10"), rail_btn_size)
+	challenge_btn.name = "MapTrialShortcutBtn"
+	var challenge_icon := TextureRect.new()
+	challenge_icon.texture = load("res://assets/icons/nav_trial.png")
+	challenge_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	challenge_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	challenge_icon.custom_minimum_size = Vector2(34, 34)
+	challenge_icon.size = challenge_icon.custom_minimum_size
+	challenge_icon.position = (rail_btn_size - challenge_icon.size) / 2.0
+	challenge_icon.modulate = Color.WHITE if challenge_unlocked else Color(0.4, 0.4, 0.4, 0.6)
+	challenge_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	challenge_btn.add_child(challenge_icon)
+	rail.add_child(challenge_btn)
 
 func _open_camp_challenges() -> void:
 	g.camp_tab = "challenges"
-	g.show_camp()
+	g.show_challenges()
 
 # The road (and every stage pin — _map_point below places pins at these exact same points)
 # has to trace the trail actually painted into this chapter's background, not an independent
@@ -808,6 +815,7 @@ func _add_routes() -> void:
 		walked.begin_cap_mode = Line2D.LINE_CAP_ROUND
 		walked.end_cap_mode = Line2D.LINE_CAP_ROUND
 		walked.points = _build_road_curve(walked_points).get_baked_points()
+		walked.visible = false
 		g.map_canvas.add_child(walked)
 
 func _add_stage_pin(index: int) -> void:
@@ -942,22 +950,17 @@ func _add_stage_pin(index: int) -> void:
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.map_canvas.add_child(caption)
 
+const TOTAL_TRAVEL_SECONDS := 2.0
 const TRAVEL_SECONDS_PER_STAGE := 2.0
 
-# Walks the g.traveler stage by stage along the same points the road curve is fit through
-# (_map_point), one chained 2-second tween per hop, rather than a single fixed-duration tween
-# straight from wherever it starts to the final target. A single-tween version covered any
-# distance in the same total time, so jumping back 10 stages across several chapters looked
-# identical in speed to stepping to the very next one, and — since Godot interpolates a
-# position property as a straight screen-space line, not along the curve — visibly cut across
-# scenery instead of following the trail for anything but adjacent stages. Per-hop timing
-# instead means total travel time scales with how many stages are actually being crossed
-# (fast super-wide hops when consecutive stages sit far apart on the path, slower single hops
-# when they're close, but always "N stages = N x 2 seconds" either direction), and the path
-# actually walked is the real one, one real segment at a time.
+# Walks the g.traveler stage by stage along the path's waypoints (_map_point).
+# Total travel time is fixed to 2.0 seconds regardless of distance — so traveling across many
+# stages covers intermediate waypoints quickly, and a single stage hop is slower and deliberate.
 func _travel_to(index: int) -> void:
 	if index > int(g.profile.unlocked): return
 	var start_index: int = int(g.profile.position)
+	var hop_count: int = maxi(1, absi(index - start_index))
+	var hop_duration: float = TOTAL_TRAVEL_SECONDS / float(hop_count)
 	var step: int = 1 if index >= start_index else -1
 	var tween := g.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var scroll_from: float = float(g.map_scroll.scroll_vertical)
@@ -966,8 +969,8 @@ func _travel_to(index: int) -> void:
 		current_idx += step
 		var hop_pos: Vector2 = _map_point(current_idx) - Vector2(0, 26)
 		var scroll_to: float = float(maxi(0, int(_map_point(current_idx).y - 360)))
-		tween.tween_property(g.traveler, "position", hop_pos, TRAVEL_SECONDS_PER_STAGE)
-		tween.parallel().tween_method(func(y): g.map_scroll.scroll_vertical = int(y), scroll_from, scroll_to, TRAVEL_SECONDS_PER_STAGE)
+		tween.tween_property(g.traveler, "position", hop_pos, hop_duration)
+		tween.parallel().tween_method(func(y): g.map_scroll.scroll_vertical = int(y), scroll_from, scroll_to, hop_duration)
 		scroll_from = scroll_to
 	await tween.finished; g.profile.position = index; SpiritSave.write(g.profile)
 	var kind := g.content.node_kind(index)

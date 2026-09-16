@@ -599,6 +599,20 @@ func show_deck() -> void:
 	if shown == 0:
 		sections.add_child(g._label(g.t("ui.deck_need_cards"), 12, g.MUTED))
 
+	var share_row := HBoxContainer.new()
+	share_row.add_theme_constant_override("separation", 8)
+	page.add_child(share_row)
+
+	var export_btn := g._button(g.t("ui.deck_code_btn_export"), _export_deck_code, Color("1a353d"), Vector2(0, 36))
+	export_btn.name = "DeckExportBtn"
+	export_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	share_row.add_child(export_btn)
+
+	var import_btn := g._button(g.t("ui.deck_code_btn_import"), _show_import_deck_dialog, Color("1a353d"), Vector2(0, 36))
+	import_btn.name = "DeckImportBtn"
+	import_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	share_row.add_child(import_btn)
+
 	var footer := HBoxContainer.new()
 	footer.add_theme_constant_override("separation", 8)
 	page.add_child(footer)
@@ -611,6 +625,92 @@ func show_deck() -> void:
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	confirm.custom_minimum_size = Vector2(0, 48)
 	footer.add_child(confirm)
+
+func _export_deck_code() -> void:
+	var deck_cards: Array = g.profile.deck.duplicate()
+	var json_str := JSON.stringify(deck_cards)
+	var b64 := Marshalls.utf8_to_base64(json_str)
+	var deck_code := "SPB1:%s" % b64
+	g._clipboard_set(deck_code)
+	g._toast(g.t("ui.deck_code_copied"), g.GOLD)
+
+func _show_import_deck_dialog() -> void:
+	var modal := g._modal_dialog("DeckImportModal", func():
+		var ex: Node = g.overlay.get_node_or_null("DeckImportModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 0)
+	var pstyle := g._panel(Color("0c1a1f"), 14, g.GOLD)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 14
+	pstyle.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.deck_code_import_title"), 14, g.GOLD))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
+	close_btn.name = "DeckImportCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	list.add_child(g._label(g.t("ui.deck_code_import_desc"), 10, g.MUTED))
+
+	var code_input := LineEdit.new()
+	code_input.name = "DeckCodeInput"
+	code_input.custom_minimum_size = Vector2(0, 38)
+	var clip_text := g._clipboard_get()
+	if clip_text.begins_with("SPB1:"):
+		code_input.text = clip_text.strip_edges()
+	list.add_child(code_input)
+
+	var confirm_btn := g._button(g.t("ui.deck_code_btn_import"), func():
+		var raw_code := code_input.text.strip_edges()
+		if not raw_code.begins_with("SPB1:"):
+			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+			return
+		var b64_part := raw_code.substr(5).strip_edges()
+		var json_str := Marshalls.base64_to_utf8(b64_part)
+		var test_json := JSON.new()
+		if test_json.parse(json_str) != OK or not test_json.data is Array:
+			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+			return
+		var imported_cards: Array = test_json.data
+		if imported_cards.size() < 15:
+			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+			return
+		var counts: Dictionary = {}
+		for cid in imported_cards:
+			var card_id := str(cid)
+			if g.content.card(card_id).is_empty():
+				g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+				return
+			counts[card_id] = int(counts.get(card_id, 0)) + 1
+			if int(counts[card_id]) > int(g.profile.collection.get(card_id, 0)):
+				g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+				return
+		g.profile.deck = imported_cards
+		SpiritSave.write(g.profile)
+		modal.queue_free()
+		g._toast(g.t("ui.deck_code_imported"), g.GOLD)
+		show_deck()
+	, g.EMBER, Vector2(0, 40))
+	confirm_btn.name = "DeckImportConfirmBtn"
+	list.add_child(confirm_btn)
 
 func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	var in_deck: int = g.profile.deck.count(card.id)
@@ -746,6 +846,7 @@ func _card_build_score(card: Dictionary) -> float:
 			"status":
 				match str(effect.get("status", "")):
 					"burn": score += float(effect.amount) * 1.3
+					"poison": score += float(effect.amount) * 1.5
 					"focus": score += float(effect.amount) * 2.0
 					"strength": score += float(effect.amount) * 3.0
 					"vulnerable", "weak": score += float(effect.amount) * 1.8

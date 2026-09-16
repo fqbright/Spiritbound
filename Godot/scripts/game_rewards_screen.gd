@@ -180,6 +180,25 @@ func _current_stage_label() -> String:
 	return g.content.stage_name(g.current_stage, g.lang)
 
 func _grant_stage_rewards() -> void:
+	if g.in_draft_battle:
+		g.in_draft_battle = false
+		var draft: Dictionary = g.profile.get("draft_arena", {})
+		var wins: int = int(draft.get("wins", 0)) + 1
+		draft.wins = wins
+		var gold_gain: int = 60 + wins * 30
+		g.profile.gold += gold_gain
+		g._add_season_xp(75)
+		g.profile.health = 60
+		if wins >= 6:
+			draft.active = false
+			g._toast(g.t("ui.draft_grand_champion"), g.GOLD)
+			g.profile.gold += 500
+			g._add_season_xp(200)
+		else:
+			g._toast(g.tf("ui.draft_victory_toast", [wins, gold_gain]), g.GOLD)
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
+		SpiritSave.write(g.profile)
+		return
 	if g.in_abyss:
 		g.in_abyss = false
 		var floor_num: int = int(g.profile.get("abyss_floor", 1))
@@ -194,6 +213,7 @@ func _grant_stage_rewards() -> void:
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", gold_gain)
 		_grant_mastery_xp(20)
+		g._add_season_xp(50)
 		if floor_num % 5 == 0:
 			g.pending_boon_draft = true
 		return
@@ -223,6 +243,7 @@ func _grant_stage_rewards() -> void:
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", gold_gain)
 		_grant_mastery_xp(12 + stage_num)
+		g._add_season_xp(50)
 		return
 	if g.in_weekly_challenge:
 		g.in_weekly_challenge = false
@@ -241,6 +262,7 @@ func _grant_stage_rewards() -> void:
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", w_gold_gain)
 		_grant_mastery_xp(14 + w_stage_num)
+		g._add_season_xp(75)
 		return
 	var encounter: Dictionary = g.content.encounters[g.current_stage]
 	var multiplier: float = g.active_modifier.get("reward_scale", 1.0)
@@ -267,6 +289,7 @@ func _grant_stage_rewards() -> void:
 	var mastery_xp: int = 24 if g.content.is_boss_kind(kind) else 12
 	if replay: mastery_xp = int(mastery_xp / 2)
 	_grant_mastery_xp(mastery_xp)
+	g._add_season_xp(15 if replay else 35)
 	if replay:
 		g.is_hard_replay = false
 		SpiritSave.write(g.profile)
