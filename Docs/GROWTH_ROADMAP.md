@@ -249,6 +249,47 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-15 — game.gd split into 5 composed screen classes (user-requested tech debt)
+Not a report item — the user asked for this directly after `game.gd` grew to ~7200 lines
+across this session's feature work. Result: `game.gd` (now `class_name SpiritGame`) is down
+to 1343 lines (-81%), with the rest in `game_map_screen.gd` (MapScreen), `game_battle_screen.gd`
+(BattleScreen), `game_rewards_screen.gd` (RewardsScreen), `game_shop_deck_screen.gd`
+(ShopDeckScreen), and `game_camp_screen.gd` (CampScreen), plus 5 already-self-contained nested
+UI classes (GameIcon, HandCard, IntentIcon, TouchScrollContainer, DizzyStars) pulled into their
+own files first as a zero-risk warm-up. See AGENTS.md's new first "trap" entry for the
+composition-pattern mechanics (why composition and not inheritance, the `g.` prefix
+convention, and the four specific bug classes that pattern's mechanical extraction produced
+— bare `self`, bare engine methods, missing `await` propagation through a delegator, and
+`_init()` vs `_ready()` for composition-object construction) — read that before touching any
+of these files, since every one of those bug classes compiles/runs fine in the wrong way and
+only shows up as a wrong screen or a hung coroutine, not a clear error.
+Each of the 6 extraction stages (nested classes, Map, Battle, Rewards, ShopDeck, Camp) was
+verified independently: 250/0 rules + full ui_smoke.gd pass, plus a purpose-built corruption
+scanner (checks every string literal, every dotted-access site, and every bare reference to
+a still-elsewhere game.gd member) run against each new file before wiring its delegators —
+and committed separately, so a problem in a later stage never had to be diagnosed against a
+pile of unrelated changes. Real bugs the scanner (and, twice, `test_runner.gd`/`ui_smoke.gd`
+themselves) caught along the way: a card's `GameIcon.kind = "profile"` string literal
+corrupted to `"g.profile"` (a naive find/replace doesn't know it's inside a string); a
+`pending_rewards` dict key `"is_hard_replay"` corrupted the same way; `traveler.create_tween()`
+and `pin.create_tween()` corrupted to `traveler.g.create_tween()` (a bare-word substitution
+doesn't know it's already dotted onto something else — fixed generally with a negative
+lookbehind for a preceding `.` on every substitution from the Battle extraction onward);
+`isn't`/`doesn't` in comments corrupted to `isn'g.t`/`doesn'g.t` (GDScript's `\b` treats the
+trailing "t" in a contraction as its own word — fixed by requiring `t`/`tf` be followed by
+`(`, since neither is ever passed as a bare Callable); several bare Callable/signal
+references the call-syntax-only dependency scan can't see by construction
+(`_cycle_speed`/`_pass_turn` passed to `_button()`, `_combat_event` passed to
+`combat.event.connect()`, `show_account_setup`/`show_map` passed to `_header()`) — a
+same-file post-hoc scan for every bare occurrence of every other file's members (not just
+call-syntax) is now the standard last step, not an afterthought.
+The shared card-display helpers (`_card_color`, `_card_description`, `_card_synergy_tags`,
+`_kind_element_line`, `_rune_color`, `_unique`) got mechanically swept into the Camp
+extraction's range (they sat physically adjacent to `_select_abyss_boon`) and were moved
+back out to `game.gd` afterward — every other screen already calls them via `g.`, so leaving
+them in CampScreen would have worked, but "CampScreen" is a misleading home for logic with
+no connection to camp or quests.
+
 ### 2026-09-15 — B3 weekly challenge, C4 bestiary discovery bonus, and a new map "today digest" card shipped
 Three items done together in one pass: B3 and C4 from the backlog above, plus a "today digest"
 card — not one of the original 24 report items, proposed during this session's own feature

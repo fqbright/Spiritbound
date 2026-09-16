@@ -7,7 +7,13 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | Path | What it is |
 | --- | --- |
 | `Godot/scripts/combat.gd` | Rules engine. Cards, intents, relics, statuses. **No UI.** |
-| `Godot/scripts/game.gd` | Every screen, built in code rather than scenes. |
+| `Godot/scripts/game.gd` | `SpiritGame`, the script attached to `Main.tscn`. Core state (`profile`, `combat`, `lang`, ...), lifecycle (`_init`/`_ready`/`_input`/`_clear`), generic UI primitives (`_button`/`_label`/`_panel`/`_header`/...), shared asset/texture loaders, quest/login-reward period-reset logic, the shared card-display helpers (`_card_color`/`_card_description`/...), the Settings screen, and a handful of small map-pin/replay functions — genuinely cross-cutting code with no single screen owner. Every screen itself lives in one of the composed classes below; `game.gd` holds a one-line delegator under each screen function's original name (e.g. `func show_map() -> void: _map_screen.show_map()`) so nothing outside `game.gd` (tests included) needed to change when the split happened. |
+| `Godot/scripts/game_map_screen.gd` | `MapScreen` — the world map, chapter/waypoint rendering, terrain dressing, stage pins, the today-digest banner, travel animation. |
+| `Godot/scripts/game_battle_screen.gd` | `BattleScreen` — the battle screen itself, hand/card rendering (including the enlarged peek and targeting/damage-preview), combat animation, the first-battle tutorial. |
+| `Godot/scripts/game_rewards_screen.gd` | `RewardsScreen` — reward granting, the reward-details/chest-opening screens, Compendium discovery bookkeeping, hero mastery XP, the rest/merchant/event stage flow. |
+| `Godot/scripts/game_shop_deck_screen.gd` | `ShopDeckScreen` — the shop, deck-purge/upgrade rituals, deck builder + auto-build scoring, equipment/rune loadout tabs. |
+| `Godot/scripts/game_camp_screen.gd` | `CampScreen` — the Compendium catalog tabs, Camp (hero archetypes, difficulty tiers, relics), Quests, and the Daily Trial/Weekly Challenge/Abyss entry points. |
+| `Godot/scripts/game_icon.gd`, `game_intent_icon.gd`, `game_hand_card.gd`, `game_touch_scroll_container.gd`, `game_dizzy_stars.gd` | Self-contained UI classes (`class_name`, globally resolvable) that used to be nested inside `game.gd`. `HandCard` already took its game-instance back-reference as a plain field before the split; the other four never touch outer state at all. |
 | `Godot/scripts/content.gd` | Card/equipment/rune/relic data and all UI strings. |
 | `Godot/scripts/save_store.gd` | Local profile, versioned for a future cloud sync. |
 | `Godot/data/core.json` | Card definitions and balance numbers. |
@@ -51,6 +57,30 @@ attached, say so rather than claiming a change was visually verified.
 Every one of these produced a wrong screen with no error in the log. They are the reason
 `ui_smoke.gd` exists.
 
+- **The screen split is composition, not inheritance — and every new cross-screen call
+  needs a `g.` prefix, not a bare reference.** `game.gd` used to be one ~7200-line file;
+  it's now `SpiritGame` plus five composed screen classes (`MapScreen`/`BattleScreen`/
+  `RewardsScreen`/`ShopDeckScreen`/`CampScreen`, one per `game_*_screen.gd` file), each
+  holding a `var g: SpiritGame` back-reference set in `_init()`. This is composition and
+  not inheritance because it has to be: GDScript cannot statically resolve a parent script
+  calling a method defined only in a child (verified experimentally during the split), and
+  the screens call each other circularly (`show_map` → `show_camp` → `show_quests` →
+  `show_map`, etc.), so no valid inheritance order exists. Practical fallout: (1) any
+  function moved into one of these files must reach shared state or another screen's
+  function through `g.` — a bare reference silently resolves to the wrong thing or fails
+  to compile; (2) a bare `self` inside a moved method refers to the composition object, not
+  the game instance — this bit `_card_view` assigning `tile.game = self` when it should be
+  `tile.game = g`; (3) a delegator wrapping a function that `await`s internally must also
+  `await` the call-through (`func show_map() -> void: await _map_screen.show_map()`), or
+  the delegator returns before the real work finishes and every awaiting caller races
+  ahead; (4) the four composition objects are built in `_init()`, not `_ready()`, because
+  `test_runner.gd` instantiates `Main.tscn`'s script directly without adding it to a tree
+  to test pure functions in isolation, and `_ready()` never fires for a node that never
+  joins a tree. `game.gd` keeps one thin delegator per screen function under its original
+  name specifically so nothing outside these files — including every test — had to change
+  when a function moved; if you add a new screen function that something outside its own
+  file calls (grep for it in the *other* `game_*.gd` files and in both test files, not just
+  `game.gd`, before assuming it's safe to skip), add its delegator the same way.
 - **GDScript warnings are errors.** `var x := some_dict.get(k)` fails the build, because
   `Dictionary.get()` returns `Variant`. Annotate the type: `var x: String = ...`.
 - **Containers resize their children.** A `ColorRect` inside a `PanelContainer` is stretched
