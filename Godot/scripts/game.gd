@@ -782,6 +782,10 @@ var compendium_tab := "cards"
 var camp_tab := "character"
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
+var deck_filter_kind: String = "all"
+var deck_filter_element: String = "all"
+var deck_search_query: String = ""
+var is_hard_replay: bool = false
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
@@ -1691,6 +1695,11 @@ func show_map() -> void:
 	var btn_music := _button("♫" if not muted else "♩", _toggle_music, Color("17363e"), Vector2(32,34))
 	btn_music.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_music)
+
+	var btn_settings := _button("⚙", show_settings, Color("17363e"), Vector2(32, 34))
+	btn_settings.name = "SettingsButton"
+	btn_settings.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(btn_settings)
 	header_holder.add_child(header)
 
 	var stage_count: int = content.encounters.size()
@@ -1889,7 +1898,7 @@ func _add_map_ambience() -> void:
 	motes.amount = 24
 	motes.lifetime = 6.5
 	motes.preprocess = 6.5
-	motes.emitting = true
+	motes.emitting = not bool(profile.get("reduce_motion", false))
 	motes.z_index = 90
 	motes.local_coords = true
 	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
@@ -2252,7 +2261,7 @@ func _add_stage_pin(index: int) -> void:
 	pin.add_theme_stylebox_override("hover", _panel(bg_color.lightened(0.12), 16, EMBER))
 	pin.add_theme_stylebox_override("pressed", _panel(bg_color.darkened(0.15), 16, GOLD))
 	pin.add_theme_stylebox_override("disabled", _panel(bg_color, 16, Color("2b393d")))
-	pin.pressed.connect(func(): _travel_to(index))
+	pin.pressed.connect(func(): _on_pin_pressed(index))
 	map_canvas.add_child(pin)
 
 	if _map_pin_rune_tex == null: _map_pin_rune_tex = load("res://assets/map_pin_rune.png")
@@ -2335,7 +2344,19 @@ func _modifier(seed: int, stage: int) -> Dictionary:
 func begin_battle(index: int) -> void:
 	current_stage = index
 	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
-	active_modifier = _modifier(seed,index)
+	if is_hard_replay:
+		active_modifier = {
+			"id": "trial_hard",
+			"name": "试炼强化",
+			"name_en": "Trial Hard",
+			"detail": "敌人生命 +25%，攻击 +2，恢复全额掉落",
+			"detail_en": "Enemy HP +25%, ATK +2, Full Drops",
+			"health_scale": 1.25,
+			"damage_bonus": 2,
+			"reward_scale": 1.0
+		}
+	else:
+		active_modifier = _modifier(seed, index)
 	combat = SpiritCombat.new(content)
 	var equipped: Array = profile.equipment_slots.values()
 	combat.create(seed,content.encounters[index],profile.deck,int(profile.health),profile.upgrades,equipped,profile.card_runes,active_modifier,profile.relics,_current_hero_mastery_bonuses())
@@ -2730,10 +2751,11 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	unit.add_child(badges)
 	if int(enemy.shield) > 0: badges.add_child(_status_chip("⬢", int(enemy.shield), Color("9fd8ff")))
-	if int(enemy.burn) > 0: badges.add_child(_status_chip("♨", int(enemy.burn), Color("ff9868")))
+	if int(enemy.burn) > 0: badges.add_child(_status_chip("▲", int(enemy.burn), Color("ff9868")))
+	if int(enemy.get("poison", 0)) > 0: badges.add_child(_status_chip("◆", int(enemy.poison), Color("a75bd6")))
 	if int(enemy.stun) > 0: badges.add_child(_status_chip("✸", int(enemy.stun), Color("ffe08a")))
-	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip("◎", int(enemy.vulnerable), Color("ff8a8a")))
-	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip("↓", int(enemy.weak), Color("b8c4c8")))
+	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip("▼", int(enemy.vulnerable), Color("ff6b6b")))
+	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip("●", int(enemy.weak), Color("b8c4c8")))
 
 	return unit
 
@@ -2807,7 +2829,11 @@ func _build_player_stage() -> Control:
 	stage.add_child(badges)
 	if int(combat.state.player.shield) > 0: badges.add_child(_status_chip("⬢", int(combat.state.player.shield), Color("9fd8ff"), 22.0))
 	if int(combat.state.player.focus) > 0: badges.add_child(_status_chip("◉", int(combat.state.player.focus), Color("ffe08a"), 22.0))
-	if int(combat.state.player.burn) > 0: badges.add_child(_status_chip("♨", int(combat.state.player.burn), Color("ff9868"), 22.0))
+	if int(combat.state.player.burn) > 0: badges.add_child(_status_chip("▲", int(combat.state.player.burn), Color("ff9868"), 22.0))
+	if int(combat.state.player.get("poison", 0)) > 0: badges.add_child(_status_chip("◆", int(combat.state.player.poison), Color("a75bd6"), 22.0))
+	if int(combat.state.player.get("strength", 0)) > 0: badges.add_child(_status_chip("★", int(combat.state.player.strength), Color("ffd700"), 22.0))
+	if int(combat.state.player.get("vulnerable", 0)) > 0: badges.add_child(_status_chip("▼", int(combat.state.player.vulnerable), Color("ff6b6b"), 22.0))
+	if int(combat.state.player.get("weak", 0)) > 0: badges.add_child(_status_chip("●", int(combat.state.player.weak), Color("b8c4c8"), 22.0))
 
 	return stage
 
@@ -4294,11 +4320,11 @@ func _grant_stage_rewards() -> void:
 	var encounter: Dictionary = content.encounters[current_stage]
 	var multiplier: float = active_modifier.get("reward_scale", 1.0)
 	if profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
-	var replay := _is_replay(current_stage)
+	var replay := _is_replay(current_stage) and not is_hard_replay
 	# Farming an old stage pays half and drops no items, so grinding gold stays possible
 	# while re-collecting cards and gear does not.
 	if replay: multiplier *= 0.5
-	pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay}
+	pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay, "is_hard_replay": is_hard_replay}
 	profile.gold += int(pending_rewards.gold)
 	if not replay:
 		profile.health = mini(60, int(combat.state.player.health) + 10)
@@ -4317,6 +4343,7 @@ func _grant_stage_rewards() -> void:
 	if replay: mastery_xp = int(mastery_xp / 2)
 	_grant_mastery_xp(mastery_xp)
 	if replay:
+		is_hard_replay = false
 		SpiritSave.write(profile)
 		return
 
@@ -4344,12 +4371,18 @@ func _grant_stage_rewards() -> void:
 		profile.rune_inventory[rune.id] = profile.rune_inventory.get(rune.id, 0) + 1
 		pending_rewards.rune = rune.id
 		_mark_discovered("runes", rune.id)
+	is_hard_replay = false
 	SpiritSave.write(profile)
 
 func show_reward_details() -> void:
 	_clear(); _play_music(false)
 	var page := _create_page(8)
 	page.add_child(_label(t("ui.battle_won"), 24, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+
+	if current_stage < 3 or int(profile.unlocked) <= 3:
+		var stats: Dictionary = combat.state.get("stats", {}) if combat and combat.state else {}
+		if not stats.is_empty():
+			page.add_child(_build_victory_recap_card(stats))
 
 	var spoils := HBoxContainer.new()
 	spoils.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -5074,6 +5107,52 @@ func show_deck() -> void:
 	var page := _create_page(6)
 	page.add_child(_header(t("ui.deck_title"), tf("ui.deck_sub", profile.deck.size()), show_map))
 
+	# Search & Filter Chips (F3)
+	var search_row := HBoxContainer.new()
+	search_row.add_theme_constant_override("separation", 6)
+	var search_edit := LineEdit.new()
+	search_edit.name = "DeckSearchInput"
+	search_edit.placeholder_text = t("ui.deck_search_placeholder")
+	search_edit.text = deck_search_query
+	search_edit.custom_minimum_size = Vector2(0, 34)
+	search_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	search_edit.text_submitted.connect(func(new_text: String):
+		deck_search_query = new_text
+		show_deck()
+	)
+	search_row.add_child(search_edit)
+	if not deck_search_query.is_empty():
+		var clear_btn := _button("✕", func():
+			deck_search_query = ""
+			show_deck()
+		, Color("2d2218"), Vector2(34, 34))
+		search_row.add_child(clear_btn)
+	page.add_child(search_row)
+
+	var kind_chips := HBoxContainer.new()
+	kind_chips.name = "DeckKindChips"
+	kind_chips.add_theme_constant_override("separation", 4)
+	for item in [["all", t("ui.deck_filter_all")], ["Attack", t("ui.deck_filter_attack")], ["Skill", t("ui.deck_filter_skill")], ["Power", t("ui.deck_filter_power")], ["Tactic", t("ui.deck_filter_tactic")]]:
+		var k_id: String = item[0]
+		var k_name: String = item[1]
+		var active: bool = deck_filter_kind == k_id
+		var chip := _button(k_name, func(): deck_filter_kind = k_id; show_deck(), EMBER if active else Color("172a30"), Vector2(0, 28))
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		kind_chips.add_child(chip)
+	page.add_child(kind_chips)
+
+	var elem_chips := HBoxContainer.new()
+	elem_chips.name = "DeckElementChips"
+	elem_chips.add_theme_constant_override("separation", 3)
+	for item in [["all", t("ui.deck_filter_elem_all")], ["", t("ui.deck_filter_elem_none")], ["fire", t("ui.deck_filter_elem_fire")], ["gale", t("ui.deck_filter_elem_gale")], ["stone", t("ui.deck_filter_elem_stone")], ["water", t("ui.deck_filter_elem_water")], ["poison", t("ui.deck_filter_elem_poison")]]:
+		var e_id: String = item[0]
+		var e_name: String = item[1]
+		var active: bool = deck_filter_element == e_id
+		var chip := _button(e_name, func(): deck_filter_element = e_id; show_deck(), JADE if active else Color("112226"), Vector2(0, 26))
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		elem_chips.add_child(chip)
+	page.add_child(elem_chips)
+
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -5092,6 +5171,13 @@ func show_deck() -> void:
 		for card in content.cards:
 			if str(card.rarity) != rarity: continue
 			if int(profile.collection.get(card.id, 0)) == 0: continue
+			if deck_filter_kind != "all" and str(card.get("kind", "")) != deck_filter_kind: continue
+			if deck_filter_element != "all" and str(card.get("element", "")) != deck_filter_element: continue
+			if not deck_search_query.strip_edges().is_empty():
+				var q: String = deck_search_query.to_lower().strip_edges()
+				var c_name: String = str(content.card_name(card, lang)).to_lower()
+				var c_desc: String = str(content.card_desc(card, lang)).to_lower()
+				if not (q in c_name or q in c_desc or q in str(card.id).to_lower()): continue
 			group.append(card)
 		if group.is_empty(): continue
 
@@ -6482,3 +6568,212 @@ func _card_description(card: Dictionary) -> String:
 	if not special.is_empty(): parts.append(content.ui("desc.special.%s" % special, lang))
 	var sep := " · " if lang == "en" else "，"
 	return sep.join(parts)
+
+func show_settings() -> void:
+	var existing: Node = overlay.get_node_or_null("SettingsModal")
+	if existing: existing.queue_free(); return
+
+	var modal := _modal_backdrop("SettingsModal", func(): _close_settings())
+
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(340, 420)
+	panel.size = panel.custom_minimum_size
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.add_theme_stylebox_override("panel", _panel(Color("0e1d22"), 14, GOLD))
+	modal.add_child(panel)
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pad.add_theme_constant_override("margin_left", 16)
+	pad.add_theme_constant_override("margin_right", 16)
+	pad.add_theme_constant_override("margin_top", 16)
+	pad.add_theme_constant_override("margin_bottom", 16)
+	panel.add_child(pad)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 14)
+	pad.add_child(list)
+
+	# Header
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	list.add_child(head)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(_label(t("ui.settings_title"), 16, GOLD))
+	title_box.add_child(_label(t("ui.settings_sub"), 9, MUTED))
+	head.add_child(title_box)
+
+	var close_btn := _button("✕", func(): _close_settings(), Color("1c333a"), Vector2(36, 36))
+	close_btn.name = "SettingsCloseBtn"
+	head.add_child(close_btn)
+
+	# 1. Language Option
+	var lang_box := VBoxContainer.new()
+	lang_box.add_theme_constant_override("separation", 6)
+	lang_box.add_child(_label(t("ui.settings_lang"), 12, TEXT))
+	var lang_row := HBoxContainer.new()
+	lang_row.add_theme_constant_override("separation", 8)
+	var is_zh: bool = lang == "zh-Hans"
+	var zh_btn := _button("简体中文", func(): _change_language("zh-Hans"), JADE if is_zh else Color("1c333a"), Vector2(0, 36))
+	zh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var en_btn := _button("English", func(): _change_language("en"), JADE if not is_zh else Color("1c333a"), Vector2(0, 36))
+	en_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lang_row.add_child(zh_btn)
+	lang_row.add_child(en_btn)
+	lang_box.add_child(lang_row)
+	list.add_child(lang_box)
+
+	# 2. Battle Speed Option
+	var speed_box := VBoxContainer.new()
+	speed_box.add_theme_constant_override("separation", 6)
+	speed_box.add_child(_label(t("ui.settings_speed"), 12, TEXT))
+	var speed_row := HBoxContainer.new()
+	speed_row.add_theme_constant_override("separation", 8)
+	for sp in [1.0, 1.5, 2.0]:
+		var is_active := is_equal_approx(battle_speed, sp)
+		var sp_btn := _button("%.1fx" % sp, func(): _change_battle_speed(sp), Color("d95d37") if is_active else Color("1c333a"), Vector2(0, 36))
+		sp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		speed_row.add_child(sp_btn)
+	speed_box.add_child(speed_row)
+	list.add_child(speed_box)
+
+	# 3. Audio / Music Option
+	var audio_box := VBoxContainer.new()
+	audio_box.add_theme_constant_override("separation", 6)
+	audio_box.add_child(_label(t("ui.settings_audio"), 12, TEXT))
+	var audio_row := HBoxContainer.new()
+	audio_row.add_theme_constant_override("separation", 8)
+	var music_btn := _button(t("ui.settings_audio_on") if not muted else t("ui.settings_audio_off"), func(): _toggle_music_settings(), JADE if not muted else Color("2c333a"), Vector2(0, 36))
+	music_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	audio_row.add_child(music_btn)
+	audio_box.add_child(audio_row)
+	list.add_child(audio_box)
+
+	# 4. Reduce Motion Option
+	var motion_box := VBoxContainer.new()
+	motion_box.add_theme_constant_override("separation", 4)
+	motion_box.add_child(_label(t("ui.settings_reduce_motion"), 12, TEXT))
+	motion_box.add_child(_label(t("ui.settings_reduce_motion_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var motion_active: bool = bool(profile.get("reduce_motion", false))
+	var motion_btn := _button(t("ui.settings_on") if motion_active else t("ui.settings_off"), func(): _toggle_reduce_motion(), EMBER if motion_active else Color("1c333a"), Vector2(0, 36))
+	motion_btn.name = "ReduceMotionToggleBtn"
+	motion_box.add_child(motion_btn)
+	list.add_child(motion_box)
+
+func _close_settings() -> void:
+	var existing: Node = overlay.get_node_or_null("SettingsModal")
+	if existing: existing.queue_free()
+
+func _change_language(new_lang: String) -> void:
+	lang = new_lang
+	profile.language = lang
+	SpiritSave.write(profile)
+	_close_settings()
+	show_settings()
+
+func _change_battle_speed(new_speed: float) -> void:
+	battle_speed = new_speed
+	profile.battle_speed = battle_speed
+	SpiritSave.write(profile)
+	_close_settings()
+	show_settings()
+
+func _toggle_music_settings() -> void:
+	muted = not muted
+	if muted: map_music.stop(); battle_music.stop()
+	else: _play_music(false)
+	_close_settings()
+	show_settings()
+
+func _toggle_reduce_motion() -> void:
+	var current: bool = bool(profile.get("reduce_motion", false))
+	profile.reduce_motion = not current
+	SpiritSave.write(profile)
+	_close_settings()
+	show_settings()
+
+func _on_pin_pressed(index: int) -> void:
+	if _is_replay(index) and content.node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
+		_show_replay_mode_prompt(index)
+	else:
+		is_hard_replay = false
+		_travel_to(index)
+
+func _show_replay_mode_prompt(index: int) -> void:
+	var existing: Node = overlay.get_node_or_null("ReplayModal")
+	if existing: existing.queue_free()
+
+	var modal := _modal_backdrop("ReplayModal", func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex: ex.queue_free()
+	)
+
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(340, 240)
+	panel.size = panel.custom_minimum_size
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.add_theme_stylebox_override("panel", _panel(Color("0f1e23"), 14, Color("34626d")))
+	modal.add_child(panel)
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	pad.add_child(list)
+
+	list.add_child(_label(t("ui.replay_modal_title"), 15, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var normal_btn := _button(t("ui.replay_normal_title"), func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex: ex.queue_free()
+		is_hard_replay = false
+		_travel_to(index)
+	, Color("17363e"), Vector2(0, 44))
+	normal_btn.name = "ReplayNormalBtn"
+	list.add_child(normal_btn)
+	list.add_child(_label(t("ui.replay_normal_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var hard_btn := _button(t("ui.replay_hard_title"), func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex: ex.queue_free()
+		is_hard_replay = true
+		_travel_to(index)
+	, EMBER, Vector2(0, 44))
+	hard_btn.name = "ReplayHardBtn"
+	list.add_child(hard_btn)
+	list.add_child(_label(t("ui.replay_hard_desc"), 9, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_CENTER, true))
+
+func begin_hard_replay(index: int) -> void:
+	is_hard_replay = true
+	begin_battle(index)
+
+func _build_victory_recap_card(stats: Dictionary) -> Control:
+	var panel := Panel.new()
+	panel.name = "VictoryRecapCard"
+	panel.custom_minimum_size = Vector2(0, 54)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel(Color("122228"), 10, Color("34626d")))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
+	for side in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 6)
+	panel.add_child(pad)
+
+	var vstack := VBoxContainer.new()
+	vstack.add_theme_constant_override("separation", 3)
+	pad.add_child(vstack)
+
+	vstack.add_child(_label(t("ui.recap_title"), 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 14)
+	row.add_child(_label(tf("ui.recap_damage", int(stats.get("damage_dealt", 0))), 10, Color("ff8a8a")))
+	row.add_child(_label(tf("ui.recap_cards", int(stats.get("cards_played", 0))), 10, Color("a8dcff")))
+	row.add_child(_label(tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 10, Color("9fd8ff")))
+	vstack.add_child(row)
+	return panel

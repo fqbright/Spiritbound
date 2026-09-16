@@ -228,6 +228,9 @@ func run() -> void:
 	_force_hand(guardian_run, "strike")
 	guardian_run.play(0, 0)
 	check(int(guardian_run.state.player.shield) == 4, "Guardian rune grants 4 shield on card play")
+	check(int(echo_run.state.stats.cards_played) == 1, "combat tracks cards_played accurately")
+	check(int(echo_run.state.stats.damage_dealt) == 9, "combat tracks damage_dealt accurately")
+	check(int(guardian_run.state.stats.shield_gained) == 4, "combat tracks shield_gained accurately")
 
 	var cleanse_run := SpiritCombat.new(content)
 	cleanse_run.create(74, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {"strike": "cleanse"})

@@ -36,7 +36,8 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"hero_bonuses":hero_bonuses.duplicate(true),
 		"encounter":encounter.duplicate(true),
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
-		"chapter":int(encounter.get("chapter", 1))
+		"chapter":int(encounter.get("chapter", 1)),
+		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0}
 	}
 	if not enemies.is_empty():
 		enemies[0]["is_great_boss"] = state.is_great_boss
@@ -156,6 +157,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 	else: target_index = -1
 	var rune: String = state.runes.get(card.id, "")
 	state.energy -= card.cost
+	if state.has("stats"): state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true
@@ -184,9 +186,14 @@ func play(hand_index: int, target_index := -1) -> bool:
 	if rune == "chain" and harmful:
 		var other := _other_target(target_index)
 		if other >= 0: dealt += _damage_enemy(other, maxi(1, int(round(_base_damage(card, bonus + resonance) * .4))), false)
-	if rune == "siphon" and dealt > 0: state.player.shield += maxi(1, int(dealt * .25))
+	if rune == "siphon" and dealt > 0:
+		var siphoned: int = maxi(1, int(dealt * .25))
+		state.player.shield += siphoned
+		if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + siphoned
 	if rune == "burning" and harmful and state.enemies[target_index].health > 0 and not state.enemies[target_index].mechanics.get("burn_immune", false): state.enemies[target_index].burn += 2
-	if rune == "guardian": state.player.shield += 4
+	if rune == "guardian":
+		state.player.shield += 4
+		if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 4
 	if rune == "cleanse": state.player.burn = 0
 	var element: String = card.get("element","")
 	if not element.is_empty(): state.elements[element] = state.elements.get(element,0) + 1
@@ -299,6 +306,7 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					shield_gain = int(round(shield_gain * 1.5))
 					emit_signal("event","rune_set",{"id":"set_stone"})
 				state.player.shield += shield_gain
+				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + shield_gain
 				if state.equipment.has("tideCharm") and not state.tide_used:
 					state.tide_used = true
 					_draw(1)
@@ -330,6 +338,7 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	enemy.shield -= absorbed
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
+	if state.has("stats"): state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
 	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
 		_trigger_great_boss_phase_2(enemy)
 	# Thorns was carried as encounter data since the 50-stage version but never actually

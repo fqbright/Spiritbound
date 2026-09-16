@@ -24,7 +24,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[]},"tutorial_seen":false,"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"achievements_unlocked":{}}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[]},"tutorial_seen":false,"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"achievements_unlocked":{},"reduce_motion":false}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -51,6 +51,7 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not base.get("login_reward") is Dictionary: base.login_reward = {"week":-1,"days":[],"claimed":[]}
 	if not base.get("lifetime_stats") is Dictionary: base.lifetime_stats = {}
 	if not base.get("achievements_unlocked") is Dictionary: base.achievements_unlocked = {}
+	if not base.has("reduce_motion"): base.reduce_motion = false
 	# Saves written before accounts existed get one on load rather than on next write.
 	if not base.get("account") is Dictionary or not base.account.has("id"): base.account = new_account()
 	base.schema_version = SCHEMA_VERSION

@@ -161,11 +161,10 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   - Endless Abyss: unlocked after Chapter 2 (`unlocked >= 10`).
   - Ascension Difficulty Tiers: unlocked after Chapter 5 (`unlocked >= 25`).
   *Builds on:* `_compendium_section()`, `_daily_trial_section()`, `_abyss_section()`, `_difficulty_tier_section()`.
-- `[ ]` **A3 — 首胜战报回顾**
-  For a new player's first 2-3 battles, show a simple recap card at the reward screen ("你造成
-  了 X 点伤害 / 抽了 Y 张牌 / 触发了 Z 次符文效果") so the numbers on screen connect back to
-  what they actually did.
-  *Builds on:* `show_reward_details()`.
+- `[x]` **A3 — 首胜战报回顾** — done 2026-09-15
+  Added `VictoryRecapCard` in `show_reward_details()` for early victory stages (`current_stage < 3`
+  or `unlocked <= 3`). Displays damage dealt, cards played, and shields gained tracked via `combat.state.stats`.
+  *Builds on:* `combat.state.stats`, `show_reward_details()`.
 - `[x]` **A4 — 新手推荐流派标记** — done 2026-09-15
   Tagged Fox Spirit with `BeginnerRecBadge` ("✦ 新手推荐") and explanatory text highlighting
   generous energy and steady burst damage in `_hero_archetypes_section()`.
@@ -186,11 +185,11 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   upon reaching 50% (150 gold), 80% (350 gold), and 100% (800 gold + exclusive achievement).
   Claim state persisted in `profile.compendium_milestones_claimed`.
   *Builds on:* `_compendium_totals()`.
-- `[ ]` **D2 — 重复关卡词条化**
-  Replaying a cleared stage today is just "half gold, no drops." Offer an opt-in "harder
-  replay" using the Daily Trial's tag-modifier system in exchange for normal (not halved)
-  drops — gives grinding players a reason to vary their replays.
-  *Builds on:* `content.daily_trial_modifier()`'s tag-combination logic.
+- `[x]` **D2 — 重复关卡词条化** — done 2026-09-15
+  Tapping an already-cleared stage pin opens `_show_replay_mode_prompt()`, offering choice between
+  Standard Replay (half gold, no drops) and Trial Replay (hard affix modifier + restores 100% gold
+  rewards and item/equipment drops). Supported via `begin_hard_replay(index)` and `is_hard_replay`.
+  *Builds on:* `_show_replay_mode_prompt()`, `begin_hard_replay()`.
 - `[ ]` **E1 — 试炼历史走势图 (local-only)**
   A simple trend line of `daily_trial_record.best_stage` over time. Purely local data, no
   backend needed.
@@ -199,11 +198,11 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   A shareable "run recap" image (hero, deck highlights, damage dealt) generated client-side
   after a win or a Great Boss kill — pure client-side rendering, no server dependency.
   *Builds on:* `_card_art_panel()`, `_panel()` and friends for the composed image.
-- `[ ]` **F2 — 独立设置页面**
-  Language, battle speed, and music mute are scattered across the map header and battle HUD
-  with no single entry point. Consolidate into one Settings screen (gear icon near the account
-  panel), and add a "reduce motion" toggle while there.
-  *Builds on:* `_toggle_language()`, `_cycle_speed()`, `_toggle_music()`.
+- `[x]` **F2 — 独立设置页面** — done 2026-09-15
+  Consolidated settings into dedicated `show_settings()` modal accessible via `SettingsButton` (gear ⚙)
+  in map top bar and Camp. Configures language, battle speed (1.0x / 1.5x / 2.0x), audio mute, and
+  accessibility "reduce motion" (`profile.reduce_motion: bool`), automatically disabling map particles.
+  *Builds on:* `show_settings()`, `SettingsButton`, `profile.reduce_motion`.
 
 ## Medium-low impact
 
@@ -211,14 +210,16 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   A small one-time gold/XP bonus the instant an enemy is newly marked discovered in the
   bestiary, so filling the Compendium has in-battle feedback, not just a Camp screen number.
   *Builds on:* the `_mark_discovered("bestiary", ...)` call sites added in Milestone 4.
-- `[ ]` **F3 — 卡组构筑搜索与筛选**
-  Filter chips (element/kind/rarity) + a text search on the deck-builder card list — standard
-  for a collection-heavy card game, low risk, low effort.
-  *Builds on:* the deck-builder screen's card list rendering.
-- `[ ]` **F4 — 色觉友好的状态图标**
-  Vulnerable/Weak/Burn currently differ mainly by color. Add a shape/glyph differentiator so
-  colorblind players (and anyone on a washed-out screen) can tell them apart at a glance.
-  *Builds on:* `_intent_style()` and wherever status icons are drawn in battle.
+- `[x]` **F3 — 卡组构筑搜索与筛选** — done 2026-09-15
+  Integrated `DeckSearchInput` (text search by name, id, and rules text), `DeckKindChips`
+  (All, Attack, Skill, Power, Tactic), and `DeckElementChips` (All, Neutral, Fire, Gale, Stone,
+  Water, Poison) in `show_deck()`. Real-time multi-criteria filtering over card collection.
+  *Builds on:* `show_deck()`.
+- `[x]` **F4 — 色觉友好的状态图标** — done 2026-09-15
+  Equipped all combat status chips with distinct geometric silhouettes: Shield (⬢ Hexagon),
+  Burn (▲ Up-Triangle), Poison (◆ Diamond), Vulnerable (▼ Down-Triangle), Weak (● Circle),
+  Stun (✸ Burst), Strength (★ Star), Focus (◉ Bullseye). Colorblind and grayscale friendly.
+  *Builds on:* `_status_chip()`, unit status rows.
 
 ## Blocked — needs a backend decision, not implementable in this local-only architecture
 
@@ -236,6 +237,14 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — Phase 3: Dedicated Settings, Deck Filters, Colorblind Glyphs, Victory Recap & Hard Replays shipped (F2, F3, F4, A3, D2)
+1. **F2 Dedicated Settings Screen**: Built `show_settings()` modal, opened via `SettingsButton` (gear ⚙) in map top header and Camp. Provides controls for Language (zh-Hans / en), Battle Animation Speed (1.0x / 1.5x / 2.0x), BGM Audio Mute, and Accessibility "Reduce Motion" (`profile.reduce_motion: bool`), which automatically disables map particle emitters.
+2. **F3 Deck Builder Search & Filters**: Added real-time search input (`DeckSearchInput`) and category chip filters for Kind (`DeckKindChips`: All, Attack, Skill, Power, Tactic) and Elements (`DeckElementChips`: All, Neutral, Fire, Gale, Stone, Water, Poison) in `show_deck()`.
+3. **F4 Colorblind-Friendly Status Glyphs**: Upgraded all combat status chips across enemies and player to use distinct geometric silhouettes alongside colors: Shield (⬢ Hexagon), Burn (▲ Up-Triangle), Poison (◆ Diamond), Vulnerable (▼ Down-Triangle), Weak (● Circle), Stun (✸ Burst Star), Strength (★ Star), Focus (◉ Bullseye). Recognizable in grayscale.
+4. **A3 First Victory Performance Recap**: Added `VictoryRecapCard` displaying battle performance metrics (damage dealt, cards played, shield absorbed) on early stage victories (`current_stage < 3` or `unlocked <= 3`), backed by `combat.state.stats`.
+5. **D2 Opt-in Hard Replays**: Tapping cleared stage pins presents `_show_replay_mode_prompt()` modal offering Standard Replay (half gold, no drops) vs Trial Replay (applies `trial_hard` affix, restores 100% full gold and equipment/rune item drops) via `begin_hard_replay(index)`.
+Both test suites passing (250 rules checks, UI smoke passing).
 
 ### 2026-09-15 — Phase 2: Beginner recommendation, Camp progressive unlocking, Daily Trial streak, and Compendium milestones shipped (A4, A2, B2, C3)
 1. **A4 Beginner Hero Recommendation**: Fox Spirit master panel highlighted with `BeginnerRecBadge` ("✦ 新手推荐") and beginner-friendly tooltip in `_hero_archetypes_section()`.

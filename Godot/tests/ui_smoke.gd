@@ -1504,6 +1504,64 @@ func _run() -> void:
 	check(_find_label_text(game.root, game.content.ui("ach.win10.name", game.lang)), "an unlocked achievement's name renders in the Achievements tab")
 	check(_find_label_text(game.root, game.content.ui("ach.win200.name", game.lang)), "a locked achievement still renders (with progress, not hidden)")
 
+	section("== phase 3: settings, deck filters, colorblind glyphs, victory recap & hard replays ==")
+	# F2: Settings modal
+	game.show_map()
+	await process_frame
+	check(game.root.find_child("SettingsButton", true, false) != null, "SettingsButton exists in map top bar")
+	game.show_settings()
+	await process_frame
+	var settings_modal: Node = game.overlay.get_node_or_null("SettingsModal")
+	check(settings_modal != null, "SettingsModal opens on overlay")
+	var motion_btn := settings_modal.find_child("ReduceMotionToggleBtn", true, false) as Button
+	check(motion_btn != null, "ReduceMotionToggleBtn exists in settings")
+	var initial_motion: bool = bool(game.profile.get("reduce_motion", false))
+	motion_btn.emit_signal("pressed")
+	check(bool(game.profile.get("reduce_motion", false)) != initial_motion, "toggling reduce motion updates profile")
+	var settings_close := settings_modal.find_child("SettingsCloseBtn", true, false) as Button
+	check(settings_close != null, "SettingsCloseBtn exists")
+	settings_close.emit_signal("pressed")
+	await process_frame
+	check(game.overlay.get_node_or_null("SettingsModal") == null, "closing SettingsModal frees it")
+
+	# F3: Deck builder filter chips and search
+	game.show_deck()
+	await process_frame
+	check(game.root.find_child("DeckSearchInput", true, false) != null, "DeckSearchInput exists in deck screen")
+	check(game.root.find_child("DeckKindChips", true, false) != null, "DeckKindChips exists in deck screen")
+	check(game.root.find_child("DeckElementChips", true, false) != null, "DeckElementChips exists in deck screen")
+
+	# F4: Colorblind status glyphs
+	game.begin_battle(0)
+	game.combat.state.enemies[0].burn = 3
+	game.combat.state.enemies[0].poison = 2
+	game.combat.state.enemies[0].vulnerable = 1
+	game.combat.state.enemies[0].weak = 1
+	game.show_battle()
+	await process_frame
+	check(_find_label_containing(game.root, "▲"), "Burn status chip renders with upward triangle glyph")
+	check(_find_label_containing(game.root, "◆"), "Poison status chip renders with diamond glyph")
+	check(_find_label_containing(game.root, "▼"), "Vulnerable status chip renders with downward triangle glyph")
+	check(_find_label_containing(game.root, "●"), "Weak status chip renders with circle glyph")
+
+	# A3: Victory performance recap card
+	game.current_stage = 1
+	game.combat.state.phase = "won"
+	game.combat.state.stats = {"damage_dealt": 48, "cards_played": 6, "shield_gained": 12}
+	game.show_reward_details()
+	await process_frame
+	check(game.root.find_child("VictoryRecapCard", true, false) != null, "VictoryRecapCard renders for early victory stages")
+
+	# D2: Opt-in hard replay
+	game.profile.unlocked = 5
+	game.begin_hard_replay(2)
+	check(game.is_hard_replay, "begin_hard_replay sets is_hard_replay mode")
+	check(game.active_modifier.get("id", "") == "trial_hard", "hard replay assigns trial_hard modifier")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(bool(game.pending_rewards.get("is_hard_replay", false)), "hard replay marks is_hard_replay in pending_rewards")
+	check(not bool(game.pending_rewards.get("replay", false)), "hard replay overrides standard replay halved penalties")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
