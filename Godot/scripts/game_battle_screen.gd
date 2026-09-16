@@ -626,6 +626,10 @@ func _tap_card(hand_index: int) -> void:
 # equipment/relic/modifier info) — one node name per caller so only that caller's _clear_*
 # needs to know about it, and two modals can never stack on top of each other by accident.
 func _modal_backdrop(node_name: String, on_dismiss: Callable) -> Button:
+	# See the matching comment on game.gd's _modal_dialog(): z_index never affects GUI input
+	# dispatch order, only render order — overlay has to be root's LAST child to actually win
+	# taps over whatever's in the screen underneath, regardless of its z_index.
+	g.root.move_child(g.overlay, g.root.get_child_count() - 1)
 	var dim := Color("040a0c"); dim.a = 0.72
 	var backdrop := Button.new()
 	backdrop.name = node_name

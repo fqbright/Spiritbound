@@ -1213,6 +1213,16 @@ func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
 
 func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Control:
+	# z_index only ever affects render order in Godot — never GUI input dispatch order, which
+	# follows scene-tree sibling order alone. `overlay` is added to `self.root` once, up front,
+	# in _clear() (before any screen content exists), so every screen's own page content ends
+	# up LATER in root's children than overlay — meaning it silently wins every tap over
+	# whatever the overlay holds, even though overlay's z_index draws it on top. Moving overlay
+	# to be root's last child right before opening a modal is what actually gives it input
+	# priority; without this, any interactive element in the screen underneath a modal that
+	# happens to sit at the same position (the map's stage pins and header buttons, in
+	# particular) silently swallows every tap meant for the modal itself.
+	self.root.move_child(overlay, self.root.get_child_count() - 1)
 	var root := Control.new()
 	root.name = node_name
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

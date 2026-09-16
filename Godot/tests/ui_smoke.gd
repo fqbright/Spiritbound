@@ -2116,6 +2116,12 @@ func _run() -> void:
 	tap_button(chk_settings_btn, "Map SettingsButton")
 	await process_frame
 	check(game.overlay.find_child("SettingsModal", true, false) != null, "SettingsButton click opens SettingsModal")
+	# The actual mechanism the occlusion checks below depend on: z_index never affects Godot's
+	# GUI input dispatch, only scene-tree sibling order does, so overlay has to be root's LAST
+	# child for a modal inside it to win input priority over the screen underneath — a modal
+	# opening on any screen where overlay isn't already last (which is every screen, since
+	# _clear() adds overlay before that screen's own content) must move it there itself.
+	check(game.overlay.get_index() == game.root.get_child_count() - 1, "opening a modal moves overlay to be root's last child, so it wins input priority over the screen underneath")
 
 	# Inside SettingsModal: check all interactive buttons
 	var chk_settings_modal: Node = game.overlay.find_child("SettingsModal", true, false)
@@ -2185,12 +2191,18 @@ func _effective_z(node: Node) -> int:
 		current = current.get_parent()
 	return total
 
-# Determines if node_a draws on top of node_b in Godot's 2D canvas rendering order.
-func _is_drawn_above(node_a: Control, node_b: Control) -> bool:
-	var za := _effective_z(node_a)
-	var zb := _effective_z(node_b)
-	if za != zb:
-		return za > zb
+# Determines if node_a wins GUI input priority over node_b — i.e. a tap landing on both would
+# be delivered to node_a, not node_b. This is deliberately NOT the same question as "which one
+# renders on top": Godot's z_index affects render order only and is never consulted for input
+# dispatch, which follows scene-tree sibling order alone (last-added child of the lowest common
+# ancestor wins). A version of this check that fell back to comparing z_index first reported
+# every button inside an overlay-hosted modal as unoccluded, since the modal's z_index made it
+# LOOK like it was on top — while Godot's real input dispatch was silently handing every tap to
+# whatever interactive element in the screen underneath happened to share that position,
+# because the modal's `overlay` container is added to the page before the page's own content
+# and so loses on tree order despite winning on z_index. See game.gd's _modal_dialog() for the
+# production-code half of this same bug.
+func _wins_input_over(node_a: Control, node_b: Control) -> bool:
 	var path_a: Array = []
 	var curr: Node = node_a
 	while curr != null:
@@ -2258,8 +2270,8 @@ func find_occlusion(target: Control) -> String:
 			if c.is_visible_in_tree() and c.mouse_filter == Control.MOUSE_FILTER_STOP:
 				if c != target and not c.is_ancestor_of(target) and not target.is_ancestor_of(c):
 					if c.get_global_rect().has_point(center):
-						if _is_drawn_above(c, target):
-							return "occluded by '%s' (%s, z=%d) with MOUSE_FILTER_STOP" % [c.name, c.get_class(), _effective_z(c)]
+						if _wins_input_over(c, target):
+							return "occluded by '%s' (%s) with MOUSE_FILTER_STOP, which wins input priority by tree order regardless of z_index" % [c.name, c.get_class()]
 		for child in curr.get_children():
 			stack.append(child)
 	
