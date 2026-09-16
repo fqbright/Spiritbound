@@ -638,13 +638,28 @@ func _compendium_section() -> Control:
 
 	return panel
 
+func _card_banner_texture(path: String, unlocked: bool = true) -> TextureRect:
+	var tex_rect := TextureRect.new()
+	tex_rect.name = "BannerBg"
+	if ResourceLoader.exists(path):
+		tex_rect.texture = load(path)
+	tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	tex_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tex_rect.modulate = Color(1.0, 1.0, 1.0, 0.40) if unlocked else Color(0.35, 0.35, 0.4, 0.18)
+	return tex_rect
+
 func _daily_trial_section() -> Control:
 	g._ensure_daily_trial_current()
 	var unlocked := int(g.profile.unlocked) >= 5
 	var panel := PanelContainer.new()
+	panel.clip_contents = true
 	panel.custom_minimum_size = Vector2(0, 130)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", g._panel(Color("241a10") if unlocked else Color("181412"), 14, Color("ffb765") if unlocked else Color("2a3d42")))
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_daily_trial.png", unlocked))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -683,6 +698,7 @@ func _daily_trial_section() -> Control:
 	stats.add_child(g._label(g.tf("ui.daily_trial_badges_fmt", int(g.profile.daily_trial_record.get("badges", 0))), 11, Color("ffd8a8")))
 	stats.add_child(g._label(g.tf("ui.daily_trial_streak_fmt", int(g.profile.daily_trial_record.get("streak", 0))), 11, Color("ff9868")))
 	stack.add_child(stats)
+	stack.add_child(_daily_trial_trend_chart())
 
 	if stage_num >= SpiritContent.DAILY_TRIAL_STAGES:
 		stack.add_child(g._label(g.t("ui.daily_trial_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
@@ -694,13 +710,55 @@ func _daily_trial_section() -> Control:
 
 	return panel
 
+# E1: a small bar-per-day trend chart over daily_trial_record.history (bounded to
+# SpiritContent.DAILY_TRIAL_HISTORY_LIMIT entries — see _ensure_daily_trial_current()).
+# Purely local data, no backend involved. Reuses the ProgressBar-as-a-styled-rect trick
+# _stat_bar() already uses, just oriented vertically (FILL_BOTTOM_TO_TOP) instead of
+# horizontally, since nothing in this codebase draws a real chart primitive yet.
+func _daily_trial_trend_chart() -> Control:
+	var box := VBoxContainer.new()
+	box.name = "DailyTrialTrendChart"
+	box.add_theme_constant_override("separation", 4)
+	box.add_child(g._label(g.t("ui.daily_trial_trend_title"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var history: Array = g.profile.daily_trial_record.get("history", [])
+	if history.is_empty():
+		box.add_child(g._label(g.t("ui.daily_trial_trend_empty"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		return box
+
+	var recent: Array = history.slice(maxi(0, history.size() - 14))
+	var row := HBoxContainer.new()
+	row.name = "DailyTrialTrendRow"
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 3)
+	var chart_height := 28.0
+	for entry in recent:
+		var day_stage: int = int(entry.get("stage", 0))
+		var full_clear: bool = day_stage >= SpiritContent.DAILY_TRIAL_STAGES
+		var bar := ProgressBar.new()
+		bar.name = "TrendBar_%d" % int(entry.get("day", 0))
+		bar.custom_minimum_size = Vector2(10, chart_height)
+		bar.max_value = float(SpiritContent.DAILY_TRIAL_STAGES)
+		bar.value = clampf(float(day_stage), 0.0, float(SpiritContent.DAILY_TRIAL_STAGES))
+		bar.fill_mode = ProgressBar.FILL_BOTTOM_TO_TOP
+		bar.show_percentage = false
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.add_theme_stylebox_override("background", g._panel(Color(0.02, 0.06, 0.08, 0.85), 2, Color(0, 0, 0, 0.35)))
+		bar.add_theme_stylebox_override("fill", g._panel(g.GOLD if full_clear else Color("ffb765"), 2))
+		row.add_child(bar)
+	box.add_child(row)
+	return box
+
 func _weekly_challenge_section() -> Control:
 	g._ensure_weekly_challenge_current()
 	var unlocked := int(g.profile.unlocked) >= 5
 	var panel := PanelContainer.new()
+	panel.clip_contents = true
 	panel.custom_minimum_size = Vector2(0, 130)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", g._panel(Color("1a2410") if unlocked else Color("181412"), 14, Color("c8e065") if unlocked else Color("2a3d42")))
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_weekly_challenge.png", unlocked))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -852,10 +910,13 @@ func _hero_archetypes_section() -> Control:
 func _abyss_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 10
 	var panel := PanelContainer.new()
+	panel.clip_contents = true
 	panel.custom_minimum_size = Vector2(0, 110)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var border_col := Color("c79bff") if unlocked else Color("2a3d42")
 	panel.add_theme_stylebox_override("panel", g._panel(Color("1b1024") if unlocked else Color("141018"), 14, border_col))
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_abyss.png", unlocked))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -904,10 +965,13 @@ func _abyss_section() -> Control:
 func _boss_rush_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 5
 	var panel := PanelContainer.new()
+	panel.clip_contents = true
 	panel.custom_minimum_size = Vector2(0, 110)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var border_col := Color("ff9a4c") if unlocked else Color("2a3d42")
 	panel.add_theme_stylebox_override("panel", g._panel(Color("241407") if unlocked else Color("181210"), 14, border_col))
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_boss_rush.png", unlocked))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -987,9 +1051,12 @@ func begin_boss_rush_battle() -> void:
 func _sandbox_section() -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "SandboxSection"
+	panel.clip_contents = true
 	panel.custom_minimum_size = Vector2(0, 130)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", g._panel(Color("0d1f24"), 14, Color("5ec9d6")))
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_sandbox.png", true))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1203,16 +1270,21 @@ func _season_pass_banner() -> Control:
 
 	var panel := PanelContainer.new()
 	panel.name = "SeasonPassBanner"
+	panel.clip_contents = true
 	var pstyle := g._panel(Color("10242b"), 12, g.GOLD)
-	pstyle.content_margin_left = 12
-	pstyle.content_margin_right = 12
-	pstyle.content_margin_top = 10
-	pstyle.content_margin_bottom = 10
 	panel.add_theme_stylebox_override("panel", pstyle)
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_season_pass.png", true))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
+	for side in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	panel.add_child(row)
+	pad.add_child(row)
 
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1444,14 +1516,23 @@ func _draft_arena_section() -> Control:
 	section.add_theme_constant_override("separation", 6)
 
 	var panel := PanelContainer.new()
+	panel.clip_contents = true
+	panel.custom_minimum_size = Vector2(0, 100)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var pstyle := g._panel(Color("16242c"), 12, g.GOLD)
-	pstyle.content_margin_left = 12; pstyle.content_margin_right = 12
-	pstyle.content_margin_top = 10; pstyle.content_margin_bottom = 10
 	panel.add_theme_stylebox_override("panel", pstyle)
+
+	panel.add_child(_card_banner_texture("res://assets/banners/banner_draft_arena.png", true))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 12)
+	for side in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	panel.add_child(row)
+	pad.add_child(row)
 
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL

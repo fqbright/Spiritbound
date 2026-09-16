@@ -88,6 +88,13 @@ func _get_card_frame_texture(rarity: String = "Common") -> Texture2D:
 		_card_frame_border_tex = load("res://assets/card_frame_golden_border.png")
 	return _card_frame_border_tex
 
+var _card_back_tex: Texture2D = null
+
+func _get_card_back_texture() -> Texture2D:
+	if _card_back_tex == null and ResourceLoader.exists("res://assets/cards/card_back_default.png"):
+		_card_back_tex = load("res://assets/cards/card_back_default.png")
+	return _card_back_tex
+
 var _map_tile_forest_tex: Texture2D = null
 var _biome_textures: Array = []
 var _chapter_map_cache: Dictionary = {}
@@ -413,13 +420,22 @@ func _ensure_daily_trial_current() -> void:
 			if prev_stage < SpiritContent.DAILY_TRIAL_STAGES: streak = 0
 		elif prev_day != -1:
 			streak = 0
+		# E1: one history entry per day actually played (prev_day == -1 means there was no
+		# real previous day to record — a brand-new save, not a completed trial), capped so
+		# the trend chart's data can't grow without bound over months of play.
+		var history: Array = previous.get("history", []).duplicate()
+		if prev_day != -1:
+			history.append({"day": prev_day, "stage": prev_stage})
+			if history.size() > SpiritContent.DAILY_TRIAL_HISTORY_LIMIT:
+				history = history.slice(history.size() - SpiritContent.DAILY_TRIAL_HISTORY_LIMIT)
 		profile.daily_trial_record = {
 			"day": day,
 			"stage": 0,
 			"badges": int(previous.get("badges", 0)),
 			"best_stage": int(previous.get("best_stage", 0)),
 			"streak": streak,
-			"streak_claimed": previous.get("streak_claimed", []).duplicate()
+			"streak_claimed": previous.get("streak_claimed", []).duplicate(),
+			"history": history
 		}
 		SpiritSave.write(profile)
 

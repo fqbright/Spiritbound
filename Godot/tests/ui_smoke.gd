@@ -1679,6 +1679,11 @@ func _run() -> void:
 	check(game.root.find_child("DailyTrialEnterBtn", true, false) != null, "DailyTrialEnterBtn exists in camp's challenges tab")
 	check(_find_label_containing(game.root, "连胜"), "daily trial shows streak stat")
 
+	# E1: the trend chart renders empty-state text before any day has ever been completed.
+	check(game.root.find_child("DailyTrialTrendChart", true, false) != null, "DailyTrialTrendChart renders in the daily trial section")
+	check(_find_label_text(game.root, game.content.ui("ui.daily_trial_trend_empty", game.lang)), "the trend chart shows its empty-state message before any day has a recorded result")
+	check(game.root.find_child("DailyTrialTrendRow", true, false) == null, "no bar row renders while history is still empty")
+
 	game.begin_daily_trial()
 	await process_frame
 	check(game.in_daily_trial, "begin_daily_trial enters trial mode")
@@ -1704,6 +1709,16 @@ func _run() -> void:
 	game.show_camp()
 	await process_frame
 	check(game.root.find_child("DailyTrialEnterBtn", true, false) == null, "the enter button is hidden once today's trial is fully cleared")
+
+	# E1: rolling over to the next day should record today's (full-clear) result into history
+	# and render it as a bar in the trend chart.
+	game.profile.daily_trial_record.day -= 1
+	game._ensure_daily_trial_current()
+	check(game.profile.daily_trial_record.history.size() == 1, "rolling over to a new day records the just-finished day's result")
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DailyTrialTrendRow", true, false) != null, "the trend chart renders a bar row once history has at least one entry")
+	check(game.root.find_child("TrendBar_%d" % int(game.profile.daily_trial_record.history[0].day), true, false) != null, "a bar exists for the recorded day")
 
 	# B3: Weekly Theme Challenge — same shape as the Daily Trial above (force a fresh week,
 	# drive every stage via the same "force phase to won" shortcut), but on a WEEK_SECONDS
@@ -2082,6 +2097,50 @@ func _run() -> void:
 	var draft_deck: Array = game.profile.get("draft_arena", {}).get("deck", [])
 	check(draft_deck.has(first_card_id), "picked card is added to arena draft deck")
 	check(int(game.profile.draft_arena.round) == 2, "draft round advances to 2 after pick")
+
+	section("== visual assets: painted challenge banners & card back ==")
+	game.show_quests()
+	await process_frame
+	var sp_banner_node: Node = game.root.find_child("SeasonPassBanner", true, false)
+	check(sp_banner_node != null, "SeasonPassBanner renders in quests screen")
+	var sp_bg: TextureRect = sp_banner_node.find_child("BannerBg", true, false) as TextureRect
+	check(sp_bg != null and sp_bg.texture != null, "SeasonPassBanner has BannerBg with valid texture")
+	check(sp_bg != null and sp_bg.mouse_filter == Control.MOUSE_FILTER_IGNORE, "SeasonPassBanner BannerBg ignores mouse events")
+	check(sp_bg != null and str(sp_bg.texture.resource_path).ends_with("banner_season_pass.png"), "SeasonPassBanner uses banner_season_pass.png")
+
+	game.profile.unlocked = 15
+	game.profile.daily_trial_record.stage = 0
+	game.profile.weekly_challenge_record.stage = 0
+	game.show_challenges()
+	await process_frame
+	var banner_checks: Array = [
+		{"btn": "DraftArenaEnterBtn", "tex": "banner_draft_arena.png", "desc": "Draft Arena"},
+		{"btn": "DailyTrialEnterBtn", "tex": "banner_daily_trial.png", "desc": "Daily Trial"},
+		{"btn": "WeeklyChallengeEnterBtn", "tex": "banner_weekly_challenge.png", "desc": "Weekly Challenge"},
+		{"btn": "BossRushEnterBtn", "tex": "banner_boss_rush.png", "desc": "Boss Rush"},
+		{"btn": "SandboxEnterBtn", "tex": "banner_sandbox.png", "desc": "Sandbox"},
+		{"btn": "AbyssEnterBtn", "tex": "banner_abyss.png", "desc": "Abyss"},
+	]
+	for bc in banner_checks:
+		var btn: Control = game.root.find_child(bc.btn, true, false) as Control
+		check(btn != null, "%s enter button exists" % bc.desc)
+		if btn != null:
+			var p: Node = btn.get_parent()
+			var card_bg: TextureRect = null
+			while p != null and card_bg == null:
+				card_bg = p.find_child("BannerBg", false, false) as TextureRect
+				p = p.get_parent()
+			check(card_bg != null and card_bg.texture != null, "%s card has BannerBg texture" % bc.desc)
+			check(card_bg != null and card_bg.mouse_filter == Control.MOUSE_FILTER_IGNORE, "%s BannerBg ignores mouse filter" % bc.desc)
+			check(card_bg != null and str(card_bg.texture.resource_path).ends_with(bc.tex), "%s BannerBg uses %s" % [bc.desc, bc.tex])
+			var scroll: ScrollContainer = _find_by_script(game.root, TouchScrollContainer) as ScrollContainer
+			if scroll != null:
+				scroll.ensure_control_visible(btn)
+				await process_frame
+			check_clickable(btn, "%s enter button" % bc.desc)
+
+	var card_back: Texture2D = game._get_card_back_texture()
+	check(card_back != null, "default card back texture is available via _get_card_back_texture")
 
 	section("== UI Clickability & Occlusion Suite ==")
 	# 1. Map Header Buttons (Quest, Camp, Settings)

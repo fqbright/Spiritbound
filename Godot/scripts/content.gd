@@ -570,6 +570,9 @@ func mastery_bonuses(hero_id: String, level: int) -> Dictionary:
 # to exactly one combat.gd modifier key, so combining up to 3 of these 5 is always a plain
 # dictionary union — never two tags fighting over the same key.
 const DAILY_TRIAL_STAGES = 15
+# E1: bounds daily_trial_record.history so the trend chart's local-only data can't grow
+# without limit over months of play — a month's worth is plenty for a "recent trend" read.
+const DAILY_TRIAL_HISTORY_LIMIT = 30
 
 const DAILY_TRIAL_TAGS = [
 	{"id":"double_damage","nameKey":"trial.tag.double_damage.name","descKey":"trial.tag.double_damage.desc","damage_mult":2.0},
@@ -1285,6 +1288,8 @@ const UI_TEXT = {
 	"ui.lock_clears_ch2": {"zh-Hans":"通关第 2 章解锁", "en":"Clear Chapter 2 to unlock"},
 	"ui.lock_clears_ch5": {"zh-Hans":"通关第 5 章解锁", "en":"Clear Chapter 5 to unlock"},
 	"ui.daily_trial_streak_fmt": {"zh-Hans":"连胜: %d 天", "en":"Streak: %d Days"},
+	"ui.daily_trial_trend_title": {"zh-Hans":"近期进度走势", "en":"Recent Trend"},
+	"ui.daily_trial_trend_empty": {"zh-Hans":"完成一次试炼后即可查看走势", "en":"Complete a trial to start tracking your trend"},
 	"ui.trial_streak_reward_toast": {"zh-Hans":"每日试炼连续通关 %d 天！获得 %d 金币！", "en":"Daily Trial %d-day streak! Gained %d Gold!"},
 	"ui.bestiary_discovery_toast": {"zh-Hans":"图鉴新发现「%s」！+%d 金币", "en":"New Bestiary Entry: %s! +%d Gold"},
 	"ui.digest_ready_fmt": {"zh-Hans":"✦ %d 项奖励待领取", "en":"✦ %d rewards ready to claim"},

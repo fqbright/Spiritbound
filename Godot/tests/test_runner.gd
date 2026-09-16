@@ -988,6 +988,27 @@ func run() -> void:
 	awakened.play(0, 0)
 	check(awakened.state.enemies[0].health == awakened.state.enemies[0].max_health - 8, "an Awakened (+2) Strike deals its base 6 damage plus the full +2 bonus, unlike the engine capping it at +1")
 
+	# E1: daily_trial_record.history records one entry per day actually played, capped at
+	# DAILY_TRIAL_HISTORY_LIMIT, and never records for a brand-new save (day == -1, meaning
+	# there is no real previous day's result to log).
+	var today_idx: int = int(Time.get_unix_time_from_system()) / SpiritGame.DAY_SECONDS
+	g_pass.profile.daily_trial_record = {"day": -1, "stage": 0, "badges": 0, "best_stage": 0, "streak": 0, "streak_claimed": [], "history": []}
+	g_pass._ensure_daily_trial_current()
+	check(g_pass.profile.daily_trial_record.history.is_empty(), "a brand-new save's first day never records a history entry")
+
+	g_pass.profile.daily_trial_record.day = today_idx - 1
+	g_pass.profile.daily_trial_record.stage = 9
+	g_pass._ensure_daily_trial_current()
+	check(g_pass.profile.daily_trial_record.history.size() == 1, "the next day's rollover records exactly one history entry for the day just finished")
+	check(int(g_pass.profile.daily_trial_record.history[0].day) == today_idx - 1 and int(g_pass.profile.daily_trial_record.history[0].stage) == 9, "the recorded entry keeps that day's index and final stage reached")
+
+	var padded_history: Array = []
+	for i in range(SpiritContent.DAILY_TRIAL_HISTORY_LIMIT): padded_history.append({"day": i, "stage": 5})
+	g_pass.profile.daily_trial_record = {"day": today_idx - 1, "stage": 12, "badges": 0, "best_stage": 0, "streak": 0, "streak_claimed": [], "history": padded_history}
+	g_pass._ensure_daily_trial_current()
+	check(g_pass.profile.daily_trial_record.history.size() == SpiritContent.DAILY_TRIAL_HISTORY_LIMIT, "history stays capped at DAILY_TRIAL_HISTORY_LIMIT entries even as new days keep rolling in")
+	check(int(g_pass.profile.daily_trial_record.history[-1].day) == today_idx - 1, "the cap drops the oldest entries first, keeping the most recent day's own result")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)
