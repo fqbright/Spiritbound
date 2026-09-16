@@ -79,35 +79,6 @@ func show_battle() -> void:
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(leave_btn); page.add_child(top)
 
-	if not g.active_modifier.is_empty() or not g.combat.state.equipment.is_empty() or not g.profile.relics.is_empty():
-		var badge_row := HBoxContainer.new()
-		badge_row.alignment = BoxContainer.ALIGNMENT_CENTER
-		badge_row.add_theme_constant_override("separation", 8)
-		page.add_child(badge_row)
-
-		if not g.active_modifier.is_empty():
-			var m_name: String = g.active_modifier.name_en if g.lang == "en" else g.active_modifier.name
-			var m_det: String = g.active_modifier.detail_en if g.lang == "en" else g.active_modifier.detail
-			var mod_badge := g._icon_badge("✥", Color("ffe2b0"), 34, 16)
-			badge_row.add_child(_tap_wrap(mod_badge, func(): _show_info_popup(g._icon_badge("✥", Color("ffe2b0"), 60, 26), m_name, m_det, g.EMBER)))
-
-		for id in g.combat.state.equipment:
-			var item := g.content.equipment(id)
-			if item.is_empty(): continue
-			var e_name: String = g._equip_name(item)
-			var e_det: String = g._equip_detail(item)
-			var e_badge := g._equip_icon_badge(item, g.GOLD, 34)
-			badge_row.add_child(_tap_wrap(e_badge, func(): _show_info_popup(g._equip_icon_badge(item, g.GOLD, 60), e_name, e_det, g.GOLD)))
-
-		for id in g.profile.relics:
-			var relic := g.content.relic(id)
-			if relic.is_empty(): continue
-			var r_color := Color(relic.color)
-			var r_name: String = g._relic_name(relic)
-			var r_det: String = g._relic_detail(relic)
-			var r_badge := g._relic_icon_badge(relic, r_color, 34)
-			badge_row.add_child(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
-
 	var enemy_area := Control.new()
 	enemy_area.custom_minimum_size = Vector2(366.0, 205.0)
 	enemy_area.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -118,6 +89,7 @@ func show_battle() -> void:
 	# looks like a spreadsheet. Fan them out around the centre instead: the middle slot is
 	# "front" (full size, lowest), and slots further from centre step back and up, like a
 	# loose wedge formation instead of a queue.
+	# Asymmetric RPG battle diagonal: shift formation slightly right (top-right combat orientation).
 	var living_indices: Array = []
 	for index in g.combat.state.enemies.size():
 		if g.combat.state.enemies[index].health > 0: living_indices.append(index)
@@ -126,8 +98,9 @@ func show_battle() -> void:
 	var gap := 10.0
 	var living_n := living_indices.size()
 	var total_w: float = float(living_n) * u_width + float(maxi(0, living_n - 1)) * gap
-	var start_x: float = (366.0 - total_w) / 2.0
 	var center_slot: float = float(living_n - 1) / 2.0
+	var right_bias := 52.0 if living_n == 1 else (22.0 if living_n == 2 else 0.0)
+	var start_x: float = clampf((366.0 - total_w) / 2.0 + right_bias, 0.0, 366.0 - total_w - 6.0)
 	for order in living_n:
 		var enemy_index: int = living_indices[order]
 		var dist: float = absf(float(order) - center_slot)
@@ -166,17 +139,17 @@ func _intent_style(intent: Dictionary) -> Dictionary:
 	# "amount_text" is the plain number the banner shows next to the icon instead.
 	match kind:
 		"critical":
-			return {"text": g.tf("ui.intent_critical", amount), "amount_text": str(amount), "bg": Color("8c2f19"), "border": Color("ff8d5c"), "text_color": Color("ffe1c9")}
+			return {"text": g.tf("ui.intent_critical", amount), "amount_text": str(amount), "bg": Color(0.42, 0.10, 0.08, 0.72), "border": Color(1.0, 0.60, 0.36, 0.9), "text_color": Color("ffe1c9")}
 		"defend":
-			return {"text": g.tf("ui.intent_defend", amount), "amount_text": str(amount), "bg": Color("15364f"), "border": Color("7fb8e8"), "text_color": Color("d6ecff")}
+			return {"text": g.tf("ui.intent_defend", amount), "amount_text": str(amount), "bg": Color(0.06, 0.18, 0.28, 0.72), "border": Color(0.48, 0.80, 1.0, 0.9), "text_color": Color("d6ecff")}
 		"empower":
-			return {"text": g.tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "bg": Color("3a1f52"), "border": Color("c79bff"), "text_color": Color("ecdcff")}
+			return {"text": g.tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "bg": Color(0.22, 0.10, 0.32, 0.72), "border": Color(0.82, 0.58, 1.0, 0.9), "text_color": Color("ecdcff")}
 		"curse":
-			return {"text": g.tf("ui.intent_curse", amount), "amount_text": str(amount), "bg": Color("2f4420"), "border": Color("a8dd6c"), "text_color": Color("e2f7c6")}
+			return {"text": g.tf("ui.intent_curse", amount), "amount_text": str(amount), "bg": Color(0.14, 0.24, 0.10, 0.72), "border": Color(0.68, 0.92, 0.44, 0.9), "text_color": Color("e2f7c6")}
 		"attack_defend":
-			return {"text": g.tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "bg": Color("4a2a1c"), "border": Color("e0a878"), "text_color": Color("ffe7d2")}
+			return {"text": g.tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "bg": Color(0.28, 0.15, 0.10, 0.72), "border": Color(0.96, 0.70, 0.46, 0.9), "text_color": Color("ffe7d2")}
 		_:
-			return {"text": g.tf("ui.intent_attack", amount), "amount_text": str(amount), "bg": Color(0.29, 0.11, 0.07, 0.92), "border": Color("e39761"), "text_color": Color("ffe1c9")}
+			return {"text": g.tf("ui.intent_attack", amount), "amount_text": str(amount), "bg": Color(0.32, 0.10, 0.07, 0.72), "border": Color(0.96, 0.60, 0.38, 0.9), "text_color": Color("ffe1c9")}
 
 func _get_hit_flash_shader() -> Shader:
 	if g._hit_flash_shader == null: g._hit_flash_shader = load("res://assets/shaders/hit_flash.gdshader")
@@ -398,40 +371,49 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	# whatever sits above the enemy row (the equipment/relic badges).
 	var intent: Dictionary = enemy.get("intent", {})
 	var intent_style := _intent_style(intent)
-	var intent_w: float = minf(u_width, 104.0)
+	var intent_w: float = minf(u_width - 8.0, 72.0)
 	var intent_bg := Panel.new()
 	intent_bg.name = "IntentBanner"
-	intent_bg.custom_minimum_size = Vector2(intent_w, 26.0)
+	intent_bg.custom_minimum_size = Vector2(intent_w, 22.0)
 	intent_bg.size = intent_bg.custom_minimum_size
 	# Depth-staggered (flanking) enemies have their whole unit shifted up by depth_t*26 for
 	# the wedge formation; add that back here so every enemy's banner lands at the same
 	# screen height regardless of which row it is in, instead of a back-row banner drifting
 	# higher and overlapping the row above the whole enemy area.
-	intent_bg.position = Vector2(center_x - intent_w / 2.0, depth_t * 26.0)
+	var base_intent_y: float = depth_t * 26.0 + 2.0
+	intent_bg.position = Vector2(center_x - intent_w / 2.0, base_intent_y)
 	intent_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var intent_box := g._panel(intent_style.bg, 11, intent_style.border)
-	intent_box.border_width_left = 2; intent_box.border_width_right = 2
-	intent_box.border_width_top = 2; intent_box.border_width_bottom = 2
+	# Floating oriental runic seal: sleek translucent spirit pill with glowing border & soft shadow
+	var intent_box := StyleBoxFlat.new()
+	intent_box.bg_color = intent_style.bg
+	intent_box.border_color = intent_style.border
+	intent_box.set_border_width_all(1)
+	intent_box.set_corner_radius_all(11)
+	intent_box.shadow_color = Color(0, 0, 0, 0.45)
+	intent_box.shadow_size = 2
+	intent_box.content_margin_left = 6; intent_box.content_margin_right = 6
 	intent_bg.add_theme_stylebox_override("panel", intent_box)
 	unit.add_child(intent_bg)
 
 	var intent_row := HBoxContainer.new()
 	intent_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	intent_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	intent_row.add_theme_constant_override("separation", 4)
+	intent_row.add_theme_constant_override("separation", 3)
 	intent_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	intent_bg.add_child(intent_row)
 	var icon := IntentIcon.new()
 	icon.kind = str(intent.get("kind", "attack"))
 	icon.icon_color = intent_style.text_color
-	icon.custom_minimum_size = Vector2(20, 20)
+	icon.custom_minimum_size = Vector2(16, 16)
 	icon.size = icon.custom_minimum_size
 	intent_row.add_child(icon)
-	intent_row.add_child(g._label(intent_style.amount_text, 15, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
+	intent_row.add_child(g._label(intent_style.amount_text, 13, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var telegraph := intent_bg.create_tween().set_loops()
-	telegraph.tween_property(intent_bg, "modulate", Color(1.18, 1.18, 1.18), 0.9).set_trans(Tween.TRANS_SINE)
-	telegraph.tween_property(intent_bg, "modulate", Color.WHITE, 0.9).set_trans(Tween.TRANS_SINE)
+	telegraph.tween_property(intent_bg, "position:y", base_intent_y - 3.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	telegraph.parallel().tween_property(intent_bg, "modulate", Color(1.22, 1.22, 1.22), 1.0).set_trans(Tween.TRANS_SINE)
+	telegraph.tween_property(intent_bg, "position:y", base_intent_y + 1.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	telegraph.parallel().tween_property(intent_bg, "modulate", Color.WHITE, 1.0).set_trans(Tween.TRANS_SINE)
 
 	var element: String = enemy.get("element", "")
 	if not element.is_empty():
@@ -471,14 +453,14 @@ func _build_player_stage() -> Control:
 	stage.custom_minimum_size = Vector2(366.0, 118.0)
 	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	var center_x := 366.0 / 2.0
+	var player_x := 102.0
 
 	# Mirror of the enemy ring, lit when a card that acts on you is in play.
 	var glow := Panel.new()
 	glow.name = "PlayerTargetGlow"
-	glow.custom_minimum_size = Vector2(200.0, 112.0)
+	glow.custom_minimum_size = Vector2(160.0, 112.0)
 	glow.size = glow.custom_minimum_size
-	glow.position = Vector2(center_x - 100.0, 2.0)
+	glow.position = Vector2(player_x - 80.0, 2.0)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	glow.add_theme_stylebox_override("panel", _target_ring(false))
 	glow.visible = false
@@ -498,7 +480,7 @@ func _build_player_stage() -> Control:
 		var aura := Sprite2D.new()
 		aura.name = "PlayerGroundAura"
 		aura.texture = load("res://assets/characters/fox_rig/ground_aura.png")
-		aura.position = Vector2(center_x, 74.0)
+		aura.position = Vector2(player_x, 74.0)
 		var aura_base_scale := Vector2(0.18, 0.12)
 		aura.scale = aura_base_scale
 		aura.z_index = -2
@@ -515,7 +497,7 @@ func _build_player_stage() -> Control:
 		tail.texture = load("res://assets/characters/fox_rig/fox_tail.png")
 		var tail_scale := Vector2(0.092, 0.092)
 		tail.scale = tail_scale
-		tail.position = Vector2(center_x, 32.0)
+		tail.position = Vector2(player_x, 32.0)
 		tail.z_index = -1
 		tail.set_meta("base_scale", tail_scale)
 		stage.add_child(tail)
@@ -537,7 +519,7 @@ func _build_player_stage() -> Control:
 		var scale_factor: float = 80.0 / 1024.0
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
-		sprite.position = Vector2(center_x, 38.0)
+		sprite.position = Vector2(player_x, 38.0)
 		_install_hit_flash(sprite)
 		stage.add_child(sprite)
 
@@ -554,7 +536,7 @@ func _build_player_stage() -> Control:
 		orb.texture = load("res://assets/characters/fox_rig/fox_orb.png")
 		var orb_scale := Vector2(0.038, 0.038)
 		orb.scale = orb_scale
-		var base_orb_pos := Vector2(center_x + 36.0, 18.0)
+		var base_orb_pos := Vector2(player_x + 36.0, 18.0)
 		orb.position = base_orb_pos
 		orb.z_index = 1
 		orb.set_meta("base_pos", base_orb_pos)
@@ -581,7 +563,7 @@ func _build_player_stage() -> Control:
 		var scale_factor: float = minf(spr_size.x / cell_w, spr_size.y / cell_w)
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
-		sprite.position = Vector2(center_x, 37.0)
+		sprite.position = Vector2(player_x, 37.0)
 		_install_hit_flash(sprite)
 		stage.add_child(sprite)
 
@@ -592,8 +574,9 @@ func _build_player_stage() -> Control:
 	_apply_status_fx(stage, sprite, sprite.position, spr_size.x / 2.0, g.combat.state.player)
 
 	var max_hp: int = int(g.combat.state.player.get("max_health", 60))
-	var hp_bar := g._stat_bar(168.0, 18.0, int(g.combat.state.player.health), max_hp, g.EMBER, "%s  ♥ %d/%d" % [g.t("ui.spirit_name"), g.combat.state.player.health, max_hp], 10)
-	hp_bar.position = Vector2(center_x - 84.0, 78.0)
+	var hp_bar_w := 148.0
+	var hp_bar := g._stat_bar(hp_bar_w, 18.0, int(g.combat.state.player.health), max_hp, g.EMBER, "%s  ♥ %d/%d" % [g.t("ui.spirit_name"), g.combat.state.player.health, max_hp], 10)
+	hp_bar.position = Vector2(player_x - hp_bar_w / 2.0, 78.0)
 	stage.add_child(hp_bar)
 
 	var incoming: int = g.combat.total_incoming_damage()
@@ -603,7 +586,7 @@ func _build_player_stage() -> Control:
 		danger_badge.name = "DangerWarningBadge"
 		danger_badge.custom_minimum_size = Vector2(96.0, 18.0)
 		danger_badge.size = danger_badge.custom_minimum_size
-		danger_badge.position = Vector2(center_x - 48.0, 58.0)
+		danger_badge.position = Vector2(player_x - 48.0, 58.0)
 		danger_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var d_style := g._panel(Color(0.85, 0.15, 0.15, 0.95), 9, Color("ffc2c2"))
 		d_style.border_width_left = 1; d_style.border_width_right = 1
@@ -617,20 +600,60 @@ func _build_player_stage() -> Control:
 		d_tw.tween_property(danger_badge, "modulate:a", 0.55, 0.4).set_trans(Tween.TRANS_SINE)
 		d_tw.tween_property(danger_badge, "modulate:a", 1.0, 0.4).set_trans(Tween.TRANS_SINE)
 
+	# Player side panel for Equipment, Relics & Combat Statuses (beside character!)
+	var side_panel := VBoxContainer.new()
+	side_panel.name = "PlayerSidePanel"
+	side_panel.position = Vector2(186.0, 14.0)
+	side_panel.custom_minimum_size = Vector2(174.0, 88.0)
+	side_panel.size = side_panel.custom_minimum_size
+	side_panel.add_theme_constant_override("separation", 6)
+	side_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	stage.add_child(side_panel)
+
+	# 1. Equipment, Relics & Stage Modifier Row (Right beside player character)
+	if not g.active_modifier.is_empty() or not g.combat.state.equipment.is_empty() or not g.profile.relics.is_empty():
+		var gear_row := HBoxContainer.new()
+		gear_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+		gear_row.add_theme_constant_override("separation", 6)
+		gear_row.mouse_filter = Control.MOUSE_FILTER_PASS
+		side_panel.add_child(gear_row)
+
+		if not g.active_modifier.is_empty():
+			var m_name: String = g.active_modifier.name_en if g.lang == "en" else g.active_modifier.name
+			var m_det: String = g.active_modifier.detail_en if g.lang == "en" else g.active_modifier.detail
+			var mod_badge := g._icon_badge("✥", Color("ffe2b0"), 28, 14)
+			gear_row.add_child(_tap_wrap(mod_badge, func(): _show_info_popup(g._icon_badge("✥", Color("ffe2b0"), 60, 26), m_name, m_det, g.EMBER)))
+
+		for id in g.combat.state.equipment:
+			var item := g.content.equipment(id)
+			if item.is_empty(): continue
+			var e_name: String = g._equip_name(item)
+			var e_det: String = g._equip_detail(item)
+			var e_badge := g._equip_icon_badge(item, g.GOLD, 28)
+			gear_row.add_child(_tap_wrap(e_badge, func(): _show_info_popup(g._equip_icon_badge(item, g.GOLD, 60), e_name, e_det, g.GOLD)))
+
+		for id in g.profile.relics:
+			var relic := g.content.relic(id)
+			if relic.is_empty(): continue
+			var r_color := Color(relic.color)
+			var r_name: String = g._relic_name(relic)
+			var r_det: String = g._relic_detail(relic)
+			var r_badge := g._relic_icon_badge(relic, r_color, 28)
+			gear_row.add_child(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
+
+	# 2. Player Active Status Chips (Shield, Focus, Strength, Burn, Poison, Vulnerable, Weak)
 	var badges := HBoxContainer.new()
-	badges.position = Vector2(center_x - 84.0, 98.0)
-	badges.size = Vector2(168.0, 18.0)
-	badges.alignment = BoxContainer.ALIGNMENT_CENTER
-	badges.add_theme_constant_override("separation", 8)
+	badges.alignment = BoxContainer.ALIGNMENT_BEGIN
+	badges.add_theme_constant_override("separation", 6)
 	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stage.add_child(badges)
-	if int(g.combat.state.player.shield) > 0: badges.add_child(g._status_chip("⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 22.0))
-	if int(g.combat.state.player.focus) > 0: badges.add_child(g._status_chip("◉", int(g.combat.state.player.focus), Color("ffe08a"), 22.0))
-	if int(g.combat.state.player.burn) > 0: badges.add_child(g._status_chip("▲", int(g.combat.state.player.burn), Color("ff9868"), 22.0))
-	if int(g.combat.state.player.get("poison", 0)) > 0: badges.add_child(g._status_chip("◆", int(g.combat.state.player.poison), Color("a75bd6"), 22.0))
-	if int(g.combat.state.player.get("strength", 0)) > 0: badges.add_child(g._status_chip("★", int(g.combat.state.player.strength), Color("ffd700"), 22.0))
-	if int(g.combat.state.player.get("vulnerable", 0)) > 0: badges.add_child(g._status_chip("▼", int(g.combat.state.player.vulnerable), Color("ff6b6b"), 22.0))
-	if int(g.combat.state.player.get("weak", 0)) > 0: badges.add_child(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 22.0))
+	side_panel.add_child(badges)
+	if int(g.combat.state.player.shield) > 0: badges.add_child(g._status_chip("⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 20.0))
+	if int(g.combat.state.player.focus) > 0: badges.add_child(g._status_chip("◉", int(g.combat.state.player.focus), Color("ffe08a"), 20.0))
+	if int(g.combat.state.player.get("strength", 0)) > 0: badges.add_child(g._status_chip("★", int(g.combat.state.player.strength), Color("ffd700"), 20.0))
+	if int(g.combat.state.player.burn) > 0: badges.add_child(g._status_chip("▲", int(g.combat.state.player.burn), Color("ff9868"), 20.0))
+	if int(g.combat.state.player.get("poison", 0)) > 0: badges.add_child(g._status_chip("◆", int(g.combat.state.player.poison), Color("a75bd6"), 20.0))
+	if int(g.combat.state.player.get("vulnerable", 0)) > 0: badges.add_child(g._status_chip("▼", int(g.combat.state.player.vulnerable), Color("ff6b6b"), 20.0))
+	if int(g.combat.state.player.get("weak", 0)) > 0: badges.add_child(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
 
 	return stage
 
@@ -1606,6 +1629,7 @@ func _resolve_play(before: Array, player_shield_before: int = 0, player_health_b
 	for i in g.combat.state.enemies.size():
 		if i < before.size() and before[i] > g.combat.state.enemies[i].health:
 			_animate_attack_slash(i, card_id)
+			await g.get_tree().create_timer(g._battle_delay(0.06)).timeout
 			await _animate_enemy_hit(i, before[i] - g.combat.state.enemies[i].health, g.combat.state.enemies[i].health <= 0)
 
 	show_battle()
@@ -1621,7 +1645,9 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 			break
 	if box == null: return
 
-	var enemy_pos: Vector2 = box.global_position + box.size / 2.0
+	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
+	# Hit point: target MonsterSprite chest directly
+	var enemy_pos: Vector2 = sprite.global_position if (sprite and is_instance_valid(sprite)) else (box.global_position + Vector2(box.size.x / 2.0, 66.0))
 	var is_claw: bool = card_id.contains("claw") or card_id.contains("ember") or card_id.contains("wild")
 	var vfx_path := "res://assets/vfx/spirit_claw_scratch.png" if is_claw else "res://assets/vfx/spirit_slash_arc.png"
 	if not ResourceLoader.exists(vfx_path): return
@@ -1629,18 +1655,39 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 	var slash := Sprite2D.new()
 	slash.name = "AnimSlashVFX"
 	slash.texture = load(vfx_path)
-	slash.position = enemy_pos
+	var start_offset := Vector2(-28.0, -22.0)
+	var end_offset := Vector2(22.0, 16.0)
+	slash.position = enemy_pos + start_offset
 	slash.z_index = 380
-	slash.scale = Vector2(0.04, 0.04)
-	slash.rotation_degrees = randf_range(-15.0, 15.0)
+	slash.scale = Vector2(0.06, 0.06)
+	slash.rotation_degrees = -32.0 if not is_claw else -15.0
+	slash.modulate = Color(2.0, 1.7, 1.2, 1.0) if not is_claw else Color(2.2, 0.8, 0.3, 1.0)
 	g.overlay.add_child(slash)
 
 	var dur_slash: float = g._battle_delay(0.18)
 	var tween := slash.create_tween().set_parallel(true)
-	var target_scale := 0.22 if is_claw else 0.20
+	var target_scale := 0.32 if is_claw else 0.28
+	tween.tween_property(slash, "position", enemy_pos + end_offset, dur_slash).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(slash, "scale", Vector2(target_scale, target_scale), dur_slash).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(slash, "rotation_degrees", slash.rotation_degrees + (18.0 if is_claw else 24.0), dur_slash)
-	tween.tween_property(slash, "modulate:a", 0.0, dur_slash * 0.5).set_delay(dur_slash * 0.5)
+	tween.tween_property(slash, "rotation_degrees", slash.rotation_degrees + (24.0 if is_claw else 32.0), dur_slash)
+	tween.tween_property(slash, "modulate:a", 0.0, dur_slash * 0.45).set_delay(dur_slash * 0.55)
+
+	# Radial hit spark burst at chest impact
+	if ResourceLoader.exists("res://assets/vfx/spirit_slash_arc.png"):
+		var burst := Sprite2D.new()
+		burst.name = "AnimHitBurst"
+		burst.texture = load("res://assets/vfx/spirit_slash_arc.png")
+		burst.position = enemy_pos
+		burst.z_index = 385
+		burst.scale = Vector2(0.04, 0.04)
+		burst.rotation_degrees = 45.0
+		burst.modulate = Color(2.5, 2.2, 1.5, 0.95)
+		g.overlay.add_child(burst)
+		var b_tween := burst.create_tween().set_parallel(true)
+		b_tween.tween_property(burst, "scale", Vector2(0.18, 0.18), dur_slash * 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		b_tween.tween_property(burst, "modulate:a", 0.0, dur_slash * 0.4).set_delay(dur_slash * 0.2)
+		b_tween.chain().tween_callback(burst.queue_free)
+
 	await tween.finished
 	slash.queue_free()
 
@@ -1857,13 +1904,25 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	punch.tween_property(popup, "scale", Vector2.ONE, 0.1)
 
 	g._haptic("heavy" if defeated else "hit")
-	_shake_screen(9.0 if defeated else clampf(float(amount) * 0.45, 2.5, 7.0))
+	_shake_screen(10.0 if defeated else clampf(float(amount) * 0.55, 3.5, 8.5))
 
 	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 	var tween := g.create_tween().set_parallel(true)
 	if sprite:
-		_flash_hit(sprite, Color("ff5c4a"))
-		_squash_impact(sprite, float(sprite.get_meta("base_scale", 1.0)), 0.28 if defeated else 0.18)
+		# Initial white hit-stop flash on impact, then red damage tint
+		_flash_hit(sprite, Color(2.5, 2.5, 2.5), 0.08)
+		# Powerful knockback recoil along attack diagonal (towards top-right)
+		var orig_pos: Vector2 = sprite.position
+		var base_scale: float = float(sprite.get_meta("base_scale", 1.0))
+		var kb_offset := Vector2(16.0, -8.0) if not defeated else Vector2(26.0, -14.0)
+		var kb_dur: float = g._battle_delay(0.24 if defeated else 0.18)
+
+		var kb_tween := sprite.create_tween()
+		kb_tween.tween_property(sprite, "position", orig_pos + kb_offset, kb_dur * 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		kb_tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.18, base_scale * 0.82), kb_dur * 0.28).set_trans(Tween.TRANS_QUAD)
+		kb_tween.tween_property(sprite, "position", orig_pos, kb_dur * 0.72).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+		kb_tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, kb_dur * 0.72).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
 	tween.tween_property(popup, "position:y", popup.position.y - 45.0, 0.45)
 	tween.tween_property(popup, "modulate:a", 0.0, 0.45)
 	if defeated:
