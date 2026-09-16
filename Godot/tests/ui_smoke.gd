@@ -378,10 +378,33 @@ func _run() -> void:
 	check(game.battle_music_streams.size() == 5, "there are 5 distinct sub-stage battle music tracks")
 	check(game.map_music != null and game.map_music.stream != null, "world map has symphonic music loaded")
 
+	# "Today digest" card: the same underlying claimable state as the dots above, spelled out
+	# as an actual count on the map itself rather than making the player open two screens to
+	# find out what's waiting. Force every category to a known state so the count is exact.
+	var saved_milestones_for_digest: Array = game.profile.get("compendium_milestones_claimed", []).duplicate()
+	var saved_login_reward: Dictionary = game.profile.get("login_reward", {}).duplicate(true)
+	game.profile.daily_quests = [{"id": "digest_test", "progress": 1, "target": 1, "claimed": false}]
+	game.profile.weekly_quests = []
+	game.profile.login_reward = {}
+	game.profile.compendium_milestones_claimed = [50, 80, 100]
+	check(game._claimable_reward_count() == 1, "claimable reward count reflects exactly the one ready quest")
+	game.show_map()
+	await process_frame
+	check(game.root.find_child("MapDigestBanner", true, false) != null, "the today-digest banner appears on the map when something is claimable")
+	check(game.root.find_child("MapDigestButton", true, false) != null, "the today-digest banner has a tappable button")
+
+	game.profile.daily_quests = [{"id": "digest_test", "progress": 1, "target": 1, "claimed": true}]
+	check(game._claimable_reward_count() == 0, "claimable reward count drops to zero once everything is claimed")
+	game.show_map()
+	await process_frame
+	check(game.root.find_child("MapDigestBanner", true, false) == null, "the today-digest banner disappears once nothing is claimable")
+
 	game.profile.daily_quests = saved_daily
 	game.profile.weekly_quests = saved_weekly
 	game.profile.deck = saved_deck
 	game.profile.collection = saved_collection
+	game.profile.compendium_milestones_claimed = saved_milestones_for_digest
+	game.profile.login_reward = saved_login_reward
 	game.show_map()
 	await process_frame
 
@@ -1525,6 +1548,23 @@ func _run() -> void:
 	check(game._bestiary_discovered("_smoke_test_enemy"), "marking a bestiary key discovers it permanently")
 	game._mark_discovered("relics", "starShard")
 	check(game._relic_discovered("starShard"), "marking a relic id discovers it")
+
+	# C4: bestiary first-discovery bonus fires the instant begin_battle() newly marks that
+	# stage's enemy discovered, but not again on a repeat encounter with the same foe.
+	var stage0_enemy: String = str(game.content.encounters[0].name)
+	game._compendium_dict("bestiary").erase(stage0_enemy)
+	check(not game._bestiary_discovered(stage0_enemy), "stage 0's enemy starts undiscovered for the bonus test")
+	var gold_before_discovery: int = int(game.profile.gold)
+	game.begin_battle(0)
+	await process_frame
+	check(int(game.profile.gold) == gold_before_discovery + 20, "first sighting of a bestiary enemy grants a one-time 20 gold bonus")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	var gold_before_repeat: int = int(game.profile.gold)
+	game.begin_battle(0)
+	await process_frame
+	check(int(game.profile.gold) == gold_before_repeat, "re-encountering an already-discovered bestiary enemy grants no repeat bonus")
+
 	var totals: Vector2i = game._compendium_totals()
 	check(totals.y > 0, "compendium totals count a nonzero catalog of collectibles")
 	check(totals.x >= 0 and totals.x <= totals.y, "discovered count never exceeds the total")
@@ -1585,6 +1625,41 @@ func _run() -> void:
 	game.show_camp()
 	await process_frame
 	check(game.root.find_child("DailyTrialEnterBtn", true, false) == null, "the enter button is hidden once today's trial is fully cleared")
+
+	# B3: Weekly Theme Challenge — same shape as the Daily Trial above (force a fresh week,
+	# drive every stage via the same "force phase to won" shortcut), but on a WEEK_SECONDS
+	# boundary and with exactly one themed tag instead of a combined trio.
+	game.profile.weekly_challenge_record = {"week": -1, "stage": 0, "badges": 0, "best_stage": 0}
+	game._ensure_weekly_challenge_current()
+	check(int(game.profile.weekly_challenge_record.stage) == 0, "weekly challenge record starts a new week at stage 0")
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("WeeklyChallengeEnterBtn", true, false) != null, "WeeklyChallengeEnterBtn exists in camp's challenges tab")
+	check(_find_label_containing(game.root, game.content.ui("ui.weekly_challenge_modifier_title", game.lang)), "weekly challenge shows this week's theme")
+
+	game.begin_weekly_challenge()
+	await process_frame
+	check(game.in_weekly_challenge, "begin_weekly_challenge enters challenge mode")
+	var expected_w_health: int = int(round(int(game.content.weekly_challenge_encounter(1).health) * float(game.active_modifier.get("health_scale", 1.0))))
+	check(int(game.combat.state.enemies[0].max_health) == expected_w_health, "weekly challenge stage 1 uses the challenge's own encounter curve (with this week's modifier), not the campaign's")
+	var w_gold_before: int = int(game.profile.gold)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(int(game.profile.weekly_challenge_record.stage) == 1, "winning a challenge stage advances weekly_challenge_record.stage")
+	check(int(game.profile.gold) > w_gold_before, "winning a challenge stage grants gold")
+	check(not game.in_weekly_challenge, "_grant_stage_rewards clears in_weekly_challenge after granting")
+
+	for i in range(2, SpiritContent.WEEKLY_CHALLENGE_STAGES + 1):
+		game.begin_weekly_challenge()
+		game.combat.state.phase = "won"
+		game._grant_stage_rewards()
+	check(int(game.profile.weekly_challenge_record.stage) == SpiritContent.WEEKLY_CHALLENGE_STAGES, "completing all 8 stages fills weekly_challenge_record.stage")
+	check(int(game.profile.weekly_challenge_record.badges) == 1, "clearing the full 8-stage challenge awards exactly 1 badge")
+	check(int(game.profile.weekly_challenge_record.best_stage) == SpiritContent.WEEKLY_CHALLENGE_STAGES, "best_stage tracks the deepest weekly run reached")
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("WeeklyChallengeEnterBtn", true, false) == null, "the enter button is hidden once this week's challenge is fully cleared")
 
 	section("== achievements ==")
 	game.profile.achievements_unlocked = {}

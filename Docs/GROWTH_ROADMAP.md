@@ -174,10 +174,16 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   days of clearing the 15-stage daily trial; grants bonus gold at 3-day (100g), 7-day (250g),
   and 14-day (500g) streaks. Displayed in the daily trial stats row.
   *Builds on:* `profile.daily_trial_record`.
-- `[ ]` **B3 — 每周主题挑战**
-  Reuse the Daily Trial's tag-modifier engine at a weekly cadence (e.g. "本周限定牌组主题",
-  "双倍精英奖励周") with the same deterministic-per-period seeding already used for daily
-  quests/shop/trial tags.
+- `[x]` **B3 — 每周主题挑战** — done 2026-09-15
+  An 8-stage gauntlet (`SpiritContent.WEEKLY_CHALLENGE_STAGES`) resetting on a `WEEK_SECONDS`
+  boundary (`_ensure_weekly_challenge_current()`), seeded the same deterministic-per-period way
+  as the Daily Trial but drawing exactly one themed tag per week instead of a combined trio
+  (`content.weekly_challenge_tag()`/`WEEKLY_CHALLENGE_TAGS`: Iron Horde/Savage Tide/Twin Pack/
+  Bounty Week). Rendered via `_weekly_challenge_section()` in Camp's Challenges tab, right below
+  the Daily Trial; gated behind the same `unlocked >= 5` (Chapter 1) threshold as Daily Trial/
+  Compendium. `reward_mult` (Bounty Week's tag) isn't a `combat.gd` key — nothing there reads
+  gold — so it's applied directly in `_grant_stage_rewards()`'s new `in_weekly_challenge` branch,
+  the same way campaign `reward_scale` already works.
   *Builds on:* `content.daily_trial_tags()`'s deterministic-seed pattern, `_shuffled_indices()`.
 - `[x]` **C3 — 图鉴里程碑奖励** — done 2026-09-15
   Added `CompendiumMilestonesBar` in `show_compendium()`. Tracks collection progress across
@@ -206,9 +212,14 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 ## Medium-low impact
 
-- `[ ]` **C4 — 图鉴首杀额外奖励**
-  A small one-time gold/XP bonus the instant an enemy is newly marked discovered in the
-  bestiary, so filling the Compendium has in-battle feedback, not just a Camp screen number.
+- `[x]` **C4 — 图鉴首杀额外奖励** — done 2026-09-15
+  `_mark_discovered()` now returns whether the entry was newly discovered (was `void`); every
+  `_mark_discovered("bestiary", ...)` call site (campaign, Abyss, Daily Trial, Weekly Challenge)
+  checks that return and calls `_grant_bestiary_discovery_bonus(encounter)` on a true result:
+  +20 gold, +6 mastery XP, and a toast naming the enemy. Since all of these call sites fire at
+  battle *start* (not on a win), this reads to the player as "first time facing this foe," not
+  literally a kill — matching what the codebase actually tracks rather than adding new
+  first-defeat state.
   *Builds on:* the `_mark_discovered("bestiary", ...)` call sites added in Milestone 4.
 - `[x]` **F3 — 卡组构筑搜索与筛选** — done 2026-09-15
   Integrated `DeckSearchInput` (text search by name, id, and rules text), `DeckKindChips`
@@ -237,6 +248,35 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — B3 weekly challenge, C4 bestiary discovery bonus, and a new map "today digest" card shipped
+Three items done together in one pass: B3 and C4 from the backlog above, plus a "today digest"
+card — not one of the original 24 report items, proposed during this session's own feature
+investigation and approved by the user alongside the map-path fix.
+- **B3 / C4**: see their own checklist entries above for what shipped and why.
+- **Today digest**: `_add_map_digest_banner()` renders a slim dismissible-by-nature (not by a
+  button — it just reflects state, same as the two notification dots it summarizes) strip
+  right under the map header, e.g. "✦ 2 项奖励待领取", counting ready-to-claim daily/weekly
+  quests, login reward tiers, and Compendium milestones in one place — `_claimable_reward_count()`
+  is a plain sum over the same three checks `_has_claimable_quest()`/`_has_claimable_camp_reward()`
+  already run separately for their respective button dots. Tapping it opens Quests if any
+  quest/login reward is ready, else Camp's Collection tab (`_open_map_digest()`) — whichever
+  screen actually holds the claim button for what's shown. Hidden entirely when the count is 0,
+  so a fully-caught-up player sees nothing extra on the map.
+One test-authoring pitfall hit while adding the digest's ui_smoke coverage: the new test block
+force-sets `profile.compendium_milestones_claimed` and `profile.login_reward` to get an exact,
+predictable count, but an existing *later* section ("milestone 4") asserts the 50% milestone
+"starts unclaimed" against whatever the profile still holds — without restoring both fields
+afterward, that later assertion failed. Fixed by saving both values immediately before the
+digest block and restoring them in the same place the pre-existing `saved_daily`/`saved_weekly`/
+etc. restoration already happens — the same "this suite shares one profile across every
+section" trap this file's own F1/rail-test entries already flagged, still worth re-stating
+because it keeps recurring with each new stateful test block.
+Verified 250/0 rules / UI smoke all passing, including 8 new B3 assertions (record reset,
+section renders, encounter curve honors the week's own modifier, full 8-stage clear awards
+exactly 1 badge, enter button hides once cleared), 2 new C4 assertions (first-sighting bonus
+fires once, a repeat encounter grants nothing), and 4 new digest assertions (exact count,
+banner+button exist when something's claimable, banner disappears at zero).
 
 ### 2026-09-15 — Map path/pins aligned to painted road art, line hidden, fixed-pace travel (user-reported)
 Not one of the original 24 report items — user reported the map's stage pins didn't sit on

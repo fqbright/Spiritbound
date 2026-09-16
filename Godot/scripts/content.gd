@@ -494,6 +494,55 @@ func daily_trial_encounter(stage: int) -> Dictionary:
 		"background": (stage - 1) % 5
 	}
 
+# Weekly Theme Challenge (B3): reuses the Daily Trial's deterministic-per-period tag engine
+# above, but at a weekly cadence and with exactly one themed modifier instead of a combined
+# trio — "本周主题" reads as one clear theme, not a grab-bag. A shorter 8-stage gauntlet (vs
+# the daily trial's 15) keeps it a single-sitting weekly event rather than a second daily grind.
+const WEEKLY_CHALLENGE_STAGES = 8
+
+const WEEKLY_CHALLENGE_TAGS = [
+	{"id":"iron_horde","nameKey":"weekly.tag.iron_horde.name","descKey":"weekly.tag.iron_horde.desc","health_scale":1.6},
+	{"id":"savage_tide","nameKey":"weekly.tag.savage_tide.name","descKey":"weekly.tag.savage_tide.desc","damage_mult":1.6},
+	{"id":"twin_pack","nameKey":"weekly.tag.twin_pack.name","descKey":"weekly.tag.twin_pack.desc","extra_enemy":1},
+	{"id":"bounty_week","nameKey":"weekly.tag.bounty_week.name","descKey":"weekly.tag.bounty_week.desc","reward_mult":2.0},
+]
+
+func weekly_challenge_tag(week_seed: int) -> Dictionary:
+	var indices := _shuffled_indices(WEEKLY_CHALLENGE_TAGS.size(), week_seed + 9001)
+	return WEEKLY_CHALLENGE_TAGS[indices[0]]
+
+# Same shape rule as daily_trial_modifier: show_battle()'s modifier badge reads name/name_en/
+# detail/detail_en unconditionally, so this always carries all four even for a single tag.
+# reward_mult is not a combat.gd key (nothing there reads gold) — game.gd's weekly-challenge
+# reward code reads it directly off active_modifier instead, same as reward_scale already
+# works for the campaign's own random encounter modifiers.
+func weekly_challenge_modifier(week_seed: int) -> Dictionary:
+	var tag: Dictionary = weekly_challenge_tag(week_seed)
+	var mod := {}
+	for key in tag:
+		if key in ["id", "nameKey", "descKey"]: continue
+		mod[key] = tag[key]
+	mod["name"] = ui(tag.nameKey, "zh-Hans")
+	mod["name_en"] = ui(tag.nameKey, "en")
+	mod["detail"] = ui(tag.descKey, "zh-Hans")
+	mod["detail_en"] = ui(tag.descKey, "en")
+	return mod
+
+# Purely a function of stage index, like daily_trial_encounter — steeper curve than the daily
+# trial's since there are only 8 stages to build tension across instead of 15.
+func weekly_challenge_encounter(stage: int) -> Dictionary:
+	var enemy: Dictionary = ENEMIES[(stage - 1) % ENEMIES.size()]
+	return {
+		"chapter": 101, "level": stage,
+		"health": 40 + stage * 20,
+		"damage": 8 + int(stage * 2.4),
+		"reward": 30 + stage * 10,
+		"name": enemy.name, "name_en": enemy.get("name_en", enemy.name), "art": enemy.art,
+		"mechanics": {"shield_per_turn": 4, "critical_every": 3, "enrage": 1} if stage >= WEEKLY_CHALLENGE_STAGES else ({"shield_per_turn": 3} if stage >= 5 else {}),
+		"adds": 1 if stage % 3 == 0 else 0,
+		"background": (stage - 1) % 5
+	}
+
 func hero_class(id: String) -> Dictionary:
 	for h in HERO_CLASSES:
 		if h.id == id: return h
@@ -997,6 +1046,25 @@ const UI_TEXT = {
 	"ui.daily_trial_progress_reward_fmt": {"zh-Hans":"试炼进度 %d/15", "en":"Trial progress %d/15"},
 	"ui.abyss_stage_label_fmt": {"zh-Hans":"深渊 · 第%d层", "en":"Abyss · Floor %d"},
 	"ui.daily_trial_stage_label_fmt": {"zh-Hans":"每日试炼 · %d/%d", "en":"Daily Trial · %d/%d"},
+	"ui.weekly_challenge_title": {"zh-Hans":"每周主题挑战", "en":"Weekly Theme Challenge"},
+	"ui.weekly_challenge_sub": {"zh-Hans":"8 关限时挑战 · 每周重置", "en":"An 8-stage timed gauntlet, resetting weekly"},
+	"ui.weekly_challenge_modifier_title": {"zh-Hans":"本周主题", "en":"This Week's Theme"},
+	"ui.weekly_challenge_progress_fmt": {"zh-Hans":"进度 %d/8", "en":"Progress %d/8"},
+	"ui.weekly_challenge_best_fmt": {"zh-Hans":"历史最佳 %d/8", "en":"Best %d/8"},
+	"ui.weekly_challenge_badges_fmt": {"zh-Hans":"徽章 ×%d", "en":"Badges ×%d"},
+	"ui.weekly_challenge_enter": {"zh-Hans":"进入本周挑战", "en":"Enter Weekly Challenge"},
+	"ui.weekly_challenge_done": {"zh-Hans":"本周挑战已通关，下周再来", "en":"This week's challenge is cleared — come back next week"},
+	"ui.weekly_challenge_complete": {"zh-Hans":"✦ 本周挑战徽章 +1！", "en":"✦ Weekly Challenge Badge +1!"},
+	"ui.weekly_challenge_stage_label_fmt": {"zh-Hans":"每周挑战 · %d/%d", "en":"Weekly Challenge · %d/%d"},
+	"ui.weekly_challenge_progress_reward_fmt": {"zh-Hans":"挑战进度 %d/8", "en":"Challenge progress %d/8"},
+	"weekly.tag.iron_horde.name": {"zh-Hans":"铁甲军团周", "en":"Iron Horde Week"},
+	"weekly.tag.iron_horde.desc": {"zh-Hans":"敌人生命 +60%", "en":"Enemy HP +60%"},
+	"weekly.tag.savage_tide.name": {"zh-Hans":"凶蛮潮汐周", "en":"Savage Tide Week"},
+	"weekly.tag.savage_tide.desc": {"zh-Hans":"敌人攻击 +60%", "en":"Enemy damage +60%"},
+	"weekly.tag.twin_pack.name": {"zh-Hans":"结群狩猎周", "en":"Twin Pack Week"},
+	"weekly.tag.twin_pack.desc": {"zh-Hans":"每场战斗额外增加一名敌人", "en":"Every battle adds one extra enemy"},
+	"weekly.tag.bounty_week.name": {"zh-Hans":"双倍赏金周", "en":"Bounty Week"},
+	"weekly.tag.bounty_week.desc": {"zh-Hans":"每关金币奖励 ×2", "en":"Gold reward ×2 per stage"},
 	"trial.tag.double_damage.name": {"zh-Hans":"倍伤浪潮", "en":"Surging Onslaught"},
 	"trial.tag.double_damage.desc": {"zh-Hans":"敌人造成的伤害翻倍", "en":"Enemies deal double damage"},
 	"trial.tag.juggernaut.name": {"zh-Hans":"巨兽压境", "en":"Juggernaut Foes"},
@@ -1081,6 +1149,8 @@ const UI_TEXT = {
 	"ui.lock_clears_ch5": {"zh-Hans":"通关第 5 章解锁", "en":"Clear Chapter 5 to unlock"},
 	"ui.daily_trial_streak_fmt": {"zh-Hans":"连胜: %d 天", "en":"Streak: %d Days"},
 	"ui.trial_streak_reward_toast": {"zh-Hans":"每日试炼连续通关 %d 天！获得 %d 金币！", "en":"Daily Trial %d-day streak! Gained %d Gold!"},
+	"ui.bestiary_discovery_toast": {"zh-Hans":"图鉴新发现「%s」！+%d 金币", "en":"New Bestiary Entry: %s! +%d Gold"},
+	"ui.digest_ready_fmt": {"zh-Hans":"✦ %d 项奖励待领取", "en":"✦ %d rewards ready to claim"},
 	"ui.compendium_milestones_title": {"zh-Hans":"探索里程碑", "en":"Discovery Milestones"},
 	"ui.compendium_milestone_btn_fmt": {"zh-Hans":"达成 %d%% 探索", "en":"Reach %d%% Catalog"},
 	"ui.compendium_milestone_claimed": {"zh-Hans":"已领取", "en":"Claimed"},
