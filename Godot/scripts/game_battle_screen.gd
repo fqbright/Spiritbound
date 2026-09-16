@@ -297,6 +297,23 @@ func _apply_status_fx(unit: Control, sprite: Node2D, sprite_center: Vector2, spr
 		halo.position = sprite_center - Vector2.ONE * sprite_radius * 1.15
 		unit.add_child(halo)
 		unit.move_child(halo, 0)
+		if ResourceLoader.exists("res://assets/vfx/spirit_barrier_ring.png"):
+			var barrier := Sprite2D.new()
+			barrier.name = "SpiritBarrierRing"
+			barrier.texture = load("res://assets/vfx/spirit_barrier_ring.png")
+			var b_diameter := sprite_radius * 2.6
+			var b_scale := b_diameter / 512.0
+			barrier.scale = Vector2(b_scale, b_scale)
+			barrier.position = sprite_center
+			barrier.z_index = 2
+			unit.add_child(barrier)
+			var b_pulse := barrier.create_tween().set_loops()
+			b_pulse.tween_property(barrier, "scale", Vector2(b_scale * 1.05, b_scale * 1.05), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			b_pulse.parallel().tween_property(barrier, "modulate:a", 0.95, 1.4).set_trans(Tween.TRANS_SINE)
+			b_pulse.tween_property(barrier, "scale", Vector2(b_scale * 0.96, b_scale * 0.96), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			b_pulse.parallel().tween_property(barrier, "modulate:a", 0.70, 1.4).set_trans(Tween.TRANS_SINE)
+			var b_rot := barrier.create_tween().set_loops()
+			b_rot.tween_property(barrier, "rotation_degrees", 360.0, 20.0).as_relative()
 	if int(state.get("vulnerable", 0)) > 0:
 		var halo := _status_halo(Vector2.ONE * sprite_radius * 2.2, Color("ff6a5c"), true)
 		halo.position = sprite_center - Vector2.ONE * sprite_radius * 1.1
@@ -1543,21 +1560,118 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	if g.combat == null or g.combat.state.phase != "player" or g.resolving: return false
 	var before: Array = []
 	for enemy in g.combat.state.enemies: before.append(int(enemy.health))
+	var player_shield_before: int = int(g.combat.state.player.shield)
 	if not g.combat.play(hand_index, target):
 		g._toast(g.t("ui.target_invalid"))
 		return false
 	g.selected_card = -1
 	g.resolving = true
-	_resolve_play(before)
+	_resolve_play(before, player_shield_before)
 	return true
 
-func _resolve_play(before: Array) -> void:
+func _resolve_play(before: Array, player_shield_before: int = 0) -> void:
+	var player_shield_after: int = int(g.combat.state.player.shield)
+	var shield_gained: int = player_shield_after - player_shield_before
+	if shield_gained > 0:
+		await _animate_player_shield_gain(shield_gained)
+
 	for i in g.combat.state.enemies.size():
 		if i < before.size() and before[i] > g.combat.state.enemies[i].health:
 			await _animate_enemy_hit(i, before[i] - g.combat.state.enemies[i].health, g.combat.state.enemies[i].health <= 0)
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
+
+func _animate_player_shield_gain(amount: int) -> void:
+	if g.overlay == null or g.get_tree() == null: return
+	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_node == null or not is_instance_valid(player_node): return
+
+	var target_pos: Vector2 = player_node.global_position
+	var origin_pos := Vector2(target_pos.x, target_pos.y + 220.0)
+
+	g._haptic("light")
+
+	# Step 1: 护甲展开 (Spirit Aegis Crest Manifests & Expands Open)
+	var crest := Sprite2D.new()
+	crest.name = "AnimShieldCrest"
+	if ResourceLoader.exists("res://assets/vfx/spirit_shield_crest.png"):
+		crest.texture = load("res://assets/vfx/spirit_shield_crest.png")
+	crest.position = origin_pos
+	crest.scale = Vector2(0.01, 0.01)
+	crest.modulate = Color(1.3, 1.3, 1.5, 0.0)
+	crest.z_index = 350
+	g.overlay.add_child(crest)
+
+	var dur_open: float = g._battle_delay(0.20)
+	var unfold := crest.create_tween().set_parallel(true)
+	unfold.tween_property(crest, "scale", Vector2(0.09, 0.09), dur_open).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	unfold.tween_property(crest, "modulate:a", 1.0, dur_open * 0.7)
+	unfold.tween_property(crest, "rotation_degrees", -6.0, dur_open)
+	await unfold.finished
+
+	await g.get_tree().create_timer(g._battle_delay(0.06)).timeout
+
+	# Step 2: 护甲加到人物 (Streaks to Character and Snaps onto Chest)
+	var dur_fly: float = g._battle_delay(0.22)
+	var fly := crest.create_tween().set_parallel(true)
+	fly.tween_property(crest, "position", target_pos, dur_fly).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	fly.tween_property(crest, "rotation_degrees", 0.0, dur_fly)
+	fly.tween_property(crest, "scale", Vector2(0.068, 0.068), dur_fly)
+	await fly.finished
+
+	# Impact snap onto player
+	_flash_hit(player_node, Color("9fd8ff"))
+	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
+	var swell := player_node.create_tween()
+	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.10, base_scale * 1.10), g._battle_delay(0.12)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.18)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+	g._haptic("impact")
+
+	# Floating shield text popup: "+X 🛡"
+	var popup := g._label("+%d 🛡" % amount, 30, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = target_pos - Vector2(50, 36)
+	popup.size = Vector2(100, 34)
+	popup.z_index = 380
+	popup.scale = Vector2(0.5, 0.5)
+	popup.pivot_offset = Vector2(50, 17)
+	g.overlay.add_child(popup)
+	var pop_tween := popup.create_tween().set_parallel(true)
+	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.12)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.45))
+	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45)).set_delay(g._battle_delay(0.18))
+	pop_tween.chain().tween_callback(popup.queue_free)
+
+	var fade_crest := crest.create_tween()
+	fade_crest.tween_property(crest, "scale", Vector2(0.095, 0.095), g._battle_delay(0.12))
+	fade_crest.parallel().tween_property(crest, "modulate:a", 0.0, g._battle_delay(0.12))
+	fade_crest.tween_callback(crest.queue_free)
+
+	# Step 3: 灵光结界圈展开保护住人物 (Protective Barrier Ring Bursts Outward Encircling Character)
+	var ring := Sprite2D.new()
+	ring.name = "AnimBarrierDeploy"
+	if ResourceLoader.exists("res://assets/vfx/spirit_barrier_ring.png"):
+		ring.texture = load("res://assets/vfx/spirit_barrier_ring.png")
+	ring.position = target_pos
+	ring.z_index = 360
+	ring.scale = Vector2(0.02, 0.02)
+	ring.modulate = Color(1.3, 1.3, 1.6, 0.95)
+	g.overlay.add_child(ring)
+
+	var dur_deploy: float = g._battle_delay(0.22)
+	var final_scale: float = 90.0 / 512.0
+	var ring_deploy := ring.create_tween().set_parallel(true)
+	ring_deploy.tween_property(ring, "scale", Vector2(final_scale * 1.3, final_scale * 1.3), dur_deploy).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	ring_deploy.tween_property(ring, "rotation_degrees", 45.0, dur_deploy)
+	await ring_deploy.finished
+
+	var dur_settle: float = g._battle_delay(0.14)
+	var ring_settle := ring.create_tween().set_parallel(true)
+	ring_settle.tween_property(ring, "scale", Vector2(final_scale, final_scale), dur_settle).set_trans(Tween.TRANS_SINE)
+	ring_settle.tween_property(ring, "modulate:a", 0.0, dur_settle)
+	await ring_settle.finished
+	ring.queue_free()
 
 # There is no End Turn button, so the turn has to hand itself over once nothing in hand is
 # affordable any more (either the hand is empty or every card costs more than remaining energy).
