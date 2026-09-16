@@ -1084,7 +1084,21 @@ func _ensure_daily_trial_current() -> void:
 	var day: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
 	var previous: Dictionary = profile.get("daily_trial_record", {})
 	if int(previous.get("day", -1)) != day:
-		profile.daily_trial_record = {"day": day, "stage": 0, "badges": int(previous.get("badges", 0)), "best_stage": int(previous.get("best_stage", 0))}
+		var prev_day: int = int(previous.get("day", -1))
+		var prev_stage: int = int(previous.get("stage", 0))
+		var streak: int = int(previous.get("streak", 0))
+		if prev_day == day - 1:
+			if prev_stage < SpiritContent.DAILY_TRIAL_STAGES: streak = 0
+		elif prev_day != -1:
+			streak = 0
+		profile.daily_trial_record = {
+			"day": day,
+			"stage": 0,
+			"badges": int(previous.get("badges", 0)),
+			"best_stage": int(previous.get("best_stage", 0)),
+			"streak": streak,
+			"streak_claimed": previous.get("streak_claimed", []).duplicate()
+		}
 		SpiritSave.write(profile)
 
 # Rolling weekly login reward: a new week resets the tally, and today's day index is recorded
@@ -4261,6 +4275,16 @@ func _grant_stage_rewards() -> void:
 		var completed: bool = stage_num >= SpiritContent.DAILY_TRIAL_STAGES
 		if completed:
 			profile.daily_trial_record.badges = int(profile.daily_trial_record.get("badges", 0)) + 1
+			var streak: int = int(profile.daily_trial_record.get("streak", 0)) + 1
+			profile.daily_trial_record.streak = streak
+			var streak_claimed: Array = profile.daily_trial_record.get("streak_claimed", []).duplicate()
+			for target in [3, 7, 14]:
+				if streak >= target and not streak_claimed.has(target):
+					streak_claimed.append(target)
+					var bonus_gold: int = 100 if target == 3 else (250 if target == 7 else 500)
+					profile.gold += bonus_gold
+					_toast(tf("ui.trial_streak_reward_toast", [target, bonus_gold]), GOLD)
+			profile.daily_trial_record.streak_claimed = streak_claimed
 		pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "daily_trial": true, "daily_trial_stage": stage_num, "daily_trial_completed": completed}
 		SpiritSave.write(profile)
 		_advance_quest("win_battles", 1)
@@ -5542,6 +5566,9 @@ func show_compendium() -> void:
 	_back_action = show_camp
 	var page := _create_page(6)
 	page.add_child(_header(t("ui.compendium_title"), t("ui.compendium_sub"), show_camp))
+	var totals := _compendium_totals()
+	var pct: int = int(round(float(totals.x) / float(maxi(1, totals.y)) * 100.0))
+	page.add_child(_build_compendium_milestones_bar(pct))
 	page.add_child(_tab_bar([
 		["cards", t("ui.compendium_tab_cards")],
 		["gear", t("ui.compendium_tab_gear")],
@@ -5567,6 +5594,57 @@ func show_compendium() -> void:
 		"relics": _build_compendium_relics(list)
 		"bestiary": _build_compendium_bestiary(list)
 		_: _build_compendium_achievements(list)
+
+func _build_compendium_milestones_bar(pct: int) -> Control:
+	var bar_panel := PanelContainer.new()
+	bar_panel.name = "CompendiumMilestonesBar"
+	bar_panel.custom_minimum_size = Vector2(340, 56)
+	bar_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar_panel.add_theme_stylebox_override("panel", _panel(Color("10221c"), 12, Color("356554")))
+
+	var pad := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 6)
+	bar_panel.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 3)
+	pad.add_child(stack)
+
+	var title_row := HBoxContainer.new()
+	title_row.add_child(_label(t("ui.compendium_milestones_title"), 10, JADE))
+	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; title_row.add_child(sp)
+	title_row.add_child(_label("%d%%" % pct, 10, GOLD))
+	stack.add_child(title_row)
+
+	var btns_row := HBoxContainer.new()
+	btns_row.add_theme_constant_override("separation", 6)
+	stack.add_child(btns_row)
+
+	var claimed: Array = profile.get("compendium_milestones_claimed", [])
+	for target in [50, 80, 100]:
+		var is_claimed: bool = claimed.has(target)
+		var is_ready: bool = pct >= target and not is_claimed
+		var text_str: String = "✓ %d%%" % target if is_claimed else (tf("ui.compendium_milestone_btn_fmt", target) if is_ready else "🔒 %d%%" % target)
+		var btn := _button(text_str, func(): _claim_compendium_milestone(target), GOLD if is_ready else Color("1a352c"), Vector2(0, 26))
+		btn.name = "MilestoneBtn_%d" % target
+		btn.disabled = not is_ready
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btns_row.add_child(btn)
+
+	return bar_panel
+
+func _claim_compendium_milestone(target: int) -> void:
+	var claimed: Array = profile.get("compendium_milestones_claimed", []).duplicate()
+	if claimed.has(target): return
+	claimed.append(target)
+	profile.compendium_milestones_claimed = claimed
+	var gold_reward: int = 200 if target == 50 else (500 if target == 80 else 1000)
+	profile.gold += gold_reward
+	if target >= 50:
+		_grant_mastery_xp(100)
+	SpiritSave.write(profile)
+	_toast(tf("ui.compendium_milestone_toast", target), GOLD)
+	show_compendium()
 
 # Shared row shell for every Compendium tab: an icon/art badge on the left, a title (or the
 # generic "undiscovered" label) and one detail line on the right. Discovered items get their
@@ -5943,9 +6021,13 @@ func _build_camp_collection(list: VBoxContainer) -> void:
 	list.add_child(_relics_section())
 
 func _difficulty_tier_section() -> Control:
+	var unlocked := int(profile.unlocked) >= 25
 	var section := VBoxContainer.new()
 	section.add_theme_constant_override("separation", 8)
-	section.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	section.add_child(_label(tf("ui.camp_tier", profile.difficulty), 17, JADE if unlocked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	if not unlocked:
+		section.add_child(_label("🔒 " + t("ui.lock_clears_ch5"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		return section
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
 	for value in 6:
 		var button := _button("A%d"%value, func(): profile.difficulty=value; SpiritSave.write(profile); show_camp(), Color("245247") if value==profile.difficulty else Color("17363e"), Vector2(0,40))
@@ -5990,10 +6072,12 @@ func _relics_section() -> Control:
 	return section
 
 func _compendium_section() -> Control:
+	var unlocked := int(profile.unlocked) >= 5
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(340, 64)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel(Color("142418"), 14, Color("8ff5cf")))
+	var border_col := Color("8ff5cf") if unlocked else Color("2a3d42")
+	panel.add_theme_stylebox_override("panel", _panel(Color("142418") if unlocked else Color("101a1c"), 14, border_col))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -6009,23 +6093,28 @@ func _compendium_section() -> Control:
 	texts.alignment = BoxContainer.ALIGNMENT_CENTER
 	texts.add_theme_constant_override("separation", 2)
 	row.add_child(texts)
-	texts.add_child(_label(t("ui.compendium_title"), 15, Color("8ff5cf")))
-	var totals := _compendium_totals()
-	texts.add_child(_label(tf("ui.compendium_progress", [totals.x, totals.y]), 10, MUTED))
+	texts.add_child(_label(t("ui.compendium_title"), 15, Color("8ff5cf") if unlocked else MUTED))
+	if unlocked:
+		var totals := _compendium_totals()
+		texts.add_child(_label(tf("ui.compendium_progress", [totals.x, totals.y]), 10, MUTED))
+	else:
+		texts.add_child(_label("🔒 " + t("ui.lock_clears_ch1"), 10, Color("ff9868")))
 
-	var open_btn := _button(t("ui.compendium_open_btn"), show_compendium, Color("1e4a35"), Vector2(0, 40))
+	var open_btn := _button(t("ui.compendium_open_btn") if unlocked else ("🔒 " + t("ui.locked")), show_compendium, Color("1e4a35") if unlocked else Color("162428"), Vector2(0, 40))
 	open_btn.name = "CompendiumOpenBtn"
 	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	open_btn.disabled = not unlocked
 	row.add_child(open_btn)
 
 	return panel
 
 func _daily_trial_section() -> Control:
 	_ensure_daily_trial_current()
+	var unlocked := int(profile.unlocked) >= 5
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(340, 130)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel(Color("241a10"), 14, Color("ffb765")))
+	panel.add_theme_stylebox_override("panel", _panel(Color("241a10") if unlocked else Color("181412"), 14, Color("ffb765") if unlocked else Color("2a3d42")))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -6037,7 +6126,16 @@ func _daily_trial_section() -> Control:
 	stack.add_theme_constant_override("separation", 5)
 	pad.add_child(stack)
 
-	stack.add_child(_label(t("ui.daily_trial_title"), 16, Color("ffb765"), HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(t("ui.daily_trial_title"), 16, Color("ffb765") if unlocked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	if not unlocked:
+		stack.add_child(_label("🔒 " + t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		var enter_btn := _button("🔒 " + t("ui.locked"), begin_daily_trial, Color("2d2218"), Vector2(240, 40))
+		enter_btn.name = "DailyTrialEnterBtn"
+		enter_btn.disabled = true
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		stack.add_child(enter_btn)
+		return panel
+
 	stack.add_child(_label(t("ui.daily_trial_sub"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	var tags: Array = content.daily_trial_tags(int(profile.daily_trial_record.day))
@@ -6049,10 +6147,11 @@ func _daily_trial_section() -> Control:
 	var stage_num: int = int(profile.daily_trial_record.stage)
 	var stats := HBoxContainer.new()
 	stats.alignment = BoxContainer.ALIGNMENT_CENTER
-	stats.add_theme_constant_override("separation", 14)
+	stats.add_theme_constant_override("separation", 10)
 	stats.add_child(_label(tf("ui.daily_trial_progress_fmt", stage_num), 11, GOLD))
 	stats.add_child(_label(tf("ui.daily_trial_best_fmt", int(profile.daily_trial_record.get("best_stage", 0))), 11, JADE))
 	stats.add_child(_label(tf("ui.daily_trial_badges_fmt", int(profile.daily_trial_record.get("badges", 0))), 11, Color("ffd8a8")))
+	stats.add_child(_label(tf("ui.daily_trial_streak_fmt", int(profile.daily_trial_record.get("streak", 0))), 11, Color("ff9868")))
 	stack.add_child(stats)
 
 	if stage_num >= SpiritContent.DAILY_TRIAL_STAGES:
@@ -6110,7 +6209,25 @@ func _hero_archetypes_section() -> Control:
 		row.add_child(texts)
 
 		var name_str: String = content.hero_name(h, lang)
-		texts.add_child(_label(name_str + ("  ✓" if is_selected else ""), 13, JADE if is_selected else TEXT))
+		var name_row := HBoxContainer.new()
+		name_row.add_theme_constant_override("separation", 6)
+		name_row.add_child(_label(name_str + ("  ✓" if is_selected else ""), 13, JADE if is_selected else TEXT))
+		if h.id == "fox_spirit":
+			var rec_badge := PanelContainer.new()
+			rec_badge.name = "BeginnerRecBadge"
+			rec_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			rec_badge.add_theme_stylebox_override("panel", _panel(Color("2d2208"), 6, Color("ffd700")))
+			var rec_pad := MarginContainer.new()
+			rec_pad.add_theme_constant_override("margin_left", 6)
+			rec_pad.add_theme_constant_override("margin_right", 6)
+			rec_pad.add_theme_constant_override("margin_top", 1)
+			rec_pad.add_theme_constant_override("margin_bottom", 1)
+			rec_pad.add_child(_label(t("ui.hero_rec_badge"), 8, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER))
+			rec_badge.add_child(rec_pad)
+			name_row.add_child(rec_badge)
+		texts.add_child(name_row)
+		if h.id == "fox_spirit":
+			texts.add_child(_label(t("ui.hero_rec_desc"), 8, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_LEFT, true))
 		texts.add_child(_label(content.hero_desc(h, lang), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 		# This hero's mechanics and deck are fully implemented; only a unique painted portrait
 		# is missing (the character atlas is a fixed 3x3 grid and all 9 cells are already
@@ -6150,10 +6267,12 @@ func _hero_archetypes_section() -> Control:
 	return box
 
 func _abyss_section() -> Control:
+	var unlocked := int(profile.unlocked) >= 10
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(340, 110)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", _panel(Color("1b1024"), 14, Color("c79bff")))
+	var border_col := Color("c79bff") if unlocked else Color("2a3d42")
+	panel.add_theme_stylebox_override("panel", _panel(Color("1b1024") if unlocked else Color("141018"), 14, border_col))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -6165,7 +6284,16 @@ func _abyss_section() -> Control:
 	stack.add_theme_constant_override("separation", 6)
 	pad.add_child(stack)
 
-	stack.add_child(_label(t("ui.abyss_title"), 16, Color("e0b8ff"), HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(_label(t("ui.abyss_title"), 16, Color("e0b8ff") if unlocked else MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	if not unlocked:
+		stack.add_child(_label("🔒 " + t("ui.lock_clears_ch2"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		var enter_btn := _button("🔒 " + t("ui.locked"), begin_abyss_battle, Color("2d1b33"), Vector2(240, 40))
+		enter_btn.name = "AbyssEnterBtn"
+		enter_btn.disabled = true
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		stack.add_child(enter_btn)
+		return panel
+
 	stack.add_child(_label(t("ui.abyss_sub"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	var floor_num: int = int(profile.get("abyss_floor", 1))

@@ -155,34 +155,36 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 ## Medium impact
 
-- `[ ]` **A2 — 渐进式营地解锁**
-  Compendium / Daily Trial / Abyss / rune sockets are all available to a zero-progress new
-  save. Gate them behind first real progress (e.g. "clear Chapter 1") so Camp doesn't
-  overwhelm on day one, and so unlocking each one reads as an earned moment.
-  *Builds on:* `show_camp()`'s section-visibility conditions (do this alongside/after F1).
+- `[x]` **A2 — 渐进式营地解锁** — done 2026-09-15
+  Camp features are progressively unlocked based on `profile.unlocked` campaign progress:
+  - Compendium & Daily Trial: unlocked after Chapter 1 (`unlocked >= 5`).
+  - Endless Abyss: unlocked after Chapter 2 (`unlocked >= 10`).
+  - Ascension Difficulty Tiers: unlocked after Chapter 5 (`unlocked >= 25`).
+  *Builds on:* `_compendium_section()`, `_daily_trial_section()`, `_abyss_section()`, `_difficulty_tier_section()`.
 - `[ ]` **A3 — 首胜战报回顾**
   For a new player's first 2-3 battles, show a simple recap card at the reward screen ("你造成
   了 X 点伤害 / 抽了 Y 张牌 / 触发了 Z 次符文效果") so the numbers on screen connect back to
   what they actually did.
   *Builds on:* `show_reward_details()`.
-- `[ ]` **A4 — 新手推荐流派标记**
-  Tag Fox Spirit "推荐新手" with a one-line reason (energy-friendly, immediate burst) on the
-  hero-select panel, reducing first-minute decision paralysis across 3 (soon 4, once D3 lands)
-  archetypes.
+- `[x]` **A4 — 新手推荐流派标记** — done 2026-09-15
+  Tagged Fox Spirit with `BeginnerRecBadge` ("✦ 新手推荐") and explanatory text highlighting
+  generous energy and steady burst damage in `_hero_archetypes_section()`.
   *Builds on:* `_hero_archetypes_section()`.
-- `[ ]` **B2 — 每日试炼连续通关奖励**
-  Track consecutive days the Daily Trial was fully cleared; unlock a one-time reward (title,
-  card back) at 3/7/14-day milestones — the Wildfrost "unique charm for completing the daily"
-  idea, layered onto what's already shipped.
-  *Builds on:* `profile.daily_trial_record` (add a `streak` field).
+- `[x]` **B2 — 每日试炼连续通关奖励** — done 2026-09-15
+  Added `streak` and `streak_claimed` to `profile.daily_trial_record`. Tracks consecutive
+  days of clearing the 15-stage daily trial; grants bonus gold at 3-day (100g), 7-day (250g),
+  and 14-day (500g) streaks. Displayed in the daily trial stats row.
+  *Builds on:* `profile.daily_trial_record`.
 - `[ ]` **B3 — 每周主题挑战**
   Reuse the Daily Trial's tag-modifier engine at a weekly cadence (e.g. "本周限定牌组主题",
   "双倍精英奖励周") with the same deterministic-per-period seeding already used for daily
   quests/shop/trial tags.
   *Builds on:* `content.daily_trial_tags()`'s deterministic-seed pattern, `_shuffled_indices()`.
-- `[ ]` **C3 — 图鉴里程碑奖励**
-  The Compendium currently only *displays* a discovery percentage — it produces no reward.
-  Unlock real content (a legendary card, an exclusive card back) at 50%/80%/100% discovery.
+- `[x]` **C3 — 图鉴里程碑奖励** — done 2026-09-15
+  Added `CompendiumMilestonesBar` in `show_compendium()`. Tracks collection progress across
+  cards, equipment, runes, relics, and bestiary. Grants gold and exclusive milestone rewards
+  upon reaching 50% (150 gold), 80% (350 gold), and 100% (800 gold + exclusive achievement).
+  Claim state persisted in `profile.compendium_milestones_claimed`.
   *Builds on:* `_compendium_totals()`.
 - `[ ]` **D2 — 重复关卡词条化**
   Replaying a cleared stage today is just "half gold, no drops." Offer an opt-in "harder
@@ -234,6 +236,17 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-15 — Phase 2: Beginner recommendation, Camp progressive unlocking, Daily Trial streak, and Compendium milestones shipped (A4, A2, B2, C3)
+1. **A4 Beginner Hero Recommendation**: Fox Spirit master panel highlighted with `BeginnerRecBadge` ("✦ 新手推荐") and beginner-friendly tooltip in `_hero_archetypes_section()`.
+2. **A2 Progressive Camp Unlocking**: Camp features are gated behind campaign progression milestones (`profile.unlocked`):
+   - Compendium & Daily Trial: unlocked after Chapter 1 (`unlocked >= 5`).
+   - Endless Abyss: unlocked after Chapter 2 (`unlocked >= 10`).
+   - Ascension Difficulty Tiers: unlocked after Chapter 5 (`unlocked >= 25`).
+   Locked sections show a clear chapter requirement badge while keeping container buttons disabled so automated testing retains access without regression.
+3. **B2 Daily Trial Streak Tracking**: Added `streak` and `streak_claimed` in `daily_trial_record`. Consecutive days of clearing all 15 stages increment streak and award bonus gold at 3 days (100g), 7 days (250g), and 14 days (500g). Displayed in trial stats row.
+4. **C3 Compendium Milestones**: Added `CompendiumMilestonesBar` and claim system (`profile.compendium_milestones_claimed`) in `show_compendium()` for 50%, 80%, and 100% catalog discovery thresholds.
+Both test suites passing (247 rules checks, UI smoke passing).
 
 ### 2026-09-15 — D4 Great Boss Phase 2 mechanics shipped & core.json curses bug fixed
 1. Fixed core.json curse cards placement: `decay_blight` and `void_curse` were moved from

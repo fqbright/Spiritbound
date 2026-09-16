@@ -1074,6 +1074,17 @@ const UI_TEXT = {
 	"ach.compendium50.desc": {"zh-Hans":"驭灵秘典收集率达到 50%", "en":"Reach 50% Compendium discovery"},
 	"ach.compendium100.name": {"zh-Hans":"驭灵秘典·大成", "en":"Compendium Complete"},
 	"ach.compendium100.desc": {"zh-Hans":"驭灵秘典收集率达到 100%", "en":"Reach 100% Compendium discovery"},
+	"ui.hero_rec_badge": {"zh-Hans":"✦ 新手推荐", "en":"✦ Recommended"},
+	"ui.hero_rec_desc": {"zh-Hans":"能量充裕，起手爆发稳定，适合初涉灵界的行者。", "en":"Generous energy and steady burst damage, ideal for newcomers."},
+	"ui.lock_clears_ch1": {"zh-Hans":"通关第 1 章解锁", "en":"Clear Chapter 1 to unlock"},
+	"ui.lock_clears_ch2": {"zh-Hans":"通关第 2 章解锁", "en":"Clear Chapter 2 to unlock"},
+	"ui.lock_clears_ch5": {"zh-Hans":"通关第 5 章解锁", "en":"Clear Chapter 5 to unlock"},
+	"ui.daily_trial_streak_fmt": {"zh-Hans":"连胜: %d 天", "en":"Streak: %d Days"},
+	"ui.trial_streak_reward_toast": {"zh-Hans":"每日试炼连续通关 %d 天！获得 %d 金币！", "en":"Daily Trial %d-day streak! Gained %d Gold!"},
+	"ui.compendium_milestones_title": {"zh-Hans":"探索里程碑", "en":"Discovery Milestones"},
+	"ui.compendium_milestone_btn_fmt": {"zh-Hans":"达成 %d%% 探索", "en":"Reach %d%% Catalog"},
+	"ui.compendium_milestone_claimed": {"zh-Hans":"已领取", "en":"Claimed"},
+	"ui.compendium_milestone_toast": {"zh-Hans":"达成图鉴 %d%% 里程碑！获得奖励！", "en":"Reached Compendium %d%% Milestone! Reward claimed!"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

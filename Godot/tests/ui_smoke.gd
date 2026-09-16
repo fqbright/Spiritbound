@@ -1236,6 +1236,7 @@ func _run() -> void:
 	game.show_camp()
 	var found_hero_title := _find_label_text(game.root, game.content.ui("ui.hero_classes_title", game.lang))
 	check(found_hero_title, "Hero archetypes section renders in camp's character tab")
+	check(game.root.find_child("BeginnerRecBadge", true, false) != null, "BeginnerRecBadge exists on fox_spirit hero panel")
 	game.camp_tab = "challenges"
 	game.show_camp()
 	var found_abyss_title := _find_label_text(game.root, game.content.ui("ui.abyss_title", game.lang))
@@ -1396,6 +1397,10 @@ func _run() -> void:
 	game.show_compendium()
 	await process_frame
 	check(_find_label_text(game.root, game.content.ui("ui.compendium_title", game.lang)), "Compendium title renders")
+	check(game.root.find_child("CompendiumMilestonesBar", true, false) != null, "CompendiumMilestonesBar exists in compendium")
+	check(not game.profile.compendium_milestones_claimed.has(50), "compendium 50% milestone starts unclaimed")
+	game._claim_compendium_milestone(50)
+	check(game.profile.compendium_milestones_claimed.has(50), "compendium 50% milestone is claimed")
 	check(_find_button_containing(game.root, game.content.ui("ui.compendium_tab_bestiary", game.lang)) != null, "Bestiary tab button exists")
 	game.compendium_tab = "bestiary"
 	game.show_compendium()
@@ -1443,6 +1448,7 @@ func _run() -> void:
 	game.show_camp()
 	await process_frame
 	check(game.root.find_child("DailyTrialEnterBtn", true, false) != null, "DailyTrialEnterBtn exists in camp's challenges tab")
+	check(_find_label_containing(game.root, "连胜"), "daily trial shows streak stat")
 
 	game.begin_daily_trial()
 	await process_frame
