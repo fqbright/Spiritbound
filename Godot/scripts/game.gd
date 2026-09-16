@@ -871,6 +871,72 @@ const BIOME_PATH_WAYPOINTS = [
 	[Vector2(200, 112), Vector2(180, 208), Vector2(210, 304), Vector2(190, 396), Vector2(200, 480)],  # sunlit ruins
 ]
 
+# One entry per chapter (0-49), each hand-traced to the specific painted trail in that
+# chapter's own unique background (assets/chapters/chapter_N.png — every chapter has had its
+# own bespoke art since long after BIOME_PATH_WAYPOINTS above was written for the old 6-image
+# fallback, so reusing those 6 sets via chapter%6 put the road and every stage pin over rocks,
+# buildings and treetops instead of the actual path for 44 of 50 chapters).
+# Derived by segmenting each PNG for its brightest, least-saturated, most path-shaped
+# connected region at 5 fixed heights (112/208/304/396/480, i.e. one per stage in the chapter)
+# and tracking it row to row so the fit follows one continuous route rather than jumping to
+# whatever's brightest in an unrelated part of the frame — a handful of chapters (7, 8, 18, 26)
+# needed a manual eyeballed correction afterward: a few "abstract flowing dune" compositions
+# have no single distinguishable road at all, and a couple of lava chapters invert the usual
+# rule (there the path is the DARKEST feature against glowing lava, not the brightest, which
+# the general detector isn't tuned for). See Docs/GROWTH_ROADMAP.md for the detection script.
+const CHAPTER_PATH_WAYPOINTS = [
+	[Vector2(173, 112), Vector2(211, 208), Vector2(249, 304), Vector2(254, 396), Vector2(249, 480)],  # chapter_0.png
+	[Vector2(207, 112), Vector2(182, 208), Vector2(207, 304), Vector2(218, 396), Vector2(264, 480)],  # chapter_1.png
+	[Vector2(163, 112), Vector2(162, 208), Vector2(211, 304), Vector2(188, 396), Vector2(191, 480)],  # chapter_2.png
+	[Vector2(196, 112), Vector2(178, 208), Vector2(193, 304), Vector2(199, 396), Vector2(156, 480)],  # chapter_3.png
+	[Vector2(159, 112), Vector2(211, 208), Vector2(162, 304), Vector2(165, 396), Vector2(186, 480)],  # chapter_4.png
+	[Vector2(148, 112), Vector2(268, 208), Vector2(203, 304), Vector2(282, 396), Vector2(228, 480)],  # chapter_5.png
+	[Vector2(116, 112), Vector2(144, 208), Vector2(94, 304), Vector2(136, 396), Vector2(144, 480)],  # chapter_6.png
+	[Vector2(200, 112), Vector2(180, 208), Vector2(195, 304), Vector2(175, 396), Vector2(190, 480)],  # chapter_7.png
+	[Vector2(195, 112), Vector2(165, 208), Vector2(175, 304), Vector2(210, 396), Vector2(180, 480)],  # chapter_8.png
+	[Vector2(195, 112), Vector2(236, 208), Vector2(238, 304), Vector2(200, 396), Vector2(196, 480)],  # chapter_9.png
+	[Vector2(224, 112), Vector2(237, 208), Vector2(240, 304), Vector2(250, 396), Vector2(328, 480)],  # chapter_10.png
+	[Vector2(241, 112), Vector2(122, 208), Vector2(186, 304), Vector2(107, 396), Vector2(161, 480)],  # chapter_11.png
+	[Vector2(163, 112), Vector2(208, 208), Vector2(232, 304), Vector2(264, 396), Vector2(238, 480)],  # chapter_12.png
+	[Vector2(182, 112), Vector2(206, 208), Vector2(198, 304), Vector2(227, 396), Vector2(244, 480)],  # chapter_13.png
+	[Vector2(272, 112), Vector2(264, 208), Vector2(278, 304), Vector2(295, 396), Vector2(299, 480)],  # chapter_14.png
+	[Vector2(215, 112), Vector2(172, 208), Vector2(195, 304), Vector2(190, 396), Vector2(233, 480)],  # chapter_15.png
+	[Vector2(163, 112), Vector2(162, 208), Vector2(211, 304), Vector2(182, 396), Vector2(176, 480)],  # chapter_16.png
+	[Vector2(200, 112), Vector2(211, 208), Vector2(223, 304), Vector2(267, 396), Vector2(250, 480)],  # chapter_17.png
+	[Vector2(190, 112), Vector2(205, 208), Vector2(180, 304), Vector2(200, 396), Vector2(175, 480)],  # chapter_18.png
+	[Vector2(193, 112), Vector2(194, 208), Vector2(152, 304), Vector2(191, 396), Vector2(192, 480)],  # chapter_19.png
+	[Vector2(219, 112), Vector2(226, 208), Vector2(177, 304), Vector2(212, 396), Vector2(184, 480)],  # chapter_20.png
+	[Vector2(164, 112), Vector2(162, 208), Vector2(211, 304), Vector2(181, 396), Vector2(176, 480)],  # chapter_21.png
+	[Vector2(267, 112), Vector2(229, 208), Vector2(301, 304), Vector2(290, 396), Vector2(290, 480)],  # chapter_22.png
+	[Vector2(179, 112), Vector2(162, 208), Vector2(151, 304), Vector2(97, 396), Vector2(97, 480)],  # chapter_23.png
+	[Vector2(276, 112), Vector2(294, 208), Vector2(273, 304), Vector2(285, 396), Vector2(278, 480)],  # chapter_24.png
+	[Vector2(157, 112), Vector2(126, 208), Vector2(150, 304), Vector2(154, 396), Vector2(156, 480)],  # chapter_25.png
+	[Vector2(200, 112), Vector2(175, 208), Vector2(190, 304), Vector2(165, 396), Vector2(185, 480)],  # chapter_26.png
+	[Vector2(271, 112), Vector2(246, 208), Vector2(291, 304), Vector2(253, 396), Vector2(257, 480)],  # chapter_27.png
+	[Vector2(196, 112), Vector2(196, 208), Vector2(239, 304), Vector2(197, 396), Vector2(206, 480)],  # chapter_28.png
+	[Vector2(206, 112), Vector2(197, 208), Vector2(142, 304), Vector2(184, 396), Vector2(190, 480)],  # chapter_29.png
+	[Vector2(224, 112), Vector2(265, 208), Vector2(209, 304), Vector2(260, 396), Vector2(305, 480)],  # chapter_30.png
+	[Vector2(148, 112), Vector2(267, 208), Vector2(203, 304), Vector2(282, 396), Vector2(227, 480)],  # chapter_31.png
+	[Vector2(194, 112), Vector2(216, 208), Vector2(194, 304), Vector2(199, 396), Vector2(156, 480)],  # chapter_32.png
+	[Vector2(112, 112), Vector2(95, 208), Vector2(114, 304), Vector2(105, 396), Vector2(110, 480)],  # chapter_33.png
+	[Vector2(241, 112), Vector2(122, 208), Vector2(186, 304), Vector2(107, 396), Vector2(161, 480)],  # chapter_34.png
+	[Vector2(228, 112), Vector2(226, 208), Vector2(178, 304), Vector2(207, 396), Vector2(213, 480)],  # chapter_35.png
+	[Vector2(118, 112), Vector2(143, 208), Vector2(98, 304), Vector2(136, 396), Vector2(131, 480)],  # chapter_36.png
+	[Vector2(234, 112), Vector2(168, 208), Vector2(125, 304), Vector2(126, 396), Vector2(151, 480)],  # chapter_37.png
+	[Vector2(136, 112), Vector2(201, 208), Vector2(271, 304), Vector2(313, 396), Vector2(281, 480)],  # chapter_38.png
+	[Vector2(195, 112), Vector2(243, 208), Vector2(196, 304), Vector2(200, 396), Vector2(197, 480)],  # chapter_39.png
+	[Vector2(208, 112), Vector2(207, 208), Vector2(219, 304), Vector2(220, 396), Vector2(265, 480)],  # chapter_40.png
+	[Vector2(215, 112), Vector2(171, 208), Vector2(196, 304), Vector2(190, 396), Vector2(234, 480)],  # chapter_41.png
+	[Vector2(253, 112), Vector2(211, 208), Vector2(222, 304), Vector2(269, 396), Vector2(249, 480)],  # chapter_42.png
+	[Vector2(163, 112), Vector2(162, 208), Vector2(211, 304), Vector2(181, 396), Vector2(184, 480)],  # chapter_43.png
+	[Vector2(177, 112), Vector2(162, 208), Vector2(225, 304), Vector2(296, 396), Vector2(328, 480)],  # chapter_44.png
+	[Vector2(148, 112), Vector2(267, 208), Vector2(203, 304), Vector2(282, 396), Vector2(228, 480)],  # chapter_45.png
+	[Vector2(272, 112), Vector2(246, 208), Vector2(291, 304), Vector2(253, 396), Vector2(258, 480)],  # chapter_46.png
+	[Vector2(165, 112), Vector2(124, 208), Vector2(180, 304), Vector2(129, 396), Vector2(84, 480)],  # chapter_47.png
+	[Vector2(196, 112), Vector2(195, 208), Vector2(236, 304), Vector2(198, 396), Vector2(197, 480)],  # chapter_48.png
+	[Vector2(193, 112), Vector2(194, 208), Vector2(152, 304), Vector2(190, 396), Vector2(193, 480)],  # chapter_49.png
+]
+
 const CHAR_KEYS = {
 	"fox": Vector2i(0, 0),
 	"sentinel": Vector2i(1, 0),
@@ -1929,25 +1995,30 @@ func _open_camp_challenges() -> void:
 	camp_tab = "challenges"
 	show_camp()
 
-# Every chapter used to reuse the exact same five pixel offsets, so the trail looked like a
-# mechanical zigzag repeated 50 times. This walks a seeded random x each chapter instead —
-# deterministic (same shape every time you view that chapter, no state to save) but no
-# longer identical band to band.
+# The road (and every stage pin — _map_point below places pins at these exact same points)
+# has to trace the trail actually painted into this chapter's background, not an independent
+# shape layered over it. Every chapter has its own unique background now, so CHAPTER_PATH_
+# WAYPOINTS carries one hand-corrected, pixel-traced entry per chapter; BIOME_PATH_WAYPOINTS
+# (with its old chapter%6-plus-mirroring scheme) only still applies to the theoretical case
+# where a specific chapter's art file is missing and _get_chapter_map_texture() falls back to
+# a reused biome texture — _add_map_chapter()'s own flip_h uses the identical condition below,
+# so the two stay in lockstep.
 func _chapter_waypoints(chapter: int) -> Array:
 	if _map_waypoint_cache.has(chapter): return _map_waypoint_cache[chapter]
-	# The road has to trace the trail actually painted into this chapter's background, not a
-	# random walk — see BIOME_PATH_WAYPOINTS. _add_map_chapter flips the same background
-	# horizontally every second time a biome repeats (chapter/6 odd); mirror the path to
-	# match or the road runs straight over rocks and trees instead of the trail.
-	var biome_idx: int = chapter % BIOME_PATH_WAYPOINTS.size()
-	var flipped: bool = (chapter / BIOME_PATH_WAYPOINTS.size()) % 2 == 1
-	var base_points: Array = BIOME_PATH_WAYPOINTS[biome_idx]
 	var points: Array = []
-	for p in base_points:
-		var x: float = (MAP_WIDTH - p.x) if flipped else p.x
-		points.append(Vector2(x, p.y))
+	if _chapter_has_unique_art(chapter):
+		for p in CHAPTER_PATH_WAYPOINTS[chapter]: points.append(p)
+	else:
+		var biome_idx: int = chapter % BIOME_PATH_WAYPOINTS.size()
+		var flipped: bool = (chapter / BIOME_PATH_WAYPOINTS.size()) % 2 == 1
+		for p in BIOME_PATH_WAYPOINTS[biome_idx]:
+			var x: float = (MAP_WIDTH - p.x) if flipped else p.x
+			points.append(Vector2(x, p.y))
 	_map_waypoint_cache[chapter] = points
 	return points
+
+func _chapter_has_unique_art(chapter: int) -> bool:
+	return chapter >= 0 and chapter < CHAPTER_PATH_WAYPOINTS.size() and ResourceLoader.exists("res://assets/chapters/chapter_%d.png" % chapter)
 
 func _map_point(index: int) -> Vector2:
 	var waypoints: Array = _chapter_waypoints(index / 5)
@@ -2133,9 +2204,13 @@ func _add_map_chapter(chapter: int) -> void:
 		painted_tile.size = Vector2(MAP_WIDTH, BAND_HEIGHT)
 		painted_tile.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		painted_tile.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		# Apply chapter-specific regional atmospheric tint and alternating flip for unique visual identity
+		# Apply chapter-specific regional atmospheric tint. The alternating flip is only for
+		# the old 6-image biome fallback (reusing one image across many chapters needed the
+		# mirroring for visual variety); a chapter with its own unique art must never be
+		# flipped, or CHAPTER_PATH_WAYPOINTS's pixel-traced points end up mirrored relative to
+		# what's actually on screen — see _chapter_waypoints()'s matching condition.
 		painted_tile.modulate = Color.WHITE.lerp(tint, 0.35)
-		painted_tile.flip_h = ((chapter / 6) % 2 == 1)
+		painted_tile.flip_h = false if _chapter_has_unique_art(chapter) else ((chapter / 6) % 2 == 1)
 		painted_tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		band.add_child(painted_tile)
 
@@ -2272,6 +2347,14 @@ func _add_routes() -> void:
 		all_points.append(point)
 		if index <= int(profile.unlocked): walked_points.append(point)
 
+	# road_bed/trail used to be the only visible "path" on the map — a generic dirt-textured
+	# overlay that had no relationship to whatever was actually painted underneath it, which
+	# is exactly what made pins and the drawn road alike sit over rocks/rooftops instead of
+	# the real trail once unique per-chapter art existed. Now that CHAPTER_PATH_WAYPOINTS (see
+	# _chapter_waypoints()) is pixel-traced to each chapter's real path, that overlay would
+	# just be redundant at best and a mismatched line at worst — so both stay invisible. Their
+	# geometry is kept (not skipped) since _travel_to()'s per-hop animation and any future
+	# progress visualization still key off the same curve.
 	var road_bed := Line2D.new()
 	road_bed.width = 22.0
 	road_bed.default_color = Color(0.16, 0.11, 0.07, 0.5)
@@ -2280,6 +2363,7 @@ func _add_routes() -> void:
 	road_bed.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	road_bed.end_cap_mode = Line2D.LINE_CAP_ROUND
 	road_bed.points = _build_road_curve(all_points).get_baked_points()
+	road_bed.visible = false
 	map_canvas.add_child(road_bed)
 
 	var trail := Line2D.new()
@@ -2292,6 +2376,7 @@ func _add_routes() -> void:
 	trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	trail.end_cap_mode = Line2D.LINE_CAP_ROUND
 	trail.points = road_bed.points
+	trail.visible = false
 	map_canvas.add_child(trail)
 
 	if walked_points.size() > 1:
@@ -2432,12 +2517,33 @@ func _add_stage_pin(index: int) -> void:
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_canvas.add_child(caption)
 
+const TRAVEL_SECONDS_PER_STAGE := 2.0
+
+# Walks the traveler stage by stage along the same points the road curve is fit through
+# (_map_point), one chained 2-second tween per hop, rather than a single fixed-duration tween
+# straight from wherever it starts to the final target. A single-tween version covered any
+# distance in the same total time, so jumping back 10 stages across several chapters looked
+# identical in speed to stepping to the very next one, and — since Godot interpolates a
+# position property as a straight screen-space line, not along the curve — visibly cut across
+# scenery instead of following the trail for anything but adjacent stages. Per-hop timing
+# instead means total travel time scales with how many stages are actually being crossed
+# (fast super-wide hops when consecutive stages sit far apart on the path, slower single hops
+# when they're close, but always "N stages = N x 2 seconds" either direction), and the path
+# actually walked is the real one, one real segment at a time.
 func _travel_to(index: int) -> void:
 	if index > int(profile.unlocked): return
+	var start_index: int = int(profile.position)
+	var step: int = 1 if index >= start_index else -1
 	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(traveler, "position", _map_point(index) - Vector2(0, 26), 0.65)
-	for value in range(int(profile.position), index + 1):
-		tween.parallel().tween_method(func(y): map_scroll.scroll_vertical = int(y), float(map_scroll.scroll_vertical), float(maxi(0, int(_map_point(index).y - 360))), 0.65)
+	var scroll_from: float = float(map_scroll.scroll_vertical)
+	var current_idx := start_index
+	while current_idx != index:
+		current_idx += step
+		var hop_pos: Vector2 = _map_point(current_idx) - Vector2(0, 26)
+		var scroll_to: float = float(maxi(0, int(_map_point(current_idx).y - 360)))
+		tween.tween_property(traveler, "position", hop_pos, TRAVEL_SECONDS_PER_STAGE)
+		tween.parallel().tween_method(func(y): map_scroll.scroll_vertical = int(y), scroll_from, scroll_to, TRAVEL_SECONDS_PER_STAGE)
+		scroll_from = scroll_to
 	await tween.finished; profile.position = index; SpiritSave.write(profile)
 	var kind := content.node_kind(index)
 	if kind in ["event","merchant","rest"] and not _is_stage_event_claimed(index) and not _is_replay(index):

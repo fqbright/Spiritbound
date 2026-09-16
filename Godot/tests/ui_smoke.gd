@@ -138,25 +138,31 @@ func _run() -> void:
 		var v: Vector2 = p
 		check(v.x >= game.ROAD_MARGIN_X - 0.01 and v.x <= game.MAP_WIDTH - game.ROAD_MARGIN_X + 0.01, "waypoint stays clear of the screen edge (x=%.1f)" % v.x)
 
-	# The road used to be a seeded random walk with no idea what the background looked like;
-	# now every chapter has a real painted trail baked into its background, so the waypoints
-	# must trace BIOME_PATH_WAYPOINTS's hand-picked points for that biome exactly — mirrored
-	# when _add_map_chapter flips that background horizontally for this cycle through it.
-	var biome_count: int = game.BIOME_PATH_WAYPOINTS.size()
-	var expected_ch0: Array = game.BIOME_PATH_WAYPOINTS[0]
-	var matches_biome := true
+	# Every chapter now has its own unique painted background (not 6 reused biome images), so
+	# each one gets its own pixel-traced entry in CHAPTER_PATH_WAYPOINTS instead of cycling
+	# through BIOME_PATH_WAYPOINTS by chapter%6 — reusing only 6 hand-picked shapes across 50
+	# distinct paintings is exactly what put pins and the drawn road over rocks/rooftops on
+	# most chapters. BIOME_PATH_WAYPOINTS (and the mirroring that went with it) now applies
+	# only to the fallback case where a chapter's own art file is missing.
+	check(game._chapter_has_unique_art(0) and game._chapter_has_unique_art(6), "chapters 0 and 6 both have their own unique background art")
+	var expected_ch0: Array = game.CHAPTER_PATH_WAYPOINTS[0]
+	var matches_own_chapter := true
 	for i in 5:
-		if not (wp0[i] as Vector2).is_equal_approx(expected_ch0[i]): matches_biome = false
-	check(matches_biome, "chapter 0's road traces its background's own hand-picked path, not a random walk")
-	var wp_flipped: Array = game._chapter_waypoints(biome_count)
-	var mirrors := true
+		if not (wp0[i] as Vector2).is_equal_approx(expected_ch0[i]): matches_own_chapter = false
+	check(matches_own_chapter, "chapter 0's road traces its OWN pixel-traced CHAPTER_PATH_WAYPOINTS entry")
+	var wp6: Array = game._chapter_waypoints(6)
+	var expected_ch6: Array = game.CHAPTER_PATH_WAYPOINTS[6]
+	var matches_ch6 := true
 	for i in 5:
-		var expected_x: float = game.MAP_WIDTH - (expected_ch0[i] as Vector2).x
-		if absf((wp_flipped[i] as Vector2).x - expected_x) > 0.01: mirrors = false
-	check(mirrors, "the road mirrors horizontally on chapter %d, matching its horizontally-flipped background" % biome_count)
+		if not (wp6[i] as Vector2).is_equal_approx(expected_ch6[i]): matches_ch6 = false
+	check(matches_ch6, "chapter 6 traces its own distinct waypoints too, not a mirrored copy of chapter 0's (unique art needs no mirroring)")
+	check(not (wp0[0] as Vector2).is_equal_approx(wp6[0]), "chapters 0 and 6 have genuinely different paths, not the same 6-biome shape cycling back around")
 
-	var raw_points := PackedVector2Array()
-	for i in 5: raw_points.append(wp0[i])
+	# _build_road_curve()'s smoothing behavior is a general property of the function, not of
+	# any one chapter's specific (now pixel-traced, not hand-picked-for-visual-variety) shape
+	# — test it against a synthetic sharp zigzag built for exactly this, rather than whatever
+	# chapter 0's real path happens to look like.
+	var raw_points := PackedVector2Array([Vector2(120, 0), Vector2(260, 100), Vector2(100, 200), Vector2(260, 300), Vector2(120, 400)])
 	var baked: PackedVector2Array = game._build_road_curve(raw_points).get_baked_points()
 	check(baked.size() > raw_points.size() * 3, "the curve is densely tessellated, not just the five raw waypoints (%d points)" % baked.size())
 	check(baked[0].is_equal_approx(raw_points[0]) and baked[baked.size() - 1].is_equal_approx(raw_points[raw_points.size() - 1]), "the curve still starts and ends exactly on the first and last stage")
@@ -190,13 +196,68 @@ func _run() -> void:
 	for d in band0_decos:
 		if str(d.kind) in ["pine", "boulder", "hill"]: terrain_decos.append(d)
 	check(terrain_decos.size() > 0, "chapter 0's background is dressed with procedural terrain silhouettes (%d placed)" % terrain_decos.size())
+	# Decorations are placed relative to chapter 0's OWN real curve, not the synthetic zigzag
+	# above (that one only exists to test _build_road_curve()'s general smoothing behavior).
+	var raw_points_ch0 := PackedVector2Array()
+	for i in 5: raw_points_ch0.append(wp0[i])
+	var baked_ch0: PackedVector2Array = game._build_road_curve(raw_points_ch0).get_baked_points()
 	var all_clear := true
 	for d in terrain_decos:
 		var center: Vector2 = d.position + d.size / 2.0
-		for bp in baked:
+		for bp in baked_ch0:
 			var v: Vector2 = bp
 			if center.distance_to(v) < 30.0: all_clear = false
 	check(all_clear, "terrain decorations stay clear of the actual road curve, not just visually near it")
+
+	# The generic dirt-road overlay used to be the only visible "path" on the map; now that
+	# pins and CHAPTER_PATH_WAYPOINTS trace the real painted trail, that overlay would just be
+	# a mismatched line drawn on top of it, so it stays hidden (see _add_routes()).
+	var found_road_bed := false
+	var found_visible_road := false
+	for child in game.map_canvas.get_children():
+		if child is Line2D:
+			var line := child as Line2D
+			if is_equal_approx(line.width, 22.0) or is_equal_approx(line.width, 10.0):
+				found_road_bed = true
+				if line.visible: found_visible_road = true
+	check(found_road_bed, "the road_bed/trail Line2D nodes still exist (their geometry backs the travel path)")
+	check(not found_visible_road, "the generic dirt-road overlay stays invisible now that it would just mismatch the real painted trail")
+
+	# growth-roadmap: travel time is a fixed 2 seconds per stage hop, not one fixed-duration
+	# tween regardless of distance — chained hops mean an N-stage journey takes N x 2 seconds
+	# and the traveler visits every intermediate stage's real point along the way.
+	var saved_unlocked_travel: int = int(game.profile.unlocked)
+	var saved_position_travel: int = int(game.profile.position)
+	game.profile.unlocked = 2
+	game.profile.position = 0
+	game.traveler.position = game._map_point(0) - Vector2(0, 26)
+	var travel_start_ms := Time.get_ticks_msec()
+	game._travel_to(2)
+	await process_frame
+	var hop_count := 0
+	while game.profile.position != 2 and hop_count < 100:
+		await create_timer(0.1).timeout
+		hop_count += 1
+	var elapsed_sec: float = float(Time.get_ticks_msec() - travel_start_ms) / 1000.0
+	check(int(game.profile.position) == 2, "traveling 2 stages ends at the correct final stage")
+	check(elapsed_sec > 3.5 and elapsed_sec < 4.7, "a 2-stage journey takes ~2 x TRAVEL_SECONDS_PER_STAGE (%.1fs elapsed, expected ~4s)" % elapsed_sec)
+	# Not checking game.traveler.position here: arriving at stage 2 (an elite battle)
+	# immediately calls begin_battle() -> show_battle() -> _clear(), which frees the whole map
+	# scene graph (traveler included) in the same synchronous step that sets profile.position
+	# — by the time this line runs, `traveler` already points at a freed node. profile.position
+	# == 2 above already confirms the journey ended at the right stage.
+	game.profile.unlocked = saved_unlocked_travel
+	game.profile.position = saved_position_travel
+	# _travel_to() always ends by either opening an event or beginning a battle for the stage
+	# it arrives at (stage 2 is an elite battle), which itself kicks off _maybe_end_turn()'s
+	# own resolution — let that settle before tearing the screen down, or show_map()'s _clear()
+	# could free nodes out from under an in-flight coroutine.
+	var settle_wait := 0.0
+	while game.resolving and settle_wait < 5.0:
+		await create_timer(0.1).timeout
+		settle_wait += 0.1
+	game.show_map()
+	await process_frame
 
 	var found_particles := false
 	for child in game.root.get_children():
