@@ -219,6 +219,25 @@ func _squash_impact(sprite: Node2D, base_scale: float, strength := 0.22, duratio
 	tween.tween_property(sprite, "scale", Vector2(base_scale * (1.0 - strength * 0.4), base_scale * (1.0 + strength * 0.4)), duration * 0.32).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, duration * 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
+	if sprite.has_meta("rig_tail"):
+		var tail: Node2D = sprite.get_meta("rig_tail") as Node2D
+		if tail and is_instance_valid(tail):
+			var t_tween := tail.create_tween()
+			var base_t_scale: Vector2 = tail.get_meta("base_scale", tail.scale)
+			t_tween.tween_property(tail, "rotation_degrees", tail.rotation_degrees + 12.0, duration * 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			t_tween.parallel().tween_property(tail, "scale", base_t_scale * 1.18, duration * 0.25).set_trans(Tween.TRANS_QUAD)
+			t_tween.tween_property(tail, "rotation_degrees", tail.rotation_degrees - 6.0, duration * 0.35).set_trans(Tween.TRANS_QUAD)
+			t_tween.parallel().tween_property(tail, "scale", base_t_scale, duration * 0.35).set_trans(Tween.TRANS_QUAD)
+			t_tween.tween_property(tail, "rotation_degrees", 0.0, duration * 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+	if sprite.has_meta("rig_orb"):
+		var orb: Node2D = sprite.get_meta("rig_orb") as Node2D
+		if orb and is_instance_valid(orb):
+			var o_tween := orb.create_tween()
+			var base_o_pos: Vector2 = orb.get_meta("base_pos", orb.position)
+			o_tween.tween_property(orb, "position", base_o_pos + Vector2(10.0, -8.0), duration * 0.25).set_trans(Tween.TRANS_QUAD)
+			o_tween.tween_property(orb, "position", base_o_pos, duration * 0.45).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
 # A soft halo behind a sprite for a status that has no natural "shape" of its own — shield
 # and vulnerable both read as an aura, just in different colours and animation.
 func _status_halo(size: Vector2, color: Color, pulsing: bool) -> Panel:
@@ -444,21 +463,111 @@ func _build_player_stage() -> Control:
 	glow.visible = false
 	stage.add_child(glow)
 
+	# Player Multi-part Rig (Body + Fluffy Ethereal Tail + Floating Foxfire Orb + Ground Aura)
+	# or fallback to single atlas sprite if rig assets are missing.
+	var rig_body_path := "res://assets/characters/fox_rig/fox_body.png"
+	var use_fox_rig: bool = ResourceLoader.exists(rig_body_path)
+
 	var sprite := Sprite2D.new()
 	sprite.name = "PlayerSprite"
-	sprite.texture = g._get_character_texture("fox")
 	var spr_size := Vector2(74.0, 74.0)
-	var cell_w := float(g._char_atlas_tex.get_width()) / 3.0
-	var scale_factor: float = minf(spr_size.x / cell_w, spr_size.y / cell_w)
-	sprite.scale = Vector2(scale_factor, scale_factor)
-	sprite.set_meta("base_scale", scale_factor)
-	sprite.position = Vector2(center_x, 37.0)
-	_install_hit_flash(sprite)
-	stage.add_child(sprite)
 
-	var idle := sprite.create_tween().set_loops()
-	idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
-	idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+	if use_fox_rig:
+		# 1. Ground Aura (soft jade qi formation under feet)
+		var aura := Sprite2D.new()
+		aura.name = "PlayerGroundAura"
+		aura.texture = load("res://assets/characters/fox_rig/ground_aura.png")
+		aura.position = Vector2(center_x, 74.0)
+		var aura_base_scale := Vector2(0.18, 0.12)
+		aura.scale = aura_base_scale
+		aura.z_index = -2
+		stage.add_child(aura)
+		var aura_tween := aura.create_tween().set_loops()
+		aura_tween.tween_property(aura, "scale", aura_base_scale * 1.08, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		aura_tween.parallel().tween_property(aura, "modulate:a", 0.9, 1.2).set_trans(Tween.TRANS_SINE)
+		aura_tween.tween_property(aura, "scale", aura_base_scale * 0.94, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		aura_tween.parallel().tween_property(aura, "modulate:a", 0.55, 1.2).set_trans(Tween.TRANS_SINE)
+
+		# 2. Majestic Spirit Fox Tails (Behind body with secondary lag sway)
+		var tail := Sprite2D.new()
+		tail.name = "PlayerTail"
+		tail.texture = load("res://assets/characters/fox_rig/fox_tail.png")
+		var tail_scale := Vector2(0.092, 0.092)
+		tail.scale = tail_scale
+		tail.position = Vector2(center_x, 32.0)
+		tail.z_index = -1
+		tail.set_meta("base_scale", tail_scale)
+		stage.add_child(tail)
+		sprite.set_meta("rig_tail", tail)
+
+		# Tail secondary swaying + lag bobbing
+		var tail_rot := tail.create_tween().set_loops()
+		tail_rot.tween_property(tail, "rotation_degrees", 5.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tail_rot.tween_property(tail, "rotation_degrees", -5.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+		var tail_bob := tail.create_tween().set_loops()
+		tail_bob.tween_property(tail, "position:y", 30.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tail_bob.parallel().tween_property(tail, "scale:x", tail_scale.x * 1.04, 1.2).set_trans(Tween.TRANS_SINE)
+		tail_bob.tween_property(tail, "position:y", 34.5, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tail_bob.parallel().tween_property(tail, "scale:x", tail_scale.x * 0.96, 1.2).set_trans(Tween.TRANS_SINE)
+
+		# 3. Main Body Sprite
+		sprite.texture = load(rig_body_path)
+		var scale_factor: float = 80.0 / 1024.0
+		sprite.scale = Vector2(scale_factor, scale_factor)
+		sprite.set_meta("base_scale", scale_factor)
+		sprite.position = Vector2(center_x, 38.0)
+		_install_hit_flash(sprite)
+		stage.add_child(sprite)
+
+		# Primary breathing cycle (vertical bobbing + thoracic squash & stretch)
+		var body_tween := sprite.create_tween().set_loops()
+		body_tween.tween_property(sprite, "position:y", 34.5, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		body_tween.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		body_tween.tween_property(sprite, "position:y", 39.5, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		body_tween.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+		# 4. Floating Foxfire Spirit Flame Orb (Forefront asymmetric Lissajous hover)
+		var orb := Sprite2D.new()
+		orb.name = "PlayerSpiritOrb"
+		orb.texture = load("res://assets/characters/fox_rig/fox_orb.png")
+		var orb_scale := Vector2(0.038, 0.038)
+		orb.scale = orb_scale
+		var base_orb_pos := Vector2(center_x + 36.0, 18.0)
+		orb.position = base_orb_pos
+		orb.z_index = 1
+		orb.set_meta("base_pos", base_orb_pos)
+		stage.add_child(orb)
+		sprite.set_meta("rig_orb", orb)
+
+		var orb_x := orb.create_tween().set_loops()
+		orb_x.tween_property(orb, "position:x", base_orb_pos.x + 5.0, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		orb_x.tween_property(orb, "position:x", base_orb_pos.x - 5.0, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+		var orb_y := orb.create_tween().set_loops()
+		orb_y.tween_property(orb, "position:y", base_orb_pos.y - 6.0, 1.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		orb_y.tween_property(orb, "position:y", base_orb_pos.y + 4.0, 1.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+		var orb_rot := orb.create_tween().set_loops()
+		orb_rot.tween_property(orb, "rotation_degrees", 360.0, 7.0).as_relative()
+
+		var orb_glow := orb.create_tween().set_loops()
+		orb_glow.tween_property(orb, "modulate:a", 1.0, 0.85).set_trans(Tween.TRANS_SINE)
+		orb_glow.tween_property(orb, "modulate:a", 0.72, 0.85).set_trans(Tween.TRANS_SINE)
+	else:
+		sprite.texture = g._get_character_texture("fox")
+		var cell_w := float(g._char_atlas_tex.get_width()) / 3.0
+		var scale_factor: float = minf(spr_size.x / cell_w, spr_size.y / cell_w)
+		sprite.scale = Vector2(scale_factor, scale_factor)
+		sprite.set_meta("base_scale", scale_factor)
+		sprite.position = Vector2(center_x, 37.0)
+		_install_hit_flash(sprite)
+		stage.add_child(sprite)
+
+		var idle := sprite.create_tween().set_loops()
+		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+
 	_apply_status_fx(stage, sprite, sprite.position, spr_size.x / 2.0, g.combat.state.player)
 
 	var max_hp: int = int(g.combat.state.player.get("max_health", 60))
