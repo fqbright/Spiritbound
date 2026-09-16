@@ -191,7 +191,7 @@ func _run() -> void:
 
 	var band0: Node = game.map_canvas.get_child(0)
 	var band0_decos: Array = []
-	_find_all_by_script(band0, game.GameIcon, band0_decos)
+	_find_all_by_script(band0, GameIcon, band0_decos)
 	var terrain_decos: Array = []
 	for d in band0_decos:
 		if str(d.kind) in ["pine", "boulder", "hill"]: terrain_decos.append(d)
@@ -329,12 +329,12 @@ func _run() -> void:
 	check(quest_btn != null, "the quest entry point button exists")
 	if quest_btn != null:
 		check(quest_btn.get_node_or_null("NotificationDot") != null, "a claimable quest shows a red dot on the quest entry point")
-		var quest_icon := _find_by_script(quest_btn, game.GameIcon)
+		var quest_icon := _find_by_script(quest_btn, GameIcon)
 		check(quest_icon != null and str(quest_icon.kind) == "quest", "the quest entry point uses a quest icon")
 	var camp_btn: Node = game.root.find_child("CampButton", true, false)
 	check(camp_btn != null, "the camp entry point button exists")
 	if camp_btn != null:
-		var camp_icon := _find_by_script(camp_btn, game.GameIcon)
+		var camp_icon := _find_by_script(camp_btn, GameIcon)
 		check(camp_icon != null and str(camp_icon.kind) == "profile", "the camp entry point uses a profile icon")
 
 	# Compendium milestones (50/80/100% discovery) are the one claimable Camp reward — force
@@ -446,7 +446,7 @@ func _run() -> void:
 			break
 	check(found_rarity_header, "the deck screen groups cards under a rarity section header")
 	var deck_stars: Array = []
-	_find_all_by_script(game.root, game.GameIcon, deck_stars)
+	_find_all_by_script(game.root, GameIcon, deck_stars)
 	var deck_star_kind_found := false
 	for s in deck_stars:
 		if str(s.kind) == "star": deck_star_kind_found = true; break
@@ -696,7 +696,7 @@ func _run() -> void:
 	# all added as direct children — a Container force-fits every direct child to its own
 	# full rect, so the last one added (the cost badge) silently painted over the whole card
 	# and the art never showed at all. Pin both children to their real, distinct sizes.
-	var layout_card: Node = _find_by_script(game.root, game.HandCard)
+	var layout_card: Node = _find_by_script(game.root, HandCard)
 	if layout_card != null:
 		var frame_node: Node = layout_card.get_node_or_null("CardFrame")
 		check(frame_node != null, "hand card has its CardFrame node")
@@ -725,7 +725,7 @@ func _run() -> void:
 	# see HandCard.TAP_THRESHOLD_MS for why); a real drag drops the peek right away, and
 	# _on_touch_up decides afterwards, from how long the touch actually lasted, whether it
 	# was a tap (plays the card) or a hold (just closes the peek without playing).
-	var peek_card: Node = _find_by_script(game.root, game.HandCard)
+	var peek_card: Node = _find_by_script(game.root, HandCard)
 	if peek_card != null:
 		peek_card._on_touch_down(Vector2(58, 84))
 		check(bool(peek_card.is_previewing), "pressing a card shows the enlarged peek immediately, no delay")
@@ -750,7 +750,7 @@ func _run() -> void:
 	var tap_card: Node = null
 	if safe_slot >= 0:
 		var all_hand_cards: Array = []
-		_find_all_by_script(game.root, game.HandCard, all_hand_cards)
+		_find_all_by_script(game.root, HandCard, all_hand_cards)
 		for c in all_hand_cards:
 			if int(c.hand_index) == safe_slot: tap_card = c; break
 	if tap_card != null:
@@ -771,7 +771,7 @@ func _run() -> void:
 			await create_timer(0.1).timeout
 			w += 0.1
 
-	var hold_card: Node = _find_by_script(game.root, game.HandCard)
+	var hold_card: Node = _find_by_script(game.root, HandCard)
 	if hold_card != null:
 		var hand_before_hold: int = game.combat.state.hand.size()
 		hold_card._on_touch_down(Vector2(58, 84))
@@ -785,7 +785,7 @@ func _run() -> void:
 	else:
 		check(false, "found a hand card to test the hold-then-release behaviour on")
 
-	var peek_card_2: Node = _find_by_script(game.root, game.HandCard)
+	var peek_card_2: Node = _find_by_script(game.root, HandCard)
 	if peek_card_2 != null:
 		peek_card_2._on_touch_down(Vector2(58, 84))
 		check(bool(peek_card_2.is_previewing), "a second card also peeks on press")
@@ -801,7 +801,7 @@ func _run() -> void:
 	# touch-up — which used to leave the enlarged card stuck on screen forever. _input()
 	# watches the raw event stream instead, so it should notice the release even though
 	# _on_touch_up() is never called at all here.
-	var peek_card_3: Node = _find_by_script(game.root, game.HandCard)
+	var peek_card_3: Node = _find_by_script(game.root, HandCard)
 	if peek_card_3 != null:
 		peek_card_3._on_touch_down(Vector2(58, 84))
 		check(bool(peek_card_3.is_previewing), "a third card also peeks on press")
@@ -817,7 +817,7 @@ func _run() -> void:
 	# gesture recognition can swallow it outright, independent of anything HandCard itself
 	# does) — the dimmed tap-anywhere backdrop is the actual guarantee that the peek can
 	# always be closed, via Godot's own Button.pressed rather than raw touch tracking.
-	var peek_card_4: Node = _find_by_script(game.root, game.HandCard)
+	var peek_card_4: Node = _find_by_script(game.root, HandCard)
 	if peek_card_4 != null:
 		peek_card_4._on_touch_down(Vector2(58, 84))
 		check(bool(peek_card_4.is_previewing), "a fourth card also peeks on press")
@@ -845,7 +845,7 @@ func _run() -> void:
 	var drawn := 0
 	for k in icon_kinds:
 		for m in icon_marks:
-			var probe: Control = game.GameIcon.new()
+			var probe: Control = GameIcon.new()
 			probe.kind = k
 			probe.flourish = m
 			probe.icon_color = Color("83e4c1")
@@ -862,27 +862,27 @@ func _run() -> void:
 	var data_holder := Control.new()
 	game.root.add_child(data_holder)
 	for item in SpiritContent.EQUIPMENT:
-		var probe: Control = game.GameIcon.new()
+		var probe: Control = GameIcon.new()
 		probe.kind = str(item.get("icon_kind", "sword"))
 		probe.flourish = str(item.get("icon_flourish", ""))
 		probe.icon_color = Color("dab56e")
 		probe.size = Vector2(32, 32)
 		data_holder.add_child(probe)
 	for rune in SpiritContent.RUNES:
-		var probe: Control = game.GameIcon.new()
+		var probe: Control = GameIcon.new()
 		probe.kind = "sigil"
 		probe.flourish = str(rune.get("icon_mark", ""))
 		probe.icon_color = Color(rune.color)
 		probe.size = Vector2(32, 32)
 		data_holder.add_child(probe)
 	for relic in SpiritContent.RELICS:
-		var probe: Control = game.GameIcon.new()
+		var probe: Control = GameIcon.new()
 		probe.kind = "sigil"
 		probe.flourish = str(relic.get("icon_mark", ""))
 		probe.icon_color = Color(relic.color)
 		probe.size = Vector2(32, 32)
 		data_holder.add_child(probe)
-	var dizzy: Control = game.DizzyStars.new()
+	var dizzy: Control = DizzyStars.new()
 	dizzy.size = Vector2(24, 24)
 	data_holder.add_child(dizzy)
 	await process_frame
@@ -919,7 +919,7 @@ func _run() -> void:
 	var halo_count := 0
 	for child in fx_holder.get_children():
 		if child is CPUParticles2D: found_ember = true
-		if child.get_script() == game.DizzyStars: found_dizzy = true
+		if child.get_script() == DizzyStars: found_dizzy = true
 		if child is Panel and child != fx_sprite: halo_count += 1
 	check(found_ember, "burn attaches an ember particle effect to the sprite")
 	check(found_dizzy, "stun attaches the dizzy-stars spinner")
@@ -1083,7 +1083,7 @@ func _run() -> void:
 		if shop_frame_rect != null:
 			check(shop_frame_rect.size.is_equal_approx(tile.size), "the shop tile's frame overlay is sized to the tile, not the texture's own 728x1006 (got %s, tile is %s)" % [shop_frame_rect.size, tile.size])
 		var frame_marks: Array = []
-		_find_all_by_script(tile, game.GameIcon, frame_marks)
+		_find_all_by_script(tile, GameIcon, frame_marks)
 		var star_count := 0
 		for m in frame_marks:
 			if str(m.kind) == "star": star_count += 1
