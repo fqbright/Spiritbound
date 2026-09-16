@@ -32,6 +32,7 @@ var pending_boon_draft := false
 var in_daily_trial := false
 var in_weekly_challenge := false
 var in_draft_battle := false
+var in_boss_rush := false
 var compendium_tab := "cards"
 var camp_tab := "character"
 var battle_speed := 1.0
@@ -1126,6 +1127,7 @@ func _enemy_turn() -> void: await _battle_screen._enemy_turn()
 func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) -> void: await _battle_screen._animate_enemy_action(box, kind, enemy_state)
 func _combat_event(kind: String, payload: Dictionary) -> void: _battle_screen._combat_event(kind, payload)
 func _show_boss_phase_banner(title: String, subtitle: String) -> void: _battle_screen._show_boss_phase_banner(title, subtitle)
+func _leave_battle() -> void: _battle_screen._leave_battle()
 func _show_hold_preview(card: Dictionary) -> void: _battle_screen._show_hold_preview(card)
 func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void: _battle_screen._set_enemy_targeted(enemy_index, targeted)
 # Computed properties, not plain delegator functions, because ui_smoke.gd reads/advances
@@ -1193,6 +1195,7 @@ func show_camp() -> void: _camp_screen.show_camp()
 func show_challenges() -> void: _camp_screen.show_challenges()
 func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
+func begin_boss_rush_battle() -> void: _camp_screen.begin_boss_rush_battle()
 func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()

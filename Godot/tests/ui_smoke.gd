@@ -1689,6 +1689,46 @@ func _run() -> void:
 	await process_frame
 	check(game.root.find_child("WeeklyChallengeEnterBtn", true, false) == null, "the enter button is hidden once this week's challenge is fully cleared")
 
+	# Boss Rush: refights real, already-cleared boss encounters back-to-back (not a synthetic
+	# stat block like Abyss/Daily Trial/Weekly Challenge), escalating each full loop back
+	# through the same pool of bosses.
+	game.profile.unlocked = 5
+	game.profile.boss_rush_floor = 1
+	game.profile.boss_rush_record = 0
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.boss_rush_title", game.lang)), "Boss Rush section renders in the challenges screen")
+	check(game.root.find_child("BossRushEnterBtn", true, false) != null, "BossRushEnterBtn exists in the challenges screen")
+
+	var boss_indices: Array = game.content.boss_rush_boss_indices(int(game.profile.unlocked))
+	check(not boss_indices.is_empty(), "at least one boss is reachable at unlocked=5 (chapter 0's boss)")
+	check(int(boss_indices[0]) == 4, "stage 4 (chapter 0's boss) is the first entry in the boss rush pool")
+
+	game.begin_boss_rush_battle()
+	await process_frame
+	check(game.in_boss_rush, "begin_boss_rush_battle() enters boss rush mode")
+	check(game.current_stage == int(boss_indices[0]), "the first bout fights the first reachable boss stage")
+	var expected_br_health: int = int(round(int(game.content.encounters[game.current_stage].health) * float(game.active_modifier.get("health_scale", 1.0))))
+	check(int(game.combat.state.enemies[0].max_health) == expected_br_health, "bout 1 uses the real boss encounter's own stats, unscaled on the very first loop")
+	var br_gold_before: int = int(game.profile.gold)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(int(game.profile.boss_rush_floor) == 2, "winning a bout advances boss_rush_floor")
+	check(int(game.profile.boss_rush_record) == 1, "boss_rush_record tracks the deepest bout reached")
+	check(int(game.profile.gold) > br_gold_before, "winning a bout grants gold")
+	check(not game.in_boss_rush, "_grant_stage_rewards clears in_boss_rush after granting")
+
+	# Looping back through the same (single-boss) pool a second time should scale the fight up.
+	game.begin_boss_rush_battle()
+	await process_frame
+	check(game.current_stage == int(boss_indices[0]), "cycling back through a one-boss pool refights the same boss")
+	check(float(game.active_modifier.get("health_scale", 1.0)) > 1.0, "a second loop through the same boss pool escalates enemy health")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_boss_rush, "_leave_battle clears in_boss_rush on a loss")
+	check(int(game.profile.boss_rush_floor) == 2, "a loss keeps the current bout number instead of resetting the streak")
+
 	section("== achievements ==")
 	game.profile.achievements_unlocked = {}
 	game.profile.lifetime_stats = {}

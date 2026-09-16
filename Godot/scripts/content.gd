@@ -197,6 +197,16 @@ func node_kind(index: int) -> String:
 func is_boss_kind(kind: String) -> bool:
 	return kind == "boss" or kind == "greatboss"
 
+# Boss Rush reuses the real campaign encounter for each boss stage the player has already
+# reached, rather than a synthetic stat block, so it's a genuine "refight the bosses you've
+# already beaten" mode — gated to `unlocked` so it never spoils or trivializes bosses ahead of
+# where the player actually is.
+func boss_rush_boss_indices(unlocked: int) -> Array:
+	var out: Array = []
+	for i in mini(unlocked + 1, encounters.size()):
+		if is_boss_kind(node_kind(i)): out.append(i)
+	return out
+
 const HERO_CLASSES = [
 	{
 		"id": "fox_spirit",
@@ -1266,6 +1276,14 @@ const UI_TEXT = {
 	"ui.log_revive_fmt": {"zh-Hans":"敌人复活，恢复至 %d 点生命", "en":"Enemy revived with %d HP"},
 	"ui.log_dodge": {"zh-Hans":"敌人闪避了攻击", "en":"Enemy dodged the attack"},
 	"ui.log_rune_set": {"zh-Hans":"符文共鸣触发", "en":"Rune Resonance triggered"},
+	"ui.boss_rush_title": {"zh-Hans":"首领连战", "en":"Boss Rush"},
+	"ui.boss_rush_sub": {"zh-Hans":"连续挑战已征服的首领，负伤不愈合", "en":"Refight bosses you've beaten back-to-back, wounds carry over"},
+	"ui.boss_rush_floor_fmt": {"zh-Hans":"连战 %d 场", "en":"Bout %d"},
+	"ui.boss_rush_record_fmt": {"zh-Hans":"最佳战绩 %d 场", "en":"Best Streak %d"},
+	"ui.boss_rush_enter": {"zh-Hans":"进入连战", "en":"Enter Boss Rush"},
+	"ui.boss_rush_stage_label_fmt": {"zh-Hans":"首领连战 · 第 %d 场", "en":"Boss Rush · Bout %d"},
+	"ui.boss_rush_progress_reward_fmt": {"zh-Hans":"连战进度 %d 场，敌人愈发强大！", "en":"Boss Rush progress: %d bouts. Enemies grow stronger!"},
+	"ui.boss_rush_no_boss": {"zh-Hans":"尚未击败任何首领", "en":"No bosses reached yet"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

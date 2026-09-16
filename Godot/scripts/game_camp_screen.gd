@@ -512,6 +512,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
 	list.add_child(_weekly_challenge_section())
+	list.add_child(_boss_rush_section())
 	list.add_child(_abyss_section())
 	list.add_child(_difficulty_tier_section())
 
@@ -867,6 +868,89 @@ func _abyss_section() -> Control:
 	stack.add_child(enter_btn)
 
 	return panel
+
+# Refights real, already-cleared boss encounters back-to-back with no restore between fights
+# beyond a small partial heal (same shape as Abyss), escalating each time the player cycles
+# back through the same boss again — a genuine "how far can my current build carry me" test
+# using the actual bosses fought in campaign, not a synthetic stat block like Abyss/Daily
+# Trial/Weekly Challenge use.
+func _boss_rush_section() -> Control:
+	var unlocked := int(g.profile.unlocked) >= 5
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(0, 110)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var border_col := Color("ff9a4c") if unlocked else Color("2a3d42")
+	panel.add_theme_stylebox_override("panel", g._panel(Color("241407") if unlocked else Color("181210"), 14, border_col))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 6)
+	pad.add_child(stack)
+
+	stack.add_child(g._label(g.t("ui.boss_rush_title"), 16, g.EMBER if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	if not unlocked:
+		stack.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch1"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_boss_rush_battle, Color("2d1f14"), Vector2(240, 40))
+		enter_btn.name = "BossRushEnterBtn"
+		enter_btn.disabled = true
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		stack.add_child(enter_btn)
+		return panel
+
+	stack.add_child(g._label(g.t("ui.boss_rush_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var floor_num: int = int(g.profile.get("boss_rush_floor", 1))
+	var record_num: int = int(g.profile.get("boss_rush_record", 0))
+
+	var stats := HBoxContainer.new()
+	stats.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats.add_theme_constant_override("separation", 16)
+	stats.add_child(g._label(g.tf("ui.boss_rush_floor_fmt", floor_num), 11, g.GOLD))
+	stats.add_child(g._label(g.tf("ui.boss_rush_record_fmt", record_num), 11, g.JADE))
+	stack.add_child(stats)
+
+	var enter_btn := g._button(g.t("ui.boss_rush_enter"), begin_boss_rush_battle, Color("6b3410"), Vector2(240, 40))
+	enter_btn.name = "BossRushEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(enter_btn)
+
+	return panel
+
+func begin_boss_rush_battle() -> void:
+	var boss_indices: Array = g.content.boss_rush_boss_indices(int(g.profile.unlocked))
+	if boss_indices.is_empty():
+		g._toast(g.t("ui.boss_rush_no_boss"))
+		return
+	var floor_num: int = int(g.profile.get("boss_rush_floor", 1))
+	var idx: int = int(boss_indices[(floor_num - 1) % boss_indices.size()])
+	# Every full cycle back through the same set of bosses ramps health/damage further, so the
+	# mode stays a real test instead of a static loop once a player has beaten every boss once.
+	var loop: int = (floor_num - 1) / boss_indices.size()
+	g.in_boss_rush = true
+	g.current_stage = idx
+	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	g.active_modifier = {
+		"id": "boss_rush", "name": "连战淬炼", "name_en": "Gauntlet Tempering",
+		"detail": "敌人生命 +%d%%，攻击 +%d" % [int(loop * 25), loop], "detail_en": "Enemy HP +%d%%, ATK +%d" % [int(loop * 25), loop],
+		"health_scale": 1.0 + float(loop) * 0.25, "damage_bonus": loop, "reward_scale": 1.5,
+	}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
+		g._grant_bestiary_discovery_bonus(g.content.encounters[idx])
+	g.pre_battle_health = int(g.profile.health)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
 
 func begin_abyss_battle() -> void:
 	g.in_abyss = true

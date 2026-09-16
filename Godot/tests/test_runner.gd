@@ -967,6 +967,12 @@ func run() -> void:
 	check(str(log.entries[0].kind) == "card" and int(log.entries[0].turn) == 1, "a recorded entry keeps its kind and turn")
 	check(int(log.entries[1].payload.get("amount", 0)) == 6, "a recorded entry's payload is preserved")
 
+	check(content.node_kind(4) == "boss" and content.is_boss_kind(content.node_kind(4)), "stage 4 is a boss node, sanity-checking the boss rush fixture")
+	check(content.boss_rush_boss_indices(0).is_empty(), "no boss is reachable yet at unlocked=0")
+	check(content.boss_rush_boss_indices(4) == [4], "unlocked=4 (just reached the first boss) exposes exactly that one boss")
+	var many_bosses: Array = content.boss_rush_boss_indices(49)
+	check(many_bosses.size() >= 5 and int(many_bosses[0]) == 4, "unlocked=49 exposes every boss reached so far, still starting from stage 4")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

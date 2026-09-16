@@ -174,6 +174,7 @@ func _current_encounter() -> Dictionary:
 	return g.content.encounters[g.current_stage]
 
 func _current_stage_label() -> String:
+	if g.in_boss_rush: return g.tf("ui.boss_rush_stage_label_fmt", int(g.profile.get("boss_rush_floor", 1)))
 	if g.in_abyss: return g.tf("ui.abyss_stage_label_fmt", int(g.profile.get("abyss_floor", 1)))
 	if g.in_daily_trial: return g.tf("ui.daily_trial_stage_label_fmt", [int(g.profile.daily_trial_record.get("stage", 0)) + 1, SpiritContent.DAILY_TRIAL_STAGES])
 	if g.in_weekly_challenge: return g.tf("ui.weekly_challenge_stage_label_fmt", [int(g.profile.weekly_challenge_record.get("stage", 0)) + 1, SpiritContent.WEEKLY_CHALLENGE_STAGES])
@@ -198,6 +199,22 @@ func _grant_stage_rewards() -> void:
 			g._toast(g.tf("ui.draft_victory_toast", [wins, gold_gain]), g.GOLD)
 		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
 		SpiritSave.write(g.profile)
+		return
+	if g.in_boss_rush:
+		g.in_boss_rush = false
+		var br_floor: int = int(g.profile.get("boss_rush_floor", 1))
+		var br_gold: int = int(round(float(g.content.encounters[g.current_stage].reward) * 1.5))
+		g.profile.gold += br_gold
+		g.profile.boss_rush_floor = br_floor + 1
+		g.profile.boss_rush_record = maxi(int(g.profile.get("boss_rush_record", 0)), br_floor)
+		g.profile.health = mini(60, int(g.combat.state.player.health) + 15)
+		g.pending_rewards = {"gold": br_gold, "equipment": "", "rune": "", "relic": "", "replay": false, "boss_rush": true, "boss_rush_floor": br_floor}
+		SpiritSave.write(g.profile)
+		g._advance_quest("win_battles", 1)
+		g._advance_quest("earn_gold", br_gold)
+		g._advance_quest("clear_elite_or_boss", 1)
+		_grant_mastery_xp(24)
+		g._add_season_xp(60)
 		return
 	if g.in_abyss:
 		g.in_abyss = false
@@ -383,6 +400,11 @@ func show_reward_details() -> void:
 		if bool(g.pending_rewards.get("weekly_challenge_completed", false)):
 			list.add_child(g._label(g.t("ui.weekly_challenge_complete"), 14, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER, true))
 		list.add_child(g._label(g.tf("ui.weekly_challenge_progress_reward_fmt", int(g.pending_rewards.get("weekly_challenge_stage", 0))), 12, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
+		page.add_child(g._button(g.t("ui.return_map"), _finish_reward, g.EMBER, Vector2(0, 50)))
+		return
+
+	if bool(g.pending_rewards.get("boss_rush", false)):
+		list.add_child(g._label(g.tf("ui.boss_rush_progress_reward_fmt", int(g.pending_rewards.get("boss_rush_floor", 0))), 12, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
 		page.add_child(g._button(g.t("ui.return_map"), _finish_reward, g.EMBER, Vector2(0, 50)))
 		return
 

@@ -1755,6 +1755,15 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 
 func _leave_battle() -> void:
 	g.selected_card = -1
+	if g.in_boss_rush:
+		# Same "a loss costs the attempt, not the run" split as Abyss/Daily Trial: the current
+		# bout number stays put so the next attempt re-fights the same boss at the same
+		# escalation, rather than resetting the whole streak.
+		g.in_boss_rush = false
+		g.profile.health = maxi(1, g.pre_battle_health)
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
 	if g.in_abyss:
 		g.in_abyss = false
 		g.profile.health = maxi(1, g.pre_battle_health)
