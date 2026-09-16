@@ -956,9 +956,13 @@ func _art_key_for_enemy(enemy: Dictionary) -> String:
 	return "sentinel"
 
 func _get_card_texture(card_id: String) -> Texture2D:
-	if card_id in ["strike", "ward", "foxfire", "focus", "spiritCurrent"]:
-		return load("res://assets/cards/%s.jpg" % card_id)
-	elif CARD_ATLAS_1_POS.has(card_id):
+	var direct_png := "res://assets/cards/%s.png" % card_id
+	if ResourceLoader.exists(direct_png):
+		return load(direct_png)
+	var direct_jpg := "res://assets/cards/%s.jpg" % card_id
+	if ResourceLoader.exists(direct_jpg):
+		return load(direct_jpg)
+	if CARD_ATLAS_1_POS.has(card_id):
 		if _card_atlas_1 == null: _card_atlas_1 = load("res://assets/cards/new-cards-atlas.jpg")
 		var coord: Vector2i = CARD_ATLAS_1_POS[card_id]
 		var atlas := AtlasTexture.new()
@@ -974,8 +978,6 @@ func _get_card_texture(card_id: String) -> Texture2D:
 		var cell_size := Vector2(_card_atlas_2.get_width(), _card_atlas_2.get_height()) / Vector2(2.0, 2.0)
 		atlas.region = Rect2(Vector2(coord) * cell_size, cell_size)
 		return atlas
-	elif card_id in ["strike", "ward", "foxfire", "focus"]:
-		return load("res://assets/cards/%s.jpg" % card_id)
 	else:
 		if _card_atlas_1 == null: _card_atlas_1 = load("res://assets/cards/new-cards-atlas.jpg")
 		var atlas := AtlasTexture.new()
@@ -1601,13 +1603,63 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	var copy := VBoxContainer.new()
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	copy.alignment = BoxContainer.ALIGNMENT_CENTER
-	copy.add_child(_label(title, 16, TEXT))
-	copy.add_child(_label(subtitle, 10, JADE))
+	if title == "SPIRITBOUND":
+		var logo := TextureRect.new()
+		logo.name = "SpiritboundLogo"
+		var logo_tex: Texture2D = load("res://assets/ui/spiritbound_logo.png")
+		logo.texture = logo_tex
+		logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		logo.custom_minimum_size = Vector2(104.0, 36.0)
+		logo.size = logo.custom_minimum_size
+		logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		copy.add_child(logo)
+	else:
+		if title != "":
+			copy.add_child(_label(title, 16, TEXT))
+	if subtitle != "":
+		copy.add_child(_label(subtitle, 10, JADE))
 	bar.add_child(copy)
-	var stats := _label("♥ %d/60  ◆ %d" % [profile.health, profile.gold], 11, GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
-	stats.custom_minimum_size.x = 80
-	stats.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	bar.add_child(stats)
+
+	var stats_box := HBoxContainer.new()
+	stats_box.add_theme_constant_override("separation", 4)
+	stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	stats_box.alignment = BoxContainer.ALIGNMENT_END
+
+	var hp_icon := TextureRect.new()
+	hp_icon.texture = load("res://assets/icons/hud_heart.png")
+	hp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hp_icon.custom_minimum_size = Vector2(16, 16)
+	hp_icon.size = hp_icon.custom_minimum_size
+	hp_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_box.add_child(hp_icon)
+
+	var hp_label := _label("%d/60" % int(profile.health), 11, TEXT)
+	hp_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	stats_box.add_child(hp_label)
+
+	var sep := Control.new()
+	sep.custom_minimum_size = Vector2(4, 1)
+	stats_box.add_child(sep)
+
+	var gold_icon := TextureRect.new()
+	gold_icon.texture = load("res://assets/icons/hud_gold.png")
+	gold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	gold_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	gold_icon.custom_minimum_size = Vector2(16, 16)
+	gold_icon.size = gold_icon.custom_minimum_size
+	gold_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	gold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_box.add_child(gold_icon)
+
+	var gold_label := _label("%d" % int(profile.gold), 11, GOLD)
+	gold_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	stats_box.add_child(gold_label)
+
+	bar.add_child(stats_box)
 	return bar
 
 func show_map() -> void:
@@ -1656,7 +1708,7 @@ func show_map() -> void:
 	header_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay_page.add_child(header_holder)
 
-	var header := _header("SPIRITBOUND", t("ui.choose_dest"))
+	var header := _header("SPIRITBOUND", "")
 	var btn_lang := _button(t("ui.lang_toggle"), _toggle_language, Color("17363e"), Vector2(44,34))
 	btn_lang.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(btn_lang)
@@ -1751,14 +1803,13 @@ func show_map() -> void:
 	dock.alignment = BoxContainer.ALIGNMENT_CENTER
 	dock_bg.add_child(dock)
 
-	# Each dock slot pairs a drawn GameIcon (a real little glyph, not a font character doing
-	# double duty) with the button's own text label pushed onto a second line beneath it —
-	# the leading "\n" reserves that top line for the icon instead of drawing over it.
+	# Each dock slot pairs a fancy rendered icon with the button's own text label pushed onto
+	# a second line beneath it — the leading "\n" reserves that top line for the icon.
 	var items = [
-		["card_stack", "ui.deck_btn", show_deck],
-		["shield", "ui.equip_btn", show_loadout],
-		["coin_stack", "ui.shop_btn", show_shop],
-		["arrow", "ui.next_btn", _next_stage]
+		["nav_deck", "ui.deck_btn", show_deck],
+		["nav_equip", "ui.equip_btn", show_loadout],
+		["nav_shop", "ui.shop_btn", show_shop],
+		["nav_next", "ui.next_btn", _next_stage]
 	]
 
 	for i in items.size():
@@ -1779,21 +1830,23 @@ func show_map() -> void:
 		btn.add_theme_stylebox_override("focus", s)
 		btn.pressed.connect(item[2])
 
-		var icon := GameIcon.new()
-		icon.kind = str(item[0])
-		icon.icon_color = GOLD
-		icon.custom_minimum_size = Vector2(20, 20)
+		var icon := TextureRect.new()
+		var icon_tex: Texture2D = load("res://assets/icons/%s.png" % str(item[0]))
+		icon.texture = icon_tex
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(24, 24)
 		icon.size = icon.custom_minimum_size
 		icon.anchor_left = 0.5; icon.anchor_right = 0.5
-		icon.offset_left = -10.0; icon.offset_right = 10.0
-		icon.offset_top = 8.0; icon.offset_bottom = 28.0
+		icon.offset_left = -12.0; icon.offset_right = 12.0
+		icon.offset_top = 6.0; icon.offset_bottom = 30.0
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(icon)
 
 		# The deck slot gets the same "something to check in here" red dot whenever the
 		# player owns a card copy that isn't in their current deck — cards obtained from a
 		# reward chest or bought in the shop used to just sit in the collection unannounced.
-		if str(item[0]) == "card_stack" and _has_unused_cards():
+		if str(item[0]) == "nav_deck" and _has_unused_cards():
 			var dot := Panel.new()
 			dot.name = "NotificationDot"
 			dot.anchor_left = 1.0; dot.anchor_right = 1.0

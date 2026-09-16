@@ -127,8 +127,8 @@ func run() -> void:
 	check(game_inst != null, "Main scene instantiates")
 	check(game_inst._get_character_texture("fox") is AtlasTexture, "character atlas texture slicing works for fox")
 	check(game_inst._get_character_texture("sentinel") is AtlasTexture, "character atlas texture slicing works for sentinel")
-	check(game_inst._get_card_texture("moonfang") is AtlasTexture, "card atlas 1 texture slicing works for moonfang")
-	check(game_inst._get_card_texture("emberClaw") is AtlasTexture, "card atlas 2 texture slicing works for emberClaw")
+	check(game_inst._get_card_texture("moonfang") != null, "card texture moonfang loads")
+	check(game_inst._get_card_texture("emberClaw") != null, "card texture emberClaw loads")
 	check(game_inst._get_card_texture("strike") != null, "card texture strike loads")
 
 	# _card_build_score used to score almost pure rarity, which let the auto-builder fill a

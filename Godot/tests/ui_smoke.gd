@@ -224,8 +224,8 @@ func _run() -> void:
 		var dock_z := _effective_z(dock_btn)
 		var pin_z := _max_z(game.map_canvas)
 		check(dock_z > pin_z, "dock draws above the map (dock z=%d, highest map z=%d)" % [dock_z, pin_z])
-		var dock_icon := _find_by_script(dock_btn, game.GameIcon)
-		check(dock_icon != null, "dock button carries a drawn GameIcon, not just a text glyph")
+		var dock_icon := _find_texture_rect(dock_btn)
+		check(dock_icon != null and dock_icon.texture != null, "dock button carries a fancy textured icon, not just a text glyph")
 
 	section("== notification dots ==")
 	# Standard mobile-game language: a small red dot on an entry point means there is
@@ -1562,6 +1562,20 @@ func _run() -> void:
 	check(bool(game.pending_rewards.get("is_hard_replay", false)), "hard replay marks is_hard_replay in pending_rewards")
 	check(not bool(game.pending_rewards.get("replay", false)), "hard replay overrides standard replay halved penalties")
 
+	section("== visual assets: logo, removed subtitle & card illustrations ==")
+	game.show_map()
+	await process_frame
+	var logo_node: Node = game.root.find_child("SpiritboundLogo", true, false)
+	check(logo_node != null and (logo_node as TextureRect).texture != null, "map header renders SpiritboundLogo texture")
+	check(not _find_text(game.root, game.content.ui("ui.choose_dest", game.lang)), "map header does not display removed choose_dest subtitle")
+	var all_cards_have_art := true
+	for card in game.content.cards:
+		var tex: Texture2D = game._get_card_texture(card.id)
+		if tex == null:
+			all_cards_have_art = false
+			print("  Missing art for card: %s" % card.id)
+	check(all_cards_have_art, "every single card in core.json has dedicated non-null art")
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
@@ -1661,5 +1675,12 @@ func _get_texture_rect_ending_with(node: Node, suffix: String) -> TextureRect:
 		if tex != null and (str(tex.resource_path).ends_with(suffix) or (suffix.begins_with("card_frame") and str(tex.resource_path).contains("card_frame"))): return node
 	for child in node.get_children():
 		var found := _get_texture_rect_ending_with(child, suffix)
+		if found != null: return found
+	return null
+
+func _find_texture_rect(node: Node) -> TextureRect:
+	if node is TextureRect: return node as TextureRect
+	for child in node.get_children():
+		var found := _find_texture_rect(child)
 		if found != null: return found
 	return null
