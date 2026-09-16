@@ -39,6 +39,10 @@ var compendium_tab := "cards"
 var camp_tab := "character"
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
+# Kept deliberately conservative (vs. e.g. iOS Dynamic Type's much wider range) — every screen
+# in this game was laid out and hand-verified assuming a fixed font size, so a large jump risks
+# clipping text against a tightly-sized badge or card tile that nothing here re-flows for.
+const TEXT_SCALE_OPTIONS: Array[float] = [0.9, 1.0, 1.1, 1.2]
 var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
@@ -939,7 +943,11 @@ func _panel(color: Color, radius := 12, border := Color.TRANSPARENT) -> StyleBox
 func _label(text: String, size := 14, color := TEXT, align := HORIZONTAL_ALIGNMENT_LEFT, autowrap := false) -> Label:
 	var value := Label.new(); value.text = text
 	if font_cjk: value.add_theme_font_override("font", font_cjk)
-	value.add_theme_font_size_override("font_size", size)
+	# Godot has no first-party hook into the OS's own Dynamic Type setting, so this multiplier
+	# (Settings' Text Size control, TEXT_SCALE_OPTIONS) is a self-contained approximation
+	# instead — every label in the game is built through this one function, so scaling here
+	# reaches every screen without a per-callsite change.
+	value.add_theme_font_size_override("font_size", int(round(size * float(profile.get("text_scale", 1.0)))))
 	value.add_theme_color_override("font_color", color)
 	value.horizontal_alignment = align
 	if autowrap: value.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1331,6 +1339,24 @@ func show_settings() -> void:
 	motion_box.add_child(motion_btn)
 	list.add_child(motion_box)
 
+	# 4b. Text Size Option (accessibility)
+	var text_size_box := VBoxContainer.new()
+	text_size_box.add_theme_constant_override("separation", 6)
+	text_size_box.add_child(_label(t("ui.settings_text_size"), 12, TEXT))
+	var text_size_row := HBoxContainer.new()
+	text_size_row.add_theme_constant_override("separation", 8)
+	var current_text_scale: float = float(profile.get("text_scale", 1.0))
+	for ts in TEXT_SCALE_OPTIONS:
+		var is_ts_active := is_equal_approx(current_text_scale, ts)
+		var ts_btn := _button(_text_scale_label(ts), func(): _change_text_scale(ts), JADE if is_ts_active else Color("1c333a"), Vector2(0, 36))
+		# Node names can't contain "." (Godot silently rewrites it to "_" anyway) — spelled out
+		# explicitly here rather than relying on that silent rewrite.
+		ts_btn.name = "TextScaleBtn_%s" % String.num(ts, 2).replace(".", "_")
+		ts_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text_size_row.add_child(ts_btn)
+	text_size_box.add_child(text_size_row)
+	list.add_child(text_size_box)
+
 	# 5. Account & Cloud Save Option
 	var account_box := VBoxContainer.new()
 	account_box.add_theme_constant_override("separation", 6)
@@ -1451,6 +1477,18 @@ func _toggle_music_settings() -> void:
 func _toggle_reduce_motion() -> void:
 	var current: bool = bool(profile.get("reduce_motion", false))
 	profile.reduce_motion = not current
+	SpiritSave.write(profile)
+	_close_settings()
+	show_settings()
+
+func _text_scale_label(scale_value: float) -> String:
+	if is_equal_approx(scale_value, TEXT_SCALE_OPTIONS[0]): return t("ui.settings_text_size_small")
+	if is_equal_approx(scale_value, TEXT_SCALE_OPTIONS[2]): return t("ui.settings_text_size_large")
+	if is_equal_approx(scale_value, TEXT_SCALE_OPTIONS[3]): return t("ui.settings_text_size_xlarge")
+	return t("ui.settings_text_size_normal")
+
+func _change_text_scale(scale_value: float) -> void:
+	profile.text_scale = scale_value
 	SpiritSave.write(profile)
 	_close_settings()
 	show_settings()

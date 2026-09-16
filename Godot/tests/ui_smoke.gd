@@ -1887,6 +1887,24 @@ func _run() -> void:
 	var initial_motion: bool = bool(game.profile.get("reduce_motion", false))
 	motion_btn.emit_signal("pressed")
 	check(bool(game.profile.get("reduce_motion", false)) != initial_motion, "toggling reduce motion updates profile")
+
+	# Accessibility: Text Size control. The motion toggle above rebuilt SettingsModal (it's a
+	# fresh node each time show_settings() reopens it), so this re-fetches rather than reusing
+	# the stale settings_modal reference.
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
+	check(is_equal_approx(float(game.profile.get("text_scale", 1.0)), 1.0), "text scale starts at the default (Standard)")
+	var text_scale_normal_btn := settings_modal.find_child("TextScaleBtn_1_0", true, false) as Button
+	check(text_scale_normal_btn != null, "TextScaleBtn_1_0 (Standard) exists in settings")
+	var text_scale_xlarge_btn := settings_modal.find_child("TextScaleBtn_1_2", true, false) as Button
+	check(text_scale_xlarge_btn != null, "TextScaleBtn_1_2 (Extra Large) exists in settings")
+	text_scale_xlarge_btn.emit_signal("pressed")
+	check(is_equal_approx(float(game.profile.get("text_scale", 1.0)), 1.2), "pressing the Extra Large button updates profile.text_scale")
+	check(int(game._label("sample", 14).get_theme_font_size("font_size")) == 17, "a freshly-built label reflects the new text_scale immediately")
+	game.profile.text_scale = 1.0
+
+	# The Extra Large press above rebuilt SettingsModal again — re-fetch once more before
+	# continuing on to the account-linking checks below.
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
 	var apple_btn := settings_modal.find_child("SignInWithAppleBtn", true, false) as Button
 	check(apple_btn != null, "SignInWithAppleBtn exists in settings")
 	var google_btn := settings_modal.find_child("SignInWithGoogleBtn", true, false) as Button

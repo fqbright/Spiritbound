@@ -959,6 +959,14 @@ func run() -> void:
 	check(int(g_pass.profile.season_pass.xp) == 250, "season pass reaches 250 XP")
 	check(int(g_pass.profile.season_pass.level) == 2, "season pass levels up to Lv.2 at 200+ XP")
 
+	# Accessibility: Text Size scales every label, since every screen builds its text through
+	# this one shared _label() helper.
+	g_pass.profile.text_scale = 1.0
+	check(int(g_pass._label("x", 14).get_theme_font_size("font_size")) == 14, "_label() applies no scaling at the default text_scale of 1.0")
+	g_pass.profile.text_scale = 1.2
+	check(int(g_pass._label("x", 14).get_theme_font_size("font_size")) == 17, "_label() scales its font size by profile.text_scale (14 * 1.2 rounds to 17)")
+	check(SpiritGame.TEXT_SCALE_OPTIONS.has(1.0) and SpiritGame.TEXT_SCALE_OPTIONS.size() == 4, "Settings offers exactly the four supported text sizes")
+
 	var log := BattleLog.new()
 	check(log.entries.is_empty(), "a fresh BattleLog starts with no entries")
 	log.record("card", {"card": "strike", "damage": 6}, 1)
