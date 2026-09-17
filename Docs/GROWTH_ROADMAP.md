@@ -130,7 +130,8 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   unaffected (this is 100% a game.gd rendering concern — correctly zero rules-engine change),
   UI smoke +5 checks, 0 failures.
 - `[ ]` **B4 — 本地推送提醒 (local iOS notifications)** — investigation spike done 2026-09-17,
-  still blocked on a human decision
+  design sketched 2026-09-17, still blocked on a human decision to write and verify the native
+  half on a real Mac
   Confirmed: Godot 4 has zero built-in local-notification API, `export_presets.cfg` has no
   `plugins/` entry (no existing Godot iOS plugin scaffolding to extend), and the real iOS
   build is a fresh Xcode project Godot generates into `Godot/build/ios/` on every
@@ -142,8 +143,13 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   skill's own paths assume), and Godot's iOS export step itself requires the same toolchain.
   Writing the native source blind, with no way to compile a single line of it before the user
   tries it on their own Mac, is exactly the risk the original flag was warning about — so this
-  stays unimplemented pending the human decision the original entry already called for, not
-  because the design questions (what to remind about, when) are hard.
+  stays unimplemented pending a human decision, not because the design questions (what to
+  remind about, when) are hard. Per explicit user direction, a full design sketch (triggers,
+  scheduling lifecycle, the GDScript-facing API surface, the native plugin shape, exactly what
+  a future Mac session needs to write and wire up) was written instead of code — see the
+  "B4 design sketch" progress log entry below for the complete plan. **No code from that
+  sketch has been written** — not even the cross-platform GDScript stub the sketch itself
+  flags as safe to build headlessly — so implementation starts from zero whenever picked up.
   *Builds on:* nothing yet — new native surface.
 - `[x]` **C2 — 轮回 / New Game+ 机制** — done 2026-09-17
   Design decisions made (see the checkbox below and the progress log entry for the reasoning
@@ -279,6 +285,77 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-17 — B4 design sketch (local iOS notifications), no code written by user direction
+Follow-on to the same day's investigation entry below, which confirmed this environment can't
+compile, link, or run any native iOS code. Asked how to proceed (leave it blocked / write the
+native code untested anyway / sketch the design only); user chose the design sketch, explicitly
+without touching code. This entry is that sketch — implementation still starts from zero.
+
+**Triggers** (from this item's original one-line scope — "remind players when a login-streak
+day or daily quest is about to expire"):
+- Daily quest expiry: `profile.daily_reset_at` already marks the boundary; `_has_claimable_quest()`
+  already exists as the exact "is there something the player would lose" predicate — schedule a
+  reminder some hours before reset only when it returns true, so a fully-claimed player gets
+  nothing.
+- Login-streak expiry: `profile.login_reward` (days/claimed arrays, same `DAY_SECONDS` boundary
+  as quests) — remind if today's day-slot isn't logged yet and the day is close to rolling over.
+- Natural v2 extension, not required for a first cut: Daily Trial / Weekly Challenge streaks
+  (`daily_trial_record.streak`, same shape).
+
+**Scheduling lifecycle** — cancel-and-reschedule, not "schedule once":
+- Recompute and reschedule on backgrounding, via `game.gd`'s existing
+  `_notification(NOTIFICATION_WM_CLOSE_REQUEST)` handler (currently just calls
+  `SpiritSave.write(profile)` — this is the one existing hook that fires when it actually
+  matters, since a local notification only needs to fire while the app isn't running to remind
+  the player itself).
+- Every reschedule first cancels any pending Spiritbound notifications, then schedules fresh
+  ones from current state. Without this, claiming a quest and reopening/closing the app again
+  would leave a stale, already-resolved reminder pending.
+- Foreground (`_ready()`) cancels everything — no point reminding someone about something
+  while they're already looking at it.
+
+**GDScript-facing API surface** — a `SpiritNotify` wrapper is the one piece of this that IS
+safe to build and headlessly test without any native code at all, since it can be a pure
+no-op everywhere except a real iOS export:
+```gdscript
+# res://scripts/notify_bridge.gd — NOT written; sketch only
+class_name SpiritNotify
+static func request_permission() -> void: ...   # no-op off iOS
+static func schedule(id: String, title: String, body: String, fire_unix_time: int) -> void: ...
+static func cancel(id: String) -> void: ...
+static func cancel_all() -> void: ...
+```
+On an iOS export these forward to `Engine.get_singleton("SpiritIOSNotify")` (the native plugin
+singleton Godot's plugin system registers); everywhere else — headless tests included — they
+return immediately having done nothing. This split is what keeps `combat.gd`'s "no Control, no
+platform dependency" boundary intact one layer up in `game.gd`: nothing in `test_runner.gd`/
+`ui_smoke.gd` would ever need to know this system exists.
+
+**Native plugin shape** — the part that actually needs a Mac:
+- New `Godot/ios/plugins/spirit_notify/` per Godot 4's iOS plugin convention: a `.gdip`
+  descriptor + a Swift file wrapping `UNUserNotificationCenter`, registered as a Godot
+  singleton via the plugin registration macros.
+- Methods mirroring the GDScript surface 1:1: `requestPermission()`; `schedule(id, title, body,
+  fireUnixTime)` building a `UNMutableNotificationContent` + `UNTimeIntervalNotificationTrigger`
+  and calling `UNUserNotificationCenter.current().add(...)`; `cancel(id)` →
+  `removePendingNotificationRequests(withIdentifiers:)`; `cancelAll()` →
+  `removeAllPendingNotificationRequests()`.
+- No `UIBackgroundModes` entitlement needed — a locally-scheduled notification fires from the
+  OS regardless of whether the app is running, unlike a remote push.
+- `export_presets.cfg` needs a `plugins/plugin/spirit_notify=true`-shaped entry once the plugin
+  exists, the same way any other Godot iOS plugin gets opted into an export preset (there is
+  currently no `plugins/` entry at all — confirmed in the investigation entry below).
+
+**Copy**: both notification bodies go in `content.gd`'s `UI_TEXT` like every other user-facing
+string (AGENTS.md rule 2) even though a native call site consumes them, not a Control — the
+Swift wrapper would call `content.ui("push.quest_expiring", lang) % [...]` and hand the
+resulting string across the bridge, keeping every string in the one place translators look.
+
+**Suggested implementation order for whoever has Mac access**: build and headlessly-test the
+`SpiritNotify` no-op wrapper plus the two scheduling call sites first (this alone is fully
+verifiable in this sandbox and worth landing on its own) — only the native plugin itself and
+its export-preset wiring need to move to a real Mac session.
 
 ### 2026-09-17 — Roadmap doc-sync audit, C2 New Game+ shipped, B4 investigated, 3 real bugs found
 Asked to implement "whatever's left in the growth roadmap and gaps." First step was
