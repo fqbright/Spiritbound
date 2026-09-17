@@ -1690,9 +1690,11 @@ func _resolve_play(before: Array, player_shield_before: int = 0, player_health_b
 	for i in g.combat.state.enemies.size():
 		if i < before.size() and before[i] > g.combat.state.enemies[i].health:
 			_animate_attack_slash(i, card_id)
-			await g.get_tree().create_timer(g._battle_delay(0.06)).timeout
+			await g.get_tree().create_timer(g._battle_delay(0.14)).timeout
 			await _animate_enemy_hit(i, before[i] - g.combat.state.enemies[i].health, g.combat.state.enemies[i].health <= 0)
+			await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
 
+	await g.get_tree().create_timer(g._battle_delay(0.25)).timeout
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
@@ -1706,89 +1708,103 @@ func _animate_player_action(card: Dictionary) -> void:
 	var kind: String = str(card.get("kind", "Skill"))
 	var origin: Vector2 = player_sprite.position
 	var base_scale: float = float(player_sprite.get_meta("base_scale", 1.0))
-	var dur: float = g._battle_delay(0.28)
+	var dur: float = g._battle_delay(0.68)
 	var tween := player_sprite.create_tween()
 
 	if kind == "Attack":
 		match hero_id:
 			"fox_spirit":
 				# Step forward, tail fan-out, and spirit orb missile strike!
-				tween.tween_property(player_sprite, "position:x", origin.x + 36.0, dur * 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.42)
+				tween.tween_property(player_sprite, "position:x", origin.x + 38.0, dur * 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.35)
 				var tail: Node2D = player_sprite.get_meta("rig_tail", null) as Node2D
 				if tail and is_instance_valid(tail):
 					var tail_tween := tail.create_tween()
-					tail_tween.tween_property(tail, "rotation_degrees", 24.0, dur * 0.42).set_trans(Tween.TRANS_QUAD)
-					tail_tween.tween_property(tail, "rotation_degrees", 0.0, dur * 0.58).set_trans(Tween.TRANS_ELASTIC)
+					tail_tween.tween_property(tail, "rotation_degrees", 26.0, dur * 0.35).set_trans(Tween.TRANS_QUAD)
+					tail_tween.tween_interval(dur * 0.16)
+					tail_tween.tween_property(tail, "rotation_degrees", 0.0, dur * 0.49).set_trans(Tween.TRANS_ELASTIC)
 				var orb: Node2D = player_sprite.get_meta("rig_orb", null) as Node2D
 				if orb and is_instance_valid(orb):
 					var orb_base: Vector2 = orb.get_meta("base_pos", orb.position)
 					var orb_tween := orb.create_tween()
-					orb_tween.tween_property(orb, "position", Vector2(orb_base.x + 95.0, orb_base.y - 8.0), dur * 0.42).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-					orb_tween.parallel().tween_property(orb, "modulate", Color(2.4, 1.8, 1.0), dur * 0.42)
-					orb_tween.parallel().tween_property(orb, "rotation_degrees", orb.rotation_degrees + 180.0, dur * 0.42)
-					orb_tween.tween_property(orb, "position", orb_base, dur * 0.58).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-					orb_tween.parallel().tween_property(orb, "modulate", Color.WHITE, dur * 0.58)
-				tween.tween_property(player_sprite, "position", origin, dur * 0.58).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.58)
+					orb_tween.tween_property(orb, "position", Vector2(orb_base.x + 105.0, orb_base.y - 10.0), dur * 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+					orb_tween.parallel().tween_property(orb, "modulate", Color(2.4, 1.8, 1.0), dur * 0.35)
+					orb_tween.parallel().tween_property(orb, "rotation_degrees", orb.rotation_degrees + 180.0, dur * 0.35)
+					# Apex hold for visible impact
+					orb_tween.tween_interval(dur * 0.16)
+					orb_tween.tween_property(orb, "position", orb_base, dur * 0.49).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					orb_tween.parallel().tween_property(orb, "modulate", Color.WHITE, dur * 0.49)
+				# Hero strike apex hold
+				tween.tween_interval(dur * 0.16)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.49).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.49)
 			"stone_sentinel":
 				# Heavy ancient shield/hammer charge & ground stomp
-				tween.tween_property(player_sprite, "position:x", origin.x - 14.0, dur * 0.32).set_trans(Tween.TRANS_QUAD)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", -10.0, dur * 0.32)
-				tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.08, base_scale * 0.92), dur * 0.32)
-				tween.tween_property(player_sprite, "position:x", origin.x + 48.0, dur * 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 14.0, dur * 0.30)
-				tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.92, base_scale * 1.15), dur * 0.30)
+				tween.tween_property(player_sprite, "position:x", origin.x - 16.0, dur * 0.32).set_trans(Tween.TRANS_QUAD)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", -12.0, dur * 0.32)
+				tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.10, base_scale * 0.90), dur * 0.32)
+				tween.tween_property(player_sprite, "position:x", origin.x + 52.0, dur * 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 16.0, dur * 0.24)
+				tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.90, base_scale * 1.18), dur * 0.24)
 				tween.tween_callback(func():
-					_shake_screen(3.5)
+					_shake_screen(3.8)
 					g._haptic("heavy"))
-				tween.tween_property(player_sprite, "position", origin, dur * 0.38).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.38)
-				tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.38)
+				# Impact hold
+				tween.tween_interval(dur * 0.16)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.44).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.44)
+				tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.44)
 			"shadow_stalker":
 				# Shadow Dash: phase forward, strike with twin shadow blades, shadow-step back!
-				tween.tween_property(player_sprite, "modulate:a", 0.35, dur * 0.24)
-				tween.parallel().tween_property(player_sprite, "position:x", origin.x + 60.0, dur * 0.24).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 12.0, dur * 0.24)
+				tween.tween_property(player_sprite, "modulate:a", 0.30, dur * 0.26)
+				tween.parallel().tween_property(player_sprite, "position:x", origin.x + 65.0, dur * 0.26).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 14.0, dur * 0.26)
 				tween.tween_callback(func(): g._haptic("tap"))
-				tween.tween_property(player_sprite, "modulate:a", 1.0, dur * 0.36)
-				tween.parallel().tween_property(player_sprite, "position", origin, dur * 0.36).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.36)
+				# Apex strike hold
+				tween.tween_interval(dur * 0.18)
+				tween.tween_property(player_sprite, "modulate:a", 1.0, dur * 0.40)
+				tween.parallel().tween_property(player_sprite, "position", origin, dur * 0.40).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.40)
 			"miasma_witch":
 				# Staff sweep & emerald poison surge!
-				tween.tween_property(player_sprite, "rotation_degrees", -18.0, dur * 0.30).set_trans(Tween.TRANS_SINE)
-				tween.parallel().tween_property(player_sprite, "modulate", Color(0.9, 1.8, 1.1), dur * 0.30)
-				tween.tween_property(player_sprite, "position:x", origin.x + 34.0, dur * 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 20.0, dur * 0.30)
-				tween.parallel().tween_property(player_sprite, "modulate", Color(1.3, 2.5, 1.5), dur * 0.30)
-				tween.tween_property(player_sprite, "position", origin, dur * 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.40)
-				tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.40)
+				tween.tween_property(player_sprite, "rotation_degrees", -20.0, dur * 0.32).set_trans(Tween.TRANS_SINE)
+				tween.parallel().tween_property(player_sprite, "modulate", Color(0.9, 1.8, 1.1), dur * 0.32)
+				tween.tween_property(player_sprite, "position:x", origin.x + 38.0, dur * 0.26).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 22.0, dur * 0.26)
+				tween.parallel().tween_property(player_sprite, "modulate", Color(1.3, 2.6, 1.5), dur * 0.26)
+				# Mist dispersion hold
+				tween.tween_interval(dur * 0.16)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.42).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.42)
+				tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.42)
 			_:
-				tween.tween_property(player_sprite, "position:x", origin.x + 36.0, dur * 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.45)
-				tween.tween_property(player_sprite, "position", origin, dur * 0.55).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.55)
+				tween.tween_property(player_sprite, "position:x", origin.x + 38.0, dur * 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.35)
+				tween.tween_interval(dur * 0.16)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.49).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.49)
 	else:
 		# Non-attack cards (Defend / Skill / Power)
 		var cid: String = str(card.get("id", ""))
 		var is_defense := cid.contains("ward") or cid.contains("hide") or cid.contains("barrier") or cid.contains("guard")
 		if is_defense:
 			# Defensive turtle squash & barrier pulse
-			tween.tween_property(player_sprite, "position:x", origin.x - 10.0, dur * 0.4).set_trans(Tween.TRANS_QUAD)
-			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.16, base_scale * 0.88), dur * 0.4)
-			tween.parallel().tween_property(player_sprite, "modulate", Color(1.2, 1.8, 2.4), dur * 0.4)
-			tween.tween_property(player_sprite, "position", origin, dur * 0.6).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-			tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.6)
-			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.6)
+			tween.tween_property(player_sprite, "position:x", origin.x - 12.0, dur * 0.35).set_trans(Tween.TRANS_QUAD)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.18, base_scale * 0.86), dur * 0.35)
+			tween.parallel().tween_property(player_sprite, "modulate", Color(1.2, 1.8, 2.4), dur * 0.35)
+			tween.tween_interval(dur * 0.18)
+			tween.tween_property(player_sprite, "position", origin, dur * 0.47).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.47)
+			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.47)
 		else:
 			# Levitate & energy surge
-			tween.tween_property(player_sprite, "position:y", origin.y - 18.0, dur * 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.94, base_scale * 1.16), dur * 0.45)
-			tween.parallel().tween_property(player_sprite, "modulate", Color(1.8, 1.5, 2.2), dur * 0.45)
-			tween.tween_property(player_sprite, "position", origin, dur * 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.55)
-			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.55)
+			tween.tween_property(player_sprite, "position:y", origin.y - 20.0, dur * 0.38).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.92, base_scale * 1.18), dur * 0.38)
+			tween.parallel().tween_property(player_sprite, "modulate", Color(1.8, 1.5, 2.2), dur * 0.38)
+			tween.tween_interval(dur * 0.18)
+			tween.tween_property(player_sprite, "position", origin, dur * 0.44).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.44)
+			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.44)
 
 	await tween.finished
 	player_sprite.position = origin
@@ -1824,9 +1840,9 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 	slash.modulate = Color(2.0, 1.7, 1.2, 1.0) if not is_claw else Color(2.2, 0.8, 0.3, 1.0)
 	g.overlay.add_child(slash)
 
-	var dur_slash: float = g._battle_delay(0.36)
+	var dur_slash: float = g._battle_delay(0.55)
 	var tween := slash.create_tween().set_parallel(true)
-	var target_scale := 0.34 if is_claw else 0.30
+	var target_scale := 0.36 if is_claw else 0.32
 	tween.tween_property(slash, "position", enemy_pos + end_offset, dur_slash).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(slash, "scale", Vector2(target_scale, target_scale), dur_slash).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(slash, "rotation_degrees", slash.rotation_degrees + (24.0 if is_claw else 32.0), dur_slash)
@@ -1844,8 +1860,8 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 		burst.modulate = Color(2.5, 2.2, 1.5, 0.95)
 		g.overlay.add_child(burst)
 		var b_tween := burst.create_tween().set_parallel(true)
-		b_tween.tween_property(burst, "scale", Vector2(0.20, 0.20), dur_slash * 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		b_tween.tween_property(burst, "modulate:a", 0.0, dur_slash * 0.4).set_delay(dur_slash * 0.3)
+		b_tween.tween_property(burst, "scale", Vector2(0.22, 0.22), dur_slash * 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		b_tween.tween_property(burst, "modulate:a", 0.0, dur_slash * 0.45).set_delay(dur_slash * 0.35)
 		b_tween.chain().tween_callback(burst.queue_free)
 
 	await tween.finished
@@ -1882,19 +1898,24 @@ func _animate_player_heal(amount: int) -> void:
 	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.10, base_scale * 1.10), g._battle_delay(0.20)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.28)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
-	var popup := g._label("+%d ♥" % amount, 32, Color("80ffb0"), HORIZONTAL_ALIGNMENT_CENTER)
-	popup.position = target_pos - Vector2(50, 36)
-	popup.size = Vector2(100, 34)
+	var popup := g._label("+%d ♥" % amount, 36, Color("80ffb0"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = target_pos - Vector2(60, 40)
+	popup.size = Vector2(120, 40)
 	popup.z_index = 380
-	popup.scale = Vector2(0.5, 0.5)
-	popup.pivot_offset = Vector2(50, 17)
+	popup.scale = Vector2(0.4, 0.4)
+	popup.pivot_offset = Vector2(60, 20)
+	popup.add_theme_color_override("font_outline_color", Color(0.02, 0.14, 0.05, 0.95))
+	popup.add_theme_constant_override("outline_size", 6)
 	g.overlay.add_child(popup)
-	var pop_tween := popup.create_tween().set_parallel(true)
-	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.18)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.65))
-	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.65)).set_delay(g._battle_delay(0.30))
-	pop_tween.chain().tween_callback(popup.queue_free)
-	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
+	var pop_punch := popup.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_punch.tween_property(popup, "scale", Vector2(1.30, 1.30), g._battle_delay(0.16))
+	pop_punch.tween_property(popup, "scale", Vector2(1.10, 1.10), g._battle_delay(0.10))
+	var pop_fade := popup.create_tween()
+	pop_fade.tween_interval(g._battle_delay(0.50))
+	pop_fade.tween_property(popup, "position:y", target_pos.y - 65.0, g._battle_delay(0.45)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	pop_fade.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
+	pop_fade.tween_callback(popup.queue_free)
+	await g.get_tree().create_timer(g._battle_delay(0.50)).timeout
 
 func _animate_player_buff(text: String) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -1927,19 +1948,24 @@ func _animate_player_buff(text: String) -> void:
 	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.14, base_scale * 1.14), g._battle_delay(0.22)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.30)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
-	var popup := g._label(text, 28, Color("ffe066"), HORIZONTAL_ALIGNMENT_CENTER)
-	popup.position = target_pos - Vector2(60, 36)
-	popup.size = Vector2(120, 34)
+	var popup := g._label(text, 32, Color("ffe066"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = target_pos - Vector2(70, 40)
+	popup.size = Vector2(140, 40)
 	popup.z_index = 380
-	popup.scale = Vector2(0.5, 0.5)
-	popup.pivot_offset = Vector2(60, 17)
+	popup.scale = Vector2(0.4, 0.4)
+	popup.pivot_offset = Vector2(70, 20)
+	popup.add_theme_color_override("font_outline_color", Color(0.16, 0.12, 0.02, 0.95))
+	popup.add_theme_constant_override("outline_size", 6)
 	g.overlay.add_child(popup)
-	var pop_tween := popup.create_tween().set_parallel(true)
-	pop_tween.tween_property(popup, "scale", Vector2(1.2, 1.2), g._battle_delay(0.18)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.65))
-	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.65)).set_delay(g._battle_delay(0.30))
-	pop_tween.chain().tween_callback(popup.queue_free)
-	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
+	var pop_punch := popup.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_punch.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.16))
+	pop_punch.tween_property(popup, "scale", Vector2(1.05, 1.05), g._battle_delay(0.10))
+	var pop_fade := popup.create_tween()
+	pop_fade.tween_interval(g._battle_delay(0.50))
+	pop_fade.tween_property(popup, "position:y", target_pos.y - 65.0, g._battle_delay(0.45)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	pop_fade.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
+	pop_fade.tween_callback(popup.queue_free)
+	await g.get_tree().create_timer(g._battle_delay(0.50)).timeout
 
 # Plays when an enemy's "curse" intent actually resolves (combat.gd's _execute_intent,
 # reached via _enemy_turn()'s end_turn() call) — a sigil settling onto the player to mark the
@@ -1966,7 +1992,7 @@ func _animate_player_curse() -> void:
 		seal.modulate = Color(0.72, 1.0, 0.5, 0.0)
 		g.overlay.add_child(seal)
 
-		var dur: float = g._battle_delay(0.7)
+		var dur: float = g._battle_delay(0.85)
 		var tween := seal.create_tween().set_parallel(true)
 		tween.tween_property(seal, "scale", Vector2(0.15, 0.15), dur * 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tween.tween_property(seal, "modulate:a", 0.92, dur * 0.35)
@@ -1975,7 +2001,7 @@ func _animate_player_curse() -> void:
 		tween.chain().tween_callback(seal.queue_free)
 
 	_flash_hit(player_node, Color("9fe066"))
-	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 
 func _animate_player_shield_gain(amount: int) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -1993,12 +2019,6 @@ func _animate_player_shield_gain(amount: int) -> void:
 	if ResourceLoader.exists("res://assets/vfx/spirit_shield_crest.png"):
 		crest.texture = load("res://assets/vfx/spirit_shield_crest.png")
 	crest.position = origin_pos
-	# Every scale keyframe below (0.01 start, 0.09 unfolded, 0.068 flying to the character,
-	# 0.095 fading out) was calibrated against spirit_shield_crest.png's original 1024px
-	# resolution. Downscaling that file to 256px without this correction silently shrank the
-	# whole sequence to a quarter of its intended on-screen size — the crest_scale_fix ratio
-	# rescales every one of those constants together instead of guessing a fresh target size
-	# for each keyframe individually.
 	var crest_tex_w: float = float(crest.texture.get_width()) if crest.texture else 1024.0
 	var crest_scale_fix: float = 1024.0 / crest_tex_w
 	crest.scale = Vector2(0.01, 0.01) * crest_scale_fix
@@ -2006,17 +2026,17 @@ func _animate_player_shield_gain(amount: int) -> void:
 	crest.z_index = 350
 	g.overlay.add_child(crest)
 
-	var dur_open: float = g._battle_delay(0.38)
+	var dur_open: float = g._battle_delay(0.42)
 	var unfold := crest.create_tween().set_parallel(true)
 	unfold.tween_property(crest, "scale", Vector2(0.09, 0.09) * crest_scale_fix, dur_open).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	unfold.tween_property(crest, "modulate:a", 1.0, dur_open * 0.7)
 	unfold.tween_property(crest, "rotation_degrees", -6.0, dur_open)
 	await unfold.finished
 
-	await g.get_tree().create_timer(g._battle_delay(0.10)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.12)).timeout
 
 	# Step 2: 护甲加到人物 (Streaks to Character and Snaps onto Chest)
-	var dur_fly: float = g._battle_delay(0.38)
+	var dur_fly: float = g._battle_delay(0.42)
 	var fly := crest.create_tween().set_parallel(true)
 	fly.tween_property(crest, "position", target_pos, dur_fly).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	fly.tween_property(crest, "rotation_degrees", 0.0, dur_fly)
@@ -2033,22 +2053,27 @@ func _animate_player_shield_gain(amount: int) -> void:
 	g._haptic("impact")
 
 	# Floating shield text popup: "+X 🛡"
-	var popup := g._label("+%d 🛡" % amount, 32, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER)
-	popup.position = target_pos - Vector2(50, 36)
-	popup.size = Vector2(100, 34)
+	var popup := g._label("+%d 🛡" % amount, 36, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = target_pos - Vector2(60, 40)
+	popup.size = Vector2(120, 40)
 	popup.z_index = 380
-	popup.scale = Vector2(0.5, 0.5)
-	popup.pivot_offset = Vector2(50, 17)
+	popup.scale = Vector2(0.4, 0.4)
+	popup.pivot_offset = Vector2(60, 20)
+	popup.add_theme_color_override("font_outline_color", Color(0.04, 0.08, 0.18, 0.95))
+	popup.add_theme_constant_override("outline_size", 6)
 	g.overlay.add_child(popup)
-	var pop_tween := popup.create_tween().set_parallel(true)
-	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.18)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.65))
-	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.65)).set_delay(g._battle_delay(0.30))
-	pop_tween.chain().tween_callback(popup.queue_free)
+	var pop_punch := popup.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_punch.tween_property(popup, "scale", Vector2(1.30, 1.30), g._battle_delay(0.16))
+	pop_punch.tween_property(popup, "scale", Vector2(1.10, 1.10), g._battle_delay(0.10))
+	var pop_fade := popup.create_tween()
+	pop_fade.tween_interval(g._battle_delay(0.50))
+	pop_fade.tween_property(popup, "position:y", target_pos.y - 65.0, g._battle_delay(0.45)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	pop_fade.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
+	pop_fade.tween_callback(popup.queue_free)
 
 	var fade_crest := crest.create_tween()
-	fade_crest.tween_property(crest, "scale", Vector2(0.095, 0.095) * crest_scale_fix, g._battle_delay(0.12))
-	fade_crest.parallel().tween_property(crest, "modulate:a", 0.0, g._battle_delay(0.12))
+	fade_crest.tween_property(crest, "scale", Vector2(0.095, 0.095) * crest_scale_fix, g._battle_delay(0.15))
+	fade_crest.parallel().tween_property(crest, "modulate:a", 0.0, g._battle_delay(0.15))
 	fade_crest.tween_callback(crest.queue_free)
 
 	# Step 3: 灵光结界圈展开保护住人物 (Protective Barrier Ring Bursts Outward Encircling Character)
@@ -2062,14 +2087,14 @@ func _animate_player_shield_gain(amount: int) -> void:
 	ring.modulate = Color(1.3, 1.3, 1.6, 0.95)
 	g.overlay.add_child(ring)
 
-	var dur_deploy: float = g._battle_delay(0.22)
+	var dur_deploy: float = g._battle_delay(0.28)
 	var final_scale: float = 90.0 / 512.0
 	var ring_deploy := ring.create_tween().set_parallel(true)
 	ring_deploy.tween_property(ring, "scale", Vector2(final_scale * 1.3, final_scale * 1.3), dur_deploy).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	ring_deploy.tween_property(ring, "rotation_degrees", 45.0, dur_deploy)
 	await ring_deploy.finished
 
-	var dur_settle: float = g._battle_delay(0.14)
+	var dur_settle: float = g._battle_delay(0.18)
 	var ring_settle := ring.create_tween().set_parallel(true)
 	ring_settle.tween_property(ring, "scale", Vector2(final_scale, final_scale), dur_settle).set_trans(Tween.TRANS_SINE)
 	ring_settle.tween_property(ring, "modulate:a", 0.0, dur_settle)
@@ -2084,7 +2109,7 @@ func _maybe_end_turn() -> void:
 		guard += 1
 		if _has_playable_card(): return
 		if g.combat.state.hand.size() > 0: g._toast(g.t("ui.no_playable"))
-		await g.get_tree().create_timer(g._battle_delay(0.28)).timeout
+		await g.get_tree().create_timer(g._battle_delay(0.65)).timeout
 		if g.combat == null or g.combat.state.phase != "player": return
 		await _enemy_turn()
 
@@ -2096,43 +2121,54 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 			break
 	if box == null: return
 
-	var popup := g._label("−%d" % amount, 34, Color("ff6f5e") if defeated else Color("fff4d3"), HORIZONTAL_ALIGNMENT_CENTER)
-	popup.position = box.global_position + Vector2(box.size.x / 2.0 - 40.0, 34.0)
-	popup.size = Vector2(80, 40)
-	popup.z_index = 200
-	popup.pivot_offset = Vector2(40, 20)
-	popup.scale = Vector2(0.5, 0.5)
+	var popup := g._label("−%d" % amount, 38 if not defeated else 44, Color("ff4d3d") if defeated else Color("fff6cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = box.global_position + Vector2(box.size.x / 2.0 - 50.0, 26.0)
+	popup.size = Vector2(100, 44)
+	popup.z_index = 380
+	popup.pivot_offset = Vector2(50, 22)
+	popup.scale = Vector2(0.4, 0.4)
+	popup.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.06, 0.95))
+	popup.add_theme_constant_override("outline_size", 6)
 	g.overlay.add_child(popup)
+
 	var punch := popup.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	punch.tween_property(popup, "scale", Vector2(1.2, 1.2), 0.14)
-	punch.tween_property(popup, "scale", Vector2.ONE, 0.1)
+	punch.tween_property(popup, "scale", Vector2(1.35, 1.35), g._battle_delay(0.16))
+	punch.tween_property(popup, "scale", Vector2(1.10, 1.10), g._battle_delay(0.10))
 
 	g._haptic("heavy" if defeated else "hit")
 	_shake_screen(10.0 if defeated else clampf(float(amount) * 0.55, 3.5, 8.5))
 
 	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
-	var tween := g.create_tween().set_parallel(true)
 	if sprite:
 		# Initial white hit-stop flash on impact, then red damage tint
-		_flash_hit(sprite, Color(2.5, 2.5, 2.5), 0.08)
+		_flash_hit(sprite, Color(2.5, 2.5, 2.5), g._battle_delay(0.12))
 		# Powerful knockback recoil along attack diagonal (towards top-right)
 		var orig_pos: Vector2 = sprite.position
 		var base_scale: float = float(sprite.get_meta("base_scale", 1.0))
-		var kb_offset := Vector2(16.0, -8.0) if not defeated else Vector2(26.0, -14.0)
-		var kb_dur: float = g._battle_delay(0.24 if defeated else 0.18)
+		var kb_offset := Vector2(18.0, -10.0) if not defeated else Vector2(28.0, -16.0)
+		var kb_dur: float = g._battle_delay(0.42 if defeated else 0.34)
 
 		var kb_tween := sprite.create_tween()
 		kb_tween.tween_property(sprite, "position", orig_pos + kb_offset, kb_dur * 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		kb_tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.18, base_scale * 0.82), kb_dur * 0.28).set_trans(Tween.TRANS_QUAD)
-		kb_tween.tween_property(sprite, "position", orig_pos, kb_dur * 0.72).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-		kb_tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, kb_dur * 0.72).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+		kb_tween.tween_interval(kb_dur * 0.12)
+		kb_tween.tween_property(sprite, "position", orig_pos, kb_dur * 0.60).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+		kb_tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, kb_dur * 0.60).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
-	tween.tween_property(popup, "position:y", popup.position.y - 45.0, 0.45)
-	tween.tween_property(popup, "modulate:a", 0.0, 0.45)
+	var float_tw := popup.create_tween()
+	# Keep fully visible at 1.1 scale for comfortable reading!
+	float_tw.tween_interval(g._battle_delay(0.50))
+	# Then float up and fade out smoothly
+	float_tw.tween_property(popup, "position:y", popup.position.y - 42.0, g._battle_delay(0.45)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	float_tw.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
+
 	if defeated:
-		tween.tween_property(box, "modulate:a", 0.0, 0.4)
-		tween.tween_property(box, "scale", Vector2(0.4, 0.4), 0.4)
-	await tween.finished
+		var def_tw := box.create_tween().set_parallel(true)
+		def_tw.tween_interval(g._battle_delay(0.20))
+		def_tw.chain().tween_property(box, "modulate:a", 0.0, g._battle_delay(0.45))
+		def_tw.parallel().tween_property(box, "scale", Vector2(0.4, 0.4), g._battle_delay(0.45))
+
+	await float_tw.finished
 	popup.queue_free()
 	if defeated and g.combat != null and g.combat.state.phase == "won":
 		await _animate_finishing_blow(box, sprite)
@@ -2201,7 +2237,7 @@ func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 		tw.tween_property(sprite, "scale", Vector2.ONE * (base_scale * 1.3), g._battle_delay(0.25))
 
 	await tw.finished
-	await g.get_tree().create_timer(g._battle_delay(0.4)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.70)).timeout
 
 	var out_tw := g.create_tween().set_parallel(true)
 	out_tw.tween_property(banner, "modulate:a", 0.0, g._battle_delay(0.25))
@@ -2243,12 +2279,17 @@ func _enemy_turn() -> void:
 		if index >= planned.size() or str(planned[index]).is_empty(): continue
 		await _animate_enemy_action(box, str(planned[index]), g.combat.state.enemies[index])
 		if str(planned[index]) == "curse": await _animate_player_curse()
+		# Add a deliberate pause between multiple enemies' actions!
+		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
 
 	var before_health: int = g.combat.state.player.health
 	g.combat.end_turn()
 	if g.combat.state.player.health < before_health:
 		g._haptic("heavy")
 		await _animate_player_hit(before_health - g.combat.state.player.health)
+
+	# Give a brief pause after all enemy actions and damage resolve before player can act
+	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
 	show_battle()
 
 # The tint a sprite should rest at once its action animation finishes — plain white unless
@@ -2266,119 +2307,132 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 	var tween := sprite.create_tween()
 	match kind:
 		"defend":
-			# Anticipation (crouch/squash) then a small rise, like drawing a shield up.
-			tween.tween_property(sprite, "modulate", Color(0.75, 0.95, 1.6), 0.1)
-			tween.tween_property(sprite, "scale", Vector2(base_scale * 1.14, base_scale * 0.88), 0.12).set_trans(Tween.TRANS_QUAD)
-			tween.tween_property(sprite, "position:y", origin.y - 10.0, 0.12).set_trans(Tween.TRANS_SINE)
-			tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.16).set_trans(Tween.TRANS_BACK)
-			tween.tween_property(sprite, "position:y", origin.y, 0.14)
-			tween.tween_property(sprite, "modulate", rest_tint, 0.14)
+			# Anticipation (crouch/squash) then small rise, shield aura
+			tween.tween_property(sprite, "modulate", Color(0.75, 0.95, 1.6), g._battle_delay(0.18))
+			tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.16, base_scale * 0.86), g._battle_delay(0.26)).set_trans(Tween.TRANS_QUAD)
+			tween.tween_property(sprite, "position:y", origin.y - 12.0, g._battle_delay(0.22)).set_trans(Tween.TRANS_SINE)
+			tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.22)).set_trans(Tween.TRANS_BACK)
+			tween.tween_interval(g._battle_delay(0.18))
+			tween.tween_property(sprite, "position:y", origin.y, g._battle_delay(0.24))
+			tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.24))
 		"empower":
-			# A single decisive stretch-up "power surge" rather than a repeated wobble.
-			tween.tween_property(sprite, "modulate", Color(1.6, 0.9, 1.8), 0.1)
-			tween.tween_property(sprite, "scale", Vector2(base_scale * 0.9, base_scale * 1.22), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.08, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.14).set_trans(Tween.TRANS_ELASTIC)
-			tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.2)
+			# Power surge & roar stretch
+			tween.tween_property(sprite, "modulate", Color(1.8, 0.9, 2.0), g._battle_delay(0.18))
+			tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.88, base_scale * 1.25), g._battle_delay(0.30)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tween.tween_interval(g._battle_delay(0.20))
+			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.08, g._battle_delay(0.20)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.24)).set_trans(Tween.TRANS_ELASTIC)
+			tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.24))
 		"curse":
-			tween.tween_property(sprite, "modulate", Color(0.9, 1.6, 0.7), 0.12)
-			tween.tween_property(sprite, "position:x", origin.x + 7.0, 0.06)
-			tween.tween_property(sprite, "position:x", origin.x - 7.0, 0.06)
-			tween.tween_property(sprite, "position:x", origin.x, 0.06)
-			tween.tween_property(sprite, "modulate", rest_tint, 0.14)
+			tween.tween_property(sprite, "modulate", Color(0.9, 1.8, 0.7), g._battle_delay(0.20))
+			tween.tween_property(sprite, "position:x", origin.x + 10.0, g._battle_delay(0.12))
+			tween.tween_property(sprite, "position:x", origin.x - 10.0, g._battle_delay(0.12))
+			tween.tween_property(sprite, "position:x", origin.x + 6.0, g._battle_delay(0.10))
+			tween.tween_property(sprite, "position:x", origin.x, g._battle_delay(0.10))
+			tween.tween_interval(g._battle_delay(0.16))
+			tween.tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.22))
 		_:
 			var art_key: String = g._art_key_for_enemy(enemy_state)
 			match art_key:
 				"ashRaven", "forgeSpark":
 					# Winged dive / forward rush (往前冲)
 					# Anticipation: rears back with wings/body tilted
-					tween.tween_property(sprite, "position", Vector2(origin.x + 20.0, origin.y - 14.0), 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "rotation_degrees", 16.0, 0.14)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.9, base_scale * 1.12), 0.14)
+					tween.tween_property(sprite, "position", Vector2(origin.x + 24.0, origin.y - 18.0), g._battle_delay(0.30)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 18.0, g._battle_delay(0.30))
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.88, base_scale * 1.15), g._battle_delay(0.30))
 					# Fast swooping lunge forward-down towards the player
-					tween.tween_property(sprite, "position", Vector2(origin.x - 55.0, origin.y + 36.0), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-					tween.parallel().tween_property(sprite, "rotation_degrees", -22.0, 0.11)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.25, base_scale * 0.82), 0.11)
-					tween.parallel().tween_property(sprite, "modulate", Color(2.1, 1.2, 0.8), 0.11)
+					tween.tween_property(sprite, "position", Vector2(origin.x - 58.0, origin.y + 38.0), g._battle_delay(0.20)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "rotation_degrees", -24.0, g._battle_delay(0.20))
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.25, base_scale * 0.82), g._battle_delay(0.20))
+					tween.parallel().tween_property(sprite, "modulate", Color(2.2, 1.2, 0.8), g._battle_delay(0.20))
 					tween.tween_callback(func():
-						_flash_hit(sprite, Color(1.0, 0.8, 0.5), 0.15)
+						_flash_hit(sprite, Color(1.0, 0.8, 0.5), g._battle_delay(0.18))
 						_shake_screen(4.5)
 						g._haptic("tap"))
+					# Pause at strike apex
+					tween.tween_interval(g._battle_delay(0.15))
 					# Elastic recovery
-					tween.tween_property(sprite, "position", origin, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, 0.22)
-					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22)
-					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.22)
+					tween.tween_property(sprite, "position", origin, g._battle_delay(0.38)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, g._battle_delay(0.38))
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.38))
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.38))
 				"sentinel", "embercliff":
 					# Heavy armed swing / arm slash (挥动武器/手臂)
 					# Anticipation: raises arm/weapon high with reverse tilt
-					tween.tween_property(sprite, "position", Vector2(origin.x + 12.0, origin.y - 24.0), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "rotation_degrees", 26.0, 0.16)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.92, base_scale * 1.18), 0.16)
+					tween.tween_property(sprite, "position", Vector2(origin.x + 16.0, origin.y - 28.0), g._battle_delay(0.34)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 28.0, g._battle_delay(0.34))
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.90, base_scale * 1.20), g._battle_delay(0.34))
 					# Fierce diagonal downward sweeping slash
-					tween.tween_property(sprite, "position", Vector2(origin.x - 48.0, origin.y + 30.0), 0.10).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
-					tween.parallel().tween_property(sprite, "rotation_degrees", -32.0, 0.10)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.22, base_scale * 0.85), 0.10)
-					tween.parallel().tween_property(sprite, "modulate", Color(2.0, 1.3, 0.9), 0.10)
+					tween.tween_property(sprite, "position", Vector2(origin.x - 52.0, origin.y + 32.0), g._battle_delay(0.18)).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "rotation_degrees", -34.0, g._battle_delay(0.18))
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.25, base_scale * 0.82), g._battle_delay(0.18))
+					tween.parallel().tween_property(sprite, "modulate", Color(2.1, 1.3, 0.9), g._battle_delay(0.18))
 					tween.tween_callback(func():
-						_flash_hit(sprite, Color(1.0, 0.85, 0.6), 0.16)
+						_flash_hit(sprite, Color(1.0, 0.85, 0.6), g._battle_delay(0.18))
 						_shake_screen(5.5)
 						g._haptic("tap"))
+					# Pause at strike apex
+					tween.tween_interval(g._battle_delay(0.15))
 					# Rotational recoil and settle
-					tween.tween_property(sprite, "position", origin, 0.24).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, 0.24)
-					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.24)
-					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.24)
+					tween.tween_property(sprite, "position", origin, g._battle_delay(0.40)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, g._battle_delay(0.40))
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.40))
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.40))
 				"runebound", "mountainHeart":
 					# Colossal Ground Tremor Slam / Stomp (巨灵践踏)
 					# Slow, heavy rear-up build up
-					tween.tween_property(sprite, "position:y", origin.y - 30.0, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.88, base_scale * 1.32), 0.22)
-					tween.parallel().tween_property(sprite, "modulate", Color(1.6, 1.4, 2.2), 0.22)
+					tween.tween_property(sprite, "position:y", origin.y - 34.0, g._battle_delay(0.42)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.86, base_scale * 1.35), g._battle_delay(0.42))
+					tween.parallel().tween_property(sprite, "modulate", Color(1.7, 1.4, 2.3), g._battle_delay(0.42))
 					# Cataclysmic downward crash
-					tween.tween_property(sprite, "position:y", origin.y + 44.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.38, base_scale * 0.70), 0.09)
+					tween.tween_property(sprite, "position:y", origin.y + 46.0, g._battle_delay(0.16)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.40, base_scale * 0.68), g._battle_delay(0.16))
 					tween.tween_callback(func():
-						_flash_hit(sprite, Color(1.2, 0.9, 1.4), 0.2)
-						_shake_screen(8.0, 0.35)
+						_flash_hit(sprite, Color(1.2, 0.9, 1.4), g._battle_delay(0.22))
+						_shake_screen(8.5, 0.38)
 						g._haptic("heavy"))
+					# Impact hold at ground
+					tween.tween_interval(g._battle_delay(0.18))
 					# Solid rebound back to earth
-					tween.tween_property(sprite, "position", origin, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.28)
-					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.28)
+					tween.tween_property(sprite, "position", origin, g._battle_delay(0.42)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.42))
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.42))
 				"lanternstone", "runeShard":
 					# Magic Channeling & Shockwave Surge (聚气施法)
 					# Floats up, runes flare
-					tween.tween_property(sprite, "position:y", origin.y - 28.0, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.22, 0.18)
-					tween.parallel().tween_property(sprite, "modulate", Color(1.6, 2.2, 2.6), 0.18)
+					tween.tween_property(sprite, "position:y", origin.y - 32.0, g._battle_delay(0.36)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.25, g._battle_delay(0.36))
+					tween.parallel().tween_property(sprite, "modulate", Color(1.7, 2.3, 2.8), g._battle_delay(0.36))
 					# Casts energy pulse towards player
-					tween.tween_property(sprite, "position:x", origin.x - 36.0, 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.15, base_scale * 0.95), 0.10)
+					tween.tween_property(sprite, "position:x", origin.x - 40.0, g._battle_delay(0.18)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.18, base_scale * 0.92), g._battle_delay(0.18))
 					tween.tween_callback(func():
-						_flash_hit(sprite, Color(0.8, 1.5, 2.5), 0.14)
+						_flash_hit(sprite, Color(0.8, 1.5, 2.5), g._battle_delay(0.16))
 						_shake_screen(4.0)
 						g._haptic("tap"))
+					# Hold beam/pulse apex
+					tween.tween_interval(g._battle_delay(0.15))
 					# Drifts back gracefully
-					tween.tween_property(sprite, "position", origin, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.25)
-					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.25)
+					tween.tween_property(sprite, "position", origin, g._battle_delay(0.38)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.38))
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.38))
 				_:
 					# Generic lunging attack
-					tween.tween_property(sprite, "position", Vector2(origin.x + 12.0, origin.y - 14.0), 0.14).set_trans(Tween.TRANS_SINE)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.1, base_scale * 0.9), 0.14)
-					tween.tween_property(sprite, "position", Vector2(origin.x - 42.0, origin.y + 26.0), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-					tween.parallel().tween_property(sprite, "rotation_degrees", -14.0, 0.09)
-					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.85, base_scale * 1.25), 0.09)
-					tween.parallel().tween_property(sprite, "modulate", Color(1.9, 1.1, 0.9), 0.09)
+					tween.tween_property(sprite, "position", Vector2(origin.x + 14.0, origin.y - 16.0), g._battle_delay(0.28)).set_trans(Tween.TRANS_SINE)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.12, base_scale * 0.88), g._battle_delay(0.28))
+					tween.tween_property(sprite, "position", Vector2(origin.x - 46.0, origin.y + 28.0), g._battle_delay(0.16)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "rotation_degrees", -16.0, g._battle_delay(0.16))
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.85, base_scale * 1.25), g._battle_delay(0.16))
+					tween.parallel().tween_property(sprite, "modulate", Color(2.0, 1.1, 0.9), g._battle_delay(0.16))
 					tween.tween_callback(func():
-						_flash_hit(sprite, Color(1.0, 0.75, 0.55), 0.14)
+						_flash_hit(sprite, Color(1.0, 0.75, 0.55), g._battle_delay(0.16))
 						_shake_screen(4.5)
 						g._haptic("tap"))
-					tween.tween_property(sprite, "position", origin, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, 0.22)
-					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22)
-					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.22)
+					tween.tween_interval(g._battle_delay(0.14))
+					tween.tween_property(sprite, "position", origin, g._battle_delay(0.36)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, g._battle_delay(0.36))
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, g._battle_delay(0.36))
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, g._battle_delay(0.36))
 	await tween.finished
 	sprite.position = origin
 	sprite.scale = Vector2.ONE * base_scale
@@ -2386,17 +2440,19 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 	sprite.modulate = rest_tint
 
 func _animate_player_hit(amount: int) -> void:
-	var popup := g._label("−%d" % amount, 38, Color("ff786a"), HORIZONTAL_ALIGNMENT_CENTER)
-	popup.position = Vector2(155, 480)
-	popup.size = Vector2(80, 44)
-	popup.z_index = 200
-	popup.pivot_offset = Vector2(40, 22)
-	popup.scale = Vector2(0.5, 0.5)
+	var popup := g._label("−%d" % amount, 42, Color("ff5242"), HORIZONTAL_ALIGNMENT_CENTER)
+	popup.position = Vector2(145, 475)
+	popup.size = Vector2(100, 48)
+	popup.z_index = 380
+	popup.pivot_offset = Vector2(50, 24)
+	popup.scale = Vector2(0.4, 0.4)
+	popup.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.06, 0.95))
+	popup.add_theme_constant_override("outline_size", 6)
 	g.overlay.add_child(popup)
 	var punch := popup.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	punch.tween_property(popup, "scale", Vector2(1.25, 1.25), 0.14)
-	punch.tween_property(popup, "scale", Vector2.ONE, 0.1)
-	_shake_screen(clampf(float(amount) * 0.7, 4.0, 12.0), 0.3)
+	punch.tween_property(popup, "scale", Vector2(1.35, 1.35), g._battle_delay(0.16))
+	punch.tween_property(popup, "scale", Vector2(1.10, 1.10), g._battle_delay(0.10))
+	_shake_screen(clampf(float(amount) * 0.7, 4.0, 12.0), g._battle_delay(0.35))
 
 	# Red wash over the screen so a hit registers even if you were looking at your hand.
 	var flash := ColorRect.new()
@@ -2405,18 +2461,14 @@ func _animate_player_hit(amount: int) -> void:
 	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.overlay.add_child(flash)
 	var wash := flash.create_tween()
-	wash.tween_property(flash, "color:a", 0.28, 0.07)
-	wash.tween_property(flash, "color:a", 0.0, 0.32)
+	wash.tween_property(flash, "color:a", 0.32, g._battle_delay(0.10))
+	wash.tween_property(flash, "color:a", 0.0, g._battle_delay(0.40))
 	wash.tween_callback(flash.queue_free)
 
-	var tween := g.create_tween().set_parallel(true)
-	tween.tween_property(popup, "position:y", popup.position.y - 60.0, 0.6)
-	tween.tween_property(popup, "modulate:a", 0.0, 0.6)
-	
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node:
-		_flash_hit(player_node, Color("ff5c4a"))
-		_squash_impact(player_node, float(player_node.get_meta("base_scale", 1.0)), 0.24)
+		_flash_hit(player_node, Color("ff5c4a"), g._battle_delay(0.15))
+		_squash_impact(player_node, float(player_node.get_meta("base_scale", 1.0)), g._battle_delay(0.32))
 		if ResourceLoader.exists("res://assets/vfx/spirit_slash_arc.png"):
 			var slash := Sprite2D.new()
 			slash.name = "AnimPlayerHitSlash"
@@ -2429,12 +2481,18 @@ func _animate_player_hit(amount: int) -> void:
 			g.overlay.add_child(slash)
 
 			var slash_tw := slash.create_tween().set_parallel(true)
-			slash_tw.tween_property(slash, "scale", Vector2(0.22, 0.22), 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-			slash_tw.tween_property(slash, "rotation_degrees", -10.0, 0.18)
-			slash_tw.tween_property(slash, "modulate:a", 0.0, 0.10).set_delay(0.08)
+			slash_tw.tween_property(slash, "scale", Vector2(0.24, 0.24), g._battle_delay(0.24)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			slash_tw.tween_property(slash, "rotation_degrees", -10.0, g._battle_delay(0.24))
+			slash_tw.tween_property(slash, "modulate:a", 0.0, g._battle_delay(0.18)).set_delay(g._battle_delay(0.12))
 			slash_tw.chain().tween_callback(slash.queue_free)
 
-	await tween.finished
+	var float_tw := popup.create_tween()
+	# Hold at full opacity for reading!
+	float_tw.tween_interval(g._battle_delay(0.60))
+	float_tw.tween_property(popup, "position:y", popup.position.y - 50.0, g._battle_delay(0.45)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	float_tw.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
+
+	await float_tw.finished
 	popup.queue_free()
 
 func _combat_event(kind: String, payload: Dictionary) -> void:

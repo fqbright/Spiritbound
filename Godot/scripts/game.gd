@@ -516,7 +516,7 @@ func _cycle_speed() -> void:
 func _pass_turn() -> void:
 	if combat == null or combat.state.phase != "player" or resolving: return
 	_toast(t("ui.no_playable"))
-	await get_tree().create_timer(_battle_delay(0.28)).timeout
+	await get_tree().create_timer(_battle_delay(0.65)).timeout
 	if combat == null or combat.state.phase != "player": return
 	await _enemy_turn()
 
@@ -1171,7 +1171,7 @@ func _toast(message: String, color := TEXT) -> void:
 	toast.position = Vector2(65, 110); toast.size = Vector2(260, 40)
 	toast.add_theme_stylebox_override("normal", _panel(Color("153d42"), 14, color))
 	overlay.add_child(toast)
-	var tween := create_tween(); tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.55); tween.tween_property(toast,"modulate:a",0.0,.25); tween.tween_callback(toast.queue_free)
+	var tween := create_tween(); tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.95); tween.tween_property(toast,"modulate:a",0.0,.35); tween.tween_callback(toast.queue_free)
 
 # Thin delegators onto BattleScreen (scripts/game_battle_screen.gd) — see MapScreen's header
 # comment (game_map_screen.gd) for why composition rather than inheritance, and game.gd's own
