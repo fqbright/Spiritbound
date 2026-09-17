@@ -679,6 +679,27 @@ func weekly_challenge_encounter(stage: int) -> Dictionary:
 		"background": (stage - 1) % 5
 	}
 
+const PHANTOM_CULTIVATORS = [
+	{"name": "青云剑修 · 虚影", "name_en": "Qingyun Swordsman · Phantom", "art": "sentinel", "mechanics": {"critical_every": 3}},
+	{"name": "拜月圣女 · 虚影", "name_en": "Moon Maiden · Phantom", "art": "runebound", "mechanics": {"shield_per_turn": 5}},
+	{"name": "狂刀行者 · 虚影", "name_en": "Blade Walker · Phantom", "art": "embercliff", "mechanics": {"enrage": 2}},
+	{"name": "百草灵修 · 虚影", "name_en": "Herbal Cultivator · Phantom", "art": "fox", "mechanics": {"regeneration": 4}},
+]
+
+func phantom_arena_encounter(unlocked: int, seed_idx: int = 0) -> Dictionary:
+	var phantom: Dictionary = PHANTOM_CULTIVATORS[abs(seed_idx) % PHANTOM_CULTIVATORS.size()]
+	var effective_stage := clampi(unlocked, 1, 250)
+	return {
+		"chapter": 102, "level": effective_stage,
+		"health": 35 + effective_stage * 12,
+		"damage": 6 + int(effective_stage * 1.5),
+		"reward": 40 + effective_stage * 5,
+		"name": phantom.name, "name_en": phantom.name_en, "art": phantom.art,
+		"mechanics": phantom.mechanics,
+		"adds": 0,
+		"background": 2
+	}
+
 func hero_class(id: String) -> Dictionary:
 	for h in HERO_CLASSES:
 		if h.id == id: return h
@@ -1432,6 +1453,41 @@ const UI_TEXT = {
 	"ui.sandbox_enter": {"zh-Hans":"进入演练", "en":"Enter Sandbox"},
 	"ui.sandbox_stage_label_fmt": {"zh-Hans":"沙盘演练 · %s", "en":"Sandbox · %s"},
 	"ui.sandbox_complete_toast": {"zh-Hans":"演练结束，存档未受影响", "en":"Practice complete — your save is unaffected"},
+	"ui.idle_harvest_title": {"zh-Hans":"宗门灵修", "en":"Spirit Cultivation"},
+	"ui.idle_harvest_sub": {"zh-Hans":"离线灵气凝聚 · 关卡越高产出越丰厚", "en":"Offline Spiritual Harvest · Scales with stage progress"},
+	"ui.idle_harvest_rate_fmt": {"zh-Hans":"产出速率: %d 灵石/小时", "en":"Rate: %d Gold/Hour"},
+	"ui.idle_harvest_acc_fmt": {"zh-Hans":"已凝聚灵石: %d", "en":"Accumulated Gold: %d"},
+	"ui.idle_harvest_cap_fmt": {"zh-Hans":"灵气蓄水池: %d / 12 小时", "en":"Reservoir: %d / 12 Hours"},
+	"ui.idle_harvest_claim": {"zh-Hans":"收纳灵石", "en":"Harvest Gold"},
+	"ui.idle_harvest_fast": {"zh-Hans":"灵脉飞升 (获取2小时收益)", "en":"Burst Cultivation (+2h)"},
+	"ui.idle_harvest_fast_done": {"zh-Hans":"今日已飞升", "en":"Claimed Today"},
+	"ui.idle_harvest_toast": {"zh-Hans":"成功纳灵获得 %d 灵石！", "en":"Harvested %d Gold!"},
+	"ui.idle_harvest_fast_toast": {"zh-Hans":"灵脉飞升！瞬间凝聚获得 %d 灵石！", "en":"Burst Cultivation! Gained %d Gold!"},
+	"ui.idle_harvest_nav": {"zh-Hans":"灵修", "en":"Cultivate"},
+	"ui.idle_harvest_pill_fmt": {"zh-Hans":"灵修 +%d", "en":"AFK +%d"},
+	"ui.stage_purified_title": {"zh-Hans":"灵脉已净化", "en":"Leyline Purified"},
+	"ui.stage_purified_desc": {"zh-Hans":"该关卡妖煞已被彻底荡涤，不可重复刷取！\n如遇当前关卡阻碍，请通过宗门灵修、精简卡组或虚影演武突破瓶颈。", "en":"This node is fully purified! Past stages cannot be farmed repeatedly.\nWhen stuck, cultivate AFK, tune your deck, or challenge Phantoms."},
+	"ui.stage_purified_goto_cultivate": {"zh-Hans":"宗门灵修", "en":"Cultivate"},
+	"ui.stage_purified_goto_deck": {"zh-Hans":"精简卡组", "en":"Tune Deck"},
+	"ui.stage_purified_goto_phantom": {"zh-Hans":"虚影演武", "en":"Phantom Arena"},
+	"ui.defeat_diag_title": {"zh-Hans":"✦ 仙途复盘与破局建议", "en":"✦ Battle Diagnostics & Tactics"},
+	"ui.defeat_diag_high_cost": {"zh-Hans":"【卡组沉重】平均卡牌费用高达 %.1f 费，导致卡手空过。建议封印冗余高费卡，增加低费灵牌。", "en":"【Heavy Deck】Average card cost is %.1f. High-cost cards clog hand. Consider purging heavy cards."},
+	"ui.defeat_diag_low_shield": {"zh-Hans":"【防御薄弱】卡组防御牌较少（仅 %d 张）。面对敌方猛烈攻势难以招架，建议携带【灵盾】或护身符。", "en":"【Fragile Defense】Few shield cards (%d). Hard to survive telegraphed hits. Add Spirit Shields or defensive gear."},
+	"ui.defeat_diag_boss_thorns": {"zh-Hans":"【反伤克制】敌人拥有荆棘反伤，频繁轻击反受其害。建议携带单次高爆发或破甲重击。", "en":"【Thorns Threat】Enemy has thorns! Multi-hits hurt self. Rely on single-hit bursts or heavy strikes."},
+	"ui.defeat_diag_boss_armor": {"zh-Hans":"【坚甲难破】敌人护盾极高。建议在铁匠铺升级贯穿/穿透符文，或选用破甲流派。", "en":"【Armor Wall】Enemy stacks heavy shield. Use armor-piercing or burn runes."},
+	"ui.defeat_diag_general": {"zh-Hans":"【修为瓶颈】当前首领战力凶悍。可前往【宗门灵修】积攒灵石升级法宝，或精炼核心卡牌！", "en":"【Bottleneck】Boss is formidable. Gather AFK harvest to upgrade gear, or tune core cards!"},
+	"ui.defeat_btn_tune_deck": {"zh-Hans":"去精简卡组", "en":"Tune Deck"},
+	"ui.defeat_btn_cultivate": {"zh-Hans":"去宗门灵修", "en":"Cultivate"},
+	"ui.phantom_arena_title": {"zh-Hans":"虚影论剑台", "en":"Phantom Arena"},
+	"ui.phantom_arena_sub": {"zh-Hans":"同境界修士虚影切磋 · 每日切磋赢取论剑秘宝", "en":"Duel Cultivator Phantoms · Daily chests & rune rewards"},
+	"ui.phantom_arena_challenge": {"zh-Hans":"切磋论剑", "en":"Duel Phantom"},
+	"ui.phantom_arena_daily_won": {"zh-Hans":"今日胜场: %d / 3", "en":"Today's Wins: %d / 3"},
+	"ui.phantom_arena_claimed": {"zh-Hans":"今日论剑宝匣已领取", "en":"Daily Chest Claimed"},
+	"ui.phantom_arena_claim_box": {"zh-Hans":"开启论剑宝匣", "en":"Open Duel Chest"},
+	"ui.phantom_arena_chest_toast": {"zh-Hans":"论剑宝匣开启：获得 %d 灵石！", "en":"Duel Chest: Gained %d Gold!"},
+	"ui.run_recap_deck_highlights": {"zh-Hans":"牌组核心亮点", "en":"Deck Highlights"},
+	"ui.run_recap_share_btn": {"zh-Hans":"保存/分享战报", "en":"Share / Save Recap"},
+	"ui.run_recap_saved_toast": {"zh-Hans":"战报已生成！截图即可分享给道友。", "en":"Recap generated! Screenshot to share with peers."},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

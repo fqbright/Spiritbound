@@ -1009,6 +1009,31 @@ func run() -> void:
 	check(g_pass.profile.daily_trial_record.history.size() == SpiritContent.DAILY_TRIAL_HISTORY_LIMIT, "history stays capped at DAILY_TRIAL_HISTORY_LIMIT entries even as new days keep rolling in")
 	check(int(g_pass.profile.daily_trial_record.history[-1].day) == today_idx - 1, "the cap drops the oldest entries first, keeping the most recent day's own result")
 
+	# Idle Harvest tests
+	g_pass.profile.unlocked = 10
+	check(g_pass.get_idle_harvest_rate() == 10 + 10 * 2, "idle harvest rate scales with unlocked stage (10 + unlocked * 2)")
+	g_pass.profile.idle_harvest = {"last_claim_time": int(Time.get_unix_time_from_system()) - 7200, "last_fast_claim_day": -1}
+	var unclaimed_secs := g_pass.get_idle_harvest_unclaimed_seconds()
+	check(unclaimed_secs >= 7190 and unclaimed_secs <= 7210, "idle harvest correctly computes elapsed seconds")
+	var gold_calc: int = g_pass.get_idle_harvest_unclaimed_gold()
+	check(gold_calc >= 59 and gold_calc <= 61, "idle harvest computes 2 hours of gold at rate 30/h (expected ~60)")
+	var gold_before: int = int(g_pass.profile.gold)
+	var fast_gold := g_pass.fast_idle_harvest()
+	check(fast_gold == 30 * 2, "fast idle harvest grants 2 hours worth of gold immediately")
+	check(int(g_pass.profile.gold) == gold_before + fast_gold, "fast idle harvest adds gold to profile")
+	var second_fast := g_pass.fast_idle_harvest()
+	check(second_fast == 0, "fast idle harvest cannot be claimed more than once on the same day")
+
+	# Defeat Diagnosis tests
+	g_pass.profile.deck = ["strike", "strike", "defend", "defend"]
+	var diag := g_pass.diagnose_battle_defeat()
+	check(diag.has("tip") and diag.has("action"), "diagnose_battle_defeat returns tip and recommended action")
+
+	# Phantom Arena tests
+	var p_enc: Dictionary = content.phantom_arena_encounter(20, 0)
+	check(int(p_enc.chapter) == 102, "phantom arena encounter uses chapter 102 sentinel")
+	check(int(p_enc.health) > 0 and int(p_enc.damage) > 0, "phantom arena encounter scales health and damage")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

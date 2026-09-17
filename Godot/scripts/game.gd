@@ -47,6 +47,7 @@ var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
 var is_hard_replay: bool = false
+var in_phantom_arena: bool = false
 var clipboard_cache: String = ""
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
@@ -1228,6 +1229,7 @@ func begin_sandbox_battle(stage: int) -> void: _camp_screen.begin_sandbox_battle
 func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
+func begin_phantom_arena() -> void: _camp_screen.begin_phantom_arena()
 
 func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Control:
 	# z_index only ever affects render order in Godot — never GUI input dispatch order, which
@@ -1520,6 +1522,182 @@ func _change_text_scale(scale_value: float) -> void:
 	_close_settings()
 	show_settings()
 
+func _ensure_phantom_arena_current() -> void:
+	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	if not profile.has("phantom_arena") or not (profile.phantom_arena is Dictionary):
+		profile.phantom_arena = {"day": today_idx, "wins_today": 0, "claimed_today": false}
+	elif int(profile.phantom_arena.get("day", -1)) != today_idx:
+		profile.phantom_arena.day = today_idx
+		profile.phantom_arena.wins_today = 0
+		profile.phantom_arena.claimed_today = false
+
+func get_idle_harvest_rate() -> int:
+	return 10 + int(profile.unlocked) * 2
+
+func get_idle_harvest_unclaimed_seconds() -> int:
+	var harvest: Dictionary = profile.get("idle_harvest", {})
+	var last_time: int = int(harvest.get("last_claim_time", 0))
+	var now: int = int(Time.get_unix_time_from_system())
+	if last_time <= 0:
+		last_time = now
+		harvest.last_claim_time = now
+		profile.idle_harvest = harvest
+	var diff: int = maxi(0, now - last_time)
+	return mini(diff, 12 * 3600)
+
+func get_idle_harvest_unclaimed_gold() -> int:
+	var secs := get_idle_harvest_unclaimed_seconds()
+	var rate := get_idle_harvest_rate()
+	return int((float(secs) / 3600.0) * float(rate))
+
+func claim_idle_harvest() -> int:
+	var gold_gain := get_idle_harvest_unclaimed_gold()
+	var harvest: Dictionary = profile.get("idle_harvest", {})
+	harvest.last_claim_time = int(Time.get_unix_time_from_system())
+	profile.idle_harvest = harvest
+	if gold_gain > 0:
+		profile.gold += gold_gain
+		SpiritSave.write(profile)
+		_toast(tf("ui.idle_harvest_toast", gold_gain), GOLD)
+	return gold_gain
+
+func fast_idle_harvest() -> int:
+	var harvest: Dictionary = profile.get("idle_harvest", {})
+	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var last_day: int = int(harvest.get("last_fast_claim_day", -1))
+	if last_day == today_idx:
+		_toast(t("ui.idle_harvest_fast_done"), MUTED)
+		return 0
+	harvest.last_fast_claim_day = today_idx
+	profile.idle_harvest = harvest
+	var burst_gold: int = get_idle_harvest_rate() * 2
+	profile.gold += burst_gold
+	SpiritSave.write(profile)
+	_toast(tf("ui.idle_harvest_fast_toast", burst_gold), GOLD)
+	return burst_gold
+
+func show_idle_harvest_modal() -> void:
+	var existing: Node = overlay.get_node_or_null("IdleHarvestModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := _modal_dialog("IdleHarvestModal", func():
+		var ex: Node = overlay.get_node_or_null("IdleHarvestModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 0)
+	var panel_style := _panel(Color("0c1a1f"), 16, GOLD)
+	panel_style.content_margin_left = 18
+	panel_style.content_margin_right = 18
+	panel_style.content_margin_top = 16
+	panel_style.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	var title_lbl := _label(t("ui.idle_harvest_title"), 16, GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title_lbl)
+	var close_btn := _button("✕", func():
+		var ex: Node = overlay.get_node_or_null("IdleHarvestModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	, Color("1c333a"), Vector2(32, 32))
+	close_btn.name = "IdleHarvestCloseBtn"
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	list.add_child(_label(t("ui.idle_harvest_sub"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var info_box := PanelContainer.new()
+	info_box.add_theme_stylebox_override("panel", _panel(Color("132830"), 10, Color("2f5663")))
+	var info_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: info_pad.add_theme_constant_override("margin_%s" % s, 10)
+	info_box.add_child(info_pad)
+	var info_vbox := VBoxContainer.new()
+	info_vbox.add_theme_constant_override("separation", 6)
+	info_pad.add_child(info_vbox)
+
+	var rate_lbl := _label(tf("ui.idle_harvest_rate_fmt", get_idle_harvest_rate()), 13, JADE)
+	info_vbox.add_child(rate_lbl)
+
+	var acc_gold := get_idle_harvest_unclaimed_gold()
+	var acc_lbl := _label(tf("ui.idle_harvest_acc_fmt", acc_gold), 14, Color("ffe17d"))
+	acc_lbl.name = "IdleHarvestAccLabel"
+	info_vbox.add_child(acc_lbl)
+
+	var cap_lbl := _label(tf("ui.idle_harvest_cap_fmt", int(get_idle_harvest_unclaimed_seconds() / 3600)), 11, MUTED)
+	info_vbox.add_child(cap_lbl)
+	list.add_child(info_box)
+
+	var claim_btn := _button(t("ui.idle_harvest_claim"), func():
+		var ex: Node = overlay.get_node_or_null("IdleHarvestModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+		claim_idle_harvest()
+		show_idle_harvest_modal()
+	, GOLD, Vector2(0, 42))
+	claim_btn.name = "IdleHarvestClaimBtn"
+	claim_btn.disabled = acc_gold <= 0
+	list.add_child(claim_btn)
+
+	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var harvest_dict: Dictionary = profile.get("idle_harvest", {})
+	var fast_claimed: bool = int(harvest_dict.get("last_fast_claim_day", -1)) == today_idx
+	var fast_btn := _button(t("ui.idle_harvest_fast_done") if fast_claimed else t("ui.idle_harvest_fast"), func():
+		var ex: Node = overlay.get_node_or_null("IdleHarvestModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+		fast_idle_harvest()
+		show_idle_harvest_modal()
+	, EMBER, Vector2(0, 40))
+	fast_btn.name = "IdleHarvestFastBtn"
+	fast_btn.disabled = fast_claimed
+	list.add_child(fast_btn)
+
+func diagnose_battle_defeat() -> Dictionary:
+	var total_cost := 0
+	var shield_cards := 0
+	for card_id in profile.deck:
+		var card: Dictionary = content.card(str(card_id))
+		total_cost += int(card.get("cost", 1))
+		var is_shield := false
+		for eff in card.get("effects", []):
+			if str(eff.get("op", "")) == "shield":
+				is_shield = true
+				break
+		if is_shield:
+			shield_cards += 1
+	var avg_cost: float = float(total_cost) / maxf(1.0, float(profile.deck.size()))
+	var boss_encounter: Dictionary = content.encounters[current_stage] if current_stage < content.encounters.size() else {}
+	var mechanics: Dictionary = boss_encounter.get("mechanics", {})
+	if mechanics.has("thorns"):
+		return {"tip": t("ui.defeat_diag_boss_thorns"), "action": "deck"}
+	if mechanics.has("shield_per_turn") and int(mechanics.get("shield_per_turn", 0)) >= 5:
+		return {"tip": t("ui.defeat_diag_boss_armor"), "action": "deck"}
+	if avg_cost > 1.8:
+		return {"tip": tf("ui.defeat_diag_high_cost", avg_cost), "action": "deck"}
+	if shield_cards < 3:
+		return {"tip": tf("ui.defeat_diag_low_shield", shield_cards), "action": "deck"}
+	return {"tip": t("ui.defeat_diag_general"), "action": "cultivate"}
+
 func _on_pin_pressed(index: int) -> void:
 	if _is_replay(index) and content.node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
 		_show_replay_mode_prompt(index)
@@ -1546,7 +1724,7 @@ func _show_replay_mode_prompt(index: int) -> void:
 	modal.add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(320, 0)
+	panel.custom_minimum_size = Vector2(330, 0)
 	var panel_style := _panel(Color("0f1e23"), 14, Color("34626d"))
 	panel_style.content_margin_left = 16
 	panel_style.content_margin_right = 16
@@ -1563,7 +1741,7 @@ func _show_replay_mode_prompt(index: int) -> void:
 	# Header with title and close button
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
-	var title_lbl := _label(t("ui.replay_modal_title"), 14, GOLD)
+	var title_lbl := _label(t("ui.stage_purified_title"), 15, JADE)
 	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title_lbl)
 	var close_btn := _button("✕", func():
@@ -1576,6 +1754,33 @@ func _show_replay_mode_prompt(index: int) -> void:
 	head.add_child(close_btn)
 	list.add_child(head)
 
+	list.add_child(_label(t("ui.stage_purified_desc"), 9.5, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var nav_box := HBoxContainer.new()
+	nav_box.add_theme_constant_override("separation", 8)
+	var cult_btn := _button(t("ui.stage_purified_goto_cultivate"), func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+		show_idle_harvest_modal()
+	, GOLD, Vector2(0, 36))
+	cult_btn.name = "PurifiedCultivateBtn"
+	cult_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav_box.add_child(cult_btn)
+
+	var deck_btn := _button(t("ui.stage_purified_goto_deck"), func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+		show_deck()
+	, JADE, Vector2(0, 36))
+	deck_btn.name = "PurifiedDeckBtn"
+	deck_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav_box.add_child(deck_btn)
+	list.add_child(nav_box)
+
 	var normal_btn := _button(t("ui.replay_normal_title"), func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
 		if ex:
@@ -1583,10 +1788,9 @@ func _show_replay_mode_prompt(index: int) -> void:
 			ex.queue_free()
 		is_hard_replay = false
 		_travel_to(index)
-	, Color("17363e"), Vector2(0, 42))
+	, Color("17363e"), Vector2(0, 36))
 	normal_btn.name = "ReplayNormalBtn"
 	list.add_child(normal_btn)
-	list.add_child(_label(t("ui.replay_normal_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	var hard_btn := _button(t("ui.replay_hard_title"), func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
@@ -1595,10 +1799,9 @@ func _show_replay_mode_prompt(index: int) -> void:
 			ex.queue_free()
 		is_hard_replay = true
 		_travel_to(index)
-	, EMBER, Vector2(0, 42))
+	, EMBER, Vector2(0, 36))
 	hard_btn.name = "ReplayHardBtn"
 	list.add_child(hard_btn)
-	list.add_child(_label(t("ui.replay_hard_desc"), 9, Color("ffd8a8"), HORIZONTAL_ALIGNMENT_CENTER, true))
 
 func begin_hard_replay(index: int) -> void:
 	is_hard_replay = true

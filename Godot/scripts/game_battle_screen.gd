@@ -130,7 +130,43 @@ func show_battle() -> void:
 			# that led to a screen with another button labelled "open chest".
 			_advance_to_reward()
 		else:
-			page.add_child(g._button(g.t("ui.return_map"), _leave_battle, g.EMBER, Vector2(0, 50)))
+			var diag: Dictionary = g.diagnose_battle_defeat()
+			var diag_card := PanelContainer.new()
+			diag_card.name = "DefeatDiagnosisCard"
+			diag_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			diag_card.add_theme_stylebox_override("panel", g._panel(Color("101d22"), 14, g.GOLD))
+			var diag_pad := MarginContainer.new()
+			for s in ["left", "right", "top", "bottom"]: diag_pad.add_theme_constant_override("margin_%s" % s, 12)
+			diag_card.add_child(diag_pad)
+
+			var diag_vbox := VBoxContainer.new()
+			diag_vbox.add_theme_constant_override("separation", 8)
+			diag_pad.add_child(diag_vbox)
+
+			var diag_title := g._label(g.t("ui.defeat_diag_title"), 14, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+			diag_vbox.add_child(diag_title)
+
+			var diag_tip := g._label(str(diag.get("tip", "")), 11, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER, true)
+			diag_vbox.add_child(diag_tip)
+
+			var diag_btns := HBoxContainer.new()
+			diag_btns.add_theme_constant_override("separation", 8)
+			var tune_btn := g._button(g.t("ui.defeat_btn_tune_deck"), func(): _leave_battle(); g.show_deck(), g.JADE, Vector2(0, 38))
+			tune_btn.name = "DefeatTuneDeckBtn"
+			tune_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			diag_btns.add_child(tune_btn)
+
+			var cult_btn := g._button(g.t("ui.defeat_btn_cultivate"), func(): _leave_battle(); g.show_idle_harvest_modal(), g.GOLD, Vector2(0, 38))
+			cult_btn.name = "DefeatCultivateBtn"
+			cult_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			diag_btns.add_child(cult_btn)
+			diag_vbox.add_child(diag_btns)
+
+			page.add_child(diag_card)
+
+			var ret_btn := g._button(g.t("ui.return_map"), _leave_battle, g.EMBER, Vector2(0, 46))
+			ret_btn.name = "DefeatReturnBtn"
+			page.add_child(ret_btn)
 
 func _intent_style(intent: Dictionary) -> Dictionary:
 	var kind := str(intent.get("kind", "attack"))
@@ -2248,6 +2284,12 @@ func _leave_battle() -> void:
 		# stays un-cleared so today's next try re-fights it, same "attempt vs. run" split the
 		# comment above already uses for Abyss.
 		g.in_daily_trial = false
+		g.profile.health = maxi(1, g.pre_battle_health)
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
+	if g.in_phantom_arena:
+		g.in_phantom_arena = false
 		g.profile.health = maxi(1, g.pre_battle_health)
 		SpiritSave.write(g.profile)
 		g.show_camp()

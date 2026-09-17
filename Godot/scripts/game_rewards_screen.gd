@@ -182,6 +182,21 @@ func _current_stage_label() -> String:
 	return g.content.stage_name(g.current_stage, g.lang)
 
 func _grant_stage_rewards() -> void:
+	if g.in_phantom_arena:
+		g.in_phantom_arena = false
+		g._ensure_phantom_arena_current()
+		var arena: Dictionary = g.profile.get("phantom_arena", {})
+		var wins: int = int(arena.get("wins_today", 0)) + 1
+		arena.wins_today = wins
+		g.profile.phantom_arena = arena
+		var gold_gain: int = 50 + int(g.profile.unlocked) * 4
+		g.profile.gold += gold_gain
+		g._add_season_xp(50)
+		g.profile.health = 60
+		g._toast(g.tf("ui.phantom_arena_chest_toast", gold_gain), g.GOLD)
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "phantom_arena": true}
+		SpiritSave.write(g.profile)
+		return
 	if g.in_draft_battle:
 		g.in_draft_battle = false
 		var draft: Dictionary = g.profile.get("draft_arena", {})
@@ -687,6 +702,51 @@ func show_run_recap() -> void:
 	stat_row.add_child(g._label(g.tf("ui.recap_cards", int(stats.get("cards_played", 0))), 12, Color("a8dcff")))
 	stat_row.add_child(g._label(g.tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 12, Color("9fd8ff")))
 	stack.add_child(stat_row)
+
+	# Deck highlights: pick up to 3 highest rarity / cost cards from player's deck
+	var highlight_panel := VBoxContainer.new()
+	highlight_panel.name = "RunRecapDeckHighlights"
+	highlight_panel.alignment = BoxContainer.ALIGNMENT_CENTER
+	highlight_panel.add_theme_constant_override("separation", 6)
+	highlight_panel.add_child(g._label(g.t("ui.run_recap_deck_highlights"), 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var highlight_row := HBoxContainer.new()
+	highlight_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	highlight_row.add_theme_constant_override("separation", 8)
+	highlight_panel.add_child(highlight_row)
+
+	var unique_cards: Array = []
+	for cid in g.profile.deck:
+		if not unique_cards.has(str(cid)): unique_cards.append(str(cid))
+	unique_cards.sort_custom(func(a, b):
+		var ca: Dictionary = g.content.card(a)
+		var cb: Dictionary = g.content.card(b)
+		var r_score := {"Rare": 3, "Uncommon": 2, "Common": 1, "Starter": 0}
+		var sa: int = int(r_score.get(str(ca.get("rarity", "Starter")), 0)) * 10 + int(ca.get("cost", 1))
+		var sb: int = int(r_score.get(str(cb.get("rarity", "Starter")), 0)) * 10 + int(cb.get("cost", 1))
+		return sa > sb
+	)
+	var shown_cards: Array = unique_cards.slice(0, mini(3, unique_cards.size()))
+	for cid in shown_cards:
+		var c_data: Dictionary = g.content.card(cid)
+		var c_badge := PanelContainer.new()
+		var c_col: Color = g._card_color(c_data)
+		c_badge.add_theme_stylebox_override("panel", g._panel(Color("16242a"), 8, c_col))
+		var c_pad := MarginContainer.new()
+		for s in ["left", "right"]: c_pad.add_theme_constant_override("margin_%s" % s, 8)
+		for s in ["top", "bottom"]: c_pad.add_theme_constant_override("margin_%s" % s, 4)
+		c_badge.add_child(c_pad)
+		var c_lbl := g._label(g.content.text(c_data.nameKey, g.lang), 10, c_col)
+		c_pad.add_child(c_lbl)
+		highlight_row.add_child(c_badge)
+	stack.add_child(highlight_panel)
+
+	var share_btn := g._button(g.t("ui.run_recap_share_btn"), func():
+		g._toast(g.t("ui.run_recap_saved_toast"), g.GOLD)
+	, g.GOLD, Vector2(200, 40))
+	share_btn.name = "RunRecapShareBtn"
+	share_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(share_btn)
 
 	stack.add_child(g._label(g.t("ui.run_recap_share_hint"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 

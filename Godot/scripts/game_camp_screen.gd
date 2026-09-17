@@ -535,6 +535,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 # own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
+	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
 	list.add_child(_weekly_challenge_section())
@@ -706,6 +707,51 @@ func _split_card_frame(banner_path: String, unlocked: bool, bg_color: Color, bor
 	hsplit.add_child(right_spacer)
 
 	return {"panel": panel, "left": left_stack, "bg": banner}
+
+func _phantom_arena_section() -> Control:
+	g._ensure_phantom_arena_current()
+	var arena: Dictionary = g.profile.get("phantom_arena", {})
+	var wins: int = int(arena.get("wins_today", 0))
+	var claimed: bool = bool(arena.get("claimed_today", false))
+	var bg_col := Color("142226")
+	var border_col := g.JADE
+	var frame := _split_card_frame("res://assets/banners/banner_draft_arena.png", true, bg_col, border_col, 120.0)
+	var panel: PanelContainer = frame.panel
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.t("ui.phantom_arena_title"), 15, g.JADE, HORIZONTAL_ALIGNMENT_LEFT))
+	left.add_child(g._label(g.t("ui.phantom_arena_sub"), 9, Color("bde8df"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var stats := HBoxContainer.new()
+	stats.alignment = BoxContainer.ALIGNMENT_BEGIN
+	stats.add_theme_constant_override("separation", 10)
+	stats.add_child(g._label(g.tf("ui.phantom_arena_daily_won", wins), 10, g.GOLD))
+	left.add_child(stats)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+	var enter_btn := g._button(g.t("ui.phantom_arena_challenge"), begin_phantom_arena, Color("1e4a42"), Vector2(130, 36))
+	enter_btn.name = "PhantomArenaEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	btn_row.add_child(enter_btn)
+
+	if wins >= 1:
+		var claim_btn := g._button(g.t("ui.phantom_arena_claimed") if claimed else g.t("ui.phantom_arena_claim_box"), func():
+			if not claimed:
+				arena.claimed_today = true
+				g.profile.phantom_arena = arena
+				var reward_gold := 100 + int(g.profile.unlocked) * 5
+				g.profile.gold += reward_gold
+				SpiritSave.write(g.profile)
+				g._toast(g.tf("ui.phantom_arena_chest_toast", reward_gold), g.GOLD)
+				show_challenges()
+		, g.GOLD, Vector2(130, 36))
+		claim_btn.name = "PhantomArenaClaimBtn"
+		claim_btn.disabled = claimed
+		btn_row.add_child(claim_btn)
+
+	left.add_child(btn_row)
+	return panel
 
 func _daily_trial_section() -> Control:
 	g._ensure_daily_trial_current()
@@ -1116,6 +1162,27 @@ func begin_abyss_battle() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	g.combat.create(seed, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	if g._mark_discovered("bestiary", str(enc.name)):
+		g._grant_bestiary_discovery_bonus(enc)
+	g.pre_battle_health = int(g.profile.health)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+func begin_phantom_arena() -> void:
+	g._ensure_phantom_arena_current()
+	var arena: Dictionary = g.profile.get("phantom_arena", {})
+	g.in_phantom_arena = true
+	var enc: Dictionary = g.content.phantom_arena_encounter(int(g.profile.unlocked), int(arena.get("wins_today", 0)))
+	g.current_stage = 0
+	g.active_modifier = {}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	var seed_val := int(Time.get_unix_time_from_system())
+	g.combat.create(seed_val, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):

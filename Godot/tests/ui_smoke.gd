@@ -1072,6 +1072,10 @@ func _run() -> void:
 	var recap_boss_name: String = str(recap_boss_encounter.get("name_en", recap_boss_encounter.name)) if game.lang == "en" else str(recap_boss_encounter.name)
 	check(_find_label_text(game.root, game.tf("ui.run_recap_defeated_fmt", recap_boss_name)), "the recap card names the boss actually defeated")
 	check(game.root.find_child("RunRecapStats", true, false) != null, "the recap card shows the battle-performance stat row")
+	check(game.root.find_child("RunRecapDeckHighlights", true, false) != null, "the recap card shows deck highlights")
+	var recap_share_btn: Button = game.root.find_child("RunRecapShareBtn", true, false) as Button
+	check(recap_share_btn != null, "RunRecapShareBtn exists to share run recap")
+	recap_share_btn.pressed.emit()
 	var recap_done_btn: Button = game.root.find_child("RunRecapDoneBtn", true, false) as Button
 	check(recap_done_btn != null, "RunRecapDoneBtn exists to return to the reward flow")
 	recap_done_btn.pressed.emit()
@@ -2281,6 +2285,19 @@ func _run() -> void:
 		tap_button(chk_replay_close, "ReplayCloseBtn")
 		await process_frame
 		check(game.overlay.find_child("ReplayModal", true, false) == null, "ReplayCloseBtn click dismisses ReplayModal")
+
+	# Idle Harvest Modal Clickability
+	game.show_idle_harvest_modal()
+	await process_frame
+	var chk_harvest_modal: Node = game.overlay.find_child("IdleHarvestModal", true, false)
+	check(chk_harvest_modal != null, "IdleHarvestModal opens on call")
+	if chk_harvest_modal != null:
+		_sweep_buttons_clickable(chk_harvest_modal, "IdleHarvestModal")
+		var chk_harvest_close: Control = chk_harvest_modal.find_child("IdleHarvestCloseBtn", true, false) as Control
+		check_clickable(chk_harvest_close, "IdleHarvestCloseBtn")
+		tap_button(chk_harvest_close, "IdleHarvestCloseBtn")
+		await process_frame
+		check(game.overlay.find_child("IdleHarvestModal", true, false) == null, "IdleHarvestCloseBtn click dismisses IdleHarvestModal")
 
 	# 3. Deck Import Modal Clickability
 	game.show_deck()
