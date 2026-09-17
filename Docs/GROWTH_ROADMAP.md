@@ -287,6 +287,50 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — Band 4 farming-loop revalidation; Draft Arena's two stuck-flag bugs fixed
+Follow-up to a prior session's own recommendation ("what should we add/update/adjust next"),
+which had surfaced three items; user asked for all three to be done and fixed, with tests
+guaranteeing each can't regress. This entry covers the first two; the `_resolve_play()`
+tail-race fix is a separate entry below (or above, if you're reading this after it landed).
+
+**Draft Arena (`profile.draft_arena`, `show_spirit_draft`) was completely undocumented — zero
+mentions anywhere in AGENTS.md/this file/ARCHITECTURE.md — and auditing it end to end found two
+real corruption bugs, both now fixed and documented in AGENTS.md's own "Traps" section (see
+there for the generalized lesson: a new `in_<mode>` flag needs a `_leave_battle()` branch, not
+just a `_grant_stage_rewards()` win path):**
+1. `_leave_battle()` had no `in_draft_battle` branch at all — a loss or manual retreat left the
+   flag stuck `true` forever, silently swapping every later battle's deck (campaign included)
+   for the stale 15-card draft deck, since `begin_battle()`'s deck-swap check reads
+   `g.in_draft_battle` unconditionally. The identical gap existed for `in_weekly_challenge` —
+   found by reading `_leave_battle()` end to end and noticing which flags it didn't mention —
+   and got the same fix.
+2. The win-cap ("Grand Champion" at `DRAFT_WIN_CAP` = 6 wins) ending only set `draft.active =
+   false`, leaving `round`/`deck`/`current_pool` stale, so starting a new run right after
+   winning one inherited a corrupted "round 8, deck already has 15 cards" state. Extracted the
+   correct full reset (already used by `_abandon_draft()`) into a shared
+   `SpiritGame._reset_draft_run()`, used by all three ways a run can end now, including a new
+   `DRAFT_LOSS_CAP` (3 losses) ending that finally wires up the `ui.draft_run_ended` string,
+   which existed in `content.gd` but had never been referenced anywhere.
+Verified with this session's usual revert-and-reconfirm: temporarily disabled both new
+`_leave_battle()` branches and confirmed exactly the 8 new/changed `ui_smoke.gd` assertions
+failed, nothing else did, then restored them.
+
+**`balance_probe.gd` extended to model the farming loop the prior curve-revalidation pass had
+explicitly left out of scope** (see ARCHITECTURE.md's "250-stage difficulty curve" section for
+the full before/after numbers). Short version: the probe used to skip every rest/event/merchant
+node outright, meaning it modeled a player who never took a single one of the dozens of free
+Purify/Smith deck upgrades those nodes offer, never socketed a rune for its set bonus, and never
+spent any of the thousands of gold that piled up with nothing to spend it on. Modeling the free
+choices alone pushed the probe's wall from chapter 20 to chapter 27 but still collapsed hard
+after that; the real gap turned out to be the always-available Shop's daily card stock, which
+looked like unreproducible RNG but is actually fully deterministic given a seed — feeding it the
+chapter number as a day-seed proxy and buying one best-scoring affordable card per chapter moved
+the wall to chapter 39 of 50 (78% of the full campaign), with a healthy "occasional retries, not
+a hard collapse" shape the rest of the way per `CONTINUE_PAST_WALLS=true`. **Conclusion: no
+curve constants changed.** The band's own documented intent (its last stretch specifically,
+not the whole band, is meant to lean on hero mastery/Rebirth/IAP rather than pure play) is what
+the data now shows, not a tuning mistake — see ARCHITECTURE.md for the full reasoning.
+
 ### 2026-09-17 — C2 deepened with real A6+ tiers; found profile.difficulty did nothing
 Same user direction as the curve revalidation below ("调整曲线跟C2都做了"): deepen C2 past its
 first pass, which had shipped without a new difficulty tier since building one meant first

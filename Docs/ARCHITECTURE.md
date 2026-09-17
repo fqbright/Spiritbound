@@ -195,3 +195,43 @@ socketed rune sets) was out of scope for this pass. If a future pass wants to ac
 Band 4, modeling that farming loop — not just retrying the same static build — is the
 prerequisite, the same way this pass's own fix depended on modeling deck growth realistically
 rather than assuming a fixed deck throughout.
+
+**2026-09-17 (follow-up): Band 4 revalidated with the farming loop modeled — no curve change
+needed.** The prior pass's "collapses hard soon after chapter 20" reading turned out to be
+mostly a probe limitation, not a curve problem. `balance_probe.gd` now takes the same free,
+zero-risk choices a diligent player would at every rest/event node (Purify a Starter filler
+card into an elite one, then Smith the best-scoring un-maxed card to +1/+2 — see AGENTS.md's
+"Campfire Rest Site Rituals"), sockets a `RUNE_SETS` pair the instant both halves drop from
+elites (Flame/Gale/Stone resonance active for the rest of the run instead of sitting unused in
+`rune_inventory` forever), and spends gold at a merchant node on the Shop Purge Service when a
+Starter still remains. First pass at re-running with just those three (no gold spent
+elsewhere) pushed the wall from chapter 20 to chapter 27 — real progress, but continuing past
+it showed the same total, non-recovering collapse as before, just later.
+
+The gap turned out to be the always-available Shop's randomized daily card stock
+(`roll_shop_stock()`), which the probe's header had listed as out of scope on the assumption
+its RNG couldn't be reproduced — wrong: given a seed it's fully deterministic (a shuffled-index
+pick plus one seeded roll for the sale slot), so it doesn't need a real day boundary, only a
+seed that varies. Feeding it the chapter number as a day-seed proxy and buying the single
+best-scoring affordable card once per chapter (`_maybe_shop_visit`) turned out to matter far
+more than the free rest/event choices: this build was sitting on 8,000+ idle gold with nothing
+else to spend it on (the free Smith/Purify choices cost nothing, and Shop Purge Service only
+absorbs gold while a Starter remains to convert), so a huge resource was going completely
+unused. With shop purchases included, the wall moved to chapter 39 (stage 193, an elite,
+reproducibly — every RNG in this probe is seeded) — Band 4 clears 55/56 stages (98%) up to that
+point at 95% first-try, and `CONTINUE_PAST_WALLS=true` shows the pattern past it is occasional
+retries needed rather than a second collapse (74/90 = 82% cleared through chapter 50, 72%
+first-try, avg attempts climbing gradually to 1.8/stage) — the same "increasingly needs
+investment, not suddenly impossible" shape the four bands are supposed to have, just compressed
+into the last quarter of Band 4 instead of appearing at its very first stage.
+
+Conclusion: **`_chapter_factor`'s ×1.062 Band 4 compounding is not changed by this pass.** A
+build using every free lever plus modest, realistic gold spending clears 78% of the entire
+250-stage campaign (chapter 39 of 50) at high reliability, and continues clearing most of the
+remainder with retries rather than hard-walling — consistent with the band's documented intent
+that its last stretch, not the whole band, is where "hero mastery, Rebirth, and later in-app
+purchases, not better play" become the intended levers past free-to-play farming, rather than
+that gate applying from Band 4's very first stage. Simplifications still not modeled (Rebirth
+bonuses, hero mastery beyond whatever XP a single run accumulates, AFK Harvest gold, more than
+one shop card bought per chapter) all push in the direction of clearing further still, so
+chapter 39 is a floor on what a real diligent player reaches, not a ceiling.

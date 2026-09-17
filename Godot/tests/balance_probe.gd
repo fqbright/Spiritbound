@@ -11,20 +11,37 @@ extends SceneTree
 # minutes of animated UI playthrough.
 #
 # Simplifications, all in the conservative direction (a real diligent player would do at least
-# this well, usually better): no merchant purchases (event/merchant/rest nodes are skipped —
-# rest's heal is moot now that HP resets every battle anyway), no deliberate rune-set
-# socketing (card_runes stays empty, so the swift/cycle/burning/execute/guardian/siphon set
-# bonuses never activate), and a single fixed hero (fox_spirit, the beginner-recommended
+# this well, usually better): no purchases from the always-available Shop's randomized daily
+# stock (its RNG isn't reproduced here — only the deterministic per-stage rest/event/merchant
+# choices below are modeled), and a single fixed hero (fox_spirit, the beginner-recommended
 # class) with no Rebirth bonuses. Equipment/relic/rune drops follow the same deterministic
 # rotation _grant_stage_rewards() uses at difficulty A0; card rewards use the same
 # _card_build_score formula and smart-add replacement rule show_reward_details()'s "smart add"
 # button uses (duplicated here rather than calling into game_shop_deck_screen.gd, the same
 # reason combat.gd's own duplicated-formula precedent exists — see _score_card()).
+#
+# Farming loop (added after the first revalidation pass explicitly left Band 4 unvalidated
+# "beyond the no-farming baseline" — see Docs/GROWTH_ROADMAP.md's progress log): rest nodes and
+# (half of) event nodes offer a free Purify-or-Smith deck upgrade with no gold cost at all (see
+# AGENTS.md's "Campfire Rest Site Rituals"); the original version of this file skipped all
+# rest/event/merchant nodes outright, silently modeling a player who never spends a single one
+# of the dozens of free permanent deck upgrades available across a 250-stage run. That gap —
+# not hero/equipment/relic RNG — was the likely reason Band 4 was flagged as needing "farmed
+# gear" in the first place. _handle_noncombat_node() now takes the same free Purify-then-Smith
+# choice a min-maxer would (see _free_deck_investment()), merchant nodes spend gold on the Shop
+# Purge Service when a Starter filler card remains to convert, and _maybe_socket_rune_sets()
+# immediately activates a RUNE_SETS pair's Flame/Gale/Stone resonance the moment both halves
+# have dropped from elites, instead of leaving them sitting unused in rune_inventory forever.
 
 var content: SpiritContent
 const HERO_ID := "fox_spirit"
 const MAX_STEPS_PER_BATTLE := 60
 const MAX_ATTEMPTS_PER_STAGE := 3
+# Mirrors game_shop_deck_screen.gd's own SHOP_STOCK_COUNT constant — duplicated rather than
+# shared for the same reason _score_card()/_smart_add() are (see file header): that screen
+# class needs a live SpiritGame to construct, which would break this probe's SpiritContent/
+# SpiritCombat-only boundary.
+const SHOP_STOCK_COUNT := 6
 # Diagnostic-only: keep simulating stages after an unbeaten one instead of stopping, to see
 # the curve's shape beyond the first wall. Real players cannot do this — see the print site
 # for why it's still a useful signal. Toggle off for the "how far does a straight run actually
@@ -104,6 +121,46 @@ func _smart_add(card: Dictionary) -> void:
 	if worst < 0: worst = 0
 	deck[worst] = card.id
 
+# Mirrors game_shop_deck_screen.gd's own _shop_price() exactly (see SHOP_STOCK_COUNT's comment
+# for why it's duplicated rather than shared).
+func _shop_price(card: Dictionary, owned: int) -> int:
+	var base := 90 if card.rarity == "Rare" else 60 if card.rarity == "Uncommon" else 40
+	return int(round(float(base) * (1.0 + float(owned) * 0.35) / 5.0)) * 5
+
+# content.roll_shop_stock() is fully deterministic given a seed (a shuffled-indices pick plus
+# one seeded RNG call for the sale slot) — no true randomness to reproduce — so unlike the
+# Shop's real once-per-wall-clock-day reset, this is tractable to model despite the "no
+# purchases from the Shop's randomized daily stock" line in the file header, which is really
+# about not tracking real elapsed time, not about the stock being unreproducible. Approximates
+# "checks the shop roughly once per chapter" by feeding the chapter number itself in as the
+# day-seed proxy — roll_shop_stock() only needs its seed to be deterministic and to vary, not
+# to correspond to a real epoch day — and buys at most the single best-scoring affordable card,
+# same _score_card() ranking _grant_rewards() uses for battle rewards. Conservative: a real
+# min-maxer sitting on several thousand idle gold (nothing else spends it once every free
+# Purify/Smith choice and every Shop Purge Service opportunity is already taken — see
+# _handle_noncombat_node()) could and would buy more than one card a day.
+func _maybe_shop_visit(chapter: int) -> void:
+	var stock: Dictionary = content.roll_shop_stock(chapter, SHOP_STOCK_COUNT)
+	var stock_cards: Array = stock.get("cards", [])
+	var best_i := -1
+	var best_score := -INF
+	var best_price := 0
+	for i in stock_cards.size():
+		var card: Dictionary = stock_cards[i]
+		if card.is_empty(): continue
+		var owned: int = int(collection.get(card.id, 0))
+		var price: int = _shop_price(card, owned)
+		if i == int(stock.get("sale_index", -1)): price = maxi(5, int(round(float(price) * 0.7 / 5.0)) * 5)
+		if price > gold: continue
+		var score: float = _score_card(card)
+		if score > best_score:
+			best_score = score
+			best_i = i
+			best_price = price
+	if best_i >= 0:
+		gold -= best_price
+		_smart_add(stock_cards[best_i])
+
 func _grant_rewards(index: int, kind: String) -> void:
 	var encounter: Dictionary = content.encounters[index]
 	gold += int(round(encounter.reward))
@@ -139,6 +196,80 @@ func _grant_rewards(index: int, kind: String) -> void:
 	elif kind == "elite":
 		var rune: Dictionary = SpiritContent.RUNES[(index / 5) % SpiritContent.RUNES.size()]
 		rune_inventory[rune.id] = int(rune_inventory.get(rune.id, 0)) + 1
+		_maybe_socket_rune_sets()
+
+# Mirrors game_camp_screen.gd's loadout rule exactly (see its "available" computation): a rune
+# can be socketed onto one card per copy owned (rune_inventory[id] minus however many cards
+# already carry that exact rune id). Greedy and immediate — socket a rune's card slot the
+# instant a copy drops, same as a real player would, rather than waiting for both halves of a
+# set to be in hand at once; the resonance itself only activates once both are socketed
+# (content.active_rune_sets() checks card_runes.values() for both ids), so socketing early
+# costs nothing and this converges to full resonance the moment the second half drops.
+func _maybe_socket_rune_sets() -> void:
+	for rune_set in SpiritContent.RUNE_SETS:
+		for rune_id in rune_set.runes:
+			var available: int = int(rune_inventory.get(rune_id, 0)) - card_runes.values().count(rune_id)
+			if available <= 0: continue
+			for card_id in deck:
+				if card_runes.has(card_id): continue
+				card_runes[card_id] = rune_id
+				break
+
+func _has_starter_card() -> bool:
+	for card_id in deck:
+		if str(content.card(card_id).get("rarity", "")) == "Starter": return true
+	return false
+
+# Mirrors show_deck_purge()'s exact replacement mapping (banish a basic starter, transform it
+# into an elite spirit card) while keeping the 25-card deck invariant, since it edits the slot
+# in place rather than removing+adding.
+func _purify_one_starter() -> void:
+	for i in deck.size():
+		var card: Dictionary = content.card(deck[i])
+		if str(card.get("rarity", "")) != "Starter": continue
+		var replacement_id: String = "foxfire" if deck[i] == "strike" else ("mirrorWard" if deck[i] == "ward" else "wildSpark")
+		deck[i] = replacement_id
+		collection[replacement_id] = int(collection.get(replacement_id, 0)) + 1
+		return
+
+# The free choice offered at every rest node and half of all event nodes (see game_rewards_
+# screen.gd's show_event(): rest_purify/rest_smith, or an event's identical Spirit Blessing/
+# Smith buttons) — Purify while a Starter filler card remains (a dead card becomes a real one,
+# the bigger power jump), then Smith the current best-scoring un-maxed card (using the same
+# _score_card() the deck-builder itself uses, so this naturally concentrates upgrades on
+# whichever card is already most worth playing rather than spreading them thin).
+func _free_deck_investment() -> void:
+	if _has_starter_card():
+		_purify_one_starter()
+		return
+	var best_id := ""
+	var best_score := -INF
+	for card_id in deck:
+		if int(upgrades.get(card_id, 0)) >= SpiritContent.MAX_CARD_UPGRADE: continue
+		var card: Dictionary = content.card(card_id)
+		if card.is_empty() or str(card.get("rarity", "")) == "Starter": continue
+		var score: float = _score_card(card)
+		if score > best_score:
+			best_score = score
+			best_id = card_id
+	if not best_id.is_empty():
+		upgrades[best_id] = int(upgrades.get(best_id, 0)) + 1
+
+# rest and (the "event" half of) the level-2 node both offer the same free Purify/Smith choice
+# (show_event()'s "event" and "rest" branches render identical Spirit Blessing/Smith buttons
+# alongside a gold option a diligent min-maxer would not prefer over a permanent upgrade); the
+# "merchant" half of level-2 has no free option, only the paid Shop Purge Service (◆50, same
+# Purify effect as the free one) or a flat +25 gold consolation.
+func _handle_noncombat_node(kind: String) -> void:
+	match kind:
+		"rest", "event":
+			_free_deck_investment()
+		"merchant":
+			if gold >= 50 and _has_starter_card():
+				gold -= 50
+				_purify_one_starter()
+			else:
+				gold += 25
 
 func _simulate(index: int, attempt: int) -> Dictionary:
 	var combat := SpiritCombat.new(content)
@@ -170,9 +301,12 @@ func run() -> void:
 	print("========================================================\n")
 
 	for index in content.encounters.size():
-		var kind: String = content.node_kind(index)
-		if kind in ["event", "merchant", "rest"]: continue
 		var chapter: int = index / 5 + 1
+		if index % 5 == 0: _maybe_shop_visit(chapter)
+		var kind: String = content.node_kind(index)
+		if kind in ["event", "merchant", "rest"]:
+			_handle_noncombat_node(kind)
+			continue
 		var band_key: String = _band_key(chapter)
 		if not bands.has(band_key):
 			bands[band_key] = {"stages": 0, "first_try": 0, "cleared": 0, "attempts": 0, "turns": []}
@@ -217,6 +351,12 @@ func run() -> void:
 	print("\n--------------------------------------------------------")
 	print("Final build: %d gold, %d cards in collection, deck=%s" % [gold, collection.size(), str(deck.size()) + " cards"])
 	print("Equipment: %s | Relics: %s | Runes: %s" % [equipment_slots, relics, rune_inventory])
+	var active_set_names: Array = []
+	for rune_set in SpiritContent.RUNE_SETS:
+		if content.active_rune_sets(card_runes).has(rune_set.id): active_set_names.append(rune_set.name_en)
+	var upgrade_total := 0
+	for lvl in upgrades.values(): upgrade_total += int(lvl)
+	print("Farming: %d starter card(s) remaining, %d total upgrade level(s) applied, active rune sets: %s" % [deck.filter(func(cid): return str(content.card(cid).get("rarity", "")) == "Starter").size(), upgrade_total, active_set_names])
 	if stuck_at >= 0:
 		print("Progress halted at stage %d / %d (chapter %d of %d)." % [stuck_at + 1, content.encounters.size(), stuck_at / 5 + 1, content.encounters.size() / 5])
 	else:
