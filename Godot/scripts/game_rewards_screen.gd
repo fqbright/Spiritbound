@@ -160,7 +160,19 @@ func _grant_mastery_xp(amount: int) -> void:
 func _current_hero_mastery_bonuses() -> Dictionary:
 	var hero_id: String = str(g.profile.hero_class)
 	var xp: int = int(g.profile.get("hero_masteries", {}).get(hero_id, {}).get("xp", 0))
-	return g.content.mastery_bonuses(hero_id, g.content.mastery_level_for_xp(xp))
+	var bonuses: Dictionary = g.content.mastery_bonuses(hero_id, g.content.mastery_level_for_xp(xp)).duplicate()
+	var consumables: Dictionary = g.profile.get("combat_consumables", {})
+	if int(consumables.get("strength", 0)) > 0:
+		bonuses.strength_start = int(bonuses.get("strength_start", 0)) + int(consumables.strength)
+	if int(consumables.get("focus", 0)) > 0:
+		bonuses.focus_start = int(bonuses.get("focus_start", 0)) + int(consumables.focus)
+	if int(consumables.get("energy", 0)) > 0:
+		bonuses.energy_turn1 = int(bonuses.get("energy_turn1", 0)) + int(consumables.energy)
+		bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + 2
+	if int(consumables.get("strength", 0)) > 0 or int(consumables.get("focus", 0)) > 0 or int(consumables.get("energy", 0)) > 0:
+		g.profile.combat_consumables = {"strength": 0, "focus": 0, "energy": 0}
+		SpiritSave.write(g.profile)
+	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into
 # g.content.encounters, while Abyss and the Daily Trial are their own procedural tracks that
@@ -318,7 +330,20 @@ func _grant_stage_rewards() -> void:
 	_grant_mastery_xp(mastery_xp)
 	g._add_season_xp(35)
 
+	# Daily First Win bonus
+	var today_day: int = int(Time.get_unix_time_from_system() / 86400.0)
+	var dfw: Dictionary = g.profile.get("daily_first_win", {})
+	if int(dfw.get("day", -1)) != today_day:
+		dfw.day = today_day
+		dfw.claimed = true
+		g.profile.daily_first_win = dfw
+		g.profile.gold += 50
+		g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + 5
+		g._toast(g.t("ui.daily_first_win_title") + " " + g.t("ui.daily_first_win_desc"), g.GOLD)
+
 	if g.content.is_boss_kind(kind):
+		var boss_jade: int = 20 if kind == "greatboss" else 10
+		g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + boss_jade
 		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
 		var id: String = order[(g.current_stage / 5 + int(g.profile.difficulty) * 2) % order.size()]
 		if not g.profile.equipment_owned.has(id): g.profile.equipment_owned.append(id)

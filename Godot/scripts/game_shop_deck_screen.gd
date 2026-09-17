@@ -192,6 +192,7 @@ func show_shop() -> void:
 	page.add_child(_tab_bar([["curated", g.t("ui.shop_tab_curated")], ["exchange", g.t("ui.shop_tab_exchange")]], g.shop_tab, func(id): g.shop_tab = id; show_shop()))
 
 	if g.shop_tab == "curated":
+		g._maybe_show_tutorial("shop_overview")
 		_build_shop_curated(page)
 	else:
 		_build_shop_exchange(page)
@@ -289,6 +290,8 @@ func _build_shop_curated(page: VBoxContainer) -> void:
 		if has_rune:
 			offers_col.add_child(_shop_rune_tile(stock.rune))
 		content_col.add_child(offers_col)
+
+	content_col.add_child(_shop_specialties_shelf())
 
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -414,6 +417,95 @@ func _shop_rune_tile(rune: Dictionary) -> Control:
 	hbox.add_child(buy_btn)
 
 	return panel
+
+func _shop_specialties_shelf() -> Control:
+	var col := VBoxContainer.new()
+	col.name = "ShopSpecialtiesShelf"
+	col.add_theme_constant_override("separation", 6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var hdr := HBoxContainer.new()
+	hdr.add_child(g._label(g.t("ui.shop_specialties"), 13, Color("78e9c0")))
+	col.add_child(hdr)
+
+	for item in SpiritContent.STORE_CONSUMABLES:
+		var panel := PanelContainer.new()
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		panel.custom_minimum_size.y = 48
+		var item_color: Color = Color(str(item.get("color", "78e9c0")))
+		panel.add_theme_stylebox_override("panel", g._panel(Color("132026"), 10, item_color.darkened(0.5)))
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		panel.add_child(hbox)
+
+		var badge := CenterContainer.new()
+		badge.custom_minimum_size = Vector2(34, 34)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		badge.add_child(g._icon_badge(str(item.get("icon", "🧪")), item_color, 30, 15))
+		hbox.add_child(badge)
+
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.add_theme_constant_override("separation", 1)
+		hbox.add_child(texts)
+
+		var item_name: String = str(item.get("en" if g.lang == "en" else "zh", ""))
+		var item_desc: String = str(item.get("detail_en" if g.lang == "en" else "detail_zh", ""))
+		texts.add_child(g._label(item_name, 11, g.TEXT))
+		texts.add_child(g._label(item_desc, 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var p_gold: int = int(item.get("price_gold", 0))
+		var p_jade: int = int(item.get("price_jade", 0))
+		var can_buy: bool = (p_gold > 0 and int(g.profile.gold) >= p_gold) or (p_jade > 0 and int(g.profile.get("spirit_jade", 0)) >= p_jade)
+
+		var cost_str: String = "◆%d" % p_gold if p_jade == 0 else ("✧%d" % p_jade if p_gold == 0 else "◆%d/✧%d" % [p_gold, p_jade])
+		var buy_btn := g._button(cost_str, func():
+			if p_gold > 0 and int(g.profile.gold) >= p_gold:
+				g.profile.gold -= p_gold
+			elif p_jade > 0 and int(g.profile.get("spirit_jade", 0)) >= p_jade:
+				g.profile.spirit_jade -= p_jade
+			else:
+				g._toast(g.t("ui.shop_no_gold"))
+				return
+
+			match str(item.id):
+				"elixir_vitality":
+					g.profile.health = mini(60, int(g.profile.health) + 25)
+					g._toast(g.tf("ui.shop_item_bought", item_name), g.JADE)
+					SpiritSave.write(g.profile)
+					show_shop()
+				"elixir_might":
+					if not g.profile.has("combat_consumables"): g.profile.combat_consumables = {"strength":0,"focus":0,"energy":0}
+					g.profile.combat_consumables.strength = int(g.profile.combat_consumables.get("strength", 0)) + 2
+					g._toast(g.tf("ui.shop_item_bought", item_name), g.EMBER)
+					SpiritSave.write(g.profile)
+					show_shop()
+				"elixir_focus":
+					if not g.profile.has("combat_consumables"): g.profile.combat_consumables = {"strength":0,"focus":0,"energy":0}
+					g.profile.combat_consumables.energy = int(g.profile.combat_consumables.get("energy", 0)) + 1
+					g.profile.combat_consumables.focus = int(g.profile.combat_consumables.get("focus", 0)) + 1
+					g._toast(g.tf("ui.shop_item_bought", item_name), g.GOLD)
+					SpiritSave.write(g.profile)
+					show_shop()
+				"dust_ore":
+					g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + 35
+					g._toast(g.tf("ui.shop_item_bought", item_name), Color("c79bff"))
+					SpiritSave.write(g.profile)
+					show_shop()
+				"upgrade_stone":
+					SpiritSave.write(g.profile)
+					show_deck_upgrade(show_shop)
+			g._advance_quest("shop_purchase", 1)
+			g._haptic("tap")
+		, Color("1e4a3d") if can_buy else Color("222e33"), Vector2(80, 32))
+		buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(buy_btn)
+
+		col.add_child(panel)
+
+	return col
 
 func _buy_booster_pack(cost_gold: int, cost_jade: int) -> void:
 	if int(g.profile.gold) >= cost_gold:
@@ -842,6 +934,7 @@ func show_deck() -> void:
 	g._back_action = g.show_map
 	var page := g._create_page(6)
 	page.add_child(g._header(g.t("ui.deck_title"), g.tf("ui.deck_sub", g.profile.deck.size()), g.show_map))
+	g._maybe_show_tutorial("deck_synergies")
 
 	# Search & Filter Chips (F3)
 	var search_row := HBoxContainer.new()

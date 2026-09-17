@@ -76,6 +76,11 @@ func _claimable_reward_count() -> int:
 	var claimed_days: Array = record.get("claimed", [])
 	for tier in SpiritContent.LOGIN_REWARD_TIERS:
 		if days_logged >= int(tier.days) and not claimed_days.has(int(tier.days)): count += 1
+	var nj_claimed: Array = g.profile.get("novice_journey", {}).get("claimed", [])
+	for task in SpiritContent.NOVICE_JOURNEY_TASKS:
+		var target: int = int(task.target_stage)
+		if (int(g.profile.unlocked) >= target or int(g.profile.position) >= target) and not nj_claimed.has(int(task.day)):
+			count += 1
 	var totals: Vector2i = g._compendium_totals()
 	var pct: int = int(round(100.0 * float(totals.x) / maxf(1.0, float(totals.y))))
 	var claimed_milestones: Array = g.profile.get("compendium_milestones_claimed", [])

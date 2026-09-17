@@ -2738,6 +2738,21 @@ func _run() -> void:
 		check(_find_label_containing(gold_row, "25") != null, "Jade pill shows 25")
 		check(_find_label_containing(gold_row, "80") != null, "Dust pill shows 80")
 
+	# 1b. Treasury Inspector modal
+	game.show_treasury_inspector()
+	await process_frame
+	var t_modal: Node = game.overlay.find_child("TreasuryInspectorModal", true, false)
+	check(t_modal != null, "TreasuryInspectorModal opens on request")
+	if t_modal != null:
+		check(t_modal.find_child("TreasuryConvertDustBtn", true, false) != null, "TreasuryConvertDustBtn present")
+		check(t_modal.find_child("TreasuryConvertGoldBtn", true, false) != null, "TreasuryConvertGoldBtn present")
+		var t_close: Control = t_modal.find_child("TreasuryCloseBtn", true, false) as Control
+		check(t_close != null, "TreasuryCloseBtn present in treasury modal")
+		if t_close != null:
+			tap_button(t_close, "TreasuryCloseBtn")
+			await process_frame
+			check(game.overlay.find_child("TreasuryInspectorModal", true, false) == null, "Treasury modal closed on close tap")
+
 	# 2. Lowered Chapter Plaque
 	var plaque: Control = game.root.find_child("ChapterPlaque", true, false) as Control
 	check(plaque != null, "ChapterPlaque exists on map")
@@ -2764,12 +2779,13 @@ func _run() -> void:
 		game._close_settings()
 		await process_frame
 
-	# 4. Shop Tabs, Exchange & Tutorial Dismissal
+	# 4. Shop Tabs, Exchange, Specialties & Tutorial Dismissal
 	game.shop_tab = "curated"
 	game.show_shop()
 	await process_frame
 	check(game.root.find_child("ShopPurgeBtn", true, false) != null, "ShopPurgeBtn present in curated shop")
 	check(game.root.find_child("ShopPackBtn", true, false) != null, "ShopPackBtn present in curated shop")
+	check(game.root.find_child("ShopSpecialtiesShelf", true, false) != null, "ShopSpecialtiesShelf present in curated shop")
 	game.shop_tab = "exchange"
 	game.show_shop()
 	await process_frame
@@ -2784,6 +2800,12 @@ func _run() -> void:
 		tap_button(tut_ok, "TutorialUnderstoodBtn")
 		await process_frame
 		check(game.overlay.find_child("FeatureTutorial_card_exchange", true, false) == null, "Tutorial dialog dismissed on Understood tap")
+
+	# 5. Novice Journey in Quests
+	game.show_quests()
+	await process_frame
+	check(game.root.find_child("NoviceJourneySection", true, false) != null, "NoviceJourneySection present in quests")
+
 	game.shop_tab = "curated"
 	for c in game.overlay.get_children():
 		c.queue_free()

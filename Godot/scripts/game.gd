@@ -1020,22 +1020,25 @@ func _background(file: String, opacity := .42) -> TextureRect:
 	var image := TextureRect.new(); image.texture = _texture("backgrounds/%s" % file); image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; image.modulate = Color(1,1,1,opacity); image.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return image
 
-func _currency_pill(icon_tex: Texture2D, amount: int, color: Color) -> PanelContainer:
-	var pill := PanelContainer.new()
-	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pill.add_theme_stylebox_override("panel", _panel(Color("0d1e23"), 10, Color(color.r, color.g, color.b, 0.45)))
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 6)
-	margin.add_theme_constant_override("margin_right", 8)
-	margin.add_theme_constant_override("margin_top", 1)
-	margin.add_theme_constant_override("margin_bottom", 1)
-	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pill.add_child(margin)
+func _currency_pill(icon_tex: Texture2D, amount: int, color: Color) -> Control:
+	var pill := Button.new()
+	pill.focus_mode = Control.FOCUS_NONE
+	var normal_box := _panel(Color("0d1e23"), 10, Color(color.r, color.g, color.b, 0.45))
+	normal_box.content_margin_left = 6; normal_box.content_margin_right = 8
+	normal_box.content_margin_top = 2; normal_box.content_margin_bottom = 2
+	var hover_box := _panel(Color("152c34"), 10, color)
+	hover_box.content_margin_left = 6; hover_box.content_margin_right = 8
+	hover_box.content_margin_top = 2; hover_box.content_margin_bottom = 2
+	pill.add_theme_stylebox_override("normal", normal_box)
+	pill.add_theme_stylebox_override("hover", hover_box)
+	pill.add_theme_stylebox_override("pressed", _panel(Color("081316"), 10, color))
+	pill.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_child(row)
+	pill.add_child(row)
 	if icon_tex != null:
 		var ico := TextureRect.new()
 		ico.texture = icon_tex
@@ -1047,6 +1050,7 @@ func _currency_pill(icon_tex: Texture2D, amount: int, color: Color) -> PanelCont
 	var lbl := _label("%d" % amount, 11, color)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
+	_bind_touch_guard(pill, func(): show_treasury_inspector())
 	return pill
 
 func _header(title: String, subtitle: String, back := Callable()) -> HBoxContainer:
@@ -1403,6 +1407,161 @@ func _maybe_show_tutorial(tutorial_id: String) -> void:
 	ok_btn.name = "TutorialUnderstoodBtn"
 	ok_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	vbox.add_child(ok_btn)
+
+func _treasury_row(icon_name: String, title_str: String, balance: int, color: Color, desc_str: String) -> Control:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", _panel(Color("102128"), 10, color.darkened(0.4)))
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 6)
+	panel.add_child(pad)
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 8)
+	pad.add_child(hbox)
+
+	var icon := TextureRect.new()
+	icon.texture = load("res://assets/icons/%s" % icon_name)
+	icon.custom_minimum_size = Vector2(28, 28)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hbox.add_child(icon)
+
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 1)
+	hbox.add_child(v)
+
+	var tr := HBoxContainer.new()
+	tr.add_child(_label(title_str, 12, color))
+	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; tr.add_child(sp)
+	tr.add_child(_label("%d" % balance, 13, color))
+	v.add_child(tr)
+	v.add_child(_label(desc_str, 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	return panel
+
+func show_treasury_inspector() -> void:
+	var existing: Node = overlay.get_node_or_null("TreasuryInspectorModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		return
+
+	var modal := _modal_dialog("TreasuryInspectorModal", func():
+		var m: Node = overlay.get_node_or_null("TreasuryInspectorModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 420)
+	panel.add_theme_stylebox_override("panel", _panel(Color("0c1a20"), 14, GOLD))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	var title_box := VBoxContainer.new()
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(_label(t("ui.treasury_title"), 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	title_box.add_child(_label(t("ui.treasury_sub"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	vbox.add_child(title_box)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 6)
+	vbox.add_child(list)
+
+	list.add_child(_treasury_row("hud_gold.png", t("ui.currency_gold"), int(profile.gold), GOLD, t("ui.treasury_gold_desc")))
+	list.add_child(_treasury_row("hud_jade.png", t("ui.currency_jade"), int(profile.get("spirit_jade", 10)), Color("78e9c0"), t("ui.treasury_jade_desc")))
+	list.add_child(_treasury_row("hud_dust.png", t("ui.currency_dust"), int(profile.get("spirit_dust", 0)), Color("c79bff"), t("ui.treasury_dust_desc")))
+
+	var conv_box := VBoxContainer.new()
+	conv_box.add_theme_constant_override("separation", 6)
+	vbox.add_child(conv_box)
+
+	var can_dust: bool = int(profile.gold) >= 80
+	var btn_gold_dust := _button(t("ui.treasury_convert_gold_dust"), func():
+		if int(profile.gold) < 80:
+			_toast(t("ui.convert_insufficient"))
+			return
+		profile.gold -= 80
+		profile.spirit_dust = int(profile.get("spirit_dust", 0)) + 35
+		SpiritSave.write(profile)
+		_toast(t("ui.convert_success"), JADE)
+		_haptic("tap")
+		if modal != null and modal.is_inside_tree():
+			if modal.get_parent(): modal.get_parent().remove_child(modal)
+			modal.queue_free()
+		show_treasury_inspector()
+	, Color("1f3b39") if can_dust else Color("222a2e"), Vector2(0, 34))
+	btn_gold_dust.name = "TreasuryConvertDustBtn"
+	btn_gold_dust.disabled = not can_dust
+	conv_box.add_child(btn_gold_dust)
+
+	var can_gold: bool = int(profile.get("spirit_jade", 0)) >= 10
+	var btn_jade_gold := _button(t("ui.treasury_convert_jade_gold"), func():
+		if int(profile.get("spirit_jade", 0)) < 10:
+			_toast(t("ui.convert_insufficient"))
+			return
+		profile.spirit_jade = int(profile.get("spirit_jade", 0)) - 10
+		profile.gold = int(profile.gold) + 150
+		SpiritSave.write(profile)
+		_toast(t("ui.convert_success"), GOLD)
+		_haptic("tap")
+		if modal != null and modal.is_inside_tree():
+			if modal.get_parent(): modal.get_parent().remove_child(modal)
+			modal.queue_free()
+		show_treasury_inspector()
+	, Color("352d1c") if can_gold else Color("222a2e"), Vector2(0, 34))
+	btn_jade_gold.name = "TreasuryConvertGoldBtn"
+	btn_jade_gold.disabled = not can_gold
+	conv_box.add_child(btn_jade_gold)
+
+	var nav_row := HBoxContainer.new()
+	nav_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(nav_row)
+
+	var to_shop := _button(t("ui.treasury_goto_shop"), func():
+		if modal != null and modal.is_inside_tree():
+			if modal.get_parent(): modal.get_parent().remove_child(modal)
+			modal.queue_free()
+		shop_tab = "curated"
+		show_shop()
+	, Color("1d4a40"), Vector2(0, 34))
+	to_shop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav_row.add_child(to_shop)
+
+	var to_exchange := _button(t("ui.treasury_goto_exchange"), func():
+		if modal != null and modal.is_inside_tree():
+			if modal.get_parent(): modal.get_parent().remove_child(modal)
+			modal.queue_free()
+		shop_tab = "exchange"
+		show_shop()
+	, Color("34204d"), Vector2(0, 34))
+	to_exchange.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav_row.add_child(to_exchange)
+
+	var close_btn := _button(t("tutorial.understood"), func():
+		if modal != null and modal.is_inside_tree():
+			if modal.get_parent(): modal.get_parent().remove_child(modal)
+			modal.queue_free()
+	, Color("16282e"), Vector2(110, 32))
+	close_btn.name = "TreasuryCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	vbox.add_child(close_btn)
 
 func show_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")

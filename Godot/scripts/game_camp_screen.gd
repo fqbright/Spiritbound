@@ -427,12 +427,100 @@ func show_quests() -> void:
 	scroll.add_child(list)
 
 	g._ensure_login_reward_current()
+	list.add_child(_novice_journey_section())
 	list.add_child(_season_pass_banner())
 	list.add_child(_login_reward_section())
 	g._ensure_quests_current()
 	list.add_child(_quest_section(g.t("ui.quests_daily"), "daily_quests", int(g.profile.get("daily_reset_at", 0))))
 	list.add_child(_quest_section(g.t("ui.quests_weekly"), "weekly_quests", int(g.profile.get("weekly_reset_at", 0))))
 	list.add_child(g._label(g.t("ui.quests_hint"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+func _novice_journey_section() -> Control:
+	var claimed: Array = g.profile.get("novice_journey", {}).get("claimed", [])
+	if claimed.size() >= SpiritContent.NOVICE_JOURNEY_TASKS.size():
+		return Control.new()
+
+	var box := VBoxContainer.new()
+	box.name = "NoviceJourneySection"
+	box.add_theme_constant_override("separation", 6)
+
+	var hdr := VBoxContainer.new()
+	hdr.add_theme_constant_override("separation", 1)
+	hdr.add_child(g._label(g.t("ui.novice_journey_title"), 14, Color("ffd700")))
+	hdr.add_child(g._label(g.t("ui.novice_journey_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	box.add_child(hdr)
+
+	# Progress bar
+	var bar := g._stat_bar(120.0, 14.0, claimed.size(), SpiritContent.NOVICE_JOURNEY_TASKS.size(), Color("ffd700"), "%d / %d" % [claimed.size(), SpiritContent.NOVICE_JOURNEY_TASKS.size()], 9)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(bar)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.custom_minimum_size.y = 88
+	scroll.allow_horizontal = true
+	scroll.allow_vertical = false
+	box.add_child(scroll)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	scroll.add_child(row)
+
+	for task in SpiritContent.NOVICE_JOURNEY_TASKS:
+		var day_num: int = int(task.day)
+		var is_claimed: bool = claimed.has(day_num)
+		var target_stage: int = int(task.target_stage)
+		var is_completed: bool = int(g.profile.unlocked) >= target_stage or int(g.profile.position) >= target_stage
+		var is_ready: bool = is_completed and not is_claimed
+
+		var card := PanelContainer.new()
+		card.custom_minimum_size = Vector2(152, 82)
+		card.add_theme_stylebox_override("panel", g._panel(Color("10222a") if not is_ready else Color("193836"), 10, Color("ffd700") if is_ready else (g.JADE if is_claimed else Color("2a3c42"))))
+		row.add_child(card)
+
+		var pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 6)
+		card.add_child(pad)
+
+		var inner := VBoxContainer.new()
+		inner.add_theme_constant_override("separation", 2)
+		pad.add_child(inner)
+
+		var t_row := HBoxContainer.new()
+		t_row.add_child(g._label(g.tf("ui.novice_day_fmt", day_num), 10, g.GOLD))
+		var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; t_row.add_child(sp)
+		var status_text: String = g.t("ui.novice_claimed") if is_claimed else (g.t("ui.novice_completed") if is_ready else g.t("ui.novice_locked"))
+		t_row.add_child(g._label(status_text, 9, g.JADE if (is_claimed or is_ready) else g.MUTED))
+		inner.add_child(t_row)
+
+		var task_title: String = task.get("title_en" if g.lang == "en" else "title_zh", "")
+		inner.add_child(g._label(task_title, 10, g.TEXT))
+
+		var rew_row := HBoxContainer.new()
+		rew_row.add_theme_constant_override("separation", 4)
+		rew_row.add_child(g._label("◆%d" % int(task.gold), 9, g.GOLD))
+		rew_row.add_child(g._label("✧%d" % int(task.jade), 9, Color("78e9c0")))
+		rew_row.add_child(g._label("❖%d" % int(task.dust), 9, Color("c79bff")))
+		inner.add_child(rew_row)
+
+		if is_ready:
+			var claim_btn := g._button(g.t("ui.novice_claim"), func():
+				if not g.profile.has("novice_journey"): g.profile.novice_journey = {"claimed":[]}
+				var c_arr: Array = g.profile.novice_journey.get("claimed", []).duplicate()
+				c_arr.append(day_num)
+				g.profile.novice_journey.claimed = c_arr
+				g.profile.gold += int(task.gold)
+				g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + int(task.jade)
+				g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + int(task.dust)
+				SpiritSave.write(g.profile)
+				g._haptic("heavy")
+				g._toast(g.tf("ui.novice_reward_toast", day_num), g.GOLD)
+				show_quests()
+			, Color("204a3f"), Vector2(0, 22))
+			claim_btn.name = "NoviceClaimBtn_%d" % day_num
+			claim_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			inner.add_child(claim_btn)
+
+	return box
 
 func _login_reward_section() -> Control:
 	var section := VBoxContainer.new()

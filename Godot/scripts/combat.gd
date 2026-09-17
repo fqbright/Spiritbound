@@ -61,15 +61,17 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		state.player.max_health += mastery_max_hp
 		state.player.health += mastery_max_hp
 	state.player.shield += int(hero_bonuses.get("shield_start", 0))
+	state.player.strength += int(hero_bonuses.get("strength_start", 0))
+	state.player.focus += int(hero_bonuses.get("focus_start", 0))
 	state.energy += int(hero_bonuses.get("energy_turn1", 0))
 	for enemy in state.enemies:
 		if int(hero_bonuses.get("burn_start", 0)) > 0: enemy.burn += int(hero_bonuses.burn_start)
 		if int(hero_bonuses.get("vulnerable_start", 0)) > 0: enemy.vulnerable += int(hero_bonuses.vulnerable_start)
 		if int(hero_bonuses.get("poison_start", 0)) > 0: enemy.poison = int(enemy.get("poison", 0)) + int(hero_bonuses.poison_start)
 	# Turn 1 is strictly 2 energy and 5 cards under all conditions, except cursedTome's own
-	# explicit "+1 draw / -2 HP every turn" — that trade applies from turn 1 onward, same as
-	# titanBell's and chaosPrism's battle-start effects above.
-	_draw(5 + (1 if _has_relic("cursedTome") else 0))
+	# explicit "+1 draw / -2 HP every turn" and optional draw_turn1 elixir bonus.
+	var draw_bonus: int = int(hero_bonuses.get("draw_turn1", 0))
+	_draw(5 + draw_bonus + (1 if _has_relic("cursedTome") else 0))
 	if _has_relic("cursedTome"): _damage_player(2)
 	_plan_intents()
 	return state

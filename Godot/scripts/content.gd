@@ -228,6 +228,101 @@ const RUNES = [
 	{"id":"resonance","icon":"◈","icon_mark":"wave","zh":"共鸣","en":"Resonance","detail":"本回合每张同属性牌使数值 +1。","detail_en":"+1 value per same-element card played this turn.","color":"b9a2ff"},
 ]
 
+const STORE_CONSUMABLES = [
+	{
+		"id": "elixir_vitality",
+		"icon": "🧪",
+		"color": "ff7373",
+		"zh": "回春灵液", "en": "Elixir of Vitality",
+		"detail_zh": "立刻为英雄回复 25 点生命值。", "detail_en": "Immediately restores 25 HP to the hero.",
+		"price_gold": 45, "price_jade": 0,
+	},
+	{
+		"id": "elixir_might",
+		"icon": "⚔️",
+		"color": "ffb359",
+		"zh": "狂澜神油", "en": "Draught of Might",
+		"detail_zh": "下一场战斗获得 +2 初始力量加成。", "detail_en": "+2 Strength bonus in the next battle.",
+		"price_gold": 60, "price_jade": 5,
+	},
+	{
+		"id": "elixir_focus",
+		"icon": "💧",
+		"color": "78e9ff",
+		"zh": "宁神清气露", "en": "Philter of Focus",
+		"detail_zh": "下一场战斗首回合抽牌 +2 且能量 +1。", "detail_en": "+2 Draw and +1 Energy on Turn 1 of next battle.",
+		"price_gold": 50, "price_jade": 0,
+	},
+	{
+		"id": "upgrade_stone",
+		"icon": "💠",
+		"color": "ffd700",
+		"zh": "炼虚灵石", "en": "Spirit Upgrade Stone",
+		"detail_zh": "在商店当场任选牌库中一张卡牌强化 (+1)。", "detail_en": "Immediately upgrade any card in your deck (+1).",
+		"price_gold": 140, "price_jade": 15,
+	},
+	{
+		"id": "dust_ore",
+		"icon": "❖",
+		"color": "c79bff",
+		"zh": "灵尘精矿", "en": "Alchemical Dust Ore",
+		"detail_zh": "炼金提纯，立即获得 35 灵尘用于卡牌置换。", "detail_en": "Refine into 35 Spirit Dust for Card Exchange.",
+		"price_gold": 80, "price_jade": 0,
+	}
+]
+
+const NOVICE_JOURNEY_TASKS = [
+	{
+		"day": 1,
+		"title_zh": "初入灵界", "title_en": "First Steps",
+		"desc_zh": "通关第 1 关（探索前哨）", "desc_en": "Clear Stage 1 (Trailhead Outpost)",
+		"gold": 60, "jade": 10, "dust": 15,
+		"target_stage": 1,
+	},
+	{
+		"day": 2,
+		"title_zh": "灵市见闻", "title_en": "Bazaar Visit",
+		"desc_zh": "通关第 2 关（秘境集市）", "desc_en": "Clear Stage 2 (Spirit Bazaar)",
+		"gold": 50, "jade": 10, "dust": 25,
+		"target_stage": 2,
+	},
+	{
+		"day": 3,
+		"title_zh": "诛灭强敌", "title_en": "Elite Triumph",
+		"desc_zh": "击败第 3 关强敌险峰", "desc_en": "Defeat the Stage 3 Elite Foe",
+		"gold": 80, "jade": 15, "dust": 30,
+		"target_stage": 3,
+	},
+	{
+		"day": 4,
+		"title_zh": "静修明心", "title_en": "Sacred Campfire",
+		"desc_zh": "抵达第 4 关营火静修处", "desc_en": "Reach Stage 4 Sacred Campfire",
+		"gold": 70, "jade": 15, "dust": 40,
+		"target_stage": 4,
+	},
+	{
+		"day": 5,
+		"title_zh": "破晓首胜", "title_en": "Dawn Sovereign",
+		"desc_zh": "击败第一章终焉首领（第 5 关）", "desc_en": "Defeat Chapter 1 Boss (Stage 5)",
+		"gold": 120, "jade": 30, "dust": 50,
+		"target_stage": 5,
+	},
+	{
+		"day": 6,
+		"title_zh": "试炼之道", "title_en": "Trial of Valor",
+		"desc_zh": "通关第 6 关或参与每日试炼", "desc_en": "Clear Stage 6 or Daily Trial",
+		"gold": 100, "jade": 25, "dust": 40,
+		"target_stage": 6,
+	},
+	{
+		"day": 7,
+		"title_zh": "灵尊大成", "title_en": "Ascendant Grandmaster",
+		"desc_zh": "通关第 10 关或击破大首领", "desc_en": "Clear Stage 10 or Great Boss",
+		"gold": 200, "jade": 50, "dust": 100,
+		"target_stage": 10,
+	},
+]
+
 const RUNE_SETS = [
 	{
 		"id": "set_flame",
@@ -751,6 +846,11 @@ func relic_name(item: Dictionary, language := "zh-Hans") -> String:
 func relic_detail(item: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return item.get("detail_en", item.get("detail", ""))
 	return item.get("detail", "")
+
+func store_consumable(id: String) -> Dictionary:
+	for item in STORE_CONSUMABLES:
+		if item.id == id: return item
+	return {}
 
 func quest_by_id(id: String) -> Dictionary:
 	for q in DAILY_QUESTS:
@@ -1550,6 +1650,37 @@ const UI_TEXT = {
 	"tutorial.daily_trial.desc": {"zh-Hans":"每日全服轮换相同的词条组合，挑战 15 层极限试炼，赢取丰厚金币、灵玉与连续通关宝箱！", "en":"Tackle 15 stages with rotating global affixes each day to claim generous Gold, Spirit Jade, and streak rewards!"},
 	"tutorial.abyss.title": {"zh-Hans":"无尽深渊幻境", "en":"Endless Abyss"},
 	"tutorial.abyss.desc": {"zh-Hans":"向深渊最底层进发！每层战胜后挑选强力恩惠，敌人的攻防随层数无限攀升，测试你牌组构筑的终极极限！", "en":"Descend into the infinite depths! Choose blessings after each floor as foes scale relentlessly. The ultimate deck test!"},
+	"ui.treasury_title": {"zh-Hans":"灵界珍宝库", "en":"Spirit Treasury"},
+	"ui.treasury_sub": {"zh-Hans":"资产盘点与灵物炼化置换", "en":"Asset Ledger & Resource Alchemy"},
+	"ui.treasury_gold_desc": {"zh-Hans":"常规行商货币，用于商店日常购牌、删牌净化与卡牌升级。", "en":"Standard currency for shop items, purges, and upgrades."},
+	"ui.treasury_jade_desc": {"zh-Hans":"天地至纯灵玉，章节大捷、成就与试炼斩获，换取高阶秘宝与灵袋。", "en":"Premium meta-currency for booster packs and rare relics."},
+	"ui.treasury_dust_desc": {"zh-Hans":"灵卡炼解灵源，用于自由凝聚合成专属流派神卡（兼容P2P）。", "en":"Alchemical dust from card salvage, used to forge target cards."},
+	"ui.treasury_convert_gold_dust": {"zh-Hans":"金币提炼灵尘 (80金币 → 35灵尘)", "en":"Alchemize Dust (80 Gold → 35 Dust)"},
+	"ui.treasury_convert_jade_gold": {"zh-Hans":"灵玉兑换金币 (10灵玉 → 150金币)", "en":"Exchange Gold (10 Jade → 150 Gold)"},
+	"ui.treasury_goto_shop": {"zh-Hans":"前往精选行商", "en":"Visit Curated Shop"},
+	"ui.treasury_goto_exchange": {"zh-Hans":"前往灵卡置换", "en":"Visit Card Exchange"},
+	"ui.convert_success": {"zh-Hans":"兑换完成！资产已更新。", "en":"Exchange successful! Balance updated."},
+	"ui.convert_insufficient": {"zh-Hans":"当前资产不足，无法兑换！", "en":"Insufficient funds for exchange!"},
+	"ui.daily_first_win_title": {"zh-Hans":"今日首胜大捷！", "en":"First Win of the Day!"},
+	"ui.daily_first_win_desc": {"zh-Hans":"获得首胜天赐：+50 金币 · +5 灵玉", "en":"First Win Bonus: +50 Gold · +5 Spirit Jade"},
+	"ui.novice_journey_title": {"zh-Hans":"七日修行录", "en":"7-Day Novice Journey"},
+	"ui.novice_journey_sub": {"zh-Hans":"初入灵界的新人试炼 · 达成目标领取海量修行资粮", "en":"New traveler trials · Complete daily goals for bountiful rewards"},
+	"ui.novice_day_fmt": {"zh-Hans":"第 %d 天", "en":"Day %d"},
+	"ui.novice_completed": {"zh-Hans":"已完成", "en":"Completed"},
+	"ui.novice_claim": {"zh-Hans":"领取", "en":"Claim"},
+	"ui.novice_claimed": {"zh-Hans":"已领取", "en":"Claimed"},
+	"ui.novice_locked": {"zh-Hans":"未达成", "en":"Locked"},
+	"ui.novice_reward_toast": {"zh-Hans":"七日修行第 %d 天达成！获得修行大礼包！", "en":"Day %d Novice Trial cleared! Rewards claimed!"},
+	"ui.shop_specialties": {"zh-Hans":"秘境灵药与奇珍", "en":"Rare Specialties & Elixirs"},
+	"ui.shop_upgrade_stone_pick": {"zh-Hans":"请选择要强化的卡牌 (+1)", "en":"Select a card to upgrade (+1)"},
+	"ui.shop_item_bought": {"zh-Hans":"已购买并生效：%s", "en":"Purchased & activated: %s"},
+	"ui.shop_card_upgraded": {"zh-Hans":"灵火淬炼成功：%s 已强化为 +1！", "en":"Card forged: %s upgraded to +1!"},
+	"tutorial.shop_overview.title": {"zh-Hans":"灵界集市指南", "en":"Bazaar Guide"},
+	"tutorial.shop_overview.desc": {"zh-Hans":"集市每日轮换优惠卡牌与秘宝。你可以在此购买强效秘药，或前往【灵卡置换】分解多余卡牌并合成心仪神卡！", "en":"The Bazaar features daily discounted cards and rare items. Purchase powerful battle elixirs, or visit Card Exchange to salvage duplicates and forge target cards!"},
+	"tutorial.deck_synergies.title": {"zh-Hans":"卡牌协同指南", "en":"Card Synergy Guide"},
+	"tutorial.deck_synergies.desc": {"zh-Hans":"注意卡牌上的属性与协同标记（🔥燃烧、☣剧毒、💢易伤、⬢护盾）。相同流派与属性的卡牌相互呼应，能产生质变的连锁威力！", "en":"Watch for element & synergy tags on your cards (🔥Burn, ☣Poison, 💢Vulnerable, ⬢Shield). Combining cards of the same archetype triggers powerful chain reactions!"},
+	"tutorial.combat_survival.title": {"zh-Hans":"危机应对秘诀", "en":"Combat Survival Tip"},
+	"tutorial.combat_survival.desc": {"zh-Hans":"生命值较低时，请优先使用护盾牌！密切留意敌人的意图指示（攻击、强化或减益），在敌人蓄力爆发前回合提前叠甲！", "en":"When HP is low, prioritize shield cards! Keep a close eye on enemy intent banners to stack shield before their heavy attacks strike!"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

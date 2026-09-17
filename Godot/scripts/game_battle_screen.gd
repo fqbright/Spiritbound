@@ -2351,6 +2351,8 @@ func _enemy_turn() -> void:
 	if g.combat.state.player.health < before_health:
 		g._haptic("heavy")
 		await _animate_player_hit(before_health - g.combat.state.player.health)
+		if g.combat.state.player.health <= 25 and g.combat.state.player.health > 0:
+			g._maybe_show_tutorial("combat_survival")
 
 	# Give a brief pause after all enemy actions and damage resolve before player can act
 	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout

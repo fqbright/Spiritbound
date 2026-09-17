@@ -1059,6 +1059,40 @@ func run() -> void:
 	check(content.ui("ui.currency_jade", "zh-Hans") == "灵玉" and content.ui("ui.currency_jade", "en") == "Spirit Jade", "jade currency localized")
 	check(content.ui("ui.currency_dust", "zh-Hans") == "灵尘" and content.ui("ui.currency_dust", "en") == "Spirit Dust", "dust currency localized")
 
+	# Store Consumables & Specialties
+	check(SpiritContent.STORE_CONSUMABLES.size() >= 5, "at least 5 store consumables/specialties defined")
+	var elixir_vitality: Dictionary = content.store_consumable("elixir_vitality")
+	check(not elixir_vitality.is_empty() and int(elixir_vitality.price_gold) > 0, "elixir_vitality defined with gold price")
+	var upgrade_stone: Dictionary = content.store_consumable("upgrade_stone")
+	check(not upgrade_stone.is_empty() and int(upgrade_stone.price_jade) > 0, "upgrade_stone defined with jade price")
+
+	# Novice Journey 7-Day Roadmap
+	check(SpiritContent.NOVICE_JOURNEY_TASKS.size() == 7, "novice journey has exactly 7 days of tasks")
+	check(int(SpiritContent.NOVICE_JOURNEY_TASKS[0].target_stage) == 1, "day 1 targets stage 1")
+	check(int(SpiritContent.NOVICE_JOURNEY_TASKS[6].target_stage) == 10, "day 7 targets stage 10")
+	check(int(SpiritContent.NOVICE_JOURNEY_TASKS[6].gold) >= 200, "day 7 grants 200+ gold")
+
+	# Combat Starting Buffs (strength_start, energy_turn1, draw_turn1)
+	var buffed_combat := SpiritCombat.new(content)
+	buffed_combat.create(77, encounter(50, 0), content.raw.startingDeck, 60, {}, [], {}, {}, [], {"strength_start": 3, "energy_turn1": 1, "draw_turn1": 2})
+	check(int(buffed_combat.state.player.strength) == 3, "combat honors strength_start bonus (+3)")
+	check(int(buffed_combat.state.energy) == 3, "combat honors energy_turn1 bonus (2 base + 1 = 3)")
+	check(buffed_combat.state.hand.size() == 7, "combat honors draw_turn1 bonus (5 base + 2 = 7)")
+
+	# Profile schema checks
+	check(new_prof.get("novice_journey", null) is Dictionary, "profile defaults include novice_journey")
+	check(new_prof.get("daily_first_win", null) is Dictionary, "profile defaults include daily_first_win")
+	check(new_prof.get("combat_consumables", null) is Dictionary, "profile defaults include combat_consumables")
+
+	# Translations for new features
+	check(content.ui("ui.treasury_title", "zh-Hans") == "灵界珍宝库", "treasury title localized in Chinese")
+	check(content.ui("ui.treasury_title", "en") == "Spirit Treasury", "treasury title localized in English")
+	check(content.ui("ui.novice_journey_title", "zh-Hans") == "七日修行录", "novice journey title localized in Chinese")
+	check(content.ui("ui.novice_journey_title", "en") == "7-Day Novice Journey", "novice journey title localized in English")
+	check(content.ui("tutorial.shop_overview.title", "zh-Hans") == "灵界集市指南", "shop overview tutorial localized")
+	check(content.ui("tutorial.deck_synergies.title", "zh-Hans") == "卡牌协同指南", "deck synergies tutorial localized")
+	check(content.ui("tutorial.combat_survival.title", "zh-Hans") == "危机应对秘诀", "combat survival tutorial localized")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

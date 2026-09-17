@@ -249,6 +249,27 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — 7-Day Novice Journey, Store Consumables & Specialties, Treasury Inspector, Contextual Tutorials, and Retention Loops
+Implemented directly per user direction to expand merchandise, optimize multi-currency utility, boost novice retention, and complete onboarding tutorials:
+- **7-Day Novice Journey (`profile.novice_journey`)**: Progressive 7-stage milestone track embedded in `show_quests()` rewarding large amounts of Gold, Spirit Jade, and Spirit Dust. Unlocked milestones are surfaced in the Map Digest summary card.
+- **Store Consumables & Specialties Shelf (`SpiritContent.STORE_CONSUMABLES`)**:
+  - `elixir_vitality`: Recovers 25 HP immediately upon purchase.
+  - `elixir_might`: Pre-battle potion granting +2 Strength on turn 1.
+  - `elixir_focus`: Pre-battle potion granting +1 Energy and +1 Focus on turn 1.
+  - `upgrade_stone`: Direct consumable opening the Deck Upgrade screen to upgrade any owned card.
+  - `dust_ore`: Alchemy resource converting 80 Gold into 35 Spirit Dust.
+  - All consumable starting bonuses (`strength_start`, `focus_start`, `draw_turn1`) integrate directly into `combat.gd:create()` and auto-clear upon battle start in `game_rewards_screen.gd`.
+- **Treasury Inspector & Currency Ledger (`show_treasury_inspector()`)**:
+  - Currency pill in the top header is now clickable, opening a comprehensive breakdown of Gold, Spirit Jade, and Spirit Dust with current utility rules and fast conversions (e.g. Jade -> Gold, Gold -> Dust).
+- **Daily First Win & Boss Jade Drops**:
+  - Added `daily_first_win` (+50 Gold, +5 Jade on first battle win each day).
+  - Bosses and Great Bosses now reward bonus Spirit Jade (+10 and +20 respectively).
+- **Contextual Onboarding Tutorials**:
+  - `shop_overview`: Explains curated daily cards, alchemy, and specialty elixirs when first entering the Shop.
+  - `deck_synergies`: Guides archetype synergies and deck upgrades upon first opening the Deck screen.
+  - `combat_survival`: Emergency survival guide triggered during battle when player HP drops to 25 or below.
+- **Verification**: Both `test_runner.gd` (341 checks, 0 failures) and `ui_smoke.gd` (all checks passed) verified green.
+
 ### 2026-09-16 — Off-roadmap batch: battle VFX/rig overhaul, map redesign, AFK Harvest, Phantom
 ### Arena, HP-reset rule change; plus doc-drift fixes and 2 bug fixes found reviewing it
 None of this maps to an existing lettered item above — it landed as 12 commits with empty
