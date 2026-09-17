@@ -336,7 +336,7 @@ const HERO_CLASSES = [
 		"name_en": "Fox Spirit",
 		"desc": "掌控灵火与疾风的敏捷行者。擅长灵火连击与爆发回响。",
 		"desc_en": "Agile master of foxfire and gale. Excels at flame combos and echo bursts.",
-		"sprite": "fox",
+		"sprite": "hero_fox_spirit",
 		"relic": "foxCharm",
 		"deck": [
 			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
@@ -351,7 +351,7 @@ const HERO_CLASSES = [
 		"name_en": "Stone Sentinel",
 		"desc": "坚若磐石的古代护卫。擅长重甲防御、护盾转化与反击。",
 		"desc_en": "Immovable ancient guardian. Specializes in heavy armor, shield conversion and counter-strike.",
-		"sprite": "sentinel",
+		"sprite": "hero_stone_sentinel",
 		"relic": "ancientSeed",
 		"deck": [
 			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
@@ -366,7 +366,7 @@ const HERO_CLASSES = [
 		"name_en": "Shadow Stalker",
 		"desc": "潜行于暗影中的致命杀手。擅长易伤诅咒、暴击斩杀与毒火流血。",
 		"desc_en": "Lethal stalker of shadows. Specializes in vulnerability curses, critical executions, and bleed.",
-		"sprite": "ashRaven",
+		"sprite": "hero_shadow_stalker",
 		"relic": "starShard",
 		"deck": [
 			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
@@ -381,7 +381,7 @@ const HERO_CLASSES = [
 		"name_en": "Miasma Witch",
 		"desc": "操控剧毒瘴气的诡异法师，让敌人在持续侵蚀中衰竭。擅长毒素叠加与资源回收。",
 		"desc_en": "An eerie mage who commands toxic miasma, wearing enemies down through relentless decay. Specializes in stacking Poison and recycling resources.",
-		"sprite": "miasma_witch",
+		"sprite": "hero_miasma_witch",
 		"relic": "bloodJade",
 		"deck": [
 			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",

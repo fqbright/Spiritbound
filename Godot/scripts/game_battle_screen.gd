@@ -509,7 +509,7 @@ func _build_player_stage() -> Control:
 	var hero: Dictionary = g.content.hero_class(str(g.profile.hero_class))
 	var hero_sprite_key: String = str(hero.get("sprite", "fox"))
 	var rig_body_path := "res://assets/characters/fox_rig/fox_body.png"
-	var use_fox_rig: bool = hero_sprite_key == "fox" and ResourceLoader.exists(rig_body_path)
+	var use_fox_rig: bool = (hero_sprite_key == "fox" or hero_sprite_key == "hero_fox_spirit") and ResourceLoader.exists(rig_body_path)
 
 	var sprite := Sprite2D.new()
 	sprite.name = "PlayerSprite"
@@ -608,13 +608,9 @@ func _build_player_stage() -> Control:
 		orb_glow.tween_property(orb, "modulate:a", 0.72, 0.85).set_trans(Tween.TRANS_SINE)
 	else:
 		sprite.texture = g._get_character_texture(hero_sprite_key)
-		# get_width() on the returned texture (not a hardcoded atlas-cell divisor) works
-		# correctly whether _get_character_texture() resolved an AtlasTexture (which reports
-		# its own region's size, not the whole atlas) or a standalone portrait like Miasma
-		# Witch's own real dimensions — same pattern _add_traveler()/_travel_to() already use
-		# for the map avatar for exactly this reason.
 		var tex_w: float = float(sprite.texture.get_width()) if sprite.texture else 341.33
-		var scale_factor: float = minf(spr_size.x / tex_w, spr_size.y / tex_w)
+		var tex_h: float = float(sprite.texture.get_height()) if sprite.texture else 341.33
+		var scale_factor: float = minf(spr_size.x / tex_w, spr_size.y / tex_h) * 1.08
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
 		sprite.position = Vector2(player_x, 37.0)
@@ -1663,6 +1659,10 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	return true
 
 func _resolve_play(before: Array, player_shield_before: int = 0, player_health_before: int = 0, player_focus_before: int = 0, player_strength_before: int = 0, card: Dictionary = {}) -> void:
+	# 0. Hero Signature Action Animation (lunge charge / weapon swing / shadow dash / staff wave)
+	if not card.is_empty():
+		await _animate_player_action(card)
+
 	# 1. Shield Gain Animation (Spirit Aegis Crest -> Character -> Barrier Ring)
 	var player_shield_after: int = int(g.combat.state.player.shield)
 	var shield_gained: int = player_shield_after - player_shield_before
@@ -1696,6 +1696,105 @@ func _resolve_play(before: Array, player_shield_before: int = 0, player_health_b
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
+
+func _animate_player_action(card: Dictionary) -> void:
+	if g.overlay == null or g.get_tree() == null: return
+	var player_sprite: Node2D = g.root.find_child("PlayerSprite", true, false) as Node2D
+	if player_sprite == null or not is_instance_valid(player_sprite): return
+
+	var hero_id: String = str(g.profile.hero_class)
+	var kind: String = str(card.get("kind", "Skill"))
+	var origin: Vector2 = player_sprite.position
+	var base_scale: float = float(player_sprite.get_meta("base_scale", 1.0))
+	var dur: float = g._battle_delay(0.28)
+	var tween := player_sprite.create_tween()
+
+	if kind == "Attack":
+		match hero_id:
+			"fox_spirit":
+				# Step forward, tail fan-out, and spirit orb missile strike!
+				tween.tween_property(player_sprite, "position:x", origin.x + 36.0, dur * 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.42)
+				var tail: Node2D = player_sprite.get_meta("rig_tail", null) as Node2D
+				if tail and is_instance_valid(tail):
+					var tail_tween := tail.create_tween()
+					tail_tween.tween_property(tail, "rotation_degrees", 24.0, dur * 0.42).set_trans(Tween.TRANS_QUAD)
+					tail_tween.tween_property(tail, "rotation_degrees", 0.0, dur * 0.58).set_trans(Tween.TRANS_ELASTIC)
+				var orb: Node2D = player_sprite.get_meta("rig_orb", null) as Node2D
+				if orb and is_instance_valid(orb):
+					var orb_base: Vector2 = orb.get_meta("base_pos", orb.position)
+					var orb_tween := orb.create_tween()
+					orb_tween.tween_property(orb, "position", Vector2(orb_base.x + 95.0, orb_base.y - 8.0), dur * 0.42).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+					orb_tween.parallel().tween_property(orb, "modulate", Color(2.4, 1.8, 1.0), dur * 0.42)
+					orb_tween.parallel().tween_property(orb, "rotation_degrees", orb.rotation_degrees + 180.0, dur * 0.42)
+					orb_tween.tween_property(orb, "position", orb_base, dur * 0.58).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					orb_tween.parallel().tween_property(orb, "modulate", Color.WHITE, dur * 0.58)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.58).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.58)
+			"stone_sentinel":
+				# Heavy ancient shield/hammer charge & ground stomp
+				tween.tween_property(player_sprite, "position:x", origin.x - 14.0, dur * 0.32).set_trans(Tween.TRANS_QUAD)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", -10.0, dur * 0.32)
+				tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.08, base_scale * 0.92), dur * 0.32)
+				tween.tween_property(player_sprite, "position:x", origin.x + 48.0, dur * 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 14.0, dur * 0.30)
+				tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.92, base_scale * 1.15), dur * 0.30)
+				tween.tween_callback(func():
+					_shake_screen(3.5)
+					g._haptic("heavy"))
+				tween.tween_property(player_sprite, "position", origin, dur * 0.38).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.38)
+				tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.38)
+			"shadow_stalker":
+				# Shadow Dash: phase forward, strike with twin shadow blades, shadow-step back!
+				tween.tween_property(player_sprite, "modulate:a", 0.35, dur * 0.24)
+				tween.parallel().tween_property(player_sprite, "position:x", origin.x + 60.0, dur * 0.24).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 12.0, dur * 0.24)
+				tween.tween_callback(func(): g._haptic("tap"))
+				tween.tween_property(player_sprite, "modulate:a", 1.0, dur * 0.36)
+				tween.parallel().tween_property(player_sprite, "position", origin, dur * 0.36).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.36)
+			"miasma_witch":
+				# Staff sweep & emerald poison surge!
+				tween.tween_property(player_sprite, "rotation_degrees", -18.0, dur * 0.30).set_trans(Tween.TRANS_SINE)
+				tween.parallel().tween_property(player_sprite, "modulate", Color(0.9, 1.8, 1.1), dur * 0.30)
+				tween.tween_property(player_sprite, "position:x", origin.x + 34.0, dur * 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 20.0, dur * 0.30)
+				tween.parallel().tween_property(player_sprite, "modulate", Color(1.3, 2.5, 1.5), dur * 0.30)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.40).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.40)
+				tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.40)
+			_:
+				tween.tween_property(player_sprite, "position:x", origin.x + 36.0, dur * 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.45)
+				tween.tween_property(player_sprite, "position", origin, dur * 0.55).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				tween.parallel().tween_property(player_sprite, "rotation_degrees", 0.0, dur * 0.55)
+	else:
+		# Non-attack cards (Defend / Skill / Power)
+		var cid: String = str(card.get("id", ""))
+		var is_defense := cid.contains("ward") or cid.contains("hide") or cid.contains("barrier") or cid.contains("guard")
+		if is_defense:
+			# Defensive turtle squash & barrier pulse
+			tween.tween_property(player_sprite, "position:x", origin.x - 10.0, dur * 0.4).set_trans(Tween.TRANS_QUAD)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.16, base_scale * 0.88), dur * 0.4)
+			tween.parallel().tween_property(player_sprite, "modulate", Color(1.2, 1.8, 2.4), dur * 0.4)
+			tween.tween_property(player_sprite, "position", origin, dur * 0.6).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.6)
+			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.6)
+		else:
+			# Levitate & energy surge
+			tween.tween_property(player_sprite, "position:y", origin.y - 18.0, dur * 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.94, base_scale * 1.16), dur * 0.45)
+			tween.parallel().tween_property(player_sprite, "modulate", Color(1.8, 1.5, 2.2), dur * 0.45)
+			tween.tween_property(player_sprite, "position", origin, dur * 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			tween.parallel().tween_property(player_sprite, "scale", Vector2.ONE * base_scale, dur * 0.55)
+			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.55)
+
+	await tween.finished
+	player_sprite.position = origin
+	player_sprite.scale = Vector2.ONE * base_scale
+	player_sprite.rotation_degrees = 0.0
+	player_sprite.modulate = Color.WHITE
 
 func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -2188,24 +2287,102 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 			tween.tween_property(sprite, "position:x", origin.x, 0.06)
 			tween.tween_property(sprite, "modulate", rest_tint, 0.14)
 		_:
-			# Anticipation (rise + squash back), action (fast lunge down + stretch), impact
-			# (squash flat + hit-flash + screen shake), recovery (elastic settle).
-			tween.tween_property(sprite, "position:y", origin.y - 16.0, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.12, base_scale * 0.86), 0.16).set_trans(Tween.TRANS_QUAD)
-			tween.tween_property(sprite, "position:y", origin.y + 48.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-			tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.82, base_scale * 1.28), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-			tween.parallel().tween_property(sprite, "modulate", Color(1.9, 1.1, 0.9), 0.09)
-			tween.tween_callback(func():
-				_flash_hit(sprite, Color(1.0, 0.75, 0.55), 0.14)
-				_shake_screen(4.0)
-				g._haptic("tap"))
-			tween.tween_property(sprite, "scale", Vector2(base_scale * 1.1, base_scale * 0.9), 0.05).set_trans(Tween.TRANS_QUAD)
-			tween.tween_property(sprite, "position:y", origin.y, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-			tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-			tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.22)
+			var art_key: String = g._art_key_for_enemy(enemy_state)
+			match art_key:
+				"ashRaven", "forgeSpark":
+					# Winged dive / forward rush (往前冲)
+					# Anticipation: rears back with wings/body tilted
+					tween.tween_property(sprite, "position", Vector2(origin.x + 20.0, origin.y - 14.0), 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 16.0, 0.14)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.9, base_scale * 1.12), 0.14)
+					# Fast swooping lunge forward-down towards the player
+					tween.tween_property(sprite, "position", Vector2(origin.x - 55.0, origin.y + 36.0), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "rotation_degrees", -22.0, 0.11)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.25, base_scale * 0.82), 0.11)
+					tween.parallel().tween_property(sprite, "modulate", Color(2.1, 1.2, 0.8), 0.11)
+					tween.tween_callback(func():
+						_flash_hit(sprite, Color(1.0, 0.8, 0.5), 0.15)
+						_shake_screen(4.5)
+						g._haptic("tap"))
+					# Elastic recovery
+					tween.tween_property(sprite, "position", origin, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, 0.22)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22)
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.22)
+				"sentinel", "embercliff":
+					# Heavy armed swing / arm slash (挥动武器/手臂)
+					# Anticipation: raises arm/weapon high with reverse tilt
+					tween.tween_property(sprite, "position", Vector2(origin.x + 12.0, origin.y - 24.0), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 26.0, 0.16)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.92, base_scale * 1.18), 0.16)
+					# Fierce diagonal downward sweeping slash
+					tween.tween_property(sprite, "position", Vector2(origin.x - 48.0, origin.y + 30.0), 0.10).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "rotation_degrees", -32.0, 0.10)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.22, base_scale * 0.85), 0.10)
+					tween.parallel().tween_property(sprite, "modulate", Color(2.0, 1.3, 0.9), 0.10)
+					tween.tween_callback(func():
+						_flash_hit(sprite, Color(1.0, 0.85, 0.6), 0.16)
+						_shake_screen(5.5)
+						g._haptic("tap"))
+					# Rotational recoil and settle
+					tween.tween_property(sprite, "position", origin, 0.24).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, 0.24)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.24)
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.24)
+				"runebound", "mountainHeart":
+					# Colossal Ground Tremor Slam / Stomp (巨灵践踏)
+					# Slow, heavy rear-up build up
+					tween.tween_property(sprite, "position:y", origin.y - 30.0, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.88, base_scale * 1.32), 0.22)
+					tween.parallel().tween_property(sprite, "modulate", Color(1.6, 1.4, 2.2), 0.22)
+					# Cataclysmic downward crash
+					tween.tween_property(sprite, "position:y", origin.y + 44.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.38, base_scale * 0.70), 0.09)
+					tween.tween_callback(func():
+						_flash_hit(sprite, Color(1.2, 0.9, 1.4), 0.2)
+						_shake_screen(8.0, 0.35)
+						g._haptic("heavy"))
+					# Solid rebound back to earth
+					tween.tween_property(sprite, "position", origin, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.28)
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.28)
+				"lanternstone", "runeShard":
+					# Magic Channeling & Shockwave Surge (聚气施法)
+					# Floats up, runes flare
+					tween.tween_property(sprite, "position:y", origin.y - 28.0, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale * 1.22, 0.18)
+					tween.parallel().tween_property(sprite, "modulate", Color(1.6, 2.2, 2.6), 0.18)
+					# Casts energy pulse towards player
+					tween.tween_property(sprite, "position:x", origin.x - 36.0, 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.15, base_scale * 0.95), 0.10)
+					tween.tween_callback(func():
+						_flash_hit(sprite, Color(0.8, 1.5, 2.5), 0.14)
+						_shake_screen(4.0)
+						g._haptic("tap"))
+					# Drifts back gracefully
+					tween.tween_property(sprite, "position", origin, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.25)
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.25)
+				_:
+					# Generic lunging attack
+					tween.tween_property(sprite, "position", Vector2(origin.x + 12.0, origin.y - 14.0), 0.14).set_trans(Tween.TRANS_SINE)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 1.1, base_scale * 0.9), 0.14)
+					tween.tween_property(sprite, "position", Vector2(origin.x - 42.0, origin.y + 26.0), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+					tween.parallel().tween_property(sprite, "rotation_degrees", -14.0, 0.09)
+					tween.parallel().tween_property(sprite, "scale", Vector2(base_scale * 0.85, base_scale * 1.25), 0.09)
+					tween.parallel().tween_property(sprite, "modulate", Color(1.9, 1.1, 0.9), 0.09)
+					tween.tween_callback(func():
+						_flash_hit(sprite, Color(1.0, 0.75, 0.55), 0.14)
+						_shake_screen(4.5)
+						g._haptic("tap"))
+					tween.tween_property(sprite, "position", origin, 0.22).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+					tween.parallel().tween_property(sprite, "rotation_degrees", 0.0, 0.22)
+					tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.22)
+					tween.parallel().tween_property(sprite, "modulate", rest_tint, 0.22)
 	await tween.finished
 	sprite.position = origin
 	sprite.scale = Vector2.ONE * base_scale
+	sprite.rotation_degrees = 0.0
 	sprite.modulate = rest_tint
 
 func _animate_player_hit(amount: int) -> void:

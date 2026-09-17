@@ -1243,6 +1243,7 @@ func _current_hero_mastery_bonuses() -> Dictionary: return _rewards_screen._curr
 func _current_encounter() -> Dictionary: return _rewards_screen._current_encounter()
 func _current_stage_label() -> String: return _rewards_screen._current_stage_label()
 func _grant_stage_rewards() -> void: _rewards_screen._grant_stage_rewards()
+func _finish_reward() -> void: _rewards_screen._finish_reward()
 func show_reward_details() -> void: _rewards_screen.show_reward_details()
 func show_battle_log() -> void: _rewards_screen.show_battle_log()
 func show_run_recap() -> void: _rewards_screen.show_run_recap()
