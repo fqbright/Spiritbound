@@ -312,8 +312,9 @@ func _run() -> void:
 		check(game.current_map_chapter == 1, "transition sets current_map_chapter to next chapter (1)")
 		check(int(game.profile.position) == 5, "transition sets profile.position to first stage of new chapter (5)")
 
-	# show_chapter_transition() is fire-and-forget (_finish_reward(), its one caller, never
-	# awaits it) — skipping immediately (above) frees transition_layer/pin_container via
+	# show_chapter_transition() is fire-and-forget (_travel_to(), its caller when the player
+	# asks to move into a new chapter, never awaits it) — skipping immediately (above) frees
+	# transition_layer/pin_container via
 	# show_map()'s _clear() long before the ~2.2s walk tween the coroutine is still suspended
 	# on actually finishes. Engine.time_scale sped way up lets that background tween genuinely
 	# finish here instead of skipping the wait, without burning ~2.6 real seconds every run.
@@ -1079,12 +1080,11 @@ func _run() -> void:
 		# floor here would pass either way and defeat the point of this check.
 		check(crest_effective_px > 40.0 and crest_effective_px < 130.0, "the shield-gain crest is mid-unfold at a plausible size for its intended ~92px target, got %.1fpx" % crest_effective_px)
 
-	# _build_player_stage() used to hardcode "fox" for every hero's battle sprite regardless
-	# of which of the 4 archetypes was actually equipped — every non-Fox-Spirit player saw a
-	# fox in battle no matter what they picked. Confirms each hero's own real sprite renders.
+	# Every hero has its own dedicated standalone sprite, not borrowing from the shared mob atlas.
 	var hero_sprite_checks: Array = [
-		{"hero": "stone_sentinel", "atlas_coord": Vector2i(1, 0)},
-		{"hero": "shadow_stalker", "atlas_coord": Vector2i(1, 2)},
+		{"hero": "stone_sentinel", "file": "hero_stone_sentinel.png"},
+		{"hero": "shadow_stalker", "file": "hero_shadow_stalker.png"},
+		{"hero": "miasma_witch", "file": "hero_miasma_witch.png"},
 	]
 	for hc in hero_sprite_checks:
 		game.profile.hero_class = str(hc.hero)
@@ -1095,26 +1095,8 @@ func _run() -> void:
 			await create_timer(0.1).timeout
 			hw += 0.1
 		var hero_sprite: Sprite2D = game.root.find_child("PlayerSprite", true, false) as Sprite2D
-		check(hero_sprite != null and hero_sprite.texture is AtlasTexture, "%s's battle sprite resolves to an atlas texture" % str(hc.hero))
-		if hero_sprite != null and hero_sprite.texture is AtlasTexture:
-			var atlas_tex: AtlasTexture = hero_sprite.texture
-			var cell_w: float = float(atlas_tex.atlas.get_width()) / 3.0
-			var cell_h: float = float(atlas_tex.atlas.get_height()) / 3.0
-			var actual_coord := Vector2i(int(round(atlas_tex.region.position.x / cell_w)), int(round(atlas_tex.region.position.y / cell_h)))
-			check(actual_coord == hc.atlas_coord, "%s's battle sprite uses its own atlas cell %s, not fox's %s — got %s" % [str(hc.hero), str(hc.atlas_coord), str(SpiritGame.CHAR_KEYS.fox), str(actual_coord)])
-
-	# Miasma Witch's sprite key ("miasma_witch") resolves to a real standalone portrait file
-	# now, not an atlas cell — confirms it isn't silently falling back to fox either.
-	game.profile.hero_class = "miasma_witch"
-	game.begin_battle(0)
-	await process_frame
-	var mw := 0.0
-	while game.resolving and mw < 8.0:
-		await create_timer(0.1).timeout
-		mw += 0.1
-	var miasma_sprite: Sprite2D = game.root.find_child("PlayerSprite", true, false) as Sprite2D
-	check(miasma_sprite != null and not (miasma_sprite.texture is AtlasTexture), "Miasma Witch's battle sprite is a standalone portrait, not a shared atlas cell (i.e. not silently borrowing another hero's sprite)")
-	check(miasma_sprite != null and miasma_sprite.texture != null and str(miasma_sprite.texture.resource_path).ends_with("miasma_witch.png"), "Miasma Witch's battle sprite loads her own miasma_witch.png portrait")
+		check(hero_sprite != null and not (hero_sprite.texture is AtlasTexture), "%s's battle sprite is a dedicated standalone portrait, not a shared mob atlas cell" % str(hc.hero))
+		check(hero_sprite != null and hero_sprite.texture != null and str(hero_sprite.texture.resource_path).ends_with(str(hc.file)), "%s's battle sprite loads its own %s portrait" % [str(hc.hero), str(hc.file)])
 	game.profile.hero_class = "fox_spirit"
 
 	var fx_holder := Control.new()
@@ -1216,6 +1198,49 @@ func _run() -> void:
 	check(game.root.get_child_count() > 0, "reward details page builds")
 	var has_skip := _find_text(game.root, game.content.ui("ui.skip_card", game.lang))
 	check(not has_skip, "the skip-card option is gone")
+
+	section("== a chapter boss win no longer auto-advances into the new chapter ==")
+	var saved_unlocked_boss: int = int(game.profile.unlocked)
+	var saved_position_boss: int = int(game.profile.position)
+	var saved_ch_boss: int = int(game.current_map_chapter)
+	game.profile.unlocked = 4 # stage 4 (chapter 0's boss) not yet a replay
+	game.profile.position = 4
+	game.current_map_chapter = 0
+	game.current_stage = 4
+	game.begin_battle(4)
+	await process_frame
+	var bw := 0.0
+	while game.resolving and bw < 8.0:
+		await create_timer(0.1).timeout
+		bw += 0.1
+	game._grant_stage_rewards()
+	game._rewards_screen._finish_reward()
+	await process_frame
+	check(game.root.find_child("ChapterTransitionLayer", true, false) == null, "winning a chapter boss does not auto-launch the chapter transition cutscene")
+	check(game.current_map_chapter == 0, "the map still shows the just-cleared chapter, not the new one, until the player asks to move on")
+	check(int(game.profile.position) == 4, "profile.position stays on the cleared boss stage until the player taps next stage")
+	check(int(game.profile.unlocked) == 5, "the new chapter's first stage is unlocked immediately, just not entered yet")
+
+	# Tapping "next stage" (the same _travel_to() call the dock's next-stage button makes) is
+	# what plays the walk-in cutscene now, and finishing it leads straight into the new
+	# chapter's first battle.
+	game._travel_to(int(game.profile.position) + 1)
+	await process_frame
+	check(game.root.find_child("ChapterTransitionLayer", true, false) != null, "tapping next stage across a chapter boundary plays the chapter transition cutscene")
+	var skip_btn_boss: Button = game.root.find_child("ChapterTransitionSkipBtn", true, false) as Button
+	check(skip_btn_boss != null, "the cutscene triggered by next-stage still has its skip button")
+	if skip_btn_boss != null:
+		skip_btn_boss.pressed.emit()
+		await process_frame
+	check(game.current_map_chapter == 1, "finishing the cutscene lands the map on the new chapter")
+	check(int(game.profile.position) == 5, "finishing the cutscene advances profile.position to the new chapter's first stage")
+	check(game.combat != null and int(game.current_stage) == 5, "finishing the cutscene begins battle for the new chapter's first stage")
+
+	game.profile.unlocked = saved_unlocked_boss
+	game.profile.position = saved_position_boss
+	game.current_map_chapter = saved_ch_boss
+	game.show_map()
+	await process_frame
 
 	# Milestone 3: Great Bosses draw exclusively from the high-stakes boss relic pool
 	# (cursedTome/titanBell/chaosPrism); a regular boss must never hand one out, so those

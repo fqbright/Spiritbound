@@ -1143,15 +1143,20 @@ func _travel_to(index: int) -> void:
 		return
 
 	if start_index / 5 != index / 5:
-		g.current_map_chapter = index / 5
-		g.profile.position = index
-		SpiritSave.write(g.profile)
-		show_map()
-		var kind := g.content.node_kind(index)
-		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
-			g.show_event(index, kind)
-		else:
-			g.begin_battle(index)
+		# Crossing into a new chapter only ever happens by winning the old chapter's boss
+		# (_grant_stage_rewards() unlocks exactly the new chapter's stage 0, nothing further),
+		# so index here is always that chapter's first stage and show_chapter_transition()'s
+		# "walk onto next_ch's waypoint 0" animation always matches the real target. This used
+		# to jump straight to show_map() + begin_battle with no animation at all; now the walk
+		# only plays once the player actually asks to go there (tapping the next-stage dock
+		# button or the new chapter's stage-0 pin), not automatically the instant the boss dies.
+		var enter_next := func():
+			var kind := g.content.node_kind(index)
+			if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+				g.show_event(index, kind)
+			else:
+				g.begin_battle(index)
+		show_chapter_transition(start_index / 5, index / 5, enter_next)
 		return
 
 	var hop_count: int = maxi(1, absi(index - start_index))

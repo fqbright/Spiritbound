@@ -318,12 +318,6 @@ func _grant_stage_rewards() -> void:
 	_grant_mastery_xp(mastery_xp)
 	g._add_season_xp(35)
 
-	var is_chapter_final: bool = (g.current_stage % 5 == 4)
-	if is_chapter_final:
-		g.pending_rewards["chapter_transition"] = true
-		g.pending_rewards["cleared_chapter"] = g.current_stage / 5
-		g.pending_rewards["next_chapter"] = (g.current_stage / 5) + 1
-
 	if g.content.is_boss_kind(kind):
 		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
 		var id: String = order[(g.current_stage / 5 + int(g.profile.difficulty) * 2) % order.size()]
@@ -523,13 +517,12 @@ func _reward_item(title: String, detail: String, color: Color) -> PanelContainer
 
 func _finish_reward() -> void:
 	SpiritSave.write(g.profile)
-	if bool(g.pending_rewards.get("chapter_transition", false)):
-		var cleared_ch: int = int(g.pending_rewards.get("cleared_chapter", 0))
-		var next_ch: int = int(g.pending_rewards.get("next_chapter", 1))
-		g.pending_rewards["chapter_transition"] = false
-		g.show_chapter_transition(cleared_ch, next_ch)
-	else:
-		g.show_map()
+	# Beating a chapter boss no longer auto-plays the "walk into the next chapter" cutscene —
+	# it now lands on the map exactly like any other win, still showing the chapter that was
+	# just cleared. The cutscene itself still exists; _travel_to() now plays it the moment the
+	# player actually asks to move into the new chapter (the next-stage dock button or tapping
+	# its stage-0 pin), not automatically the instant the boss dies.
+	g.show_map()
 
 func show_event(index: int, kind: String) -> void:
 	g._clear(); g._play_music(false)
