@@ -864,6 +864,7 @@ const UI_TEXT = {
 	"ui.lang_toggle": {"zh-Hans":"中/EN", "en":"EN/中"},
 	"ui.deck_btn": {"zh-Hans":"牌组", "en":"Deck"},
 	"ui.equip_btn": {"zh-Hans":"装备", "en":"Gear"},
+	"ui.trial_btn": {"zh-Hans":"试炼", "en":"Trials"},
 	"ui.shop_btn": {"zh-Hans":"商店", "en":"Shop"},
 	"ui.next_btn": {"zh-Hans":"下一关", "en":"Next"},
 	"ui.chapter_n": {"zh-Hans":"第%d大关 · %s", "en":"Chapter %d · %s"},

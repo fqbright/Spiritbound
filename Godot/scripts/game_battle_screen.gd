@@ -600,60 +600,67 @@ func _build_player_stage() -> Control:
 		d_tw.tween_property(danger_badge, "modulate:a", 0.55, 0.4).set_trans(Tween.TRANS_SINE)
 		d_tw.tween_property(danger_badge, "modulate:a", 1.0, 0.4).set_trans(Tween.TRANS_SINE)
 
-	# Player side panel for Equipment, Relics & Combat Statuses (beside character!)
-	var side_panel := VBoxContainer.new()
+	# Player side panel for Equipment, Relics & Combat Statuses (arranged vertically in columns of up to 4 items each)
+	var side_panel := HBoxContainer.new()
 	side_panel.name = "PlayerSidePanel"
-	side_panel.position = Vector2(186.0, 14.0)
-	side_panel.custom_minimum_size = Vector2(174.0, 88.0)
+	side_panel.position = Vector2(184.0, 10.0)
+	side_panel.custom_minimum_size = Vector2(176.0, 104.0)
 	side_panel.size = side_panel.custom_minimum_size
 	side_panel.add_theme_constant_override("separation", 6)
 	side_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	stage.add_child(side_panel)
 
-	# 1. Equipment, Relics & Stage Modifier Row (Right beside player character)
-	if not g.active_modifier.is_empty() or not g.combat.state.equipment.is_empty() or not g.profile.relics.is_empty():
-		var gear_row := HBoxContainer.new()
-		gear_row.alignment = BoxContainer.ALIGNMENT_BEGIN
-		gear_row.add_theme_constant_override("separation", 6)
-		gear_row.mouse_filter = Control.MOUSE_FILTER_PASS
-		side_panel.add_child(gear_row)
+	var all_items: Array = []
+	# 1. Active combat statuses (Shield, Focus, Strength, Burn, Poison, Vulnerable, Weak)
+	if int(g.combat.state.player.shield) > 0:
+		all_items.append(g._status_chip("⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 20.0))
+	if int(g.combat.state.player.focus) > 0:
+		all_items.append(g._status_chip("◉", int(g.combat.state.player.focus), Color("ffe08a"), 20.0))
+	if int(g.combat.state.player.get("strength", 0)) > 0:
+		all_items.append(g._status_chip("★", int(g.combat.state.player.strength), Color("ffd700"), 20.0))
+	if int(g.combat.state.player.burn) > 0:
+		all_items.append(g._status_chip("▲", int(g.combat.state.player.burn), Color("ff9868"), 20.0))
+	if int(g.combat.state.player.get("poison", 0)) > 0:
+		all_items.append(g._status_chip("◆", int(g.combat.state.player.poison), Color("a75bd6"), 20.0))
+	if int(g.combat.state.player.get("vulnerable", 0)) > 0:
+		all_items.append(g._status_chip("▼", int(g.combat.state.player.vulnerable), Color("ff6b6b"), 20.0))
+	if int(g.combat.state.player.get("weak", 0)) > 0:
+		all_items.append(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
 
-		if not g.active_modifier.is_empty():
-			var m_name: String = g.active_modifier.name_en if g.lang == "en" else g.active_modifier.name
-			var m_det: String = g.active_modifier.detail_en if g.lang == "en" else g.active_modifier.detail
-			var mod_badge := g._icon_badge("✥", Color("ffe2b0"), 28, 14)
-			gear_row.add_child(_tap_wrap(mod_badge, func(): _show_info_popup(g._icon_badge("✥", Color("ffe2b0"), 60, 26), m_name, m_det, g.EMBER)))
+	# 2. Stage Modifier, Equipment & Relic Badges
+	if not g.active_modifier.is_empty():
+		var m_name: String = g.active_modifier.name_en if g.lang == "en" else g.active_modifier.name
+		var m_det: String = g.active_modifier.detail_en if g.lang == "en" else g.active_modifier.detail
+		var mod_badge := g._icon_badge("✥", Color("ffe2b0"), 26, 13)
+		all_items.append(_tap_wrap(mod_badge, func(): _show_info_popup(g._icon_badge("✥", Color("ffe2b0"), 60, 26), m_name, m_det, g.EMBER)))
 
-		for id in g.combat.state.equipment:
-			var item := g.content.equipment(id)
-			if item.is_empty(): continue
-			var e_name: String = g._equip_name(item)
-			var e_det: String = g._equip_detail(item)
-			var e_badge := g._equip_icon_badge(item, g.GOLD, 28)
-			gear_row.add_child(_tap_wrap(e_badge, func(): _show_info_popup(g._equip_icon_badge(item, g.GOLD, 60), e_name, e_det, g.GOLD)))
+	for id in g.combat.state.equipment:
+		var item := g.content.equipment(id)
+		if item.is_empty(): continue
+		var e_name: String = g._equip_name(item)
+		var e_det: String = g._equip_detail(item)
+		var e_badge := g._equip_icon_badge(item, g.GOLD, 26)
+		all_items.append(_tap_wrap(e_badge, func(): _show_info_popup(g._equip_icon_badge(item, g.GOLD, 60), e_name, e_det, g.GOLD)))
 
-		for id in g.profile.relics:
-			var relic := g.content.relic(id)
-			if relic.is_empty(): continue
-			var r_color := Color(relic.color)
-			var r_name: String = g._relic_name(relic)
-			var r_det: String = g._relic_detail(relic)
-			var r_badge := g._relic_icon_badge(relic, r_color, 28)
-			gear_row.add_child(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
+	for id in g.profile.relics:
+		var relic := g.content.relic(id)
+		if relic.is_empty(): continue
+		var r_color := Color(relic.color)
+		var r_name: String = g._relic_name(relic)
+		var r_det: String = g._relic_detail(relic)
+		var r_badge := g._relic_icon_badge(relic, r_color, 26)
+		all_items.append(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
 
-	# 2. Player Active Status Chips (Shield, Focus, Strength, Burn, Poison, Vulnerable, Weak)
-	var badges := HBoxContainer.new()
-	badges.alignment = BoxContainer.ALIGNMENT_BEGIN
-	badges.add_theme_constant_override("separation", 6)
-	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	side_panel.add_child(badges)
-	if int(g.combat.state.player.shield) > 0: badges.add_child(g._status_chip("⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 20.0))
-	if int(g.combat.state.player.focus) > 0: badges.add_child(g._status_chip("◉", int(g.combat.state.player.focus), Color("ffe08a"), 20.0))
-	if int(g.combat.state.player.get("strength", 0)) > 0: badges.add_child(g._status_chip("★", int(g.combat.state.player.strength), Color("ffd700"), 20.0))
-	if int(g.combat.state.player.burn) > 0: badges.add_child(g._status_chip("▲", int(g.combat.state.player.burn), Color("ff9868"), 20.0))
-	if int(g.combat.state.player.get("poison", 0)) > 0: badges.add_child(g._status_chip("◆", int(g.combat.state.player.poison), Color("a75bd6"), 20.0))
-	if int(g.combat.state.player.get("vulnerable", 0)) > 0: badges.add_child(g._status_chip("▼", int(g.combat.state.player.vulnerable), Color("ff6b6b"), 20.0))
-	if int(g.combat.state.player.get("weak", 0)) > 0: badges.add_child(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
+	# Lay out items vertically in columns of up to 4 items each
+	var cur_col: VBoxContainer = null
+	for idx in all_items.size():
+		if idx % 4 == 0:
+			cur_col = VBoxContainer.new()
+			cur_col.alignment = BoxContainer.ALIGNMENT_BEGIN
+			cur_col.add_theme_constant_override("separation", 5)
+			cur_col.mouse_filter = Control.MOUSE_FILTER_PASS
+			side_panel.add_child(cur_col)
+		cur_col.add_child(all_items[idx])
 
 	return stage
 
@@ -1664,9 +1671,9 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 	slash.modulate = Color(2.0, 1.7, 1.2, 1.0) if not is_claw else Color(2.2, 0.8, 0.3, 1.0)
 	g.overlay.add_child(slash)
 
-	var dur_slash: float = g._battle_delay(0.18)
+	var dur_slash: float = g._battle_delay(0.36)
 	var tween := slash.create_tween().set_parallel(true)
-	var target_scale := 0.32 if is_claw else 0.28
+	var target_scale := 0.34 if is_claw else 0.30
 	tween.tween_property(slash, "position", enemy_pos + end_offset, dur_slash).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(slash, "scale", Vector2(target_scale, target_scale), dur_slash).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(slash, "rotation_degrees", slash.rotation_degrees + (24.0 if is_claw else 32.0), dur_slash)
@@ -1684,8 +1691,8 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 		burst.modulate = Color(2.5, 2.2, 1.5, 0.95)
 		g.overlay.add_child(burst)
 		var b_tween := burst.create_tween().set_parallel(true)
-		b_tween.tween_property(burst, "scale", Vector2(0.18, 0.18), dur_slash * 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		b_tween.tween_property(burst, "modulate:a", 0.0, dur_slash * 0.4).set_delay(dur_slash * 0.2)
+		b_tween.tween_property(burst, "scale", Vector2(0.20, 0.20), dur_slash * 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		b_tween.tween_property(burst, "modulate:a", 0.0, dur_slash * 0.4).set_delay(dur_slash * 0.3)
 		b_tween.chain().tween_callback(burst.queue_free)
 
 	await tween.finished
@@ -1709,20 +1716,20 @@ func _animate_player_heal(amount: int) -> void:
 		lotus.modulate = Color(1.2, 1.6, 1.3, 0.9)
 		g.overlay.add_child(lotus)
 
-		var dur: float = g._battle_delay(0.32)
+		var dur: float = g._battle_delay(0.60)
 		var tween := lotus.create_tween().set_parallel(true)
-		tween.tween_property(lotus, "scale", Vector2(0.16, 0.16), dur).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tween.tween_property(lotus, "rotation_degrees", 60.0, dur)
+		tween.tween_property(lotus, "scale", Vector2(0.18, 0.18), dur).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(lotus, "rotation_degrees", 75.0, dur)
 		tween.tween_property(lotus, "modulate:a", 0.0, dur * 0.4).set_delay(dur * 0.6)
 		tween.chain().tween_callback(lotus.queue_free)
 
 	_flash_hit(player_node, Color("80ffc0"))
 	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
 	var swell := player_node.create_tween()
-	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.08, base_scale * 1.08), g._battle_delay(0.12)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.16)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.10, base_scale * 1.10), g._battle_delay(0.20)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.28)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
-	var popup := g._label("+%d ♥" % amount, 30, Color("80ffb0"), HORIZONTAL_ALIGNMENT_CENTER)
+	var popup := g._label("+%d ♥" % amount, 32, Color("80ffb0"), HORIZONTAL_ALIGNMENT_CENTER)
 	popup.position = target_pos - Vector2(50, 36)
 	popup.size = Vector2(100, 34)
 	popup.z_index = 380
@@ -1730,11 +1737,11 @@ func _animate_player_heal(amount: int) -> void:
 	popup.pivot_offset = Vector2(50, 17)
 	g.overlay.add_child(popup)
 	var pop_tween := popup.create_tween().set_parallel(true)
-	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.12)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.45))
-	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45)).set_delay(g._battle_delay(0.18))
+	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.18)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.65))
+	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.65)).set_delay(g._battle_delay(0.30))
 	pop_tween.chain().tween_callback(popup.queue_free)
-	await g.get_tree().create_timer(g._battle_delay(0.24)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 
 func _animate_player_buff(text: String) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -1754,20 +1761,20 @@ func _animate_player_buff(text: String) -> void:
 		pillar.modulate = Color(1.5, 1.3, 0.8, 0.95)
 		g.overlay.add_child(pillar)
 
-		var dur: float = g._battle_delay(0.34)
+		var dur: float = g._battle_delay(0.65)
 		var tween := pillar.create_tween().set_parallel(true)
-		tween.tween_property(pillar, "scale", Vector2(0.14, 0.22), dur * 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tween.tween_property(pillar, "position:y", target_pos.y - 45.0, dur)
+		tween.tween_property(pillar, "scale", Vector2(0.15, 0.24), dur * 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(pillar, "position:y", target_pos.y - 50.0, dur)
 		tween.tween_property(pillar, "modulate:a", 0.0, dur * 0.4).set_delay(dur * 0.6)
 		tween.chain().tween_callback(pillar.queue_free)
 
 	_flash_hit(player_node, Color("ffe066"))
 	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
 	var swell := player_node.create_tween()
-	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.12, base_scale * 1.12), g._battle_delay(0.14)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.18)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.14, base_scale * 1.14), g._battle_delay(0.22)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.30)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
-	var popup := g._label(text, 26, Color("ffe066"), HORIZONTAL_ALIGNMENT_CENTER)
+	var popup := g._label(text, 28, Color("ffe066"), HORIZONTAL_ALIGNMENT_CENTER)
 	popup.position = target_pos - Vector2(60, 36)
 	popup.size = Vector2(120, 34)
 	popup.z_index = 380
@@ -1775,11 +1782,11 @@ func _animate_player_buff(text: String) -> void:
 	popup.pivot_offset = Vector2(60, 17)
 	g.overlay.add_child(popup)
 	var pop_tween := popup.create_tween().set_parallel(true)
-	pop_tween.tween_property(popup, "scale", Vector2(1.2, 1.2), g._battle_delay(0.12)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.45))
-	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45)).set_delay(g._battle_delay(0.18))
+	pop_tween.tween_property(popup, "scale", Vector2(1.2, 1.2), g._battle_delay(0.18)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.65))
+	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.65)).set_delay(g._battle_delay(0.30))
 	pop_tween.chain().tween_callback(popup.queue_free)
-	await g.get_tree().create_timer(g._battle_delay(0.24)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 
 func _animate_player_shield_gain(amount: int) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -1802,17 +1809,17 @@ func _animate_player_shield_gain(amount: int) -> void:
 	crest.z_index = 350
 	g.overlay.add_child(crest)
 
-	var dur_open: float = g._battle_delay(0.20)
+	var dur_open: float = g._battle_delay(0.38)
 	var unfold := crest.create_tween().set_parallel(true)
 	unfold.tween_property(crest, "scale", Vector2(0.09, 0.09), dur_open).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	unfold.tween_property(crest, "modulate:a", 1.0, dur_open * 0.7)
 	unfold.tween_property(crest, "rotation_degrees", -6.0, dur_open)
 	await unfold.finished
 
-	await g.get_tree().create_timer(g._battle_delay(0.06)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.10)).timeout
 
 	# Step 2: 护甲加到人物 (Streaks to Character and Snaps onto Chest)
-	var dur_fly: float = g._battle_delay(0.22)
+	var dur_fly: float = g._battle_delay(0.38)
 	var fly := crest.create_tween().set_parallel(true)
 	fly.tween_property(crest, "position", target_pos, dur_fly).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	fly.tween_property(crest, "rotation_degrees", 0.0, dur_fly)
@@ -1823,13 +1830,13 @@ func _animate_player_shield_gain(amount: int) -> void:
 	_flash_hit(player_node, Color("9fd8ff"))
 	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
 	var swell := player_node.create_tween()
-	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.10, base_scale * 1.10), g._battle_delay(0.12)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.18)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2(base_scale * 1.10, base_scale * 1.10), g._battle_delay(0.20)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	swell.tween_property(player_node, "scale", Vector2.ONE * base_scale, g._battle_delay(0.28)).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 	g._haptic("impact")
 
 	# Floating shield text popup: "+X 🛡"
-	var popup := g._label("+%d 🛡" % amount, 30, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	var popup := g._label("+%d 🛡" % amount, 32, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER)
 	popup.position = target_pos - Vector2(50, 36)
 	popup.size = Vector2(100, 34)
 	popup.z_index = 380
@@ -1837,9 +1844,9 @@ func _animate_player_shield_gain(amount: int) -> void:
 	popup.pivot_offset = Vector2(50, 17)
 	g.overlay.add_child(popup)
 	var pop_tween := popup.create_tween().set_parallel(true)
-	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.12)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.45))
-	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45)).set_delay(g._battle_delay(0.18))
+	pop_tween.tween_property(popup, "scale", Vector2(1.25, 1.25), g._battle_delay(0.18)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(popup, "position:y", target_pos.y - 55.0, g._battle_delay(0.65))
+	pop_tween.tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.65)).set_delay(g._battle_delay(0.30))
 	pop_tween.chain().tween_callback(popup.queue_free)
 
 	var fade_crest := crest.create_tween()

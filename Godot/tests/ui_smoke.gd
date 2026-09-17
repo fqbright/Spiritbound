@@ -286,20 +286,16 @@ func _run() -> void:
 	check(settings_header_btn != null and settings_header_btn.size.y > 20.0, "map header is laid out too")
 	check(_find_button_containing(game.root, game.content.ui("ui.lang_toggle", game.lang)) == null, "the redundant lang toggle no longer clutters the map header (moved into Settings)")
 
-	section("== map challenge rail ==")
-	# Daily Trial / Abyss quick-access rail: a vertical column on the right edge rather than
-	# more width in the already-packed header row (see the header decluttering above).
-	var rail: Control = game.root.find_child("MapChallengeRail", true, false) as Control
-	check(rail != null, "the map challenge rail exists")
+	section("== map trial button in dock ==")
+	# Unified Trial / Challenges shortcut: now consolidated as a dedicated button in the bottom dock
 	var trial_shortcut: Control = game.root.find_child("MapTrialShortcutBtn", true, false) as Control
-	check(trial_shortcut != null and trial_shortcut.size.x > 20.0, "the consolidated Challenge rail shortcut has real size")
-	check(game.root.find_child("MapAbyssShortcutBtn", true, false) == null, "duplicate abyss button is removed from right rail")
-	if trial_shortcut != null:
-		check(trial_shortcut.global_position.x > 300.0, "the rail sits toward the right edge of the screen (x=%.0f)" % trial_shortcut.global_position.x)
+	check(trial_shortcut != null and trial_shortcut.size.x > 20.0, "the consolidated Trial dock shortcut exists with real size")
+	check(game.root.find_child("MapChallengeRail", true, false) == null, "the redundant challenge rail is removed from screen edge")
+	check(game.root.find_child("MapAbyssShortcutBtn", true, false) == null, "duplicate abyss button is removed")
 	game.camp_tab = "character"
 	trial_shortcut.emit_signal("pressed")
 	await process_frame
-	check(game.camp_tab == "challenges", "tapping the trial rail shortcut opens Challenges")
+	check(game.camp_tab == "challenges", "tapping the trial dock shortcut opens Challenges")
 	check(_find_label_text(game.root, game.content.ui("ui.challenges_title", game.lang)), "dedicated trial challenges screen renders")
 	game.camp_tab = "character"  # restore: a later section asserts Camp's own default tab
 

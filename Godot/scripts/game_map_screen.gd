@@ -191,7 +191,7 @@ func show_map() -> void:
 	header_holder.offset_top = 0.0
 	header_holder.offset_bottom = float(g._safe_top()) + 60.0
 	header_holder.add_theme_constant_override("margin_top", g._safe_top())
-	header_holder.add_theme_constant_override("margin_left", 12)
+	header_holder.add_theme_constant_override("margin_left", 2)
 	header_holder.add_theme_constant_override("margin_right", 12)
 	header_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay_page.add_child(header_holder)
@@ -258,7 +258,6 @@ func show_map() -> void:
 	header.add_child(right_box)
 	header_holder.add_child(header)
 
-	_add_map_challenge_rail(overlay_page)
 	_add_map_digest_banner(overlay_page)
 
 	var stage_count: int = g.content.encounters.size()
@@ -319,6 +318,7 @@ func show_map() -> void:
 	var items = [
 		["nav_deck", "ui.deck_btn", g.show_deck],
 		["nav_equip", "ui.equip_btn", g.show_loadout],
+		["nav_trial", "ui.trial_btn", _open_camp_challenges],
 		["nav_shop", "ui.shop_btn", g.show_shop],
 		["nav_next", "ui.next_btn", _next_stage]
 	]
@@ -326,6 +326,8 @@ func show_map() -> void:
 	for i in items.size():
 		var item = items[i]
 		var btn := Button.new()
+		if str(item[0]) == "nav_trial":
+			btn.name = "MapTrialShortcutBtn"
 		btn.text = "\n" + g.t(item[1])
 		btn.custom_minimum_size = Vector2(0, 52)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -352,6 +354,8 @@ func show_map() -> void:
 		icon.offset_left = -12.0; icon.offset_right = 12.0
 		icon.offset_top = 6.0; icon.offset_bottom = 30.0
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if str(item[0]) == "nav_trial" and int(g.profile.unlocked) < 5:
+			icon.modulate = Color(0.5, 0.5, 0.5, 0.6)
 		btn.add_child(icon)
 
 		# The deck slot gets the same "something to check in here" red dot whenever the
