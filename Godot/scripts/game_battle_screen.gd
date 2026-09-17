@@ -530,7 +530,11 @@ func _build_player_stage() -> Control:
 		var tail := Sprite2D.new()
 		tail.name = "PlayerTail"
 		tail.texture = load("res://assets/characters/fox_rig/fox_tail.png")
-		var tail_scale := Vector2(0.092, 0.092)
+		# Target on-screen size (~94px) computed from the texture's own current width, not a
+		# flat scale baked in for one specific source resolution — this broke once already
+		# when fox_tail.png was downscaled from 1024px without updating a hardcoded 0.092.
+		var tail_scale_val: float = 94.2 / float(tail.texture.get_width())
+		var tail_scale := Vector2(tail_scale_val, tail_scale_val)
 		tail.scale = tail_scale
 		tail.position = Vector2(player_x, 32.0)
 		tail.z_index = -1
@@ -551,7 +555,9 @@ func _build_player_stage() -> Control:
 
 		# 3. Main Body Sprite
 		sprite.texture = load(rig_body_path)
-		var scale_factor: float = 80.0 / 1024.0
+		# Target on-screen size (80px) from the texture's own current width — see the matching
+		# comment on tail_scale_val above for why this can't be a flat constant.
+		var scale_factor: float = 80.0 / float(sprite.texture.get_width())
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
 		sprite.position = Vector2(player_x, 38.0)
@@ -569,7 +575,10 @@ func _build_player_stage() -> Control:
 		var orb := Sprite2D.new()
 		orb.name = "PlayerSpiritOrb"
 		orb.texture = load("res://assets/characters/fox_rig/fox_orb.png")
-		var orb_scale := Vector2(0.038, 0.038)
+		# Target on-screen size (~39px) from the texture's own current width — see the matching
+		# comment on tail_scale_val above.
+		var orb_scale_val: float = 38.9 / float(orb.texture.get_width())
+		var orb_scale := Vector2(orb_scale_val, orb_scale_val)
 		orb.scale = orb_scale
 		var base_orb_pos := Vector2(player_x + 36.0, 18.0)
 		orb.position = base_orb_pos
@@ -1880,14 +1889,22 @@ func _animate_player_shield_gain(amount: int) -> void:
 	if ResourceLoader.exists("res://assets/vfx/spirit_shield_crest.png"):
 		crest.texture = load("res://assets/vfx/spirit_shield_crest.png")
 	crest.position = origin_pos
-	crest.scale = Vector2(0.01, 0.01)
+	# Every scale keyframe below (0.01 start, 0.09 unfolded, 0.068 flying to the character,
+	# 0.095 fading out) was calibrated against spirit_shield_crest.png's original 1024px
+	# resolution. Downscaling that file to 256px without this correction silently shrank the
+	# whole sequence to a quarter of its intended on-screen size — the crest_scale_fix ratio
+	# rescales every one of those constants together instead of guessing a fresh target size
+	# for each keyframe individually.
+	var crest_tex_w: float = float(crest.texture.get_width()) if crest.texture else 1024.0
+	var crest_scale_fix: float = 1024.0 / crest_tex_w
+	crest.scale = Vector2(0.01, 0.01) * crest_scale_fix
 	crest.modulate = Color(1.3, 1.3, 1.5, 0.0)
 	crest.z_index = 350
 	g.overlay.add_child(crest)
 
 	var dur_open: float = g._battle_delay(0.38)
 	var unfold := crest.create_tween().set_parallel(true)
-	unfold.tween_property(crest, "scale", Vector2(0.09, 0.09), dur_open).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	unfold.tween_property(crest, "scale", Vector2(0.09, 0.09) * crest_scale_fix, dur_open).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	unfold.tween_property(crest, "modulate:a", 1.0, dur_open * 0.7)
 	unfold.tween_property(crest, "rotation_degrees", -6.0, dur_open)
 	await unfold.finished
@@ -1899,7 +1916,7 @@ func _animate_player_shield_gain(amount: int) -> void:
 	var fly := crest.create_tween().set_parallel(true)
 	fly.tween_property(crest, "position", target_pos, dur_fly).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	fly.tween_property(crest, "rotation_degrees", 0.0, dur_fly)
-	fly.tween_property(crest, "scale", Vector2(0.068, 0.068), dur_fly)
+	fly.tween_property(crest, "scale", Vector2(0.068, 0.068) * crest_scale_fix, dur_fly)
 	await fly.finished
 
 	# Impact snap onto player
@@ -1926,7 +1943,7 @@ func _animate_player_shield_gain(amount: int) -> void:
 	pop_tween.chain().tween_callback(popup.queue_free)
 
 	var fade_crest := crest.create_tween()
-	fade_crest.tween_property(crest, "scale", Vector2(0.095, 0.095), g._battle_delay(0.12))
+	fade_crest.tween_property(crest, "scale", Vector2(0.095, 0.095) * crest_scale_fix, g._battle_delay(0.12))
 	fade_crest.parallel().tween_property(crest, "modulate:a", 0.0, g._battle_delay(0.12))
 	fade_crest.tween_callback(crest.queue_free)
 

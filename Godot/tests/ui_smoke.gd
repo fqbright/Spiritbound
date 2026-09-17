@@ -1014,6 +1014,41 @@ func _run() -> void:
 	check(rig_orb != null, "the fox rig's floating spirit orb layer renders")
 	check(rig_orb != null and player_sprite.get_meta("rig_orb", null) == rig_orb, "PlayerSprite tracks its own orb via meta")
 
+	# Regression coverage for a real bug: downscaling fox_body/fox_tail/fox_orb.png (they
+	# shipped at 1024px rendering at ~40-95px) without also updating the flat scale constants
+	# calibrated for that original resolution silently shrank all three to a quarter (or an
+	# eighth, for the orb) of their intended on-screen size — every dimension check above
+	# still passed throughout that regression, since "does the node exist" doesn't catch
+	# "is it the right size". Checking effective size (texture width * scale) directly closes
+	# that gap; a wide tolerance since the exact px target is a design choice, not a contract.
+	var body_sprite := player_sprite as Sprite2D
+	if body_sprite != null and body_sprite.texture != null:
+		var body_effective_px: float = float(body_sprite.texture.get_width()) * body_sprite.scale.x
+		check(body_effective_px > 60.0 and body_effective_px < 100.0, "the fox rig's body renders at roughly its intended ~80px, got %.1fpx (texture %dpx x scale %.4f)" % [body_effective_px, body_sprite.texture.get_width(), body_sprite.scale.x])
+	if rig_tail is Sprite2D and (rig_tail as Sprite2D).texture != null:
+		var tail_effective_px: float = float((rig_tail as Sprite2D).texture.get_width()) * (rig_tail as Sprite2D).scale.x
+		check(tail_effective_px > 70.0 and tail_effective_px < 120.0, "the fox rig's tail renders at roughly its intended ~94px, got %.1fpx" % tail_effective_px)
+	if rig_orb is Sprite2D and (rig_orb as Sprite2D).texture != null:
+		var orb_effective_px: float = float((rig_orb as Sprite2D).texture.get_width()) * (rig_orb as Sprite2D).scale.x
+		check(orb_effective_px > 25.0 and orb_effective_px < 55.0, "the fox rig's spirit orb renders at roughly its intended ~39px, got %.1fpx" % orb_effective_px)
+
+	# Same regression class, same fix pattern (crest_scale_fix): spirit_shield_crest.png was
+	# also downscaled from 1024px without correcting the 4 flat scale keyframes calibrated
+	# against that resolution (0.01/0.09/0.068/0.095), across 3 separate tween steps in
+	# _animate_player_shield_gain(). Checked partway through the unfold (not at its exact
+	# final frame, to avoid a flaky exact-timing dependency) — still comfortably inside the
+	# ~10-90px band this shrinks to versus the ~2-20px band the bug produced.
+	game._animate_player_shield_gain(5)
+	await create_timer(0.5).timeout
+	var shield_crest: Sprite2D = game.overlay.find_child("AnimShieldCrest", true, false) as Sprite2D
+	check(shield_crest != null, "AnimShieldCrest exists mid-animation")
+	if shield_crest != null and shield_crest.texture != null:
+		var crest_effective_px: float = float(shield_crest.texture.get_width()) * shield_crest.scale.x
+		# Lower bound of 40px is deliberately above the ~17-23px this exact bug produced
+		# (the same 4 keyframes uncorrected against a texture downscaled 4x) — a narrower
+		# floor here would pass either way and defeat the point of this check.
+		check(crest_effective_px > 40.0 and crest_effective_px < 130.0, "the shield-gain crest is mid-unfold at a plausible size for its intended ~92px target, got %.1fpx" % crest_effective_px)
+
 	# _build_player_stage() used to hardcode "fox" for every hero's battle sprite regardless
 	# of which of the 4 archetypes was actually equipped — every non-Fox-Spirit player saw a
 	# fox in battle no matter what they picked. Confirms each hero's own real sprite renders.
