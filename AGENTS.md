@@ -25,32 +25,45 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 
 ## Verifying a change
 
+Every agent working on this repository **MUST** run the automated verification suite before submitting any commit:
+
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules
-godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + a combat turn
+./run_tests.sh                 # Runs all 3 test suites: test_runner + ui_smoke + e2e_playthrough
+./run_tests.sh --snapshots     # Runs all tests AND generates/refreshes 390x844 mobile screenshots
 ```
 
-Both must pass. Run `ui_smoke.gd` for anything touching a screen — it is not optional
-polish, it is the only thing standing in for a simulator.
+Individual suite commands:
+```bash
+godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (350+ checks)
+godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
+godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
+godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # mobile visual snapshot generator
+```
+
+All suites must pass with **0 failures**.
+
+**Visual Verification Without Physical iPhone**:
+Run `./run_tests.sh --snapshots` to generate pixel-accurate 390x844 mobile frames in `Godot/tests/snapshots/` (`01_map_screen.png`, `02_battle_screen.png`, `03_rewards_screen.png`, `04_shop_screen.png`, `05_deck_screen.png`, `06_camp_screen.png`, `07_treasury_inspector.png`). Inspect these images to verify mobile UI layout, text truncation, and layer alignment without needing a physical phone attached.
 
 **The iOS Simulator cannot run this project.** The official Godot 4.7.2 iOS export
 templates ship a simulator library containing only an x86_64 slice, so there is nothing
 to link against on Apple Silicon, and current iOS simulator runtimes no longer execute
 x86_64 apps. Device deploy is `./deploy_ios.sh` with an iPhone connected. If no device is
-attached, say so rather than claiming a change was visually verified.
+attached, use `./run_tests.sh --snapshots` to inspect the rendered mobile frames.
 
-## Rules
+## Rules for All Agents
 
-1. **`combat.gd` never references a node, scene or `Control`.** That boundary is what makes
+1. **EVERY NEW FEATURE MUST HAVE CORRESPONDING TESTS (MANDATORY)**:
+   - **Combat rules, balance, cards, relics, currencies, economy**: MUST add test assertions in `Godot/tests/test_runner.gd`.
+   - **Screens, buttons, modals, input handlers, navigation**: MUST add UI walk and clickability assertions in `Godot/tests/ui_smoke.gd`.
+   - **Campaign flows, multi-stage transitions, rewards, shop buying**: MUST ensure `Godot/tests/e2e_playthrough.gd` exercises the flow without softlocks.
+   - **NEVER** merge or push a new feature without adding automated test coverage for it.
+2. **`combat.gd` never references a node, scene or `Control`.** That boundary is what makes
    the headless suites possible. Keep game rules out of `game.gd` too where you can.
-2. **Every user-facing string goes in `UI_TEXT` in `content.gd` with both `zh-Hans` and
+3. **Every user-facing string goes in `UI_TEXT` in `content.gd` with both `zh-Hans` and
    `en`.** Never hardcode text in `game.gd`.
-3. **Add the assertion that would have caught your bug.** Rules changes go in
-   `test_runner.gd`, screen changes in `ui_smoke.gd`.
-4. **Do not commit `Godot/.godot/`** — it is regenerated editor cache. It is unfortunately
-   already tracked; just do not add to the churn.
-5. **State how you verified.** Headless-only is acceptable. Claiming a visual check you did
-   not perform is not.
+4. **Do not commit `Godot/.godot/` or `Godot/tests/snapshots/*.png`** — snapshots are generated locally for inspection.
+5. **Always run `./run_tests.sh` before committing.** A commit with failing checks will be rejected by git hooks and GitHub CI.
 6. **Always consult and leverage the workspace skills in `.agents/skills/`**:
    - Modifying UI, GDScript, or screen layouts: Consult `.agents/skills/godot-game-dev/SKILL.md`.
    - Deploying to physical iOS or debugging devicectl: Consult `.agents/skills/ios-device-deploy/SKILL.md`.

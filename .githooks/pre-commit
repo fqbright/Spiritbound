@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Spiritbound Pre-Commit Git Hook
+# Enforces that all test suites (unit, ui_smoke, and e2e_playthrough) pass
+# before allowing any commit.
+# ==============================================================================
+
+echo "🔍 Running pre-commit test verification..."
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+"${REPO_DIR}/run_tests.sh"
+
+STATUS=$?
+if [ $STATUS -ne 0 ]; then
+    echo "❌ Pre-commit hook: Tests failed. Commit aborted."
+    echo "Please fix the failing tests or add missing test coverage before committing."
+    exit 1
+fi
+
+echo "✅ Pre-commit hook: All tests passed cleanly. Proceeding with commit."
+exit 0
