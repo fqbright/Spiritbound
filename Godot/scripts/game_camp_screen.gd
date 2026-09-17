@@ -1867,7 +1867,7 @@ func _show_draft_pick_phase() -> void:
 		trow.add_child(tinfo)
 
 		var cname := g.content.text(card.nameKey, g.lang)
-		tinfo.add_child(g._label("%s (%d 费)" % [cname, int(card.cost)], 13, g.TEXT))
+		tinfo.add_child(g._label(g.tf("ui.draft_card_cost_fmt", [cname, int(card.cost)]), 13, g.TEXT))
 		tinfo.add_child(g._label(g._card_description(card), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 		var pick_btn := g._button(g.t("ui.claim"), func(): _pick_draft_card(card_id), g.EMBER, Vector2(74, 38))
@@ -1879,7 +1879,7 @@ func _show_draft_pick_phase() -> void:
 
 	# Current Deck summary at bottom
 	var current_deck: Array = draft.get("deck", [])
-	content_col.add_child(g._label("当前牌组 (%d/15 张): %s" % [current_deck.size(), ", ".join(current_deck)], 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	content_col.add_child(g._label(g.tf("ui.draft_deck_progress_fmt", [current_deck.size(), ", ".join(current_deck)]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 func _pick_draft_card(card_id: String) -> void:
 	var draft: Dictionary = g.profile.draft_arena
@@ -1920,12 +1920,12 @@ func _show_draft_battle_ready() -> void:
 	card.add_child(col)
 
 	col.add_child(g._label(g.tf("ui.draft_win_fmt", [wins, losses]), 15, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
-	col.add_child(g._label("竞技场牌组 (15张):", 12, g.TEXT))
+	col.add_child(g._label(g.t("ui.draft_deck_label"), 12, g.TEXT))
 
 	var deck: Array = draft.get("deck", [])
 	col.add_child(g._label(", ".join(deck), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
-	var start_battle_btn := g._button("迎战第 %d 位灵界对手" % (wins + 1), _start_draft_battle, g.EMBER, Vector2(0, 44))
+	var start_battle_btn := g._button(g.tf("ui.draft_next_opponent_fmt", wins + 1), _start_draft_battle, g.EMBER, Vector2(0, 44))
 	start_battle_btn.name = "DraftStartBattleBtn"
 	col.add_child(start_battle_btn)
 

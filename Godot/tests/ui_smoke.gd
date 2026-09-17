@@ -2718,6 +2718,37 @@ func _run() -> void:
 	check(int(game.profile.draft_arena.round) == 1, "reaching DRAFT_WIN_CAP resets round back to 1 for the next run")
 	check(game.profile.draft_arena.deck.is_empty(), "reaching DRAFT_WIN_CAP resets the deck for the next run")
 
+	# Regression check for a separate, smaller bug found in the same audit: 4 labels in the
+	# draft pick/battle-ready screens were hardcoded Chinese-only literals (AGENTS.md rule 2
+	# violation) instead of going through UI_TEXT — silently un-translated for an English
+	# player. Moved to ui.draft_card_cost_fmt/draft_deck_progress_fmt/draft_deck_label/
+	# draft_next_opponent_fmt; confirm the English text actually renders now.
+	game._change_language("en")
+	game.profile.draft_arena.deck = draft_deck.duplicate()
+	game.profile.draft_arena.round = 1
+	game.profile.draft_arena.active = false
+	game.profile.draft_arena.current_pool = []
+	SpiritSave.write(game.profile)
+	game.show_spirit_draft()
+	await process_frame
+	var en_pool: Array = game.profile.draft_arena.current_pool
+	var en_card: Dictionary = game.content.card(str(en_pool[0]))
+	var en_cost_label: String = game.content.ui("ui.draft_card_cost_fmt", "en") % [game.content.text(en_card.nameKey, "en"), int(en_card.cost)]
+	check(_find_label_text(game.root, en_cost_label), "draft pick tile's cost label is in English, not hardcoded Chinese")
+	var en_deck: Array = game.profile.draft_arena.deck
+	var en_progress_label: String = game.content.ui("ui.draft_deck_progress_fmt", "en") % [en_deck.size(), ", ".join(en_deck)]
+	check(_find_label_text(game.root, en_progress_label), "draft deck-progress label is in English")
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	SpiritSave.write(game.profile)
+	game.show_spirit_draft()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.draft_deck_label", "en")), "draft battle-ready deck label is in English")
+	var en_start_btn: Button = game.root.find_child("DraftStartBattleBtn", true, false) as Button
+	check(en_start_btn != null and "Face Spirit Opponent" in en_start_btn.text, "draft next-opponent button is in English")
+	game._change_language("zh-Hans")
+	await process_frame
+
 	section("== visual assets: painted challenge banners & card back ==")
 	game.show_quests()
 	await process_frame
