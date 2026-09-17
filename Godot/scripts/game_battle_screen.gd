@@ -503,9 +503,15 @@ func _build_player_stage() -> Control:
 	stage.add_child(glow)
 
 	# Player Multi-part Rig (Body + Fluffy Ethereal Tail + Floating Foxfire Orb + Ground Aura)
-	# or fallback to single atlas sprite if rig assets are missing.
+	# — Fox Spirit only, since the rig assets (fox_body/fox_tail/fox_orb/ground_aura) are
+	# fox-specific art. Every other hero (and Fox Spirit itself if the rig files are ever
+	# missing) falls back to its own real sprite via hero.sprite — this used to be hardcoded
+	# to "fox" regardless of which hero was equipped, so Stone Sentinel/Shadow Stalker/
+	# Miasma Witch players saw a fox in every battle no matter what they'd actually picked.
+	var hero: Dictionary = g.content.hero_class(str(g.profile.hero_class))
+	var hero_sprite_key: String = str(hero.get("sprite", "fox"))
 	var rig_body_path := "res://assets/characters/fox_rig/fox_body.png"
-	var use_fox_rig: bool = ResourceLoader.exists(rig_body_path)
+	var use_fox_rig: bool = hero_sprite_key == "fox" and ResourceLoader.exists(rig_body_path)
 
 	var sprite := Sprite2D.new()
 	sprite.name = "PlayerSprite"
@@ -594,9 +600,14 @@ func _build_player_stage() -> Control:
 		orb_glow.tween_property(orb, "modulate:a", 1.0, 0.85).set_trans(Tween.TRANS_SINE)
 		orb_glow.tween_property(orb, "modulate:a", 0.72, 0.85).set_trans(Tween.TRANS_SINE)
 	else:
-		sprite.texture = g._get_character_texture("fox")
-		var cell_w := float(g._char_atlas_tex.get_width()) / 3.0
-		var scale_factor: float = minf(spr_size.x / cell_w, spr_size.y / cell_w)
+		sprite.texture = g._get_character_texture(hero_sprite_key)
+		# get_width() on the returned texture (not a hardcoded atlas-cell divisor) works
+		# correctly whether _get_character_texture() resolved an AtlasTexture (which reports
+		# its own region's size, not the whole atlas) or a standalone portrait like Miasma
+		# Witch's own real dimensions — same pattern _add_traveler()/_travel_to() already use
+		# for the map avatar for exactly this reason.
+		var tex_w: float = float(sprite.texture.get_width()) if sprite.texture else 341.33
+		var scale_factor: float = minf(spr_size.x / tex_w, spr_size.y / tex_w)
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
 		sprite.position = Vector2(player_x, 37.0)

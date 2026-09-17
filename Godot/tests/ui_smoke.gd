@@ -979,6 +979,44 @@ func _run() -> void:
 	var player_sprite: CanvasItem = game.root.find_child("PlayerSprite", true, false) as CanvasItem
 	check(player_sprite != null and player_sprite.material is ShaderMaterial, "player sprite also carries the hit-flash shader")
 
+	# _build_player_stage() used to hardcode "fox" for every hero's battle sprite regardless
+	# of which of the 4 archetypes was actually equipped — every non-Fox-Spirit player saw a
+	# fox in battle no matter what they picked. Confirms each hero's own real sprite renders.
+	var hero_sprite_checks: Array = [
+		{"hero": "stone_sentinel", "atlas_coord": Vector2i(1, 0)},
+		{"hero": "shadow_stalker", "atlas_coord": Vector2i(1, 2)},
+	]
+	for hc in hero_sprite_checks:
+		game.profile.hero_class = str(hc.hero)
+		game.begin_battle(0)
+		await process_frame
+		var hw := 0.0
+		while game.resolving and hw < 8.0:
+			await create_timer(0.1).timeout
+			hw += 0.1
+		var hero_sprite: Sprite2D = game.root.find_child("PlayerSprite", true, false) as Sprite2D
+		check(hero_sprite != null and hero_sprite.texture is AtlasTexture, "%s's battle sprite resolves to an atlas texture" % str(hc.hero))
+		if hero_sprite != null and hero_sprite.texture is AtlasTexture:
+			var atlas_tex: AtlasTexture = hero_sprite.texture
+			var cell_w: float = float(atlas_tex.atlas.get_width()) / 3.0
+			var cell_h: float = float(atlas_tex.atlas.get_height()) / 3.0
+			var actual_coord := Vector2i(int(round(atlas_tex.region.position.x / cell_w)), int(round(atlas_tex.region.position.y / cell_h)))
+			check(actual_coord == hc.atlas_coord, "%s's battle sprite uses its own atlas cell %s, not fox's %s — got %s" % [str(hc.hero), str(hc.atlas_coord), str(SpiritGame.CHAR_KEYS.fox), str(actual_coord)])
+
+	# Miasma Witch's sprite key ("miasma_witch") resolves to a real standalone portrait file
+	# now, not an atlas cell — confirms it isn't silently falling back to fox either.
+	game.profile.hero_class = "miasma_witch"
+	game.begin_battle(0)
+	await process_frame
+	var mw := 0.0
+	while game.resolving and mw < 8.0:
+		await create_timer(0.1).timeout
+		mw += 0.1
+	var miasma_sprite: Sprite2D = game.root.find_child("PlayerSprite", true, false) as Sprite2D
+	check(miasma_sprite != null and not (miasma_sprite.texture is AtlasTexture), "Miasma Witch's battle sprite is a standalone portrait, not a shared atlas cell (i.e. not silently borrowing another hero's sprite)")
+	check(miasma_sprite != null and miasma_sprite.texture != null and str(miasma_sprite.texture.resource_path).ends_with("miasma_witch.png"), "Miasma Witch's battle sprite loads her own miasma_witch.png portrait")
+	game.profile.hero_class = "fox_spirit"
+
 	var fx_holder := Control.new()
 	game.root.add_child(fx_holder)
 	var fx_sprite := Sprite2D.new()
