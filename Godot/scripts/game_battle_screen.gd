@@ -2112,6 +2112,7 @@ func _animate_player_shield_gain(amount: int) -> void:
 	await unfold.finished
 
 	await g.get_tree().create_timer(g._battle_delay(0.12)).timeout
+	if not is_instance_valid(crest): return
 
 	# Step 2: 护甲加到人物 (Streaks to Character and Snaps onto Chest)
 	var dur_fly: float = g._battle_delay(0.42)
@@ -2122,6 +2123,7 @@ func _animate_player_shield_gain(amount: int) -> void:
 	await fly.finished
 
 	# Impact snap onto player
+	if not is_instance_valid(player_node): return
 	_flash_hit(player_node, Color("9fd8ff"))
 	var base_scale: float = float(player_node.get_meta("base_scale", 1.0))
 	var swell := player_node.create_tween()

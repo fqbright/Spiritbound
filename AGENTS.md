@@ -28,8 +28,12 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 Every agent working on this repository **MUST** run the automated verification suite before submitting any commit:
 
 ```bash
-./run_tests.sh                 # Runs all 3 test suites: test_runner + ui_smoke + e2e_playthrough
-./run_tests.sh --snapshots     # Runs all tests AND generates/refreshes 390x844 mobile screenshots
+./run_tests.sh                 # Core suites: test_runner + ui_smoke + e2e_playthrough
+./run_tests.sh --all           # All 6 suites: core + chaos monkey + leak profiler + pixel-diff
+./run_tests.sh --monkey        # Chaos Monkey stress tests (500+ random taps & invalid plays)
+./run_tests.sh --leaks         # Memory & ObjectDB leak profiler (zero unbounded leaks)
+./run_tests.sh --diff          # Visual Pixel-Diff baseline comparison (sub-pixel regression)
+./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots
 ```
 
 Individual suite commands:
@@ -37,6 +41,9 @@ Individual suite commands:
 godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (350+ checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
+godot --headless --path Godot/ --script res://tests/chaos_monkey.gd     # chaos monkey stress test
+godot --headless --path Godot/ --script res://tests/leak_checker.gd     # memory and object leak profiler
+godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # visual pixel-diff test
 godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # mobile visual snapshot generator
 ```
 
