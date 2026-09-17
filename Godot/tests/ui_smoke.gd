@@ -1702,6 +1702,14 @@ func _run() -> void:
 	var danger_badge := game.root.find_child("DangerWarningBadge", true, false) as Control
 	check(danger_badge != null, "DangerWarningBadge displays when incoming damage exceeds player HP+shield")
 
+	section("== curse intent visual effect ==")
+	# spirit_curse_seal.png shipped with the card-play VFX batch but was never wired to
+	# anything — the enemy "curse" intent (and the decay_blight/void_curse cards it deals
+	# out) had no visual treatment at all before this.
+	game._animate_player_curse()
+	await process_frame
+	check(game.overlay.find_child("AnimCurseSeal", true, false) != null, "AnimCurseSeal VFX sprite appears on the player when a curse intent resolves")
+
 	section("== milestone 2: visual punch, finishing blow & abyss boons ==")
 	# Test map ambience particles
 	game.show_map()

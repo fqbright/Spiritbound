@@ -1828,6 +1828,42 @@ func _animate_player_buff(text: String) -> void:
 	pop_tween.chain().tween_callback(popup.queue_free)
 	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 
+# Plays when an enemy's "curse" intent actually resolves (combat.gd's _execute_intent,
+# reached via _enemy_turn()'s end_turn() call) — a sigil settling onto the player to mark the
+# burn+discard-poisoning curse.gd just applied. spirit_curse_seal.png shipped with this
+# session's VFX batch but was never wired to anything; the curse cards it depicts
+# (decay_blight/void_curse) and the enemy curse intent that deals them out had no visual
+# treatment before this.
+func _animate_player_curse() -> void:
+	if g.overlay == null or g.get_tree() == null: return
+	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_node == null or not is_instance_valid(player_node): return
+
+	var target_pos: Vector2 = player_node.global_position
+	g._haptic("light")
+
+	if ResourceLoader.exists("res://assets/vfx/spirit_curse_seal.png"):
+		var seal := Sprite2D.new()
+		seal.name = "AnimCurseSeal"
+		seal.texture = load("res://assets/vfx/spirit_curse_seal.png")
+		seal.position = target_pos
+		seal.rotation_degrees = -20.0
+		seal.scale = Vector2(0.02, 0.02)
+		seal.z_index = 360
+		seal.modulate = Color(0.72, 1.0, 0.5, 0.0)
+		g.overlay.add_child(seal)
+
+		var dur: float = g._battle_delay(0.7)
+		var tween := seal.create_tween().set_parallel(true)
+		tween.tween_property(seal, "scale", Vector2(0.15, 0.15), dur * 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(seal, "modulate:a", 0.92, dur * 0.35)
+		tween.tween_property(seal, "rotation_degrees", 25.0, dur).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(seal, "modulate:a", 0.0, dur * 0.35).set_delay(dur * 0.55)
+		tween.chain().tween_callback(seal.queue_free)
+
+	_flash_hit(player_node, Color("9fe066"))
+	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
+
 func _animate_player_shield_gain(amount: int) -> void:
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
@@ -2085,6 +2121,7 @@ func _enemy_turn() -> void:
 		var index := int(box.get_meta("enemy_index"))
 		if index >= planned.size() or str(planned[index]).is_empty(): continue
 		await _animate_enemy_action(box, str(planned[index]), g.combat.state.enemies[index])
+		if str(planned[index]) == "curse": await _animate_player_curse()
 
 	var before_health: int = g.combat.state.player.health
 	g.combat.end_turn()
