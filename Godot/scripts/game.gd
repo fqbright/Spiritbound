@@ -1029,8 +1029,17 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	left_box.add_theme_constant_override("separation", 4)
 	left_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
-	# Logo sits at the far left on the map header
 	if title == "SPIRITBOUND":
+		# Map header: logo with just the gold total tucked underneath it, left-aligned. No HP —
+		# the map isn't mid-battle and every battle now always starts at a full, flat 60 anyway
+		# (see the HP-reset decision in AGENTS.md/GROWTH_ROADMAP.md) — and no inline stats row,
+		# since that's the framed/boxed look the map moved away from.
+		var logo_stack := VBoxContainer.new()
+		logo_stack.name = "HeaderLogoStack"
+		logo_stack.alignment = BoxContainer.ALIGNMENT_BEGIN
+		logo_stack.add_theme_constant_override("separation", 0)
+		logo_stack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
 		var logo := TextureRect.new()
 		logo.name = "SpiritboundLogo"
 		var logo_tex: Texture2D = load("res://assets/ui/spiritbound_logo.png")
@@ -1039,53 +1048,72 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		logo.custom_minimum_size = Vector2(168.0, 52.0)
 		logo.size = logo.custom_minimum_size
-		logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		left_box.add_child(logo)
+		logo_stack.add_child(logo)
 
-	if back.is_valid():
-		var back_btn := _button("‹", back, Color("17363e"), Vector2(34, 34))
-		back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		left_box.add_child(back_btn)
+		var gold_row := HBoxContainer.new()
+		gold_row.name = "HeaderGoldRow"
+		gold_row.add_theme_constant_override("separation", 3)
+		gold_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 
-	var stats_box := HBoxContainer.new()
-	stats_box.name = "HeaderStatsBox"
-	stats_box.add_theme_constant_override("separation", 3)
-	stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var gold_icon := TextureRect.new()
+		gold_icon.texture = load("res://assets/icons/hud_gold.png")
+		gold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		gold_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		gold_icon.custom_minimum_size = Vector2(15, 15)
+		gold_icon.size = gold_icon.custom_minimum_size
+		gold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		gold_row.add_child(gold_icon)
 
-	var hp_icon := TextureRect.new()
-	hp_icon.texture = load("res://assets/icons/hud_heart.png")
-	hp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	hp_icon.custom_minimum_size = Vector2(15, 15)
-	hp_icon.size = hp_icon.custom_minimum_size
-	hp_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stats_box.add_child(hp_icon)
+		var gold_label := _label("%d" % int(profile.gold), 11, GOLD)
+		gold_row.add_child(gold_label)
+		logo_stack.add_child(gold_row)
 
-	var hp_label := _label("%d/60" % int(profile.health), 11, TEXT)
-	hp_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	stats_box.add_child(hp_label)
+		left_box.add_child(logo_stack)
+	else:
+		if back.is_valid():
+			var back_btn := _button("‹", back, Color("17363e"), Vector2(34, 34))
+			back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			left_box.add_child(back_btn)
 
-	var sep := Control.new()
-	sep.custom_minimum_size = Vector2(3, 1)
-	stats_box.add_child(sep)
+		var stats_box := HBoxContainer.new()
+		stats_box.name = "HeaderStatsBox"
+		stats_box.add_theme_constant_override("separation", 3)
+		stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
-	var gold_icon := TextureRect.new()
-	gold_icon.texture = load("res://assets/icons/hud_gold.png")
-	gold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	gold_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	gold_icon.custom_minimum_size = Vector2(15, 15)
-	gold_icon.size = gold_icon.custom_minimum_size
-	gold_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	gold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stats_box.add_child(gold_icon)
+		var hp_icon := TextureRect.new()
+		hp_icon.texture = load("res://assets/icons/hud_heart.png")
+		hp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		hp_icon.custom_minimum_size = Vector2(15, 15)
+		hp_icon.size = hp_icon.custom_minimum_size
+		hp_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stats_box.add_child(hp_icon)
 
-	var gold_label := _label("%d" % int(profile.gold), 11, GOLD)
-	gold_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	stats_box.add_child(gold_label)
+		var hp_label := _label("%d/60" % int(profile.health), 11, TEXT)
+		hp_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		stats_box.add_child(hp_label)
 
-	left_box.add_child(stats_box)
+		var sep := Control.new()
+		sep.custom_minimum_size = Vector2(3, 1)
+		stats_box.add_child(sep)
+
+		var gold_icon2 := TextureRect.new()
+		gold_icon2.texture = load("res://assets/icons/hud_gold.png")
+		gold_icon2.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		gold_icon2.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		gold_icon2.custom_minimum_size = Vector2(15, 15)
+		gold_icon2.size = gold_icon2.custom_minimum_size
+		gold_icon2.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		gold_icon2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stats_box.add_child(gold_icon2)
+
+		var gold_label2 := _label("%d" % int(profile.gold), 11, GOLD)
+		gold_label2.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		stats_box.add_child(gold_label2)
+
+		left_box.add_child(stats_box)
 	bar.add_child(left_box)
 
 	# Center expand-fill spacer (title text for non-logo screens)

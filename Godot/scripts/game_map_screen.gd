@@ -218,6 +218,7 @@ func show_map() -> void:
 	g.map_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	g.map_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	g.map_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	g.map_scroll.swipe_released.connect(_on_map_swipe)
 	g.root.add_child(g.map_scroll)
 
 	var overlay_page := Control.new()
@@ -717,49 +718,33 @@ func _add_map_chapter(chapter: int) -> void:
 	band.add_child(bottom_fade)
 
 	var locked: bool = chapter * 5 > int(g.profile.unlocked)
-	var plaque := Panel.new()
+	# The chapter name used to sit inside a framed Panel with prev/next buttons either side;
+	# both were dropped in favor of a left/right swipe to change chapters (see game.gd's
+	# _input()), so the name now just floats over the painted art with a drop shadow for
+	# legibility, matching the stage-pin captions' existing floating-text treatment.
+	var plaque := Control.new()
 	plaque.name = "ChapterPlaque"
 	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 24.0)
 	plaque.size = Vector2(260, 52)
-	plaque.mouse_filter = Control.MOUSE_FILTER_STOP
-	plaque.add_theme_stylebox_override("panel", g._panel(Color(0.02, 0.07, 0.09, 0.88), 14, tint if not locked else Color("39494e")))
+	plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	band.add_child(plaque)
 
-	var plaque_hbox := HBoxContainer.new()
-	plaque_hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	plaque_hbox.add_theme_constant_override("separation", 4)
-	plaque_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	plaque.add_child(plaque_hbox)
-
-	var can_prev := chapter > 0
-	var prev_btn := g._button("◀", func():
-		g.current_map_chapter = chapter - 1
-		show_map()
-	, Color(0.12, 0.22, 0.28) if can_prev else Color(0.06, 0.1, 0.12), Vector2(34, 34))
-	prev_btn.name = "ChapterPrevBtn"
-	prev_btn.disabled = not can_prev
-	prev_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	plaque_hbox.add_child(prev_btn)
-
 	var plaque_stack := VBoxContainer.new()
-	plaque_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	plaque_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	plaque_stack.alignment = BoxContainer.ALIGNMENT_CENTER
 	plaque_stack.add_theme_constant_override("separation", 0)
 	plaque_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plaque_hbox.add_child(plaque_stack)
+	plaque.add_child(plaque_stack)
 
-	plaque_stack.add_child(g._label(g.tf("ui.chapter_title", chapter + 1), 11, tint if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-	plaque_stack.add_child(g._label(g.content.chapter_name(chapter, g.lang), 15, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var plaque_eyebrow := g._label(g.tf("ui.chapter_title", chapter + 1), 11, tint if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	plaque_eyebrow.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
+	plaque_eyebrow.add_theme_constant_override("shadow_offset_y", 1)
+	plaque_stack.add_child(plaque_eyebrow)
 
-	var can_next := (chapter + 1) * 5 <= int(g.profile.unlocked)
-	var next_btn := g._button("▶", func():
-		g.current_map_chapter = chapter + 1
-		show_map()
-	, Color(0.12, 0.22, 0.28) if can_next else Color(0.06, 0.1, 0.12), Vector2(34, 34))
-	next_btn.name = "ChapterNextBtn"
-	next_btn.disabled = not can_next
-	next_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	plaque_hbox.add_child(next_btn)
+	var plaque_name := g._label(g.content.chapter_name(chapter, g.lang), 15, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	plaque_name.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
+	plaque_name.add_theme_constant_override("shadow_offset_y", 1)
+	plaque_stack.add_child(plaque_name)
 
 	if g.current_map_chapter != int(g.profile.position) / 5:
 		var back_curr_btn := g._button(g.t("ui.map_back_to_current"), func():
@@ -769,6 +754,19 @@ func _add_map_chapter(chapter: int) -> void:
 		back_curr_btn.name = "MapBackToCurrentBtn"
 		back_curr_btn.position = Vector2((g.MAP_WIDTH - 100.0) / 2.0, 80.0)
 		band.add_child(back_curr_btn)
+
+# Replaces the old ChapterPrevBtn/ChapterNextBtn pair: a left/right swipe anywhere on the map
+# changes chapter instead. map_scroll tracks this drag regardless of allow_horizontal (see
+# TouchScrollContainer.swipe_released), so this only has to read the delta and decide whether
+# it crosses the same left/right-edge-swipe thresholds the interactive-back gesture uses.
+func _on_map_swipe(delta: Vector2) -> void:
+	if absf(delta.y) > 70.0: return
+	if delta.x <= -64.0 and (g.current_map_chapter + 1) * 5 <= int(g.profile.unlocked):
+		g.current_map_chapter += 1
+		show_map()
+	elif delta.x >= 64.0 and g.current_map_chapter > 0:
+		g.current_map_chapter -= 1
+		show_map()
 
 # A soft vertical gradient in the chapter's own tint, darker at the seams than in the middle —
 # cached per tint index since there are only ten tints shared across fifty chapters.

@@ -1,6 +1,12 @@
 extends ScrollContainer
 class_name TouchScrollContainer
 
+# Fired when a drag ends, carrying the full press-to-release delta, whether or not that axis
+# is actually scrollable — a screen with allow_horizontal=false (the map) still tracks the
+# horizontal component of the drag, and uses this to drive its own left/right swipe gesture
+# instead of duplicating touch-tracking logic.
+signal swipe_released(delta: Vector2)
+
 # Scroll position is kept as a float and only rounded on the way out; tracking it as an
 # int loses every sub-pixel step and is what made slow drags feel like they stuttered.
 var _touch_start := Vector2.ZERO
@@ -81,6 +87,7 @@ func _release() -> void:
 		last_drag_finish_msec = Time.get_ticks_msec()
 		# A finger resting before release should stop the list, not fling it.
 		if (Time.get_ticks_msec() / 1000.0) - _last_time > 0.09: _velocity = Vector2.ZERO
+		swipe_released.emit(_last_pos - _touch_start)
 	else:
 		is_any_dragging = false
 		_velocity = Vector2.ZERO

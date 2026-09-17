@@ -125,11 +125,29 @@ func _run() -> void:
 	await process_frame
 	check(game.map_canvas != null, "map canvas built")
 	check(game.map_canvas.custom_minimum_size.y == game.BAND_HEIGHT, "map canvas displays single chapter height (BAND_HEIGHT)")
-	var plaque_node: Node = game.root.find_child("ChapterPlaque", true, false)
+	var plaque_node: Control = game.root.find_child("ChapterPlaque", true, false) as Control
 	check(plaque_node != null, "chapter plaque exists on single-chapter map")
-	var prev_btn_node: Button = game.root.find_child("ChapterPrevBtn", true, false) as Button
-	var next_btn_node: Button = game.root.find_child("ChapterNextBtn", true, false) as Button
-	check(prev_btn_node != null and next_btn_node != null, "chapter prev/next navigation buttons exist on plaque")
+	check(plaque_node != null and not (plaque_node is Panel), "chapter plaque has no panel/frame background, just floating text")
+	check(game.root.find_child("ChapterPrevBtn", true, false) == null and game.root.find_child("ChapterNextBtn", true, false) == null, "chapter prev/next buttons were removed in favor of swipe-to-switch")
+	var saved_ch_swipe: int = int(game.current_map_chapter)
+	var saved_unlocked_swipe: int = int(game.profile.unlocked)
+	game.profile.unlocked = 5 # unlock chapter 1 so the "swipe to next chapter" case is reachable
+	game.current_map_chapter = 0
+	game.show_map()
+	await process_frame
+	game.map_scroll.swipe_released.emit(Vector2(-90.0, -10.0))
+	await process_frame
+	check(game.current_map_chapter == 1, "a left swipe on the map advances to the next chapter")
+	game.map_scroll.swipe_released.emit(Vector2(90.0, 10.0))
+	await process_frame
+	check(game.current_map_chapter == 0, "a right swipe on the map goes back to the previous chapter")
+	game.map_scroll.swipe_released.emit(Vector2(90.0, 10.0))
+	await process_frame
+	check(game.current_map_chapter == 0, "a right swipe does not go below chapter 0")
+	game.profile.unlocked = saved_unlocked_swipe
+	game.current_map_chapter = saved_ch_swipe
+	game.show_map()
+	await process_frame
 
 	section("== organic map path ==")
 	var wp0: Array = game._chapter_waypoints(0)
@@ -2327,6 +2345,11 @@ func _run() -> void:
 	var logo_node: Node = game.root.find_child("SpiritboundLogo", true, false)
 	check(logo_node != null and (logo_node as TextureRect).texture != null, "map header renders SpiritboundLogo texture")
 	check(not _find_text(game.root, game.content.ui("ui.choose_dest", game.lang)), "map header does not display removed choose_dest subtitle")
+	check(game.root.find_child("HeaderStatsBox", true, false) == null, "map header does not show the HP stats box")
+	var gold_row_node: Node = game.root.find_child("HeaderGoldRow", true, false)
+	check(gold_row_node != null, "map header renders a gold row")
+	var logo_stack_node: Node = game.root.find_child("HeaderLogoStack", true, false)
+	check(logo_stack_node != null and logo_stack_node.get_child_count() == 2 and logo_stack_node.get_child(0) == logo_node and logo_stack_node.get_child(1) == gold_row_node, "gold sits directly below the logo, left-aligned")
 	var all_cards_have_art := true
 	for card in game.content.cards:
 		var tex: Texture2D = game._get_card_texture(card.id)
