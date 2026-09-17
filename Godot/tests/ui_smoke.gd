@@ -2809,7 +2809,41 @@ func _run() -> void:
 	game.shop_tab = "curated"
 	for c in game.overlay.get_children():
 		c.queue_free()
+	game.show_map()
 	await process_frame
+	section("== stamina modal and auto-battle toggle ==")
+	# 1. Stamina Pill and Modal
+	var stam_pill: Control = game.root.find_child("HeaderStaminaPill", true, false) as Control
+	check(stam_pill != null, "HeaderStaminaPill present in header")
+	game.show_stamina_modal()
+	await process_frame
+	var stam_modal: Node = game.overlay.find_child("StaminaModal", true, false)
+	check(stam_modal != null, "StaminaModal opens on request")
+	if stam_modal != null:
+		check(stam_modal.find_child("StaminaRechargeBtn", true, false) != null, "StaminaRechargeBtn present in StaminaModal")
+		stam_modal.queue_free()
+		await process_frame
+
+	# 2. Battle Auto Toggle Button
+	game.begin_battle(0)
+	await process_frame
+	var auto_btn: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
+	check(auto_btn != null, "AutoBattleToggle present on battle screen")
+	if auto_btn != null:
+		check(game.auto_battle_active == false, "auto battle initially inactive")
+		tap_button(auto_btn, "AutoBattleToggle")
+		await process_frame
+		check(game.auto_battle_active == true, "AutoBattleToggle enables auto-battle")
+		game.stop_auto_battle("manual")
+		check(game.auto_battle_active == false, "stop_auto_battle disables auto-battle")
+	game._leave_battle()
+	await process_frame
+
+	# 3. Map Auto Push Button
+	game.show_map()
+	await process_frame
+	var map_auto_btn: Control = game.root.find_child("MapAutoPushBtn", true, false) as Control
+	check(map_auto_btn != null, "MapAutoPushBtn present on map rail")
 
 	game.show_map()
 	await process_frame

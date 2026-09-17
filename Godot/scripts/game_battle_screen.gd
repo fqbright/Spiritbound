@@ -46,6 +46,7 @@ func begin_battle(index: int) -> void:
 	show_battle()
 	if index == 0 and not bool(g.profile.get("tutorial_seen", false)): _show_battle_tutorial()
 	_maybe_end_turn()
+	if g.auto_battle_active: _maybe_step_auto_battle()
 
 func show_battle() -> void:
 	var encounter: Dictionary = g._current_encounter()
@@ -69,6 +70,15 @@ func show_battle() -> void:
 	speed_btn.name = "SpeedToggle"
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(speed_btn)
+	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
+	var auto_btn := g._button(auto_label, func():
+		g.toggle_auto_battle()
+		show_battle()
+		if g.auto_battle_active: _maybe_step_auto_battle()
+	, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(56, 28))
+	auto_btn.name = "AutoBattleToggle"
+	auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(auto_btn)
 	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(36,34))
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(leave_btn); page.add_child(top)
@@ -113,8 +123,12 @@ func show_battle() -> void:
 
 	if g.combat.state.phase == "player":
 		_add_hand(page)
+		if g.auto_battle_active:
+			_maybe_step_auto_battle()
 	else:
 		var won: bool = g.combat.state.phase == "won"
+		if not won and g.auto_battle_active:
+			g.stop_auto_battle("defeat")
 		var outcome := g._label(g.t("ui.battle_won") if won else g.t("ui.battle_lost"), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 		outcome.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		outcome.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -2177,6 +2191,20 @@ func _maybe_end_turn() -> void:
 		if g.combat == null or g.combat.state.phase != "player": return
 		await _enemy_turn()
 
+func _maybe_step_auto_battle() -> void:
+	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
+		return
+	await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
+	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
+		return
+	var decision: Dictionary = g.combat.ai_best_play()
+	var hand_idx: int = int(decision.get("hand_index", -1))
+	var target_idx: int = int(decision.get("target_index", -1))
+	if hand_idx >= 0:
+		_attempt_play_card(hand_idx, target_idx)
+	else:
+		_maybe_end_turn()
+
 func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	var box: Control = null
 	for candidate in g.enemy_boxes:
@@ -2621,6 +2649,7 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	seq.tween_callback(banner.queue_free)
 
 func _leave_battle() -> void:
+	if g.auto_battle_active: g.stop_auto_battle("manual")
 	g.selected_card = -1
 	if g.in_sandbox:
 		# Zero-stakes: profile.health was never touched on the way in, so there is nothing to

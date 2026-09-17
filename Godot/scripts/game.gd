@@ -43,6 +43,8 @@ var camp_tab := "character"
 var shop_tab := "curated"
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
+var auto_battle_active: bool = false
+var auto_battle_stats: Dictionary = {"stages_cleared": 0, "gold_earned": 0}
 # Kept deliberately conservative (vs. e.g. iOS Dynamic Type's much wider range) — every screen
 # in this game was laid out and hand-verified assuming a fixed font size, so a large jump risks
 # clipping text against a tightly-sized badge or card tile that nothing here re-flows for.
@@ -1020,7 +1022,7 @@ func _background(file: String, opacity := .42) -> TextureRect:
 	var image := TextureRect.new(); image.texture = _texture("backgrounds/%s" % file); image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; image.modulate = Color(1,1,1,opacity); image.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return image
 
-func _currency_pill(icon_tex: Texture2D, amount: int, color: Color) -> Control:
+func _currency_pill(icon_tex: Texture2D, amount: int, color: Color, on_click := Callable()) -> Control:
 	var pill := Button.new()
 	pill.focus_mode = Control.FOCUS_NONE
 	var normal_box := _panel(Color("0d1e23"), 10, Color(color.r, color.g, color.b, 0.45))
@@ -1050,7 +1052,10 @@ func _currency_pill(icon_tex: Texture2D, amount: int, color: Color) -> Control:
 	var lbl := _label("%d" % amount, 11, color)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
-	_bind_touch_guard(pill, func(): show_treasury_inspector())
+	if on_click.is_valid():
+		_bind_touch_guard(pill, on_click)
+	else:
+		_bind_touch_guard(pill, func(): show_treasury_inspector())
 	return pill
 
 func _header(title: String, subtitle: String, back := Callable()) -> HBoxContainer:
@@ -1096,6 +1101,11 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		var jade_pill := _currency_pill(load("res://assets/icons/hud_jade.png"), int(profile.get("spirit_jade", 10)), Color("78e9c0"))
 		gold_row.add_child(jade_pill)
 
+		_ensure_stamina_current()
+		var stamina_pill := _currency_pill(load("res://assets/icons/hud_stamina.png"), int(profile.get("stamina", {}).get("current", 100)), Color("5ec5ff"), func(): show_stamina_modal())
+		stamina_pill.name = "HeaderStaminaPill"
+		gold_row.add_child(stamina_pill)
+
 		if int(profile.get("spirit_dust", 0)) > 0:
 			var dust_pill := _currency_pill(load("res://assets/icons/hud_dust.png"), int(profile.get("spirit_dust", 0)), Color("c79bff"))
 			gold_row.add_child(dust_pill)
@@ -1119,6 +1129,11 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 
 		var gold_pill2 := _currency_pill(load("res://assets/icons/hud_gold.png"), int(profile.gold), GOLD)
 		stats_box.add_child(gold_pill2)
+
+		_ensure_stamina_current()
+		var stamina_pill2 := _currency_pill(load("res://assets/icons/hud_stamina.png"), int(profile.get("stamina", {}).get("current", 100)), Color("5ec5ff"), func(): show_stamina_modal())
+		stamina_pill2.name = "HeaderStaminaPill2"
+		stats_box.add_child(stamina_pill2)
 
 		left_box.add_child(stats_box)
 	bar.add_child(left_box)
@@ -1487,6 +1502,8 @@ func show_treasury_inspector() -> void:
 	list.add_child(_treasury_row("hud_gold.png", t("ui.currency_gold"), int(profile.gold), GOLD, t("ui.treasury_gold_desc")))
 	list.add_child(_treasury_row("hud_jade.png", t("ui.currency_jade"), int(profile.get("spirit_jade", 10)), Color("78e9c0"), t("ui.treasury_jade_desc")))
 	list.add_child(_treasury_row("hud_dust.png", t("ui.currency_dust"), int(profile.get("spirit_dust", 0)), Color("c79bff"), t("ui.treasury_dust_desc")))
+	_ensure_stamina_current()
+	list.add_child(_treasury_row("hud_stamina.png", t("ui.stamina_name"), int(profile.get("stamina", {}).get("current", 100)), Color("5ec5ff"), t("ui.stamina_desc")))
 
 	var conv_box := VBoxContainer.new()
 	conv_box.add_theme_constant_override("separation", 6)
@@ -1529,6 +1546,22 @@ func show_treasury_inspector() -> void:
 	btn_jade_gold.name = "TreasuryConvertGoldBtn"
 	btn_jade_gold.disabled = not can_gold
 	conv_box.add_child(btn_jade_gold)
+
+	var can_rech_stam: bool = int(profile.get("spirit_jade", 0)) >= 10
+	var btn_rech_stam := _button(t("ui.stamina_recharge_btn"), func():
+		if recharge_stamina_with_jade(10, 50):
+			_toast(t("ui.stamina_recharge_success"), Color("5ec5ff"))
+			_haptic("heavy")
+			if modal != null and modal.is_inside_tree():
+				if modal.get_parent(): modal.get_parent().remove_child(modal)
+				modal.queue_free()
+			show_treasury_inspector()
+		else:
+			_toast(t("ui.stamina_recharge_no_jade"), Color("ff7070"))
+	, Color("1a3d4d") if can_rech_stam else Color("222a2e"), Vector2(0, 34))
+	btn_rech_stam.name = "TreasuryRechargeStaminaBtn"
+	btn_rech_stam.disabled = not can_rech_stam
+	conv_box.add_child(btn_rech_stam)
 
 	var nav_row := HBoxContainer.new()
 	nav_row.add_theme_constant_override("separation", 8)
@@ -1881,6 +1914,135 @@ func fast_idle_harvest() -> int:
 	SpiritSave.write(profile)
 	_toast(tf("ui.idle_harvest_fast_toast", burst_gold), GOLD)
 	return burst_gold
+
+func _ensure_stamina_current() -> void:
+	if not profile.has("stamina") or not profile.stamina is Dictionary:
+		profile.stamina = {"current": 100, "max": 100, "last_regen_time": 0}
+	var now: int = int(Time.get_unix_time_from_system())
+	var cur: int = int(profile.stamina.get("current", 100))
+	var max_val: int = int(profile.stamina.get("max", 100))
+	var last_time: int = int(profile.stamina.get("last_regen_time", 0))
+	if last_time <= 0:
+		profile.stamina.last_regen_time = now
+		return
+	if cur < max_val:
+		var elapsed: int = maxi(0, now - last_time)
+		var added: int = elapsed / 300 # 1 point per 300 seconds (5 min)
+		if added > 0:
+			profile.stamina.current = mini(max_val, cur + added)
+			profile.stamina.last_regen_time = now - (elapsed % 300)
+			SpiritSave.write(profile)
+	else:
+		profile.stamina.last_regen_time = now
+
+func can_spend_stamina(cost: int = 5) -> bool:
+	_ensure_stamina_current()
+	return int(profile.stamina.get("current", 100)) >= cost
+
+func spend_stamina(cost: int = 5) -> bool:
+	if not can_spend_stamina(cost): return false
+	profile.stamina.current = int(profile.stamina.current) - cost
+	SpiritSave.write(profile)
+	return true
+
+func recharge_stamina_with_jade(cost_jade: int = 10, gain_stamina: int = 50) -> bool:
+	if int(profile.get("spirit_jade", 0)) < cost_jade: return false
+	profile.spirit_jade = int(profile.get("spirit_jade", 0)) - cost_jade
+	_ensure_stamina_current()
+	profile.stamina.current = mini(150, int(profile.stamina.get("current", 100)) + gain_stamina)
+	SpiritSave.write(profile)
+	return true
+
+func show_stamina_modal() -> void:
+	_ensure_stamina_current()
+	var existing: Node = overlay.get_node_or_null("StaminaModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		return
+
+	var modal := _modal_dialog("StaminaModal", func():
+		var m: Node = overlay.get_node_or_null("StaminaModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 260)
+	panel.add_theme_stylebox_override("panel", _panel(Color("0b1820"), 14, Color("5ec5ff")))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 16)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	pad.add_child(vbox)
+
+	vbox.add_child(_label(t("ui.stamina_title"), 16, Color("5ec5ff"), HORIZONTAL_ALIGNMENT_CENTER))
+	vbox.add_child(_label(t("ui.stamina_desc"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var cur: int = int(profile.stamina.get("current", 100))
+	var max_val: int = int(profile.stamina.get("max", 100))
+	var val_lbl := _label("%d / %d" % [cur, max_val], 26, Color("76e5ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(val_lbl)
+
+	var status_text := ""
+	if cur >= max_val:
+		status_text = t("ui.stamina_full")
+	else:
+		var last_time: int = int(profile.stamina.get("last_regen_time", 0))
+		var now: int = int(Time.get_unix_time_from_system())
+		var rem_sec: int = maxi(0, 300 - ((now - last_time) % 300))
+		status_text = tf("ui.stamina_next_regen", "%02d:%02d" % [rem_sec / 60, rem_sec % 60])
+	vbox.add_child(_label(status_text, 11, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var can_recharge: bool = int(profile.get("spirit_jade", 0)) >= 10
+	var rech_btn := _button(t("ui.stamina_recharge_btn"), func():
+		if recharge_stamina_with_jade(10, 50):
+			_toast(t("ui.stamina_recharge_success"), Color("5ec5ff"))
+			_haptic("heavy")
+			if modal != null and modal.is_inside_tree():
+				if modal.get_parent(): modal.get_parent().remove_child(modal)
+				modal.queue_free()
+			show_stamina_modal()
+		else:
+			_toast(t("ui.stamina_recharge_no_jade"), Color("ff7070"))
+	, Color("1a3d4d") if can_recharge else Color("222a2e"), Vector2(0, 42))
+	rech_btn.name = "StaminaRechargeBtn"
+	rech_btn.disabled = not can_recharge
+	vbox.add_child(rech_btn)
+
+func toggle_auto_battle(enable: Variant = null) -> void:
+	if enable == null:
+		auto_battle_active = not auto_battle_active
+	else:
+		auto_battle_active = bool(enable)
+	if auto_battle_active:
+		_toast(t("ui.auto_battle_active"), GOLD)
+	else:
+		_toast(t("ui.auto_stop_manual"), MUTED)
+
+func stop_auto_battle(reason: String = "") -> void:
+	if not auto_battle_active: return
+	auto_battle_active = false
+	match reason:
+		"defeat":
+			_toast(t("ui.auto_stop_defeat"), Color("ff4d3d"))
+		"stamina":
+			_toast(t("ui.auto_stop_stamina"), Color("ffbb33"))
+		_:
+			_toast(t("ui.auto_stop_manual"), MUTED)
+	if int(auto_battle_stats.get("stages_cleared", 0)) > 0:
+		_toast(tf("ui.auto_summary_toast", [int(auto_battle_stats.stages_cleared), int(auto_battle_stats.gold_earned)]), JADE)
+	auto_battle_stats = {"stages_cleared": 0, "gold_earned": 0}
 
 func show_idle_harvest_modal() -> void:
 	var existing: Node = overlay.get_node_or_null("IdleHarvestModal")

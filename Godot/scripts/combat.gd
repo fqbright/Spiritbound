@@ -37,6 +37,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"encounter":encounter.duplicate(true),
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
 		"chapter":int(encounter.get("chapter", 1)),
+		"last_element":"",
 		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0}
 	}
 	if not enemies.is_empty():
@@ -198,7 +199,29 @@ func play(hand_index: int, target_index := -1) -> bool:
 		if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 4
 	if rune == "cleanse": state.player.burn = 0
 	var element: String = card.get("element","")
-	if not element.is_empty(): state.elements[element] = state.elements.get(element,0) + 1
+	if not element.is_empty():
+		state.elements[element] = state.elements.get(element,0) + 1
+		var prev_element: String = str(state.get("last_element", ""))
+		if not prev_element.is_empty():
+			if (prev_element == "fire" and element in ["spirit", "gale"]) or (prev_element in ["spirit", "gale"] and element == "fire"):
+				# Combustion: deals 3 splash damage to other living enemies
+				for enemy_idx in state.enemies.size():
+					if enemy_idx != target_index and state.enemies[enemy_idx].health > 0:
+						_damage_enemy(enemy_idx, 3, false)
+				emit_signal("event", "resonance", {"type": "combustion", "amount": 3})
+			elif (prev_element == "water" and element in ["stone", "poison"]) or (prev_element in ["stone", "poison"] and element == "water"):
+				# Sunder: strips up to 5 shield and inflicts 1 vulnerable on target
+				if target_index >= 0 and state.enemies[target_index].health > 0:
+					var stripped: int = mini(5, int(state.enemies[target_index].shield))
+					state.enemies[target_index].shield = maxi(0, int(state.enemies[target_index].shield) - stripped)
+					state.enemies[target_index].vulnerable = int(state.enemies[target_index].get("vulnerable", 0)) + 1
+					emit_signal("event", "resonance", {"type": "sunder", "target": target_index})
+			elif (prev_element == "stone" and element in ["spirit", "stone"]) or (prev_element == "spirit" and element == "stone"):
+				# Fortify: grants player +4 shield
+				state.player.shield += 4
+				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 4
+				emit_signal("event", "resonance", {"type": "fortify", "amount": 4})
+		state.last_element = element
 	if card.get("special","") == "stun" and target_index >= 0: state.enemies[target_index].stun += 1
 	if card.get("special","") == "recoverExhaust" and not state.exhaust.is_empty() and state.hand.size() < 10: state.hand.append(state.exhaust.pop_back())
 	if card.get("special","") == "recycleDiscard":
@@ -269,7 +292,7 @@ func end_turn() -> void:
 	var mastery_heal: int = int(state.get("hero_bonuses", {}).get("heal_per_turn", 0))
 	if mastery_heal > 0: state.player.health = mini(state.player.max_health, state.player.health + mastery_heal)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
-	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}
+	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""
 	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome —
 	# its own -2 HP cost applies every turn it is held, same as the turn-1 setup above).
 	_draw(2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0))
@@ -550,8 +573,82 @@ func total_incoming_damage() -> int:
 		var intent: Dictionary = enemy.get("intent", {})
 		var kind: String = str(intent.get("kind", ""))
 		var amount: int = int(intent.get("amount", 0))
-		if kind in ["attack", "attack_defend"]:
+		if kind in ["attack", "attack_defend", "critical"]:
 			if int(enemy.get("weak", 0)) > 0: amount = int(round(amount * 0.75))
 			if int(state.player.get("vulnerable", 0)) > 0: amount = int(round(amount * 1.5))
 			total += amount
 	return total
+
+func ai_best_play() -> Dictionary:
+	if state.phase != "player" or state.hand.is_empty():
+		return {"hand_index": -1, "target_index": -1}
+
+	var incoming := total_incoming_damage()
+	var player_shield: int = int(state.player.shield)
+	var player_hp: int = int(state.player.health)
+	var shield_deficit: int = maxi(0, incoming - player_shield)
+
+	var best_idx := -1
+	var best_target := -1
+	var best_score := -99999.0
+
+	for i in state.hand.size():
+		var instance: Dictionary = state.hand[i]
+		var card: Dictionary = content.card(instance.card_id)
+		if card.is_empty() or int(card.cost) > state.energy: continue
+
+		var score: float = 0.0
+		var target := -1
+		var is_atk: bool = _is_attack(card)
+		var targets_opp: bool = _targets_opponent(card)
+
+		if targets_opp:
+			target = _smart_target()
+			if target < 0: continue
+
+		var card_shield := 0
+		var card_heal := 0
+		for effect in card.effects:
+			if effect.operation == "shield": card_shield += int(effect.amount)
+			elif effect.operation == "heal": card_heal += int(effect.amount)
+
+		# 1. Survival defense when incoming damage exceeds current shield
+		if shield_deficit > 0 and card_shield > 0:
+			score += minf(float(card_shield), float(shield_deficit)) * 4.5
+		if player_hp < 40 and card_heal > 0:
+			score += float(card_heal) * 3.5
+
+		# 2. Attack and lethal elimination
+		if is_atk and target >= 0:
+			var enemy_hp: int = state.enemies[target].health + state.enemies[target].shield
+			var est_damage: int = preview_card_damage(i, target)
+			score += float(est_damage) * 2.0
+			if est_damage >= enemy_hp:
+				score += 60.0 # Huge bonus for removing an active enemy
+
+		# 3. Powers / Stuns / Buffs
+		if card.get("kind", "") == "Power": score += 25.0
+		if card.get("special", "") == "stun": score += 30.0
+		if int(card.cost) == 0: score += 15.0
+		if _has_draw_effect(card): score += 12.0
+
+		# 4. Elemental resonance bonus
+		var el: String = card.get("element", "")
+		var prev_el: String = str(state.get("last_element", ""))
+		if not el.is_empty() and not prev_el.is_empty():
+			if (prev_el == "fire" and el in ["spirit", "gale"]) or (prev_el in ["spirit", "gale"] and el == "fire"):
+				score += 15.0
+			elif (prev_el == "water" and el in ["stone", "poison"]) or (prev_el in ["stone", "poison"] and el == "water"):
+				score += 12.0
+			elif (prev_el == "stone" and el in ["spirit", "stone"]) or (prev_el == "spirit" and el == "stone"):
+				score += 10.0
+
+		# Cost efficiency penalty
+		score -= float(card.cost) * 2.5
+
+		if score > best_score:
+			best_score = score
+			best_idx = i
+			best_target = target
+
+	return {"hand_index": best_idx, "target_index": best_target}

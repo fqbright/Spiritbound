@@ -30,6 +30,13 @@ func show_reward() -> void:
 	open.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	open.pressed.connect(func(): _open_chest(chest, atlas, open))
 	page.add_child(open)
+	if g.auto_battle_active:
+		_auto_handle_chest(chest, atlas, open)
+
+func _auto_handle_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> void:
+	await g.get_tree().create_timer(g._battle_delay(0.3)).timeout
+	if not g.auto_battle_active or button == null or not is_instance_valid(button): return
+	_open_chest(chest, atlas, button)
 
 func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> void:
 	button.disabled = true
@@ -444,6 +451,25 @@ func show_reward_details() -> void:
 	var options: Array = g.content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
 	for offset in 3:
 		list.add_child(_reward_card_row(options[(g.current_stage + offset) % options.size()]))
+	if g.auto_battle_active:
+		_auto_handle_card_reward()
+
+func _auto_handle_card_reward() -> void:
+	await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
+	if not g.auto_battle_active: return
+	var options: Array = g.content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
+	var chosen: Dictionary = {}
+	var best_score: float = -99999.0
+	for offset in 3:
+		var candidate: Dictionary = options[(g.current_stage + offset) % options.size()]
+		var sc: float = g._card_build_score(candidate)
+		if sc > best_score:
+			best_score = sc
+			chosen = candidate
+	if not chosen.is_empty():
+		_smart_add_card(chosen)
+	else:
+		_finish_reward()
 
 func _reward_card_row(card: Dictionary) -> Control:
 	var accent := g._card_color(card)
@@ -542,11 +568,36 @@ func _reward_item(title: String, detail: String, color: Color) -> PanelContainer
 
 func _finish_reward() -> void:
 	SpiritSave.write(g.profile)
-	# Beating a chapter boss no longer auto-plays the "walk into the next chapter" cutscene —
-	# it now lands on the map exactly like any other win, still showing the chapter that was
-	# just cleared. The cutscene itself still exists; _travel_to() now plays it the moment the
-	# player actually asks to move into the new chapter (the next-stage dock button or tapping
-	# its stage-0 pin), not automatically the instant the boss dies.
+	if g.auto_battle_active:
+		var next_idx: int = int(g.profile.unlocked)
+		if next_idx >= g.content.encounters.size() - 1 and g.current_stage >= g.content.encounters.size() - 1:
+			g.stop_auto_battle()
+			g.show_map()
+			return
+		if not g.can_spend_stamina(5):
+			g.stop_auto_battle("stamina")
+			g.show_map()
+			return
+		g.spend_stamina(5)
+		g.auto_battle_stats.stages_cleared = int(g.auto_battle_stats.get("stages_cleared", 0)) + 1
+		g.auto_battle_stats.gold_earned = int(g.auto_battle_stats.get("gold_earned", 0)) + int(g.pending_rewards.get("gold", 0))
+		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
+		var kind := g.content.node_kind(next_idx)
+		if kind in ["event","merchant","rest"] and not _is_stage_event_claimed(next_idx) and not _is_replay(next_idx):
+			if kind == "rest":
+				g.profile.gold += 35
+				_mark_stage_event_claimed(next_idx)
+				g.begin_battle(next_idx)
+			elif kind == "event":
+				g.profile.gold += 50
+				_mark_stage_event_claimed(next_idx)
+				g.begin_battle(next_idx)
+			else:
+				_mark_stage_event_claimed(next_idx)
+				g.begin_battle(next_idx)
+		else:
+			g.begin_battle(next_idx)
+		return
 	g.show_map()
 
 func show_event(index: int, kind: String) -> void:

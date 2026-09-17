@@ -182,6 +182,33 @@ func _add_map_right_rail(parent: Control) -> void:
 		banner_holder.add_child(digest_btn)
 		rail.add_child(banner_holder)
 
+	var auto_push_btn := g._button("", func():
+		if not g.can_spend_stamina(5):
+			g._toast(g.t("ui.stamina_insufficient"))
+			g.show_stamina_modal()
+			return
+		g.toggle_auto_battle(true)
+		_next_stage()
+	, Color("1d4d3a") if g.auto_battle_active else Color("142c33"), Vector2(46, 46))
+	auto_push_btn.name = "MapAutoPushBtn"
+	auto_push_btn.custom_minimum_size = Vector2(46, 46)
+	auto_push_btn.size = auto_push_btn.custom_minimum_size
+	var ap_icon := TextureRect.new()
+	ap_icon.texture = load("res://assets/icons/arrow.png")
+	ap_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ap_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ap_icon.custom_minimum_size = Vector2(24, 24)
+	ap_icon.size = ap_icon.custom_minimum_size
+	ap_icon.position = Vector2(11, 8)
+	ap_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	auto_push_btn.add_child(ap_icon)
+	var ap_lbl := g._label(g.t("ui.auto_battle"), 9, g.GOLD if g.auto_battle_active else g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	ap_lbl.position = Vector2(0, 30)
+	ap_lbl.size = Vector2(46, 14)
+	ap_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	auto_push_btn.add_child(ap_lbl)
+	rail.add_child(auto_push_btn)
+
 # Drives the red notification dot on the Camp entry point — true the moment a Compendium
 # collection-milestone reward (50/80/100%) is reached and not yet claimed. Camp itself never
 # had a notification dot before this; the Compendium milestones bar existed with no way to
@@ -1156,6 +1183,11 @@ func _travel_to(index: int) -> void:
 		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 			g.show_event(index, kind)
 		else:
+			if not g.can_spend_stamina(5):
+				g._toast(g.t("ui.stamina_insufficient"))
+				g.show_stamina_modal()
+				return
+			g.spend_stamina(5)
 			g.begin_battle(index)
 		return
 
@@ -1172,6 +1204,11 @@ func _travel_to(index: int) -> void:
 			if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 				g.show_event(index, kind)
 			else:
+				if not g.can_spend_stamina(5):
+					g._toast(g.t("ui.stamina_insufficient"))
+					g.show_stamina_modal()
+					return
+				g.spend_stamina(5)
 				g.begin_battle(index)
 		show_chapter_transition(start_index / 5, index / 5, enter_next)
 		return
@@ -1196,6 +1233,11 @@ func _travel_to(index: int) -> void:
 	if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 		g.show_event(index, kind)
 	else:
+		if not g.can_spend_stamina(5):
+			g._toast(g.t("ui.stamina_insufficient"))
+			g.show_stamina_modal()
+			return
+		g.spend_stamina(5)
 		g.begin_battle(index)
 
 func _next_stage() -> void:

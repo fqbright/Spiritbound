@@ -1083,12 +1083,53 @@ func run() -> void:
 	check(new_prof.get("novice_journey", null) is Dictionary, "profile defaults include novice_journey")
 	check(new_prof.get("daily_first_win", null) is Dictionary, "profile defaults include daily_first_win")
 	check(new_prof.get("combat_consumables", null) is Dictionary, "profile defaults include combat_consumables")
+	check(new_prof.get("stamina", null) is Dictionary, "profile defaults include stamina")
+	check(int(new_prof.stamina.current) == 100 and int(new_prof.stamina.max) == 100, "default stamina is 100/100")
+
+	# Elemental Resonance Checks
+	var reso_combat := SpiritCombat.new(content)
+	reso_combat.create(99, encounter(60, 10, 1), content.raw.startingDeck, 60)
+	# Play Fire card (foxfire) then Spirit card (ward) -> Combustion (3 splash to other enemies)
+	reso_combat.state.hand = [{"uid":1, "card_id":"foxfire"}, {"uid":2, "card_id":"ward"}]
+	reso_combat.state.energy = 5
+	var enemy1_hp_before: int = reso_combat.state.enemies[1].health
+	reso_combat.play(0, 0) # foxfire is Fire
+	check(reso_combat.state.last_element == "fire", "last_element recorded as fire")
+	reso_combat.play(0) # ward is Spirit -> triggers Combustion
+	check(reso_combat.state.enemies[1].health == enemy1_hp_before - 3, "Combustion resonance dealt 3 splash damage to enemy 1")
+
+	# Stone + Spirit -> Fortify (+4 player shield)
+	var shield_before: int = reso_combat.state.player.shield
+	reso_combat.state.hand = [{"uid":3, "card_id":"strike"}, {"uid":4, "card_id":"ward"}] # strike is Stone, ward is Spirit
+	reso_combat.state.energy = 5
+	reso_combat.play(0, 0) # strike (Stone)
+	reso_combat.play(0) # ward (Spirit) -> triggers Fortify
+	check(reso_combat.state.player.shield >= shield_before + 5 + 4, "Fortify resonance granted +4 bonus shield")
+
+	# AI Decision Engine Check (ai_best_play)
+	var ai_combat := SpiritCombat.new(content)
+	ai_combat.create(101, encounter(40, 15), content.raw.startingDeck, 60)
+	ai_combat.state.hand = [{"uid":10, "card_id":"strike"}, {"uid":11, "card_id":"ward"}]
+	ai_combat.state.energy = 2
+	# Enemy telegraphs 15 damage, player shield is 0: AI must prioritize ward for defense!
+	force_attack(ai_combat)
+	var best_def := ai_combat.ai_best_play()
+	check(best_def.hand_index == 1, "AI prioritizes defense when facing incoming lethal/heavy attack")
+
+	# When enemy has low HP in lethal range, AI prioritizes lethal strike
+	ai_combat.state.enemies[0].health = 5
+	ai_combat.state.enemies[0].intent = {"kind":"defend","amount":0}
+	var best_atk := ai_combat.ai_best_play()
+	check(best_atk.hand_index == 0, "AI prioritizes lethal strike on vulnerable enemy")
 
 	# Translations for new features
 	check(content.ui("ui.treasury_title", "zh-Hans") == "灵界珍宝库", "treasury title localized in Chinese")
 	check(content.ui("ui.treasury_title", "en") == "Spirit Treasury", "treasury title localized in English")
 	check(content.ui("ui.novice_journey_title", "zh-Hans") == "七日修行录", "novice journey title localized in Chinese")
 	check(content.ui("ui.novice_journey_title", "en") == "7-Day Novice Journey", "novice journey title localized in English")
+	check(content.ui("ui.stamina_name", "zh-Hans") == "灵力", "stamina localized in Chinese")
+	check(content.ui("ui.stamina_name", "en") == "Stamina", "stamina localized in English")
+	check(content.ui("ui.auto_battle", "zh-Hans") == "自动", "auto battle localized in Chinese")
 	check(content.ui("tutorial.shop_overview.title", "zh-Hans") == "灵界集市指南", "shop overview tutorial localized")
 	check(content.ui("tutorial.deck_synergies.title", "zh-Hans") == "卡牌协同指南", "deck synergies tutorial localized")
 	check(content.ui("tutorial.combat_survival.title", "zh-Hans") == "危机应对秘诀", "combat survival tutorial localized")

@@ -249,6 +249,26 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — Strategic Depth (Elemental Resonance), Auto-Battle Idle Progression, and Stamina System
+Implemented directly per user direction to deepen combat strategy, prevent infinite brute-force grinding, and provide auto-battle idle progression:
+- **Strategic Depth (五行元素共鸣 / Elemental Resonance)**:
+  - Sequenced elemental card plays trigger powerful resonant chain reactions:
+    - **Combustion (灵火燎原, Fire + Spirit/Gale)**: Deals 3 splash damage to all other living enemies.
+    - **Sunder (破甲震荡, Water + Stone/Poison)**: Destroys up to 5 enemy shield and inflicts 1 Vulnerable.
+    - **Fortify (金石磐石, Stone + Spirit/Stone)**: Grants player +4 bonus Shield.
+  - Sequenced combat events are dispatched via `resonance` signals and tracked on `state.last_element`.
+- **Stamina / Spiritual Energy System (灵元气海 / `profile.stamina`)**:
+  - `current: 100, max: 100`, naturally regenerates 1 point every 300s (5 minutes).
+  - Campaign stage entry costs 5 Stamina. Insufficient stamina blocks battle and opens the Stamina Modal.
+  - Supports rapid recharge with Spirit Jade (10 Jade -> +50 Stamina, capped at 150).
+  - Prominent Stamina Pill (⚡) in the top HUD and Treasury Inspector with live countdown to next regen.
+- **Auto-Battle & Idle Progression System (一键挂机推图)**:
+  - Intelligent heuristic card & target evaluation (`combat.ai_best_play()`): prioritizes survival shields when threatened, executes low-HP targets, plays zero-cost powers/buffs, and exploits elemental resonance.
+  - Full automated loop: auto-plays combat -> auto-claims chest -> auto-selects best card -> checks stamina -> hops to next node -> loops until defeat or stamina depletion.
+  - Safe termination: automatically halts on combat defeat, stamina exhaustion, or manual toggle, with a complete progress toast summary.
+  - Accessible via `AutoBattleToggle` button in battle top bar and `MapAutoPushBtn` on the map action rail.
+- **Verification**: `test_runner.gd` (351 checks, 0 failures) and `ui_smoke.gd` (all checks passed) verified green.
+
 ### 2026-09-17 — 7-Day Novice Journey, Store Consumables & Specialties, Treasury Inspector, Contextual Tutorials, and Retention Loops
 Implemented directly per user direction to expand merchandise, optimize multi-currency utility, boost novice retention, and complete onboarding tutorials:
 - **7-Day Novice Journey (`profile.novice_journey`)**: Progressive 7-stage milestone track embedded in `show_quests()` rewarding large amounts of Gold, Spirit Jade, and Spirit Dust. Unlocked milestones are surfaced in the Map Digest summary card.
