@@ -2008,6 +2008,38 @@ func _run() -> void:
 	check(not game.in_sandbox, "_leave_battle clears in_sandbox on a loss")
 	check(int(game.profile.health) == 10, "a sandbox loss also leaves the real campaign health completely untouched")
 
+	section("== defeat diagnosis: recommended action is visually distinguished ==")
+	# diagnose_battle_defeat()'s "action" field used to be computed and never read by the
+	# screen that displays its tip — both buttons rendered in the same color regardless of
+	# which one was actually recommended. A deck this thin on shield cards (2, under the
+	# threshold of 3) with a low average cost (all 1-cost) deterministically recommends
+	# "deck" over the generic "cultivate" fallback.
+	var saved_deck_for_diagnosis: Array = game.profile.deck.duplicate()
+	game.profile.deck = ["strike", "strike", "defend", "defend"]
+	game.current_stage = 0
+	game.begin_battle(0)
+	await process_frame
+	var defeat_wait := 0.0
+	while game.resolving and defeat_wait < 8.0:
+		await create_timer(0.1).timeout
+		defeat_wait += 0.1
+	game.combat.state.phase = "lost"
+	game.show_battle()
+	await process_frame
+	check(game.root.find_child("DefeatDiagnosisCard", true, false) != null, "DefeatDiagnosisCard renders on a loss")
+	var tune_btn: Button = game.root.find_child("DefeatTuneDeckBtn", true, false) as Button
+	var cult_btn: Button = game.root.find_child("DefeatCultivateBtn", true, false) as Button
+	check(tune_btn != null and cult_btn != null, "both DefeatTuneDeckBtn and DefeatCultivateBtn exist")
+	var diag_check: Dictionary = game.diagnose_battle_defeat()
+	check(str(diag_check.get("action", "")) == "deck", "this thin-on-shields, low-cost deck is diagnosed as needing deck tuning, sanity-checking the fixture")
+	if tune_btn != null and cult_btn != null:
+		var tune_style: StyleBox = tune_btn.get_theme_stylebox("normal")
+		var cult_style: StyleBox = cult_btn.get_theme_stylebox("normal")
+		check(tune_style is StyleBoxFlat and cult_style is StyleBoxFlat and (tune_style as StyleBoxFlat).bg_color != (cult_style as StyleBoxFlat).bg_color, "the recommended action's button is visually distinguished from the other one, not identically colored")
+		check((tune_style as StyleBoxFlat).bg_color == game.GOLD, "the recommended action (Tune Deck) specifically gets the emphasized gold color")
+	game._leave_battle()
+	game.profile.deck = saved_deck_for_diagnosis
+
 	section("== achievements ==")
 	game.profile.achievements_unlocked = {}
 	game.profile.lifetime_stats = {}

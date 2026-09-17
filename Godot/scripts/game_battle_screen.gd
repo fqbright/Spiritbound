@@ -137,14 +137,19 @@ func show_battle() -> void:
 			var diag_tip := g._label(str(diag.get("tip", "")), 11, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER, true)
 			diag_vbox.add_child(diag_tip)
 
+			# diagnose_battle_defeat()'s "action" field used to be computed and never read —
+			# both buttons rendered identically regardless of which one it actually
+			# recommended. Now the recommended one is visually emphasized (gold vs. muted),
+			# so the diagnosis actually shows through instead of just picking a tip string.
+			var recommended_action: String = str(diag.get("action", "cultivate"))
 			var diag_btns := HBoxContainer.new()
 			diag_btns.add_theme_constant_override("separation", 8)
-			var tune_btn := g._button(g.t("ui.defeat_btn_tune_deck"), func(): _leave_battle(); g.show_deck(), g.JADE, Vector2(0, 38))
+			var tune_btn := g._button(g.t("ui.defeat_btn_tune_deck"), func(): _leave_battle(); g.show_deck(), g.GOLD if recommended_action == "deck" else Color("1c333a"), Vector2(0, 38))
 			tune_btn.name = "DefeatTuneDeckBtn"
 			tune_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			diag_btns.add_child(tune_btn)
 
-			var cult_btn := g._button(g.t("ui.defeat_btn_cultivate"), func(): _leave_battle(); g.show_idle_harvest_modal(), g.GOLD, Vector2(0, 38))
+			var cult_btn := g._button(g.t("ui.defeat_btn_cultivate"), func(): _leave_battle(); g.show_idle_harvest_modal(), g.GOLD if recommended_action == "cultivate" else Color("1c333a"), Vector2(0, 38))
 			cult_btn.name = "DefeatCultivateBtn"
 			cult_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			diag_btns.add_child(cult_btn)
