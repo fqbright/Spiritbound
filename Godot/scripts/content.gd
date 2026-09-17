@@ -215,6 +215,13 @@ const BOSS_RELIC_IDS = ["cursedTome", "titanBell", "chaosPrism"]
 # on a later rest-site visit, Awakened to +2, then no further.
 const MAX_CARD_UPGRADE := 2
 
+# Draft Arena (see game_camp_screen.gd's show_spirit_draft() and game_battle_screen.gd's
+# _leave_battle()): a run ends either in a Grand Champion toast at DRAFT_WIN_CAP wins or a
+# run-completed toast at DRAFT_LOSS_CAP losses. Both paths must reset the same fields
+# _abandon_draft() resets (round/deck/current_pool/wins/losses) so the next run starts clean.
+const DRAFT_WIN_CAP := 6
+const DRAFT_LOSS_CAP := 3
+
 const RUNES = [
 	{"id":"swift","icon":"»","icon_mark":"chevrons","zh":"迅捷","en":"Swift","detail":"每回合第一次使用免费（返还其能量费用）。","detail_en":"First play each turn is free (refunds its Energy cost).","color":"78e9ff"},
 	{"id":"chain","icon":"⌁","icon_mark":"bolt","zh":"连锁","en":"Chain","detail":"40% 单体伤害传递给另一名敌人。","detail_en":"40% single-target damage splashes to another enemy.","color":"a2d9ff"},

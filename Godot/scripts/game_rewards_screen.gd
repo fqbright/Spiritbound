@@ -227,11 +227,11 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g._add_season_xp(75)
 		g.profile.health = 60
-		if wins >= 6:
-			draft.active = false
+		if wins >= SpiritContent.DRAFT_WIN_CAP:
 			g._toast(g.t("ui.draft_grand_champion"), g.GOLD)
 			g.profile.gold += 500
 			g._add_season_xp(200)
+			g._reset_draft_run()
 		else:
 			g._toast(g.tf("ui.draft_victory_toast", [wins, gold_gain]), g.GOLD)
 		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": ""}

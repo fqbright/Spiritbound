@@ -2741,6 +2741,35 @@ func _leave_battle() -> void:
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
+	if g.in_weekly_challenge:
+		g.in_weekly_challenge = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
+	if g.in_draft_battle:
+		# A loss counts against SpiritContent.DRAFT_LOSS_CAP rather than ending the run
+		# outright — same "attempt vs. run" split as Abyss/Daily Trial above — except
+		# reaching the cap does end the run, mirroring DRAFT_WIN_CAP's Grand Champion ending
+		# in _grant_stage_rewards(). g._reset_draft_run() is the same helper _abandon_draft()
+		# and that ending use, so every way a run can end leaves round/deck/current_pool/
+		# wins/losses clean for the next one. Without this branch at all, in_draft_battle
+		# stayed stuck true after any loss or retreat, silently swapping every later
+		# battle's deck for the (by-then stale) draft deck — see begin_battle()'s
+		# battle_deck check.
+		g.in_draft_battle = false
+		g.profile.health = 60
+		var draft: Dictionary = g.profile.get("draft_arena", {})
+		var losses: int = int(draft.get("losses", 0)) + 1
+		draft.losses = losses
+		if losses >= SpiritContent.DRAFT_LOSS_CAP:
+			var final_wins: int = int(draft.get("wins", 0))
+			g._reset_draft_run()
+			g._toast(g.tf("ui.draft_run_ended", final_wins))
+		else:
+			SpiritSave.write(g.profile)
+		g.show_challenges()
+		return
 	g.profile.health = 60
 	SpiritSave.write(g.profile)
 	g.show_map()

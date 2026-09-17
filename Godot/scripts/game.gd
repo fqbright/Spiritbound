@@ -620,6 +620,22 @@ func _add_season_xp(amount: int) -> void:
 		_toast(tf("ui.season_pass_levelup", new_lvl), GOLD)
 	SpiritSave.write(profile)
 
+# Shared by every place a Draft Arena run ends: _abandon_draft() (CampScreen), the
+# DRAFT_WIN_CAP Grand Champion ending (RewardsScreen's _grant_stage_rewards()), and the
+# DRAFT_LOSS_CAP ending (BattleScreen's _leave_battle()). All three must reset the same
+# fields or the next run inherits a stale round/deck/current_pool from the run that just
+# finished — see AGENTS.md's Draft Arena section for the corruption this used to cause.
+func _reset_draft_run() -> void:
+	var draft: Dictionary = profile.get("draft_arena", {})
+	draft.active = false
+	draft.round = 1
+	draft.deck = []
+	draft.current_pool = []
+	draft.wins = 0
+	draft.losses = 0
+	profile.draft_arena = draft
+	SpiritSave.write(profile)
+
 func show_account_setup() -> void:
 	_close_settings()
 	_clear(); _play_music(false)

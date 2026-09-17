@@ -1943,14 +1943,7 @@ func _start_draft_battle() -> void:
 	g.begin_battle(stage_idx)
 
 func _abandon_draft() -> void:
-	var draft: Dictionary = g.profile.draft_arena
-	draft.active = false
-	draft.round = 1
-	draft.deck = []
-	draft.current_pool = []
-	draft.wins = 0
-	draft.losses = 0
-	SpiritSave.write(g.profile)
+	g._reset_draft_run()
 	show_challenges()
 
 

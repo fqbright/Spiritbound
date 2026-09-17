@@ -2179,6 +2179,19 @@ func _run() -> void:
 	check(int(game.profile.gold) > w_gold_before, "winning a challenge stage grants gold")
 	check(not game.in_weekly_challenge, "_grant_stage_rewards clears in_weekly_challenge after granting")
 
+	# The exact same "stuck true forever" bug this session found and fixed for Draft Arena
+	# below also existed here — _leave_battle() had no in_weekly_challenge branch at all, so a
+	# loss or retreat left the flag stuck true, silently misrouting every later battle's
+	# rewards (any mode, win or lose) through this challenge's reward branch in
+	# _grant_stage_rewards() instead of the real one, for the rest of the session.
+	game.begin_weekly_challenge()
+	await process_frame
+	check(game.in_weekly_challenge, "re-entering weekly challenge works for the next stage")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_weekly_challenge, "_leave_battle clears in_weekly_challenge on a loss")
+	check(int(game.profile.weekly_challenge_record.stage) == 1, "a loss keeps the current stage instead of resetting the streak")
+
 	for i in range(2, SpiritContent.WEEKLY_CHALLENGE_STAGES + 1):
 		game.begin_weekly_challenge()
 		game.combat.state.phase = "won"
@@ -2631,6 +2644,79 @@ func _run() -> void:
 	var draft_deck: Array = game.profile.get("draft_arena", {}).get("deck", [])
 	check(draft_deck.has(first_card_id), "picked card is added to arena draft deck")
 	check(int(game.profile.draft_arena.round) == 2, "draft round advances to 2 after pick")
+
+	# Fast-forward past the remaining picks (one real pick already proved above) to a
+	# battle-ready 15-card deck, the same shape _pick_draft_card() leaves after round 7.
+	while draft_deck.size() < 15:
+		draft_deck.append(first_card_id)
+	game.profile.draft_arena.deck = draft_deck
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	game.profile.draft_arena.current_pool = []
+	game.show_spirit_draft()
+	await process_frame
+	var draft_start_btn: Node = game.root.find_child("DraftStartBattleBtn", true, false)
+	check(draft_start_btn != null, "a battle-ready draft run shows DraftStartBattleBtn")
+	(draft_start_btn as Button).pressed.emit()
+	await process_frame
+	check(game.in_draft_battle, "DraftStartBattleBtn starts a draft battle")
+	var draft_battle_cards: int = game.combat.state.draw.size() + game.combat.state.hand.size() + game.combat.state.discard.size() + game.combat.state.exhaust.size()
+	check(draft_battle_cards == 15, "a draft battle is built from the 15-card draft deck, not the real campaign deck")
+
+	# The bug this session found: _leave_battle() had no in_draft_battle branch at all, so a
+	# loss or retreat left the flag stuck true forever, silently swapping every later battle's
+	# deck (campaign battles included) for this stale 15-card draft deck. Confirm a loss
+	# clears the flag and increments losses, and that a subsequent ordinary campaign battle
+	# is unaffected.
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_draft_battle, "_leave_battle clears in_draft_battle on a loss")
+	check(int(game.profile.draft_arena.losses) == 1, "a loss increments the draft run's loss count")
+	game.begin_battle(0)
+	await process_frame
+	var normal_battle_cards: int = game.combat.state.draw.size() + game.combat.state.hand.size() + game.combat.state.discard.size() + game.combat.state.exhaust.size()
+	check(normal_battle_cards == game.profile.deck.size(), "a stuck in_draft_battle flag no longer corrupts an ordinary campaign battle's deck after a draft loss")
+	game._leave_battle()
+
+	# Losing SpiritContent.DRAFT_LOSS_CAP times in a row ends the run and resets it exactly
+	# like _abandon_draft() does (round/deck/current_pool/wins/losses all back to their fresh
+	# shape) via the shared g._reset_draft_run() helper, so the next run starts clean instead
+	# of inheriting a "round 8, deck already has 15 cards" leftover from the run that just
+	# ended — the second corruption bug this session found and fixed.
+	game.profile.draft_arena.deck = draft_deck.duplicate()
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	game.profile.draft_arena.losses = 0
+	SpiritSave.write(game.profile)
+	for i in range(SpiritContent.DRAFT_LOSS_CAP):
+		game.in_draft_battle = true
+		game.begin_battle(0)
+		game.combat.state.phase = "lost"
+		game._leave_battle()
+	check(not game.in_draft_battle, "in_draft_battle is clear after the run-ending loss")
+	check(int(game.profile.draft_arena.losses) == 0, "reaching DRAFT_LOSS_CAP resets losses back to 0 for the next run")
+	check(not bool(game.profile.draft_arena.active), "reaching DRAFT_LOSS_CAP ends the run (active resets to false)")
+	check(int(game.profile.draft_arena.round) == 1, "reaching DRAFT_LOSS_CAP resets round back to 1 for the next run")
+	check(game.profile.draft_arena.deck.is_empty(), "reaching DRAFT_LOSS_CAP resets the deck so the next run starts from the 8-card starter shape")
+
+	# Winning SpiritContent.DRAFT_WIN_CAP times must reset the same fields — before this
+	# session's fix, the Grand Champion ending only set active=false and left round/deck/
+	# current_pool stale, corrupting the next run started right after a win.
+	game.profile.draft_arena.deck = draft_deck.duplicate()
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	game.profile.draft_arena.wins = SpiritContent.DRAFT_WIN_CAP - 1
+	game.profile.draft_arena.losses = 0
+	SpiritSave.write(game.profile)
+	game.in_draft_battle = true
+	game.begin_battle(0)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_draft_battle, "_grant_stage_rewards clears in_draft_battle after the win that hits DRAFT_WIN_CAP")
+	check(not bool(game.profile.draft_arena.active), "reaching DRAFT_WIN_CAP ends the run (active resets to false)")
+	check(int(game.profile.draft_arena.wins) == 0, "reaching DRAFT_WIN_CAP resets wins back to 0 for the next run")
+	check(int(game.profile.draft_arena.round) == 1, "reaching DRAFT_WIN_CAP resets round back to 1 for the next run")
+	check(game.profile.draft_arena.deck.is_empty(), "reaching DRAFT_WIN_CAP resets the deck for the next run")
 
 	section("== visual assets: painted challenge banners & card back ==")
 	game.show_quests()

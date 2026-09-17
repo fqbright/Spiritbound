@@ -12,7 +12,7 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Godot/scripts/game_battle_screen.gd` | `BattleScreen` — the battle screen itself, hand/card rendering (including the enlarged peek and targeting/damage-preview), combat animation, the first-battle tutorial. |
 | `Godot/scripts/game_rewards_screen.gd` | `RewardsScreen` — reward granting, the reward-details/chest-opening screens, Compendium discovery bookkeeping, hero mastery XP, the rest/merchant/event stage flow. |
 | `Godot/scripts/game_shop_deck_screen.gd` | `ShopDeckScreen` — the shop, deck-purge/upgrade rituals, deck builder + auto-build scoring, equipment/rune loadout tabs. |
-| `Godot/scripts/game_camp_screen.gd` | `CampScreen` — the Compendium catalog tabs, Camp (hero archetypes, difficulty tiers, relics), Quests, and the Daily Trial/Weekly Challenge/Abyss entry points. |
+| `Godot/scripts/game_camp_screen.gd` | `CampScreen` — the Compendium catalog tabs, Camp (hero archetypes, difficulty tiers, relics), Quests, and the Daily Trial/Weekly Challenge/Abyss/Draft Arena/Boss Rush/Phantom Arena/Sandbox entry points. |
 | `Godot/scripts/game_icon.gd`, `game_intent_icon.gd`, `game_hand_card.gd`, `game_touch_scroll_container.gd`, `game_dizzy_stars.gd` | Self-contained UI classes (`class_name`, globally resolvable) that used to be nested inside `game.gd`. `HandCard` already took its game-instance back-reference as a plain field before the split; the other four never touch outer state at all. |
 | `Godot/scripts/content.gd` | Card/equipment/rune/relic data and all UI strings. |
 | `Godot/scripts/save_store.gd` | Local profile, versioned for a future cloud sync. |
@@ -157,6 +157,21 @@ Every one of these produced a wrong screen with no error in the log. They are th
   layered with `expand_mode`/`stretch_mode`, and if a diagnosis like this is ever needed again,
   add a test asserting the node's actual `.size` matches the parent instead of just asserting
   the node exists — existence alone missed this bug for two whole rounds.
+- **A new `in_<mode>` battle-exclusivity flag needs a branch in `_leave_battle()`, not just the
+  win path.** `game.gd` has one `in_X` boolean per side mode (Sandbox, Daily Trial, Weekly
+  Challenge, Draft Arena, Boss Rush, Abyss, Phantom Arena) so `_grant_stage_rewards()` can route
+  a win to that mode's own reward logic instead of the campaign's. It is easy to wire up the win
+  path and forget the loss/retreat one: `_leave_battle()` needs its own explicit branch clearing
+  the same flag, or a loss leaves it stuck `true` for the rest of the session — nothing crashes
+  or logs when this happens. From then on every later battle (any mode, campaign included)
+  silently misroutes through that mode's reward branch in `_grant_stage_rewards()`; for Draft
+  Arena specifically it's worse, because `begin_battle()`'s `battle_deck` check reads
+  `g.in_draft_battle` unconditionally, so every later battle also gets built from the stale
+  draft deck instead of the real 25-card one. Both `in_draft_battle` and `in_weekly_challenge`
+  shipped with exactly this gap — found only by reading `_leave_battle()` end to end and
+  noticing which flags it didn't mention among the ones it did. `ui_smoke.gd` now forces a loss
+  for every mode (`game.combat.state.phase = "lost"; game._leave_battle()`) and checks the flag
+  actually clears; copy that shape for the next new mode instead of trusting the win path alone.
 
 ## Game rules worth knowing before touching balance
 
@@ -352,6 +367,22 @@ The visual presentation blends high-detail painted assets with procedural vector
     chest unlocks after your first win of the day. A loss is inert — full HP restored, no
     streak or floor tracked, closer to Sandbox's "repeatable side activity" than Abyss's
     escalating gauntlet.
+  - **Spirit Draft Arena / "灵界轮抽竞技场" (`show_spirit_draft`, `profile.draft_arena`)**: a
+    7-round 3-pick-1 card draft — each round offers 3 random cards excluding Starter and Curse
+    rarities — building a 15-card deck on top of a fixed 8-card seed (4 `strike` + 4 `ward`).
+    Once the deck is complete (`draft.active = true`), it's a gauntlet against escalating
+    campaign encounters (stage index `wins * 2`, capped at the last encounter) that ends at
+    `SpiritContent.DRAFT_WIN_CAP` (6) wins — a "Grand Champion" toast plus a 500-gold/
+    200-season-XP bonus on top of the normal per-win payout — or `SpiritContent.DRAFT_LOSS_CAP`
+    (3) losses, whichever comes first. Like Sandbox/Phantom Arena/Boss Rush, it reuses the
+    player's real profile (relics/equipment/mastery/upgrades) rather than a synthetic loadout —
+    only the deck itself is swapped, in `begin_battle()`'s `battle_deck` check (`g.in_draft_battle`
+    and `draft_arena.deck.size() >= 15`). Every way a run can end — the win cap, the loss cap,
+    and abandoning it early from the battle-ready screen — must reset the same fields
+    (`active`/`round`/`deck`/`current_pool`/`wins`/`losses`) back to their fresh-save shape, or
+    the next run inherits a stale one; `SpiritGame._reset_draft_run()` is the one shared place
+    that does it, so a new ending never needs to remember the shape by hand (see this file's
+    "Traps" section for the stuck-flag bug this mode shipped with before that helper existed).
   - **A cleared stage can never be re-fought — this is a real, enforced gate, not just a
     warning label.** Tapping an already-cleared pin (`_on_pin_pressed()` → `_is_replay(index)`)
     opens `_show_replay_mode_prompt()`, which offers only informational shortcuts (Cultivate/
