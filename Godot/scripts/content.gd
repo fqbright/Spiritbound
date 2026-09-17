@@ -19,8 +19,8 @@ const CHAPTER_NAMES_EN = [
 	"Void Reaches", "Netherfall Current", "Oblivion Corridor", "Lightless Abyss", "Deadworld Isle", "Voidrift", "Netherfall Sanctum", "Chamber of Ten Thousand Souls", "Oblivion Echo", "Sovereign of the Void",
 	"Genesis Rift", "Chaos Corridor", "Stellar Forge", "Eternal Echo", "Eye of Worlds", "Genesis Abyss", "Rift of Time", "Convergence of Spirits", "Genesis Echo", "The End of All",
 ]
-const WAYPOINT_ZH = ["入口", "渡口", "神社", "要塞", "王座"]
-const WAYPOINT_EN = ["Trailhead", "Crossing", "Shrine", "Stronghold", "Crown"]
+const WAYPOINT_ZH = ["入口", "集市", "险峰", "营火", "深处"]
+const WAYPOINT_EN = ["Trailhead", "Market", "Ridge", "Campfire", "Heart"]
 
 # One chronicle entry per chapter, unlocked in step with the map's own chapter-lock rule
 # (chapter * 5 <= profile.unlocked) rather than any separate flag — reads as a travelogue the
@@ -784,6 +784,24 @@ func roll_quests(catalog: Array, count: int, period_seed: int) -> Array:
 		picked.append(q)
 	return picked
 
+func is_card_soulbound(card_id: String) -> bool:
+	return card_id == "strike" or card_id == "ward"
+
+func card_recycle_dust_value(card: Dictionary) -> int:
+	if is_card_soulbound(str(card.get("id", ""))): return 0
+	var rarity: String = str(card.get("rarity", "Common"))
+	match rarity:
+		"Rare": return 120
+		"Uncommon": return 40
+		_: return 15
+
+func card_craft_dust_cost(card: Dictionary) -> int:
+	var rarity: String = str(card.get("rarity", "Common"))
+	match rarity:
+		"Rare": return 300
+		"Uncommon": return 100
+		_: return 40
+
 # Same deterministic-per-day approach as quests: every device sees the same stock and the
 # same discounted slot until the next reset, rather than a fresh random shuffle on every
 # visit to the shop.
@@ -795,7 +813,30 @@ func roll_shop_stock(day_seed: int, count: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = day_seed + 777
 	var sale_index: int = rng.randi_range(0, maxi(0, picked.size() - 1))
-	return {"cards": picked, "sale_index": sale_index}
+	
+	# Rotating shop rune (picks from non-empty RUNES)
+	var rune_indices := _shuffled_indices(RUNES.size(), day_seed + 101)
+	var shop_rune: Dictionary = RUNES[rune_indices[0]] if not RUNES.is_empty() else {}
+	
+	# Rotating non-boss relic
+	var regular_relics: Array = RELICS.filter(func(r): return not BOSS_RELIC_IDS.has(r.id))
+	var relic_indices := _shuffled_indices(regular_relics.size(), day_seed + 202)
+	var shop_relic: Dictionary = regular_relics[relic_indices[0]] if not regular_relics.is_empty() else {}
+	
+	# Mystery Spirit Pack
+	var booster_pack := {
+		"id": "spirit_pack",
+		"price_gold": 120,
+		"price_jade": 12,
+	}
+	
+	return {
+		"cards": picked,
+		"sale_index": sale_index,
+		"rune": shop_rune,
+		"relic": shop_relic,
+		"booster_pack": booster_pack
+	}
 
 # Four difficulty bands across 50 chapters (250 stages), each ending at a chapter boundary
 # so the numbers line up with what a player actually experiences one chapter at a time:
@@ -1481,6 +1522,34 @@ const UI_TEXT = {
 	"ui.run_recap_deck_highlights": {"zh-Hans":"牌组核心亮点", "en":"Deck Highlights"},
 	"ui.run_recap_share_btn": {"zh-Hans":"保存/分享战报", "en":"Share / Save Recap"},
 	"ui.run_recap_saved_toast": {"zh-Hans":"战报已生成！截图即可分享给道友。", "en":"Recap generated! Screenshot to share with peers."},
+	"ui.currency_gold": {"zh-Hans":"金币", "en":"Gold"},
+	"ui.currency_jade": {"zh-Hans":"灵玉", "en":"Spirit Jade"},
+	"ui.currency_dust": {"zh-Hans":"灵尘", "en":"Spirit Dust"},
+	"ui.shop_tab_curated": {"zh-Hans":"精选行商", "en":"Curated Stock"},
+	"ui.shop_tab_exchange": {"zh-Hans":"灵卡置换", "en":"Card Exchange"},
+	"ui.shop_recycle_card": {"zh-Hans":"炼化分解", "en":"Recycle"},
+	"ui.shop_craft_card": {"zh-Hans":"凝聚置换", "en":"Transmute"},
+	"ui.shop_soulbound": {"zh-Hans":"专属绑定不可分解", "en":"Soulbound"},
+	"ui.shop_pack_title": {"zh-Hans":"万象灵卡秘袋", "en":"Spirit Mystery Pack"},
+	"ui.shop_pack_sub": {"zh-Hans":"随机凝聚 3 张灵卡 · 保底罕见+", "en":"Summon 3 random cards · Guaranteed Uncommon+"},
+	"ui.shop_relic_slot": {"zh-Hans":"古灵秘宝", "en":"Ancient Relic"},
+	"ui.shop_rune_slot": {"zh-Hans":"太古符文", "en":"Primal Rune"},
+	"ui.recycle_success_toast": {"zh-Hans":"炼化成功，获得 +%d 灵尘", "en":"Recycled! Gained +%d Spirit Dust"},
+	"ui.transmute_success_toast": {"zh-Hans":"凝聚成功，获得《%s》！", "en":"Transmuted! Obtained %s!"},
+	"ui.insufficient_dust": {"zh-Hans":"灵尘不足，无法凝聚！", "en":"Insufficient Spirit Dust!"},
+	"ui.insufficient_jade": {"zh-Hans":"灵玉不足！", "en":"Insufficient Spirit Jade!"},
+	"ui.shop_pack_opened": {"zh-Hans":"秘袋开启！斩获 3 张全新灵卡！", "en":"Pack opened! Obtained 3 new spirit cards!"},
+	"tutorial.understood": {"zh-Hans":"我明白了", "en":"Understood"},
+	"tutorial.rune_resonance.title": {"zh-Hans":"符文共鸣机制", "en":"Rune Resonance"},
+	"tutorial.rune_resonance.desc": {"zh-Hans":"在同一牌组中镶嵌成套的符文（如疾风+循环、灼烧+处决），将唤醒强力的全场共鸣被动效果，极大增强战斗战力！", "en":"Socket matching rune sets in your deck (e.g. Swift+Cycle, Burning+Execute) to activate powerful passive battle resonance buffs!"},
+	"tutorial.card_exchange.title": {"zh-Hans":"灵卡置换与分解", "en":"Card Exchange & Recycling"},
+	"tutorial.card_exchange.desc": {"zh-Hans":"多余或闲置的非基础卡牌可以在此炼化为【灵尘】。消耗灵尘可自由凝聚置换你所需的强力流派核心卡牌！未来还将支持驭灵者之间的直接置换交易。", "en":"Recycle extra non-starter cards into Spirit Dust. Spend dust to directly craft and transmute your desired archetype cards! Ready for future player trading."},
+	"tutorial.rest_purify.title": {"zh-Hans":"神圣营火仪式", "en":"Sacred Campfire Rituals"},
+	"tutorial.rest_purify.desc": {"zh-Hans":"在营火休整点，你不仅能回复生命，还能在净化祭坛将基础卡牌蜕变为精英灵卡，或前往灵匠处永久强化卡牌属性！", "en":"At sacred campfires, you can heal HP, purify basic cards into elite spirit arts at the altar, or forge permanent +1 upgrades at the smith!"},
+	"tutorial.daily_trial.title": {"zh-Hans":"每日试炼挑战", "en":"Daily Trial Gauntlet"},
+	"tutorial.daily_trial.desc": {"zh-Hans":"每日全服轮换相同的词条组合，挑战 15 层极限试炼，赢取丰厚金币、灵玉与连续通关宝箱！", "en":"Tackle 15 stages with rotating global affixes each day to claim generous Gold, Spirit Jade, and streak rewards!"},
+	"tutorial.abyss.title": {"zh-Hans":"无尽深渊幻境", "en":"Endless Abyss"},
+	"tutorial.abyss.desc": {"zh-Hans":"向深渊最底层进发！每层战胜后挑选强力恩惠，敌人的攻防随层数无限攀升，测试你牌组构筑的终极极限！", "en":"Descend into the infinite depths! Choose blessings after each floor as foes scale relentlessly. The ultimate deck test!"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

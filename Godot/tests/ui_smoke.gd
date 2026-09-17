@@ -2723,6 +2723,72 @@ func _run() -> void:
 	# specific buttons other checks above remembered to name. This is what would have caught
 	# the modal-tap bug even if none of the specific modals above had been individually
 	# hardcoded — and is what protects any screen this suite doesn't otherwise enumerate.
+	section("== multi-currency pills, immediate language switch, shop exchange, plaque & tutorials ==")
+	# 1. Multi-currency pills in Header
+	game.profile.gold = 350
+	game.profile.spirit_jade = 25
+	game.profile.spirit_dust = 80
+	game.show_map()
+	await process_frame
+	var gold_row: HBoxContainer = game.root.find_child("HeaderGoldRow", true, false) as HBoxContainer
+	check(gold_row != null, "HeaderGoldRow exists in header")
+	if gold_row != null:
+		check(gold_row.get_child_count() >= 3, "HeaderGoldRow contains pills for Gold, Jade, and Dust")
+		check(_find_label_containing(gold_row, "350") != null, "Gold pill shows 350")
+		check(_find_label_containing(gold_row, "25") != null, "Jade pill shows 25")
+		check(_find_label_containing(gold_row, "80") != null, "Dust pill shows 80")
+
+	# 2. Lowered Chapter Plaque
+	var plaque: Control = game.root.find_child("ChapterPlaque", true, false) as Control
+	check(plaque != null, "ChapterPlaque exists on map")
+	if plaque != null:
+		check(plaque.position.y >= 70.0, "ChapterPlaque is lowered (y=%f >= 70)" % plaque.position.y)
+
+	# 3. Immediate Language Switching
+	game.lang = "zh-Hans"
+	game.show_shop()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.shop_title", "zh-Hans")), "shop title starts in Chinese")
+	game._change_language("en")
+	await process_frame
+	check(game.lang == "en", "language state switched to English")
+	check(_find_label_text(game.root, game.content.ui("ui.shop_title", "en")), "shop title immediately updated to English")
+	var s_modal: Node = game.overlay.find_child("SettingsModal", true, false)
+	if s_modal != null:
+		game._close_settings()
+		await process_frame
+	game._change_language("zh-Hans")
+	await process_frame
+	var s_modal2: Node = game.overlay.find_child("SettingsModal", true, false)
+	if s_modal2 != null:
+		game._close_settings()
+		await process_frame
+
+	# 4. Shop Tabs, Exchange & Tutorial Dismissal
+	game.shop_tab = "curated"
+	game.show_shop()
+	await process_frame
+	check(game.root.find_child("ShopPurgeBtn", true, false) != null, "ShopPurgeBtn present in curated shop")
+	check(game.root.find_child("ShopPackBtn", true, false) != null, "ShopPackBtn present in curated shop")
+	game.shop_tab = "exchange"
+	game.show_shop()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.shop_recycle_card", game.lang)), "Recycle section renders in exchange tab")
+	check(_find_label_text(game.root, game.content.ui("ui.shop_craft_card", game.lang)), "Craft section renders in exchange tab")
+	var tut_modal: Node = game.overlay.find_child("FeatureTutorial_card_exchange", true, false)
+	check(tut_modal != null, "FeatureTutorial_card_exchange modal opens when visiting exchange")
+	check(bool(game.profile.tutorials_seen.get("card_exchange", false)), "card_exchange marked as seen in profile")
+	var tut_ok: Control = tut_modal.find_child("TutorialUnderstoodBtn", true, false) as Control if tut_modal else null
+	check(tut_ok != null, "TutorialUnderstoodBtn exists in tutorial dialog")
+	if tut_ok != null:
+		tap_button(tut_ok, "TutorialUnderstoodBtn")
+		await process_frame
+		check(game.overlay.find_child("FeatureTutorial_card_exchange", true, false) == null, "Tutorial dialog dismissed on Understood tap")
+	game.shop_tab = "curated"
+	for c in game.overlay.get_children():
+		c.queue_free()
+	await process_frame
+
 	game.show_map()
 	await process_frame
 	_sweep_buttons_clickable(game.root, "Map screen")

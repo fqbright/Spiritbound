@@ -189,6 +189,14 @@ func show_shop() -> void:
 	var backdrop := g._background("lantern-marsh-v1.jpg", .18); g.root.add_child(backdrop); g.root.move_child(backdrop, 0)
 	var page := g._create_page(8)
 	page.add_child(g._header(g.t("ui.shop_title"), g.t("ui.shop_sub"), g.show_map))
+	page.add_child(_tab_bar([["curated", g.t("ui.shop_tab_curated")], ["exchange", g.t("ui.shop_tab_exchange")]], g.shop_tab, func(id): g.shop_tab = id; show_shop()))
+
+	if g.shop_tab == "curated":
+		_build_shop_curated(page)
+	else:
+		_build_shop_exchange(page)
+
+func _build_shop_curated(page: VBoxContainer) -> void:
 	page.add_child(g._label(g.tf("ui.shop_refresh", g._format_countdown(_shop_reset_at())), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var svc_row := HBoxContainer.new()
@@ -226,18 +234,69 @@ func show_shop() -> void:
 	purge_texts.add_child(g._label(g.t("ui.shop_purge_service"), 11, g.TEXT))
 	purge_texts.add_child(g._label(g.tf("ui.shop_gold", 50), 10, g.GOLD))
 
+	var pack_btn := Button.new()
+	pack_btn.name = "ShopPackBtn"
+	pack_btn.custom_minimum_size.y = 56
+	pack_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pack_btn.focus_mode = Control.FOCUS_NONE
+	var pack_cost_gold := 120
+	var pack_cost_jade := 12
+	var can_pack: bool = int(g.profile.gold) >= pack_cost_gold or int(g.profile.get("spirit_jade", 0)) >= pack_cost_jade
+	pack_btn.add_theme_stylebox_override("normal", g._panel(Color("1b2a36"), 12, Color("78e9ff") if can_pack else Color("2a3d42")))
+	pack_btn.add_theme_stylebox_override("hover", g._panel(Color("263d4d"), 12, Color("78e9ff")))
+	pack_btn.add_theme_stylebox_override("pressed", g._panel(Color("131f28"), 12, g.GOLD))
+	g._bind_touch_guard(pack_btn, func(): _buy_booster_pack(pack_cost_gold, pack_cost_jade))
+	svc_row.add_child(pack_btn)
+
+	var pack_row := HBoxContainer.new()
+	pack_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pack_row.add_theme_constant_override("separation", 8)
+	pack_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pack_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pack_btn.add_child(pack_row)
+	var pack_badge := CenterContainer.new()
+	pack_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pack_badge.add_child(g._icon_badge("🎴", Color("78e9ff"), 32, 16))
+	pack_row.add_child(pack_badge)
+	var pack_texts := VBoxContainer.new()
+	pack_texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	pack_texts.add_theme_constant_override("separation", 1)
+	pack_texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pack_row.add_child(pack_texts)
+	pack_texts.add_child(g._label(g.t("ui.shop_pack_title"), 11, g.TEXT))
+	pack_texts.add_child(g._label("◆%d / ✧%d" % [pack_cost_gold, pack_cost_jade], 10, Color("78e9ff")))
+
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page.add_child(scroll)
+
+	var content_col := VBoxContainer.new()
+	content_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_col.add_theme_constant_override("separation", 10)
+	scroll.add_child(content_col)
+
+	var stock: Dictionary = _shop_period()
+
+	var has_relic: bool = not stock.get("relic", {}).is_empty()
+	var has_rune: bool = not stock.get("rune", {}).is_empty()
+	if has_relic or has_rune:
+		var offers_col := VBoxContainer.new()
+		offers_col.add_theme_constant_override("separation", 6)
+		offers_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if has_relic:
+			offers_col.add_child(_shop_relic_tile(stock.relic))
+		if has_rune:
+			offers_col.add_child(_shop_rune_tile(stock.rune))
+		content_col.add_child(offers_col)
+
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
-	scroll.add_child(grid)
+	content_col.add_child(grid)
 
-	var stock: Dictionary = _shop_period()
 	var stock_cards: Array = stock.cards
 	for i in stock_cards.size():
 		var card: Dictionary = stock_cards[i]
@@ -246,6 +305,314 @@ func show_shop() -> void:
 		var on_sale: bool = i == int(stock.sale_index)
 		if on_sale: price = maxi(5, int(round(float(price) * 0.7 / 5.0)) * 5)
 		grid.add_child(_shop_card_tile(card, price, on_sale))
+
+func _shop_relic_tile(relic: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.custom_minimum_size.y = 52
+	var owned: bool = g.profile.relics.has(relic.id)
+	var price_gold := 150
+	var price_jade := 15
+	var can_afford: bool = int(g.profile.gold) >= price_gold or int(g.profile.get("spirit_jade", 0)) >= price_jade
+	panel.add_theme_stylebox_override("panel", g._panel(Color("161f28"), 10, Color(relic.get("color", "ffd700")) if not owned else Color("2a3d42")))
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 8)
+	panel.add_child(hbox)
+
+	var badge := CenterContainer.new()
+	badge.custom_minimum_size = Vector2(36, 36)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	badge.add_child(g._icon_badge(str(relic.get("icon", "✦")), Color(relic.get("color", "ffd700")), 32, 16))
+	hbox.add_child(badge)
+
+	var texts := VBoxContainer.new()
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_child(texts)
+	var r_name: String = relic.get("en", "") if g.lang == "en" else relic.get("zh", "")
+	texts.add_child(g._label("%s · %s" % [g.t("ui.shop_relic_slot"), r_name], 11, g.TEXT))
+	var r_desc: String = relic.get("detail_en", "") if g.lang == "en" else relic.get("detail", "")
+	texts.add_child(g._label(r_desc, 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	if owned:
+		var owned_lbl := g._label(g.t("ui.obtained"), 10, g.JADE, HORIZONTAL_ALIGNMENT_CENTER)
+		owned_lbl.custom_minimum_size = Vector2(70, 32)
+		owned_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(owned_lbl)
+	else:
+		var buy_btn := g._button("◆%d/✧%d" % [price_gold, price_jade], func():
+			if int(g.profile.gold) >= price_gold:
+				g.profile.gold -= price_gold
+			elif int(g.profile.get("spirit_jade", 0)) >= price_jade:
+				g.profile.spirit_jade -= price_jade
+			else:
+				g._toast(g.t("ui.shop_no_gold"))
+				return
+			g.profile.relics.append(relic.id)
+			g._mark_discovered("relics", relic.id)
+			g._advance_quest("shop_purchase", 1)
+			SpiritSave.write(g.profile)
+			g._haptic("heavy")
+			g._toast(g.tf("ui.boon_acquired_toast", r_name), g.GOLD)
+			show_shop()
+		, Color("204a44") if can_afford else Color("2c2a28"), Vector2(80, 32))
+		buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		buy_btn.disabled = not can_afford
+		hbox.add_child(buy_btn)
+
+	return panel
+
+func _shop_rune_tile(rune: Dictionary) -> Control:
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.custom_minimum_size.y = 52
+	var price_gold := 80
+	var price_jade := 8
+	var can_afford: bool = int(g.profile.gold) >= price_gold or int(g.profile.get("spirit_jade", 0)) >= price_jade
+	var rune_color := Color(rune.get("color", "78e9ff"))
+	panel.add_theme_stylebox_override("panel", g._panel(Color("161f28"), 10, rune_color))
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 8)
+	panel.add_child(hbox)
+
+	var badge := CenterContainer.new()
+	badge.custom_minimum_size = Vector2(36, 36)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	badge.add_child(g._icon_badge(str(rune.get("icon", "»")), rune_color, 32, 16))
+	hbox.add_child(badge)
+
+	var texts := VBoxContainer.new()
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_child(texts)
+	var r_name: String = g.content.rune_name(rune, g.lang)
+	var owned_count: int = int(g.profile.rune_inventory.get(rune.id, 0))
+	texts.add_child(g._label("%s · %s%s" % [g.t("ui.shop_rune_slot"), r_name, " (×%d)" % owned_count if owned_count > 0 else ""], 11, g.TEXT))
+	var r_desc: String = g.content.rune_detail(rune, g.lang)
+	texts.add_child(g._label(r_desc, 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var buy_btn := g._button("◆%d/✧%d" % [price_gold, price_jade], func():
+		if int(g.profile.gold) >= price_gold:
+			g.profile.gold -= price_gold
+		elif int(g.profile.get("spirit_jade", 0)) >= price_jade:
+			g.profile.spirit_jade -= price_jade
+		else:
+			g._toast(g.t("ui.shop_no_gold"))
+			return
+		g.profile.rune_inventory[rune.id] = int(g.profile.rune_inventory.get(rune.id, 0)) + 1
+		g._mark_discovered("runes", rune.id)
+		g._advance_quest("shop_purchase", 1)
+		SpiritSave.write(g.profile)
+		g._haptic("tap")
+		g._toast(g.tf("ui.boon_acquired_toast", r_name), g.GOLD)
+		show_shop()
+	, Color("204a44") if can_afford else Color("2c2a28"), Vector2(80, 32))
+	buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	buy_btn.disabled = not can_afford
+	hbox.add_child(buy_btn)
+
+	return panel
+
+func _buy_booster_pack(cost_gold: int, cost_jade: int) -> void:
+	if int(g.profile.gold) >= cost_gold:
+		g.profile.gold -= cost_gold
+	elif int(g.profile.get("spirit_jade", 0)) >= cost_jade:
+		g.profile.spirit_jade -= cost_jade
+	else:
+		g._toast(g.t("ui.shop_no_gold"))
+		return
+
+	var pool: Array = g.content.cards.filter(func(c): return c.rarity != "Starter" and c.get("rarity", "") != "Curse")
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	pool.shuffle()
+	var uncommons_or_better: Array = pool.filter(func(c): return c.rarity != "Common")
+
+	var awarded: Array = []
+	if not uncommons_or_better.is_empty():
+		awarded.append(uncommons_or_better[0])
+		pool.erase(uncommons_or_better[0])
+	while awarded.size() < 3 and not pool.is_empty():
+		awarded.append(pool.pop_front())
+
+	for card in awarded:
+		var c_id: String = card.id
+		if int(g.profile.collection.get(c_id, 0)) == 0:
+			g._advance_quest("collect_cards", 1)
+		g.profile.collection[c_id] = int(g.profile.collection.get(c_id, 0)) + 1
+
+	g._advance_quest("shop_purchase", 1)
+	SpiritSave.write(g.profile)
+	g._haptic("heavy")
+	g._toast(g.t("ui.shop_pack_opened"), g.GOLD)
+	show_shop()
+
+func _build_shop_exchange(page: VBoxContainer) -> void:
+	g._maybe_show_tutorial("card_exchange")
+
+	var dust_banner := PanelContainer.new()
+	dust_banner.custom_minimum_size.y = 50
+	dust_banner.add_theme_stylebox_override("panel", g._panel(Color("0f232c"), 12, Color("78e9ff")))
+	page.add_child(dust_banner)
+
+	var b_box := HBoxContainer.new()
+	b_box.add_theme_constant_override("separation", 10)
+	b_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	dust_banner.add_child(b_box)
+
+	var dust_icon := TextureRect.new()
+	dust_icon.texture = load("res://assets/icons/hud_dust.png")
+	dust_icon.custom_minimum_size = Vector2(24, 24)
+	dust_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	dust_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	dust_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b_box.add_child(dust_icon)
+
+	var d_val := int(g.profile.get("spirit_dust", 0))
+	var d_label := g._label("%s: %d" % [g.t("ui.currency_dust"), d_val], 15, Color("78e9ff"))
+	d_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b_box.add_child(d_label)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(scroll)
+
+	var content_box := VBoxContainer.new()
+	content_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_box.add_theme_constant_override("separation", 14)
+	scroll.add_child(content_box)
+
+	# --- Section 1: Recycle (炼化分解) ---
+	var recycle_header := VBoxContainer.new()
+	recycle_header.add_theme_constant_override("separation", 2)
+	recycle_header.add_child(g._label(g.t("ui.shop_recycle_card"), 14, g.GOLD))
+	recycle_header.add_child(g._label(g.content.ui("tutorial.card_exchange.desc", g.lang), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	content_box.add_child(recycle_header)
+
+	var recycle_list := VBoxContainer.new()
+	recycle_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	recycle_list.add_theme_constant_override("separation", 6)
+	content_box.add_child(recycle_list)
+
+	var owned_card_ids: Array = g.profile.collection.keys()
+	owned_card_ids.sort()
+
+	for card_id in owned_card_ids:
+		var count: int = int(g.profile.collection.get(card_id, 0))
+		if count <= 0: continue
+		var card: Dictionary = g.content.card(card_id)
+		if card.is_empty(): continue
+
+		var row := PanelContainer.new()
+		row.custom_minimum_size = Vector2(340, 50)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var accent := g._card_color(card)
+		row.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 10, accent))
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		row.add_child(hbox)
+
+		var badge := _cost_badge(int(card.cost), accent)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(badge)
+
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		hbox.add_child(texts)
+
+		var card_name: String = g.content.text(card.nameKey, g.lang)
+		texts.add_child(g._label("%s  ×%d" % [card_name, count], 12, g.TEXT))
+		texts.add_child(g._label("%s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("rarity.%s" % card.get("rarity", "Common"))], 9, g.GOLD))
+
+		var is_soulbound: bool = g.content.is_card_soulbound(card_id)
+		if is_soulbound:
+			var sb_lbl := g._label(g.t("ui.shop_soulbound"), 9, Color("7a8f94"), HORIZONTAL_ALIGNMENT_CENTER)
+			sb_lbl.custom_minimum_size = Vector2(90, 34)
+			sb_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hbox.add_child(sb_lbl)
+		else:
+			var dust_val := g.content.card_recycle_dust_value(card)
+			var recycle_btn := g._button("+%d %s" % [dust_val, g.t("ui.currency_dust")], func():
+				g.profile.collection[card_id] = maxi(0, int(g.profile.collection[card_id]) - 1)
+				g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + dust_val
+				if g.profile.deck.count(card_id) > int(g.profile.collection[card_id]):
+					var idx: int = g.profile.deck.find(card_id)
+					if idx >= 0:
+						g.profile.deck[idx] = "strike"
+				SpiritSave.write(g.profile)
+				g._haptic("tap")
+				g._toast(g.tf("ui.recycle_success_toast", dust_val), g.JADE)
+				show_shop()
+			, Color("204a44"), Vector2(90, 34))
+			recycle_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hbox.add_child(recycle_btn)
+
+		recycle_list.add_child(row)
+
+	# --- Section 2: Transmute / Craft (凝聚置换) ---
+	var craft_header := VBoxContainer.new()
+	craft_header.add_theme_constant_override("separation", 2)
+	craft_header.add_child(g._label(g.t("ui.shop_craft_card"), 14, Color("78e9ff")))
+	craft_header.add_child(g._label(g.t("ui.shop_craft_card") + " - " + g.t("ui.shop_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	content_box.add_child(craft_header)
+
+	var craft_list := VBoxContainer.new()
+	craft_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	craft_list.add_theme_constant_override("separation", 6)
+	content_box.add_child(craft_list)
+
+	var craftable_pool: Array = g.content.cards.filter(func(c): return c.rarity != "Starter" and c.get("rarity", "") != "Curse")
+	for card in craftable_pool:
+		var craft_cost := g.content.card_craft_dust_cost(card)
+		var can_craft: bool = int(g.profile.get("spirit_dust", 0)) >= craft_cost
+
+		var row := PanelContainer.new()
+		row.custom_minimum_size = Vector2(340, 52)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var accent := g._card_color(card)
+		row.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 10, accent))
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		row.add_child(hbox)
+
+		var badge := _cost_badge(int(card.cost), accent)
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(badge)
+
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		hbox.add_child(texts)
+
+		var card_name: String = g.content.text(card.nameKey, g.lang)
+		var owned_cnt: int = int(g.profile.collection.get(card.id, 0))
+		texts.add_child(g._label("%s%s" % [card_name, " (×%d)" % owned_cnt if owned_cnt > 0 else ""], 12, g.TEXT))
+		texts.add_child(g._label("%s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("rarity.%s" % card.get("rarity", "Common"))], 9, g.GOLD))
+
+		var craft_btn := g._button("-%d 灵尘" % craft_cost, func():
+			if int(g.profile.get("spirit_dust", 0)) < craft_cost:
+				g._toast(g.t("ui.insufficient_dust"))
+				return
+			g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) - craft_cost
+			if int(g.profile.collection.get(card.id, 0)) == 0:
+				g._advance_quest("collect_cards", 1)
+			g.profile.collection[card.id] = int(g.profile.collection.get(card.id, 0)) + 1
+			SpiritSave.write(g.profile)
+			g._haptic("heavy")
+			g._toast(g.tf("ui.transmute_success_toast", card_name), g.GOLD)
+			show_shop()
+		, Color("1e4b52") if can_craft else Color("222a2e"), Vector2(90, 34))
+		craft_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		craft_btn.disabled = not can_craft
+		hbox.add_child(craft_btn)
+
+		craft_list.add_child(row)
 
 func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	var accent := g._card_color(card)
@@ -875,22 +1242,34 @@ func _tab_bar(tabs: Array, active: String, on_pick: Callable) -> Control:
 	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	row.add_theme_constant_override("separation", 0)
 	bar.add_child(row)
+	var font_sz: int = 10 if tabs.size() > 5 else (11 if tabs.size() > 3 else 13)
+	var rad: int = 12 if tabs.size() > 4 else 22
 	for entry in tabs:
 		var id: String = entry[0]
 		var is_active: bool = id == active
 		var btn := Button.new()
 		btn.text = entry[1]
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size.y = 44
+		btn.custom_minimum_size = Vector2(0, 44)
+		btn.clip_text = true
 		btn.focus_mode = Control.FOCUS_NONE
 		if g.font_cjk: btn.add_theme_font_override("font", g.font_cjk)
-		btn.add_theme_font_size_override("font_size", 13)
+		btn.add_theme_font_size_override("font_size", font_sz)
 		btn.add_theme_color_override("font_color", Color("10242b") if is_active else g.MUTED)
 		btn.add_theme_color_override("font_hover_color", Color("10242b") if is_active else g.TEXT)
-		var active_style := g._panel(g.JADE, 22)
-		btn.add_theme_stylebox_override("normal", active_style if is_active else StyleBoxEmpty.new())
-		btn.add_theme_stylebox_override("hover", active_style if is_active else g._panel(Color(1, 1, 1, 0.06), 22))
-		btn.add_theme_stylebox_override("pressed", g._panel(g.JADE.darkened(0.1), 22) if is_active else g._panel(Color(1, 1, 1, 0.1), 22))
+		var active_style := g._panel(g.JADE, rad)
+		active_style.content_margin_left = 2; active_style.content_margin_right = 2
+		var inactive_hover := g._panel(Color(1, 1, 1, 0.06), rad)
+		inactive_hover.content_margin_left = 2; inactive_hover.content_margin_right = 2
+		var inactive_normal := StyleBoxEmpty.new()
+		inactive_normal.content_margin_left = 2; inactive_normal.content_margin_right = 2
+		var inactive_pressed := g._panel(Color(1, 1, 1, 0.1), rad)
+		inactive_pressed.content_margin_left = 2; inactive_pressed.content_margin_right = 2
+		btn.add_theme_stylebox_override("normal", active_style if is_active else inactive_normal)
+		btn.add_theme_stylebox_override("hover", active_style if is_active else inactive_hover)
+		btn.add_theme_stylebox_override("pressed", g._panel(g.JADE.darkened(0.1), rad) if is_active else inactive_pressed)
+		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		btn.add_theme_stylebox_override("disabled", inactive_normal)
 		g._bind_touch_guard(btn, func(): on_pick.call(id))
 		row.add_child(btn)
 	return bar
@@ -911,8 +1290,11 @@ func show_loadout() -> void:
 	list.add_theme_constant_override("separation", 8)
 	scroll.add_child(list)
 
-	if g.loadout_tab == "equipment": _build_equipment_tab(list)
-	else: _build_rune_tab(list)
+	if g.loadout_tab == "equipment":
+		_build_equipment_tab(list)
+	else:
+		g._maybe_show_tutorial("rune_resonance")
+		_build_rune_tab(list)
 
 func _build_equipment_tab(list: VBoxContainer) -> void:
 	list.add_child(g._label(g.t("ui.loadout_cur_equip"), 13, g.JADE))

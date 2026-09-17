@@ -1034,6 +1034,31 @@ func run() -> void:
 	check(int(p_enc.chapter) == 102, "phantom arena encounter uses chapter 102 sentinel")
 	check(int(p_enc.health) > 0 and int(p_enc.damage) > 0, "phantom arena encounter scales health and damage")
 
+	# Multi-currency & Soulbound & Exchange tests
+	var new_prof := SpiritSave.defaults(content)
+	check(int(new_prof.get("spirit_jade", 0)) == 10, "profile defaults include 10 Spirit Jade")
+	check(int(new_prof.get("spirit_dust", 0)) == 0, "profile defaults include 0 Spirit Dust")
+	check(new_prof.get("tutorials_seen", null) is Dictionary, "profile defaults include tutorials_seen dictionary")
+
+	check(content.is_card_soulbound("strike") == true, "strike is marked soulbound")
+	check(content.is_card_soulbound("ward") == true, "ward is marked soulbound")
+	check(content.is_card_soulbound("moonfang") == false, "non-starter cards are not soulbound")
+
+	var strike_card := content.card("strike")
+	var moonfang_card := content.card("moonfang")
+	check(content.card_recycle_dust_value(strike_card) == 0, "soulbound starter cards recycle for 0 dust")
+	check(content.card_recycle_dust_value(moonfang_card) > 0, "non-starter cards recycle for positive dust")
+	check(content.card_craft_dust_cost(moonfang_card) > content.card_recycle_dust_value(moonfang_card), "craft cost exceeds recycle yield to prevent arbitrage")
+
+	var shop_stock_sample := content.roll_shop_stock(42, 6)
+	check(shop_stock_sample.has("rune") and not shop_stock_sample.rune.is_empty(), "shop stock includes rotating rune")
+	check(shop_stock_sample.has("relic") and not shop_stock_sample.relic.is_empty(), "shop stock includes rotating relic")
+	check(shop_stock_sample.has("booster_pack") and int(shop_stock_sample.booster_pack.price_gold) > 0, "shop stock includes booster pack")
+
+	check(content.ui("ui.currency_gold", "zh-Hans") == "金币" and content.ui("ui.currency_gold", "en") == "Gold", "gold currency localized")
+	check(content.ui("ui.currency_jade", "zh-Hans") == "灵玉" and content.ui("ui.currency_jade", "en") == "Spirit Jade", "jade currency localized")
+	check(content.ui("ui.currency_dust", "zh-Hans") == "灵尘" and content.ui("ui.currency_dust", "en") == "Spirit Dust", "dust currency localized")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

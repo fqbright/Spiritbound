@@ -730,7 +730,7 @@ func _add_map_chapter(chapter: int) -> void:
 	# legibility, matching the stage-pin captions' existing floating-text treatment.
 	var plaque := Control.new()
 	plaque.name = "ChapterPlaque"
-	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 24.0)
+	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 78.0)
 	plaque.size = Vector2(260, 52)
 	plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	band.add_child(plaque)
@@ -758,7 +758,7 @@ func _add_map_chapter(chapter: int) -> void:
 			show_map()
 		, Color("1d4a40"), Vector2(100, 24))
 		back_curr_btn.name = "MapBackToCurrentBtn"
-		back_curr_btn.position = Vector2((g.MAP_WIDTH - 100.0) / 2.0, 80.0)
+		back_curr_btn.position = Vector2((g.MAP_WIDTH - 100.0) / 2.0, 134.0)
 		band.add_child(back_curr_btn)
 
 # Replaces the old ChapterPrevBtn/ChapterNextBtn pair: a left/right swipe anywhere on the map
@@ -1069,8 +1069,9 @@ func _add_stage_pin(index: int) -> void:
 	# procedurally-drawn kind icon on top; the painted art already bakes in a kind-specific
 	# ring and icon, so drawing the GameIcon shape over it would just double up. Falls back to
 	# the generic map_pin_rune.png overlay on the old flat badge if a kind's art is missing.
-	var pin_art_path := "res://assets/icons/pin_%s.png" % kind
-	if kind == "" or not ResourceLoader.exists(pin_art_path): pin_art_path = "res://assets/icons/pin_normal.png"
+	var pin_kind := "normal" if (kind == "battle" or kind == "normal" or kind == "") else kind
+	var pin_art_path := "res://assets/icons/pin_%s.png" % pin_kind
+	if not ResourceLoader.exists(pin_art_path): pin_art_path = "res://assets/icons/pin_normal.png"
 	var pin_overlay := TextureRect.new()
 	if ResourceLoader.exists(pin_art_path):
 		pin_overlay.texture = load(pin_art_path)

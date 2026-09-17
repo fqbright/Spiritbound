@@ -1152,6 +1152,7 @@ func begin_sandbox_battle(stage: int) -> void:
 	g._maybe_end_turn()
 
 func begin_abyss_battle() -> void:
+	g._maybe_show_tutorial("abyss")
 	g.in_abyss = true
 	var floor_num: int = int(g.profile.get("abyss_floor", 1))
 	var enc: Dictionary = g.content.abyss_encounter(floor_num)
@@ -1194,6 +1195,7 @@ func begin_phantom_arena() -> void:
 	g._maybe_end_turn()
 
 func begin_daily_trial() -> void:
+	g._maybe_show_tutorial("daily_trial")
 	g._ensure_daily_trial_current()
 	if int(g.profile.daily_trial_record.stage) >= SpiritContent.DAILY_TRIAL_STAGES: return
 	g.in_daily_trial = true

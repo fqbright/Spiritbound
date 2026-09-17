@@ -40,6 +40,7 @@ var in_sandbox := false
 var sandbox_stage := 0
 var compendium_tab := "cards"
 var camp_tab := "character"
+var shop_tab := "curated"
 var battle_speed := 1.0
 const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
 # Kept deliberately conservative (vs. e.g. iOS Dynamic Type's much wider range) — every screen
@@ -50,6 +51,7 @@ var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
 var in_phantom_arena: bool = false
+var current_screen_name: String = "map"
 var clipboard_cache: String = ""
 var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
@@ -1018,6 +1020,35 @@ func _background(file: String, opacity := .42) -> TextureRect:
 	var image := TextureRect.new(); image.texture = _texture("backgrounds/%s" % file); image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED; image.modulate = Color(1,1,1,opacity); image.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return image
 
+func _currency_pill(icon_tex: Texture2D, amount: int, color: Color) -> PanelContainer:
+	var pill := PanelContainer.new()
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.add_theme_stylebox_override("panel", _panel(Color("0d1e23"), 10, Color(color.r, color.g, color.b, 0.45)))
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 6)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.add_theme_constant_override("margin_top", 1)
+	margin.add_theme_constant_override("margin_bottom", 1)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.add_child(margin)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(row)
+	if icon_tex != null:
+		var ico := TextureRect.new()
+		ico.texture = icon_tex
+		ico.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ico.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ico.custom_minimum_size = Vector2(14, 14)
+		ico.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(ico)
+	var lbl := _label("%d" % amount, 11, color)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lbl)
+	return pill
+
 func _header(title: String, subtitle: String, back := Callable()) -> HBoxContainer:
 	var bar := HBoxContainer.new()
 	bar.custom_minimum_size.y = 56
@@ -1032,14 +1063,11 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	left_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	if title == "SPIRITBOUND":
-		# Map header: logo with just the gold total tucked underneath it, left-aligned. No HP —
-		# the map isn't mid-battle and every battle now always starts at a full, flat 60 anyway
-		# (see the HP-reset decision in AGENTS.md/GROWTH_ROADMAP.md) — and no inline stats row,
-		# since that's the framed/boxed look the map moved away from.
+		# Map header: logo with currency capsules tucked underneath it, left-aligned.
 		var logo_stack := VBoxContainer.new()
 		logo_stack.name = "HeaderLogoStack"
 		logo_stack.alignment = BoxContainer.ALIGNMENT_BEGIN
-		logo_stack.add_theme_constant_override("separation", 0)
+		logo_stack.add_theme_constant_override("separation", 2)
 		logo_stack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 		var logo := TextureRect.new()
@@ -1055,20 +1083,19 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 
 		var gold_row := HBoxContainer.new()
 		gold_row.name = "HeaderGoldRow"
-		gold_row.add_theme_constant_override("separation", 3)
+		gold_row.add_theme_constant_override("separation", 5)
 		gold_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 
-		var gold_icon := TextureRect.new()
-		gold_icon.texture = load("res://assets/icons/hud_gold.png")
-		gold_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		gold_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		gold_icon.custom_minimum_size = Vector2(15, 15)
-		gold_icon.size = gold_icon.custom_minimum_size
-		gold_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		gold_row.add_child(gold_icon)
+		var gold_pill := _currency_pill(load("res://assets/icons/hud_gold.png"), int(profile.gold), GOLD)
+		gold_row.add_child(gold_pill)
 
-		var gold_label := _label("%d" % int(profile.gold), 11, GOLD)
-		gold_row.add_child(gold_label)
+		var jade_pill := _currency_pill(load("res://assets/icons/hud_jade.png"), int(profile.get("spirit_jade", 10)), Color("78e9c0"))
+		gold_row.add_child(jade_pill)
+
+		if int(profile.get("spirit_dust", 0)) > 0:
+			var dust_pill := _currency_pill(load("res://assets/icons/hud_dust.png"), int(profile.get("spirit_dust", 0)), Color("c79bff"))
+			gold_row.add_child(dust_pill)
+
 		logo_stack.add_child(gold_row)
 
 		left_box.add_child(logo_stack)
@@ -1080,40 +1107,14 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 
 		var stats_box := HBoxContainer.new()
 		stats_box.name = "HeaderStatsBox"
-		stats_box.add_theme_constant_override("separation", 3)
+		stats_box.add_theme_constant_override("separation", 5)
 		stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
-		var hp_icon := TextureRect.new()
-		hp_icon.texture = load("res://assets/icons/hud_heart.png")
-		hp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		hp_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		hp_icon.custom_minimum_size = Vector2(15, 15)
-		hp_icon.size = hp_icon.custom_minimum_size
-		hp_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		hp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		stats_box.add_child(hp_icon)
+		var hp_pill := _currency_pill(load("res://assets/icons/hud_heart.png"), int(profile.health), TEXT)
+		stats_box.add_child(hp_pill)
 
-		var hp_label := _label("%d/60" % int(profile.health), 11, TEXT)
-		hp_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		stats_box.add_child(hp_label)
-
-		var sep := Control.new()
-		sep.custom_minimum_size = Vector2(3, 1)
-		stats_box.add_child(sep)
-
-		var gold_icon2 := TextureRect.new()
-		gold_icon2.texture = load("res://assets/icons/hud_gold.png")
-		gold_icon2.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		gold_icon2.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		gold_icon2.custom_minimum_size = Vector2(15, 15)
-		gold_icon2.size = gold_icon2.custom_minimum_size
-		gold_icon2.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		gold_icon2.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		stats_box.add_child(gold_icon2)
-
-		var gold_label2 := _label("%d" % int(profile.gold), 11, GOLD)
-		gold_label2.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		stats_box.add_child(gold_label2)
+		var gold_pill2 := _currency_pill(load("res://assets/icons/hud_gold.png"), int(profile.gold), GOLD)
+		stats_box.add_child(gold_pill2)
 
 		left_box.add_child(stats_box)
 	bar.add_child(left_box)
@@ -1128,7 +1129,7 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		if title != "":
 			copy.add_child(_label(title, 16, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 		if subtitle != "":
-			copy.add_child(_label(subtitle, 10, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+			copy.add_child(_label(subtitle, 10, JADE, HORIZONTAL_ALIGNMENT_CENTER, true))
 	bar.add_child(copy)
 
 	# Right spacer placeholder (replaced by map header buttons in game_map_screen.gd)
@@ -1144,7 +1145,9 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 # `game`/`self`, and because SpiritGame's screen transitions call each other by bare name
 # (show_map() -> show_camp() -> show_quests() -> ...); see MapScreen's own header comment for
 # why this is composition (a `g` back-reference) rather than inheritance.
-func show_map() -> void: await _map_screen.show_map()
+func show_map() -> void:
+	current_screen_name = "map"
+	await _map_screen.show_map()
 func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void: await _map_screen.show_chapter_transition(cleared_ch, next_ch, on_complete)
 func _travel_to(index: int) -> void: await _map_screen._travel_to(index)
 func _has_claimable_quest() -> bool: return _map_screen._has_claimable_quest()
@@ -1260,12 +1263,16 @@ func show_deck_purge(return_callback: Callable, cost := 0, on_done := Callable()
 func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void: _shop_deck_screen.show_deck_upgrade(return_callback, on_done)
 func _shop_period() -> Dictionary: return _shop_deck_screen._shop_period()
 func _shop_price(card: Dictionary, owned: int) -> int: return _shop_deck_screen._shop_price(card, owned)
-func show_shop() -> void: _shop_deck_screen.show_shop()
+func show_shop() -> void:
+	current_screen_name = "shop"
+	_shop_deck_screen.show_shop()
 func _card_art_panel(card_id: String, art_size: Vector2, radius := 8) -> Control: return _shop_deck_screen._card_art_panel(card_id, art_size, radius)
 func _cost_badge(cost: int, accent: Color, diameter := 26) -> Panel: return _shop_deck_screen._cost_badge(cost, accent, diameter)
 func _add_ornate_frame(tile: Control, size: Vector2, accent: Color, rarity: String = "Common") -> void: _shop_deck_screen._add_ornate_frame(tile, size, accent, rarity)
 func _rarity_star_row(rarity: String, color := GOLD, align := BoxContainer.ALIGNMENT_CENTER) -> HBoxContainer: return _shop_deck_screen._rarity_star_row(rarity, color, align)
-func show_deck() -> void: _shop_deck_screen.show_deck()
+func show_deck() -> void:
+	current_screen_name = "deck"
+	_shop_deck_screen.show_deck()
 func _card_build_score(card: Dictionary) -> float: return _shop_deck_screen._card_build_score(card)
 func _auto_build_deck() -> void: _shop_deck_screen._auto_build_deck()
 func _tab_bar(tabs: Array, active: String, on_pick: Callable) -> Control: return _shop_deck_screen._tab_bar(tabs, active, on_pick)
@@ -1275,13 +1282,19 @@ var SHOP_STOCK_COUNT: int:
 
 # Thin delegators onto CampScreen (scripts/game_camp_screen.gd) — see MapScreen's header
 # comment (game_map_screen.gd) for why composition rather than inheritance.
-func show_compendium() -> void: _camp_screen.show_compendium()
+func show_compendium() -> void:
+	current_screen_name = "compendium"
+	_camp_screen.show_compendium()
 func _claim_compendium_milestone(target: int) -> void: _camp_screen._claim_compendium_milestone(target)
 func _equip(item: Dictionary) -> void: _camp_screen._equip(item)
 func _socket(card_id: String) -> void: _camp_screen._socket(card_id)
 func _format_countdown(target_unix: int) -> String: return _camp_screen._format_countdown(target_unix)
-func show_quests() -> void: _camp_screen.show_quests()
-func show_camp() -> void: _camp_screen.show_camp()
+func show_quests() -> void:
+	current_screen_name = "quests"
+	_camp_screen.show_quests()
+func show_camp() -> void:
+	current_screen_name = "camp"
+	_camp_screen.show_camp()
 func show_challenges() -> void: _camp_screen.show_challenges()
 func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
@@ -1324,6 +1337,72 @@ func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Cont
 	root.add_child(dim_btn)
 	overlay.add_child(root)
 	return root
+
+func _maybe_show_tutorial(tutorial_id: String) -> void:
+	if profile.get("tutorials_seen", {}).get(tutorial_id, false): return
+	if overlay == null or overlay.get_child_count() > 0: return
+	var title_key := "tutorial.%s.title" % tutorial_id
+	var desc_key := "tutorial.%s.desc" % tutorial_id
+	var title_text: String = content.ui(title_key, lang)
+	var desc_text: String = content.ui(desc_key, lang)
+	if title_text == title_key: return
+	if not profile.has("tutorials_seen") or not profile.tutorials_seen is Dictionary:
+		profile.tutorials_seen = {}
+	profile.tutorials_seen[tutorial_id] = true
+	SpiritSave.write(profile)
+
+	var modal_name := "FeatureTutorial_%s" % tutorial_id
+	var modal := _modal_dialog(modal_name, func():
+		var m: Node = overlay.get_node_or_null(modal_name)
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 200)
+	panel.add_theme_stylebox_override("panel", _panel(Color("0c1a20"), 14, GOLD))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 16)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	pad.add_child(vbox)
+
+	var hdr := HBoxContainer.new()
+	hdr.alignment = BoxContainer.ALIGNMENT_CENTER
+	hdr.add_theme_constant_override("separation", 8)
+	var icon := TextureRect.new()
+	icon.texture = load("res://assets/icons/nav_quest.png")
+	icon.custom_minimum_size = Vector2(24, 24)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hdr.add_child(icon)
+	var t_lbl := _label(title_text, 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	hdr.add_child(t_lbl)
+	vbox.add_child(hdr)
+
+	var d_lbl := _label(desc_text, 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	d_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d_lbl.custom_minimum_size.x = 290
+	vbox.add_child(d_lbl)
+
+	var ok_btn := _button(content.ui("tutorial.understood", lang), func():
+		if modal != null and modal.is_inside_tree():
+			if modal.get_parent(): modal.get_parent().remove_child(modal)
+			modal.queue_free()
+	, Color("1d4a40"), Vector2(130, 38))
+	ok_btn.name = "TutorialUnderstoodBtn"
+	ok_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	vbox.add_child(ok_btn)
 
 func show_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
@@ -1548,6 +1627,13 @@ func _change_language(new_lang: String) -> void:
 	profile.language = lang
 	SpiritSave.write(profile)
 	_close_settings()
+	match current_screen_name:
+		"camp": show_camp()
+		"quests": show_quests()
+		"shop": show_shop()
+		"deck": show_deck()
+		"compendium": show_compendium()
+		_: await show_map()
 	show_settings()
 
 func _change_battle_speed(new_speed: float) -> void:

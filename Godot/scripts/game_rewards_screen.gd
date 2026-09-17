@@ -560,6 +560,7 @@ func show_event(index: int, kind: String) -> void:
 			)
 		, g.EMBER, Vector2(300, 48)))
 	elif kind == "rest":
+		g._maybe_show_tutorial("rest_purify")
 		page.add_child(g._button(g.t("ui.rest_heal_choice"), func():
 			g.profile.gold += 35
 			g._advance_quest("earn_gold", 35)
