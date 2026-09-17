@@ -8,6 +8,12 @@ class_name MapScreen
 # instance; every reference to shared state or another screen's function goes through it.
 var g: SpiritGame
 
+# Guards against a second swipe firing mid-transition (see _slide_to_chapter) — the pins on
+# both throwaway pages are real, tappable buttons, so a swipe alone isn't the only thing that
+# needs blocking, but it's the only re-entrancy risk that isn't already covered by the
+# fullscreen input blocker _slide_to_chapter adds for the duration of the tween.
+var _chapter_slide_active := false
+
 func _init(game: SpiritGame) -> void:
 	g = game
 
@@ -758,15 +764,79 @@ func _add_map_chapter(chapter: int) -> void:
 # Replaces the old ChapterPrevBtn/ChapterNextBtn pair: a left/right swipe anywhere on the map
 # changes chapter instead. map_scroll tracks this drag regardless of allow_horizontal (see
 # TouchScrollContainer.swipe_released), so this only has to read the delta and decide whether
-# it crosses the same left/right-edge-swipe thresholds the interactive-back gesture uses.
+# it crosses the same left/right-edge-swipe thresholds the interactive-back gesture uses. The
+# bounds check below is also what stops a swipe from ever revealing a chapter that isn't
+# unlocked yet — the same (chapter+1)*5 <= unlocked test the old ChapterNextBtn used, and
+# swiping backward never needs a check at all, since chapters unlock in strict order so
+# every chapter behind the current one is unlocked by definition.
 func _on_map_swipe(delta: Vector2) -> void:
-	if absf(delta.y) > 70.0: return
+	if absf(delta.y) > 70.0 or _chapter_slide_active: return
 	if delta.x <= -64.0 and (g.current_map_chapter + 1) * 5 <= int(g.profile.unlocked):
-		g.current_map_chapter += 1
-		show_map()
+		_slide_to_chapter(g.current_map_chapter + 1, 1)
 	elif delta.x >= 64.0 and g.current_map_chapter > 0:
-		g.current_map_chapter -= 1
-		show_map()
+		_slide_to_chapter(g.current_map_chapter - 1, -1)
+
+# A swipe used to cut straight to show_map() for the new chapter. This instead builds both
+# chapters' terrain+pins into two throwaway pages sitting side by side (dir=1 puts the target
+# to the right, dir=-1 to the left) inside one wrapper, then pans the wrapper across so the
+# old chapter rolls off screen as the new one rolls in. _add_map_chapter/_add_stage_pin only
+# ever call g.map_canvas.add_child(...) — never read anything off it — so borrowing that one
+# variable for two throwaway builds is enough to reuse them unmodified instead of threading a
+# parent parameter through every call site. The transient wrapper is never explicitly freed:
+# show_map()'s own _clear() (its first line) discards the entire old root, wrapper included,
+# the same way it already discards everything else from the previous screen.
+func _slide_to_chapter(target_chapter: int, dir: int) -> void:
+	_chapter_slide_active = true
+	var from_chapter: int = g.current_map_chapter
+	var real_canvas: Control = g.map_canvas
+	if g.map_scroll: g.map_scroll.visible = false
+
+	var slide_wrapper := Control.new()
+	slide_wrapper.name = "ChapterSlideWrapper"
+	slide_wrapper.position = Vector2.ZERO
+	slide_wrapper.size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT)
+	slide_wrapper.clip_contents = true
+	slide_wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	g.root.add_child(slide_wrapper)
+
+	var page_from := Control.new()
+	page_from.size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT)
+	page_from.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slide_wrapper.add_child(page_from)
+
+	var page_to := Control.new()
+	page_to.position = Vector2(dir * g.MAP_WIDTH, 0)
+	page_to.size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT)
+	page_to.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slide_wrapper.add_child(page_to)
+
+	g.map_canvas = page_from
+	_add_map_chapter(from_chapter)
+	for i in 5:
+		_add_stage_pin(from_chapter * 5 + i)
+
+	g.map_canvas = page_to
+	_add_map_chapter(target_chapter)
+	for i in 5:
+		_add_stage_pin(target_chapter * 5 + i)
+
+	g.map_canvas = real_canvas
+
+	# Both pages are full of real, tappable stage-pin buttons; block input for the ~0.3s the
+	# slide takes so a tap mid-transition can't land on whichever page happens to be underneath.
+	var blocker := Control.new()
+	blocker.name = "ChapterSlideBlocker"
+	blocker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+	g.root.add_child(blocker)
+
+	var tween := g.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(slide_wrapper, "position:x", -dir * g.MAP_WIDTH, 0.32)
+	await tween.finished
+
+	_chapter_slide_active = false
+	g.current_map_chapter = target_chapter
+	show_map()
 
 # A soft vertical gradient in the chapter's own tint, darker at the seams than in the middle —
 # cached per tint index since there are only ten tints shared across fifty chapters.

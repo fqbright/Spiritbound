@@ -137,12 +137,24 @@ func _run() -> void:
 	await process_frame
 	game.map_scroll.swipe_released.emit(Vector2(-90.0, -10.0))
 	await process_frame
-	check(game.current_map_chapter == 1, "a left swipe on the map advances to the next chapter")
+	check(game.root.find_child("ChapterSlideWrapper", true, false) != null, "a swipe rolls the map across instead of cutting instantly")
+	check(game.current_map_chapter == 0, "the browsed chapter does not change until the roll finishes")
+	var swipe_wait := 0.0
+	while game._map_screen._chapter_slide_active and swipe_wait < 2.0:
+		await create_timer(0.05).timeout
+		swipe_wait += 0.05
+	check(game.current_map_chapter == 1, "a left swipe on the map advances to the next chapter once the roll finishes")
 	game.map_scroll.swipe_released.emit(Vector2(90.0, 10.0))
-	await process_frame
+	swipe_wait = 0.0
+	while game._map_screen._chapter_slide_active and swipe_wait < 2.0:
+		await create_timer(0.05).timeout
+		swipe_wait += 0.05
 	check(game.current_map_chapter == 0, "a right swipe on the map goes back to the previous chapter")
 	game.map_scroll.swipe_released.emit(Vector2(90.0, 10.0))
-	await process_frame
+	swipe_wait = 0.0
+	while game._map_screen._chapter_slide_active and swipe_wait < 2.0:
+		await create_timer(0.05).timeout
+		swipe_wait += 0.05
 	check(game.current_map_chapter == 0, "a right swipe does not go below chapter 0")
 	game.profile.unlocked = saved_unlocked_swipe
 	game.current_map_chapter = saved_ch_swipe
