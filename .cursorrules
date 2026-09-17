@@ -1,0 +1,20 @@
+# Spiritbound Agent Rules
+
+Read and strictly adhere to `AGENTS.md`.
+
+## Critical Verification Requirements
+1. **TESTS ARE MANDATORY FOR EVERY FEATURE**:
+   - New mechanics, cards, balance, currencies -> Add test to `Godot/tests/test_runner.gd`.
+   - New screens, buttons, popups, click interactions -> Add test to `Godot/tests/ui_smoke.gd`.
+   - Game loops, stage progression, flow logic -> Add test to `Godot/tests/e2e_playthrough.gd`.
+   - NEVER commit or propose code without corresponding test coverage.
+
+2. **ALL TESTS MUST PASS BEFORE COMMITTING**:
+   - Run `./run_tests.sh` from the repository root.
+   - For UI changes, run `./run_tests.sh --snapshots` and inspect `Godot/tests/snapshots/*.png`.
+   - Commits with failing tests or unverified changes will be blocked by git hooks and rejected by CI.
+
+3. **CLEAN BOUNDARIES**:
+   - `combat.gd` contains rules ONLY, never nodes or UI.
+   - All text goes to `content.gd` in both `zh-Hans` and `en`.
+   - Do not commit `Godot/.godot/` or `Godot/tests/snapshots/*.png`.
