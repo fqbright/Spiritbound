@@ -12,6 +12,7 @@ var overlay: Control
 var map_canvas: Control
 var map_scroll: TouchScrollContainer
 var traveler: Sprite2D
+var current_map_chapter: int = 0
 var _map_screen: MapScreen
 var _battle_screen: BattleScreen
 var _rewards_screen: RewardsScreen
@@ -1129,6 +1130,7 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 # (show_map() -> show_camp() -> show_quests() -> ...); see MapScreen's own header comment for
 # why this is composition (a `g` back-reference) rather than inheritance.
 func show_map() -> void: await _map_screen.show_map()
+func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void: await _map_screen.show_chapter_transition(cleared_ch, next_ch, on_complete)
 func _travel_to(index: int) -> void: await _map_screen._travel_to(index)
 func _has_claimable_quest() -> bool: return _map_screen._has_claimable_quest()
 func _has_claimable_camp_reward() -> bool: return _map_screen._has_claimable_camp_reward()

@@ -124,7 +124,12 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 	check(game.map_canvas != null, "map canvas built")
-	check(game.map_canvas.custom_minimum_size.y > 4000.0, "map canvas spans all chapters")
+	check(game.map_canvas.custom_minimum_size.y == game.BAND_HEIGHT, "map canvas displays single chapter height (BAND_HEIGHT)")
+	var plaque_node: Node = game.root.find_child("ChapterPlaque", true, false)
+	check(plaque_node != null, "chapter plaque exists on single-chapter map")
+	var prev_btn_node: Button = game.root.find_child("ChapterPrevBtn", true, false) as Button
+	var next_btn_node: Button = game.root.find_child("ChapterNextBtn", true, false) as Button
+	check(prev_btn_node != null and next_btn_node != null, "chapter prev/next navigation buttons exist on plaque")
 
 	section("== organic map path ==")
 	var wp0: Array = game._chapter_waypoints(0)
@@ -258,6 +263,27 @@ func _run() -> void:
 	while game.resolving and settle_wait < 5.0:
 		await create_timer(0.1).timeout
 		settle_wait += 0.1
+	game.show_map()
+	await process_frame
+
+	# Chapter transition cutscene verification
+	var saved_unlocked_trans: int = int(game.profile.unlocked)
+	var saved_position_trans: int = int(game.profile.position)
+	var saved_ch_trans: int = int(game.current_map_chapter)
+	game.show_chapter_transition(0, 1)
+	await process_frame
+	var trans_layer: Node = game.root.find_child("ChapterTransitionLayer", true, false)
+	check(trans_layer != null, "chapter transition cutscene builds transition layer")
+	var skip_btn: Button = game.root.find_child("ChapterTransitionSkipBtn", true, false) as Button
+	check(skip_btn != null, "chapter transition cutscene has skip button")
+	if skip_btn != null:
+		skip_btn.pressed.emit()
+		await process_frame
+		check(game.current_map_chapter == 1, "transition sets current_map_chapter to next chapter (1)")
+		check(int(game.profile.position) == 5, "transition sets profile.position to first stage of new chapter (5)")
+	game.profile.unlocked = saved_unlocked_trans
+	game.profile.position = saved_position_trans
+	game.current_map_chapter = saved_ch_trans
 	game.show_map()
 	await process_frame
 

@@ -315,16 +315,19 @@ func show_map() -> void:
 
 	_add_map_right_rail(overlay_page)
 
-	var stage_count: int = g.content.encounters.size()
-	var chapter_count: int = stage_count / 5
+	if g.current_map_chapter < 0 or g.current_map_chapter > int(g.profile.unlocked) / 5:
+		g.current_map_chapter = int(g.profile.position) / 5
+
+	var active_chapter: int = g.current_map_chapter
 	g.map_canvas = Control.new()
-	g.map_canvas.custom_minimum_size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT * float(chapter_count))
+	g.map_canvas.custom_minimum_size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT)
 	g.map_canvas.mouse_filter = Control.MOUSE_FILTER_PASS
 	g.map_scroll.add_child(g.map_canvas)
-	for chapter in chapter_count: _add_map_chapter(chapter)
-	_add_region_borders(chapter_count)
-	_add_routes()
-	for index in stage_count: _add_stage_pin(index)
+
+	_add_map_chapter(active_chapter)
+	_add_routes(active_chapter)
+	for i in 5:
+		_add_stage_pin(active_chapter * 5 + i)
 	_add_map_ambience()
 
 	g.traveler = Sprite2D.new()
@@ -335,7 +338,11 @@ func show_map() -> void:
 	# atlas cell (341.33px) and would render at the wrong size against a fixed divisor.
 	var traveler_tex_w: float = float(g.traveler.texture.get_width()) if g.traveler.texture else 341.33
 	g.traveler.scale = Vector2(40.0 / traveler_tex_w, 40.0 / traveler_tex_w)
-	g.traveler.position = _map_point(g.profile.position) - Vector2(0, 26)
+	if active_chapter == int(g.profile.position) / 5:
+		g.traveler.position = _map_point(g.profile.position) - Vector2(0, 26)
+		g.traveler.visible = true
+	else:
+		g.traveler.visible = false
 	g.traveler.z_index = 25
 	g.map_canvas.add_child(g.traveler)
 
@@ -431,7 +438,7 @@ func show_map() -> void:
 		dock.add_child(btn)
 
 	await g.get_tree().process_frame
-	if g.map_scroll: g.map_scroll.scroll_vertical = int(maxi(0, int(_map_point(g.profile.position).y - 360)))
+	if g.map_scroll: g.map_scroll.scroll_vertical = 0
 
 # Quick access to the two challenge modes (Daily Trial, Endless Abyss) — both already live as
 # their own section in Camp's "挑战" tab, but reaching them meant Camp -> tab tap. The header
@@ -509,7 +516,7 @@ func _chapter_has_unique_art(chapter: int) -> bool:
 func _map_point(index: int) -> Vector2:
 	var waypoints: Array = _chapter_waypoints(index / 5)
 	var node: Vector2 = waypoints[index % 5]
-	return Vector2(node.x, float(index / 5) * g.BAND_HEIGHT + node.y)
+	return Vector2(node.x, node.y)
 
 # Fits a smooth curve through exact waypoints (a Catmull-Rom-style spline expressed as
 # per-point cubic Bezier handles) rather than the straight segments Line2D draws by default
@@ -564,7 +571,7 @@ func _get_mote_texture() -> GradientTexture2D:
 # Fixed to the screen rather than the scrolling map canvas, so the atmosphere reads as
 # weather over the whole view instead of specks pinned to particular map coordinates.
 func _add_map_ambience() -> void:
-	var current_chapter: int = int(g.profile.unlocked / 5)
+	var current_chapter: int = g.current_map_chapter
 	var biome_idx: int = current_chapter % 6
 
 	var motes := CPUParticles2D.new()
@@ -656,7 +663,7 @@ func _fade_strip(height: float, flipped: bool) -> TextureRect:
 func _add_map_chapter(chapter: int) -> void:
 	var tint: Color = g.CHAPTER_TINTS[chapter % g.CHAPTER_TINTS.size()]
 	var band := Control.new()
-	band.position = Vector2(0, float(chapter) * g.BAND_HEIGHT)
+	band.position = Vector2.ZERO
 	band.size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT)
 	band.custom_minimum_size = band.size
 	band.clip_contents = true
@@ -711,20 +718,57 @@ func _add_map_chapter(chapter: int) -> void:
 
 	var locked: bool = chapter * 5 > int(g.profile.unlocked)
 	var plaque := Panel.new()
-	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 112.0, 24.0)
-	plaque.size = Vector2(224, 52)
-	plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plaque.add_theme_stylebox_override("panel", g._panel(Color(0.02, 0.07, 0.09, 0.84), 14, tint if not locked else Color("39494e")))
+	plaque.name = "ChapterPlaque"
+	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 24.0)
+	plaque.size = Vector2(260, 52)
+	plaque.mouse_filter = Control.MOUSE_FILTER_STOP
+	plaque.add_theme_stylebox_override("panel", g._panel(Color(0.02, 0.07, 0.09, 0.88), 14, tint if not locked else Color("39494e")))
 	band.add_child(plaque)
 
+	var plaque_hbox := HBoxContainer.new()
+	plaque_hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	plaque_hbox.add_theme_constant_override("separation", 4)
+	plaque_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	plaque.add_child(plaque_hbox)
+
+	var can_prev := chapter > 0
+	var prev_btn := g._button("◀", func():
+		g.current_map_chapter = chapter - 1
+		show_map()
+	, Color(0.12, 0.22, 0.28) if can_prev else Color(0.06, 0.1, 0.12), Vector2(34, 34))
+	prev_btn.name = "ChapterPrevBtn"
+	prev_btn.disabled = not can_prev
+	prev_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	plaque_hbox.add_child(prev_btn)
+
 	var plaque_stack := VBoxContainer.new()
-	plaque_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	plaque_stack.add_theme_constant_override("separation", 0)
+	plaque_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	plaque_stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	plaque_stack.add_theme_constant_override("separation", 0)
 	plaque_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plaque.add_child(plaque_stack)
+	plaque_hbox.add_child(plaque_stack)
+
 	plaque_stack.add_child(g._label(g.tf("ui.chapter_title", chapter + 1), 11, tint if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-	plaque_stack.add_child(g._label(g.content.chapter_name(chapter, g.lang), 17, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	plaque_stack.add_child(g._label(g.content.chapter_name(chapter, g.lang), 15, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var can_next := (chapter + 1) * 5 <= int(g.profile.unlocked)
+	var next_btn := g._button("▶", func():
+		g.current_map_chapter = chapter + 1
+		show_map()
+	, Color(0.12, 0.22, 0.28) if can_next else Color(0.06, 0.1, 0.12), Vector2(34, 34))
+	next_btn.name = "ChapterNextBtn"
+	next_btn.disabled = not can_next
+	next_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	plaque_hbox.add_child(next_btn)
+
+	if g.current_map_chapter != int(g.profile.position) / 5:
+		var back_curr_btn := g._button(g.t("ui.map_back_to_current"), func():
+			g.current_map_chapter = int(g.profile.position) / 5
+			show_map()
+		, Color("1d4a40"), Vector2(100, 24))
+		back_curr_btn.name = "MapBackToCurrentBtn"
+		back_curr_btn.position = Vector2((g.MAP_WIDTH - 100.0) / 2.0, 80.0)
+		band.add_child(back_curr_btn)
 
 # A soft vertical gradient in the chapter's own tint, darker at the seams than in the middle —
 # cached per tint index since there are only ten tints shared across fifty chapters.
@@ -825,13 +869,17 @@ func _add_region_borders(chapter_count: int) -> void:
 # Straight segments between waypoints read as a mechanical zigzag; baking a Catmull-Rom
 # curve through the exact same points gives a road that curves the way a real trail would,
 # without moving where any stage pin actually sits.
-func _add_routes() -> void:
+func _add_routes(chapter: int = -1) -> void:
+	if chapter < 0: chapter = g.current_map_chapter
 	var all_points := PackedVector2Array()
 	var walked_points := PackedVector2Array()
-	for index in g.content.encounters.size():
-		var point := _map_point(index)
-		all_points.append(point)
-		if index <= int(g.profile.unlocked): walked_points.append(point)
+	var start_idx := chapter * 5
+	for i in 5:
+		var index := start_idx + i
+		if index < g.content.encounters.size():
+			var point := _map_point(index)
+			all_points.append(point)
+			if index <= int(g.profile.unlocked): walked_points.append(point)
 
 	# road_bed/trail used to be the only visible "path" on the map — a generic dirt-textured
 	# overlay that had no relationship to whatever was actually painted underneath it, which
@@ -1025,18 +1073,33 @@ func _travel_to(index: int) -> void:
 		else:
 			g.begin_battle(index)
 		return
+
+	if start_index / 5 != index / 5:
+		g.current_map_chapter = index / 5
+		g.profile.position = index
+		SpiritSave.write(g.profile)
+		show_map()
+		var kind := g.content.node_kind(index)
+		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+			g.show_event(index, kind)
+		else:
+			g.begin_battle(index)
+		return
+
 	var hop_count: int = maxi(1, absi(index - start_index))
 	var hop_duration: float = TOTAL_TRAVEL_SECONDS / float(hop_count)
 	var step: int = 1 if index >= start_index else -1
 	var tween := g.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	var scroll_from: float = float(g.map_scroll.scroll_vertical)
+	var scroll_from: float = float(g.map_scroll.scroll_vertical) if g.map_scroll else 0.0
 	var current_idx := start_index
 	while current_idx != index:
 		current_idx += step
 		var hop_pos: Vector2 = _map_point(current_idx) - Vector2(0, 26)
 		var scroll_to: float = float(maxi(0, int(_map_point(current_idx).y - 360)))
-		tween.tween_property(g.traveler, "position", hop_pos, hop_duration)
-		tween.parallel().tween_method(func(y): g.map_scroll.scroll_vertical = int(y), scroll_from, scroll_to, hop_duration)
+		if g.traveler:
+			tween.tween_property(g.traveler, "position", hop_pos, hop_duration)
+		if g.map_scroll:
+			tween.parallel().tween_method(func(y): if g.map_scroll: g.map_scroll.scroll_vertical = int(y), scroll_from, scroll_to, hop_duration)
 		scroll_from = scroll_to
 	await tween.finished; g.profile.position = index; SpiritSave.write(g.profile)
 	var kind := g.content.node_kind(index)
@@ -1048,4 +1111,173 @@ func _travel_to(index: int) -> void:
 func _next_stage() -> void:
 	if int(g.profile.position) < int(g.profile.unlocked): _travel_to(int(g.profile.position)+1)
 	else: _travel_to(int(g.profile.position))
+
+func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void:
+	g._clear(); g._play_music(false)
+	g._back_action = Callable()
+
+	var bg_black := ColorRect.new()
+	bg_black.color = Color(0.02, 0.04, 0.06)
+	bg_black.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_black.mouse_filter = Control.MOUSE_FILTER_PASS
+	g.root.add_child(bg_black)
+
+	var transition_layer := Control.new()
+	transition_layer.name = "ChapterTransitionLayer"
+	transition_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	g.root.add_child(transition_layer)
+
+	var safe_next_ch: int = mini(next_ch, 49)
+
+	# Next chapter map illustration preview
+	var map_preview := TextureRect.new()
+	map_preview.texture = _get_chapter_map_texture(safe_next_ch)
+	map_preview.custom_minimum_size = Vector2(g.MAP_WIDTH, g.BAND_HEIGHT)
+	map_preview.size = map_preview.custom_minimum_size
+	map_preview.position = Vector2((g.MAP_WIDTH - map_preview.size.x) / 2.0, (844.0 - g.BAND_HEIGHT) / 2.0 - 10.0)
+	map_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	map_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	map_preview.modulate.a = 0.0
+	transition_layer.add_child(map_preview)
+
+	# Chapter atmosphere motes
+	var motes := CPUParticles2D.new()
+	motes.texture = _get_mote_texture()
+	motes.position = Vector2(g.MAP_WIDTH / 2.0, 844.0 / 2.0)
+	motes.amount = 26
+	motes.lifetime = 4.0
+	motes.preprocess = 2.0
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(g.MAP_WIDTH / 2.0, 844.0 / 2.0)
+	motes.direction = Vector2(0, -1)
+	motes.spread = 45.0
+	motes.gravity = Vector2.ZERO
+	motes.initial_velocity_min = 12.0
+	motes.initial_velocity_max = 30.0
+	motes.color = Color(1.0, 0.88, 0.55, 0.6)
+	transition_layer.add_child(motes)
+
+	# Header plaque with chapter titles
+	var title_box := VBoxContainer.new()
+	title_box.position = Vector2(20.0, float(g._safe_top()) + 24.0)
+	title_box.size = Vector2(g.MAP_WIDTH - 40.0, 110.0)
+	title_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	title_box.add_theme_constant_override("separation", 6)
+	transition_layer.add_child(title_box)
+
+	var cleared_lbl := g._label(g.tf("ui.chapter_cleared_title", cleared_ch + 1), 13, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	title_box.add_child(cleared_lbl)
+
+	var next_ch_name: String = g.content.chapter_name(safe_next_ch, g.lang)
+	var new_ch_lbl := g._label(g.tf("ui.chapter_title", safe_next_ch + 1) + " · " + next_ch_name, 22, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	title_box.add_child(new_ch_lbl)
+
+	var sub_lbl := g._label(g.t("ui.entering_new_realm"), 12, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	title_box.add_child(sub_lbl)
+
+	# Target stage 1 waypoint of the new chapter
+	var waypoints: Array = _chapter_waypoints(safe_next_ch)
+	var wp0: Vector2 = waypoints[0]
+	var target_pos: Vector2 = map_preview.position + wp0
+
+	# Waypoint 0 Stage Pin
+	var pin_container := Control.new()
+	pin_container.position = target_pos
+	transition_layer.add_child(pin_container)
+
+	var pin_badge := TextureRect.new()
+	pin_badge.custom_minimum_size = Vector2(62, 54)
+	pin_badge.size = pin_badge.custom_minimum_size
+	pin_badge.position = Vector2(-31, -54)
+	var pin_art_path := "res://assets/icons/pin_normal.png"
+	if ResourceLoader.exists(pin_art_path):
+		pin_badge.texture = load(pin_art_path)
+	pin_badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pin_badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pin_badge.modulate.a = 0.0
+	pin_container.add_child(pin_badge)
+
+	var pin_lbl := g._label("%d-1" % (safe_next_ch + 1), 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	pin_lbl.position = Vector2(-31, -26)
+	pin_lbl.size = Vector2(62, 18)
+	pin_lbl.modulate.a = 0.0
+	pin_container.add_child(pin_lbl)
+
+	# Traveler (Hero sprite)
+	var hero_data: Dictionary = g.content.hero_class(str(g.profile.get("hero_class", "fox_spirit")))
+	var traveler_spr := Sprite2D.new()
+	traveler_spr.texture = g._get_character_texture(str(hero_data.get("sprite", "fox")))
+	var tex_w: float = float(traveler_spr.texture.get_width()) if traveler_spr.texture else 341.33
+	traveler_spr.scale = Vector2(42.0 / tex_w, 42.0 / tex_w)
+	traveler_spr.z_index = 30
+	var start_offset := Vector2(-75, 80)
+	if wp0.x < 120: start_offset = Vector2(75, 80)
+	var start_pos: Vector2 = target_pos + start_offset
+	traveler_spr.position = start_pos
+	traveler_spr.modulate = Color(1.3, 1.3, 1.3, 0.0)
+	transition_layer.add_child(traveler_spr)
+
+	# Touch-to-skip backdrop button
+	var is_finished := [false]
+	var finish_cb := func():
+		if is_finished[0]: return
+		is_finished[0] = true
+		_finish_chapter_transition(safe_next_ch, on_complete)
+
+	var screen_btn := Button.new()
+	screen_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	screen_btn.flat = true
+	screen_btn.focus_mode = Control.FOCUS_NONE
+	screen_btn.pressed.connect(finish_cb)
+	transition_layer.add_child(screen_btn)
+	transition_layer.move_child(screen_btn, 0)
+
+	# Skip button at top right
+	var skip_btn := g._button(g.t("ui.transition_skip"), finish_cb, Color(0.15, 0.2, 0.25, 0.8), Vector2(80, 32))
+	skip_btn.name = "ChapterTransitionSkipBtn"
+	skip_btn.anchor_left = 1.0
+	skip_btn.anchor_right = 1.0
+	skip_btn.anchor_top = 0.0
+	skip_btn.anchor_bottom = 0.0
+	skip_btn.offset_left = -96.0
+	skip_btn.offset_right = -16.0
+	skip_btn.offset_top = float(g._safe_top()) + 16.0
+	skip_btn.offset_bottom = float(g._safe_top()) + 48.0
+	transition_layer.add_child(skip_btn)
+
+	# Animate the cutscene sequence!
+	var seq := g.create_tween()
+	seq.tween_property(map_preview, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)
+	seq.parallel().tween_property(pin_badge, "modulate:a", 1.0, 0.6)
+	seq.parallel().tween_property(pin_lbl, "modulate:a", 1.0, 0.6)
+	seq.parallel().tween_property(traveler_spr, "modulate:a", 1.0, 0.4)
+
+	var walk_dest: Vector2 = target_pos - Vector2(0, 26)
+	seq.tween_property(traveler_spr, "position", walk_dest, 2.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+	var bob_tween := traveler_spr.create_tween().set_loops()
+	bob_tween.tween_property(traveler_spr, "scale:y", 38.0 / tex_w, 0.18).set_trans(Tween.TRANS_SINE)
+	bob_tween.tween_property(traveler_spr, "scale:y", 44.0 / tex_w, 0.18).set_trans(Tween.TRANS_SINE)
+
+	await seq.finished
+	if bob_tween.is_valid(): bob_tween.kill()
+
+	if not is_finished[0]:
+		g._haptic("heavy")
+		var pop := pin_container.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		pop.tween_property(pin_container, "scale", Vector2(1.2, 1.2), 0.15)
+		pop.tween_property(pin_container, "scale", Vector2.ONE, 0.15)
+		g._toast(g.tf("ui.chapter_enter_toast", next_ch_name), g.GOLD)
+		await g.get_tree().create_timer(g._battle_delay(0.8)).timeout
+		finish_cb.call()
+
+func _finish_chapter_transition(next_ch: int, on_complete: Callable) -> void:
+	g.current_map_chapter = next_ch
+	g.profile.position = next_ch * 5
+	g.profile.unlocked = maxi(int(g.profile.unlocked), next_ch * 5)
+	SpiritSave.write(g.profile)
+	if on_complete.is_valid():
+		on_complete.call()
+	else:
+		show_map()
 

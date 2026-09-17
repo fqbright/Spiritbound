@@ -325,6 +325,12 @@ func _grant_stage_rewards() -> void:
 		SpiritSave.write(g.profile)
 		return
 
+	var is_chapter_final: bool = (g.current_stage % 5 == 4)
+	if is_chapter_final and not replay:
+		g.pending_rewards["chapter_transition"] = true
+		g.pending_rewards["cleared_chapter"] = g.current_stage / 5
+		g.pending_rewards["next_chapter"] = (g.current_stage / 5) + 1
+
 	if g.content.is_boss_kind(kind):
 		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
 		var id: String = order[(g.current_stage / 5 + int(g.profile.difficulty) * 2) % order.size()]
@@ -529,7 +535,14 @@ func _reward_item(title: String, detail: String, color: Color) -> PanelContainer
 	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(340,54); panel.add_theme_stylebox_override("panel",g._panel(Color("193839"),12,color)); var stack := VBoxContainer.new(); panel.add_child(stack); stack.add_child(g._label(title, 12, color, HORIZONTAL_ALIGNMENT_CENTER)); stack.add_child(g._label(detail, 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)); return panel
 
 func _finish_reward() -> void:
-	SpiritSave.write(g.profile); g.show_map()
+	SpiritSave.write(g.profile)
+	if bool(g.pending_rewards.get("chapter_transition", false)):
+		var cleared_ch: int = int(g.pending_rewards.get("cleared_chapter", 0))
+		var next_ch: int = int(g.pending_rewards.get("next_chapter", 1))
+		g.pending_rewards["chapter_transition"] = false
+		g.show_chapter_transition(cleared_ch, next_ch)
+	else:
+		g.show_map()
 
 func show_event(index: int, kind: String) -> void:
 	g._clear(); g._play_music(false)
