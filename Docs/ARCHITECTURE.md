@@ -142,6 +142,24 @@ real auto-builder uses, and retries a loss up to eight times before giving up (t
 permadeath in this game — a loss only resets health — so getting stuck after eight losses is
 a real signal, not bad luck).
 
+**This curve's tuning premise no longer holds, and it has not been revalidated.** The bot's
+"getting stuck after eight losses is a real signal" reasoning above depended on `_grant_
+stage_rewards()` only restoring full health on a loss, with a win carrying accumulated damage
+into the next stage — real attrition pressure across a chapter. As of the "reset full HP per
+battle, remove inter-battle healing" change, **every** stage (win or lose) resets
+`profile.health` to a flat 60 (`game_rewards_screen.gd`'s campaign, Boss Rush, Abyss, Daily
+Trial, Weekly Challenge and Phantom Arena reward paths all do this unconditionally now, and
+`begin_battle()` passes a literal `60` into `combat.create()` rather than the profile's actual
+current health). This was a deliberate, confirmed decision (moving resource pressure from HP
+management onto the gold economy — AFK Harvest, Phantom Arena — instead), not reverted here,
+but it means the four-band curve above was tuned against a game that no longer exists in this
+one specific respect. Nothing has re-run `balance_probe.gd`'s trajectory (it was deleted after
+its original use anyway) against the current always-full-HP rules, so whether the bands still
+land where they're described below — "clearable on autopilot" through chapter 4, "needs a
+deliberately built deck" by chapter 11 — is unverified, not re-confirmed. If a future pass
+revisits balance, that revalidation is the first thing to do, before trusting any of the
+specific percentages below.
+
 That simulation is what caught two production bugs no other test did, both invisible until
 you actually tried to win with the deck the game itself would build:
 

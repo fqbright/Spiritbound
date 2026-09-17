@@ -190,11 +190,40 @@ Every one of these produced a wrong screen with no error in the log. They are th
 
 ## Visual art: current state, and integrating real assets
 
+**Fonts**: `Cinzel-SemiBold.ttf` (Latin display face) with `LXGWWenKai-Medium.ttf` set as its
+`.fallbacks` entry for CJK glyphs, composed once in `_load_game_font()` (`game.gd`) and applied
+via `add_theme_font_override` inside the two shared primitives (`_label()`, `_button()`) that
+build almost every piece of text in the game — so most new UI gets this for free. A few call
+sites build a raw `Label`/`Button`/`LineEdit` directly instead of going through those helpers
+and need an explicit extra override line (grep for existing ones before assuming a new raw
+node needs it too). `project.godot`'s `[gui] theme/custom_font` is the project-wide fallback
+for anything that skips even that — it points at `LXGWWenKai-Medium.ttf` (CJK-capable on its
+own, unlike Cinzel) specifically so a raw Control that no one remembered to style still shows
+correct text instead of Godot's built-in non-CJK default. Don't delete a font file just
+because a script-only grep finds no hits — check `project.godot`'s theme block too.
+
 The visual presentation blends high-detail painted assets with procedural vector accents:
-- **Map chapter backgrounds** — `_add_map_chapter()` calls `_get_chapter_map_texture(chapter: int) -> Texture2D`.
-  - **Asset pipeline**: Checks `res://assets/chapters/chapter_%d.png` (390x520 PNG). If present, loads that unique chapter background directly.
+- **Map is a single-chapter view, not a scrollable 50-chapter strip.** `show_map()` renders
+  exactly one chapter at a time (`g.current_map_chapter`, `_add_map_chapter(active_chapter)` +
+  `_add_routes(active_chapter)` + that chapter's 5 stage pins), with `◀`/`▶` buttons on the
+  chapter plaque (gated by `profile.unlocked`) and a "Back to Current" button when browsing
+  away from your real position — the old auto-scroll-to-position multi-band map is gone. Each
+  chapter's 5 waypoints now run bottom-to-top on screen (stage 1 at the bottom, the chapter
+  boss at the top) — `BIOME_PATH_WAYPOINTS`/`CHAPTER_PATH_WAYPOINTS` were reordered for this,
+  but `profile.position`/`profile.unlocked` are still plain 0-249 stage indices, so this was
+  save-compatible (only where an index renders changed, not what it means).
+  - **Realm transition cutscene**: clearing a chapter's 5th/final stage (not a replay) sets
+    `pending_rewards.chapter_transition` (`game_rewards_screen.gd`, near the other
+    `is_chapter_final` handling), which `_finish_reward()` uses to call
+    `show_chapter_transition(cleared_ch, next_ch)` instead of going straight back to the map —
+    a real full-screen sequence (art fade, "Chapter N Cleared" text, the hero walking to the
+    new chapter's first pin, tap-to-skip) before landing on `show_map()` for the new chapter.
+  - **Asset pipeline**: Checks `res://assets/chapters/chapter_%d.png` (**390x844 PNG, full
+    screen** — was 390x520 before the single-chapter-view redesign; don't trust the smaller
+    number if you see it anywhere else uncorrected). If present, loads that unique chapter
+    background directly.
   - **Fallback & modulation**: If a specific chapter file is absent, falls back to `_biome_textures` (`res://assets/biomes/biome_0..5.png`) with per-chapter regional tint modulation (`Color.WHITE.lerp(tint, 0.35)`) and alternating horizontal flipping (`((chapter / 6) % 2 == 1)`), providing unique visual atmospheres across all 50 chapters without obvious repetition.
-  - **Adding unique chapter art**: All 50 chapters (`chapter_0.png` through `chapter_49.png`, 390x520 PNG) now have dedicated unique backgrounds in `Godot/assets/chapters/` matching the chapter lore and names from `content.gd`. Run `godot --headless --path Godot/ --editor --quit` whenever new images are added to regenerate `.import` metadata.
+  - **Adding unique chapter art**: All 50 chapters (`chapter_0.png` through `chapter_49.png`, 390x844 PNG) now have dedicated unique backgrounds in `Godot/assets/chapters/` matching the chapter lore and names from `content.gd`. Run `godot --headless --path Godot/ --editor --quit` whenever new images are added to regenerate `.import` metadata.
   - **Road alignment**: `_chapter_waypoints()` looks up `BIOME_PATH_WAYPOINTS[chapter % 6]`, five hand-picked points that trace the painted trail baked into the backgrounds, mirrored (`MAP_WIDTH - x`) when horizontally flipped.
   - There used to be a bottom quick-jump strip of small chapter-preview tiles (tap one to scroll the map to that chapter); it was removed by request. If it comes back, the previous implementation cached each tile's live terrain-wash texture rather than a placeholder swatch.
   - **Terrain dressing**: `_add_terrain_dressing()` adds subtle vector accents with softened alpha (0.2-0.35) so they do not overpower the painted illustrations, while preserving the collision-avoidance checks verified by `ui_smoke.gd`.
@@ -226,9 +255,11 @@ The visual presentation blends high-detail painted assets with procedural vector
     inside `show_settings()` are the only way to do either now). Don't re-add a lang/music
     button to the header without removing something else first — the row has no spare width.
   - `MapChallengeRail` — a vertical icon rail on the right edge of the map (not the header;
-    `_add_map_challenge_rail()`), giving one-tap access to Camp's "挑战" tab (Daily Trial via a
-    `"scroll"` `GameIcon`, Endless Abyss via an `"orb"` one) instead of Camp → tab. Icons dim
-    when the feature is still locked (`profile.unlocked` gates from A2) but stay tappable —
+    `_add_map_challenge_rail()`), giving one-tap access to Camp's "挑战" tab via
+    `_open_camp_challenges()`. Used to be two separate icons (Daily Trial "scroll" + Abyss
+    "orb"); now unified into one `MapTrialShortcutBtn` (`nav_trial.png`) covering the whole
+    tab, not just those two modes. The icon dims
+    when the feature is still locked (`profile.unlocked` gates from A2) but stays tappable —
     tapping always opens Camp's Challenges tab, which already renders the real unlock
     requirement text; the rail itself is too narrow to duplicate that.
 - **Symphonic audio & dynamic stage combat soundtrack**:
@@ -257,16 +288,58 @@ The visual presentation blends high-detail painted assets with procedural vector
     - **Shadow Stalker (夜影刺客 / `shadow_stalker`)**: Lethal critical assassin with `starShard`, `moonfang`, and `cinderHex`.
     - **Miasma Witch (瘴气巫女 / `miasma_witch`)**: Attrition mage built around Poison — a
       non-decaying DoT status (`enemy.poison`, ticks every turn until healed or the target
-      dies, unlike Burn's 1/turn decay) applied via `toxinDart`/`witherTouch`. Has no unique
-      painted portrait yet — the character atlas is a fixed 3x3 grid and all 9 cells are
-      already claimed by the other 3 heroes and the shared enemy pool, so it borrows Stone
-      Sentinel's sprite, dimmed, with an explicit "美术资源开发中" badge in the hero-select
-      panel (`_hero_archetypes_section()`) rather than silently pretending to be finished. A
-      real portrait needs either a new atlas cell (expanding past 3x3) or a standalone image
-      asset before that placeholder can go away — see Docs/GROWTH_ROADMAP.md's D3 entry.
+      dies, unlike Burn's 1/turn decay) applied via `toxinDart`/`witherTouch`. **Now has her
+      own real standalone portrait** (`res://assets/characters/miasma_witch.png`, not an atlas
+      cell) — `content.HERO_CLASSES`' `sprite: "miasma_witch"` resolves it via
+      `_get_character_texture()`'s standalone-portrait-takes-priority-over-atlas check. The
+      `art_pending`/dimmed-borrowed-sprite fallback this used to need (Docs/GROWTH_ROADMAP.md's
+      D3 entry describes the old gap) is dead code now — nothing in `HERO_CLASSES` sets
+      `art_pending: true` any more — but hasn't been deleted; if you're touching
+      `_hero_archetypes_section()`'s `art_pending` branch, know that it currently never fires
+      for any hero. Any code sizing this sprite (in battle, on the hero-select panel, anywhere
+      else `_get_character_texture()` is called) must use the *resolved texture's own*
+      `get_width()`, not a hardcoded atlas-cell divisor — a standalone portrait is a different
+      pixel size than an atlas cell, and assuming otherwise renders it at the wrong scale (this
+      bit `_build_player_stage()`'s battle sprite once already).
     - All 4 class starting decks strictly follow the 25-card, all 1-cost balance rule.
     - Selecting a hero class in Camp updates the traveler map avatar and loadout.
   - **Endless Abyss Mode (`show_abyss` / `begin_abyss_battle`)**: Infinite gauntlet where enemies and gold rewards scale by floor (`content.abyss_encounter(floor)`). Tracks `profile.abyss_floor` and `profile.abyss_record`.
+  - **Boss Rush (`begin_boss_rush_battle`)**: refights every boss the player has already beaten,
+    back to back, cycling through `content.boss_rush_boss_indices(unlocked)` and escalating
+    enemy health/damage each full loop back through the same pool. A loss costs only the
+    current bout, not the streak (`profile.boss_rush_floor`/`boss_rush_record`).
+  - **Sandbox (`begin_sandbox_battle`)**: zero-stakes practice bout against any stage already
+    reached, picked via a stage stepper in Camp's Challenges tab. Always a full 60 HP
+    regardless of real campaign health, grants no rewards, and never writes `profile.health`
+    on the way out — purely for testing a deck/loadout risk-free.
+  - **AFK Harvest / "宗门灵修" (`get_idle_harvest_rate/_unclaimed_gold`, `claim_idle_harvest`,
+    `fast_idle_harvest`, `show_idle_harvest_modal`)**: a passive gold generator, `10 +
+    profile.unlocked*2` gold/hour, accrued from `profile.idle_harvest.last_claim_time` and
+    capped at 12 hours' worth. `fast_idle_harvest()` is a once-per-day instant 2-hour-worth
+    burst claim. Pure formula, no `content.gd` table. Surfaced via the map's right rail
+    (`_add_map_right_rail()`'s pouch icon) and as a shortcut button from both the
+    already-cleared-stage prompt and the post-defeat diagnosis card (see below) — it's the
+    main thing the game now points a stuck player toward, now that campaign health resets in
+    full every battle and can't be attrition-managed the way the tuned difficulty curve
+    originally assumed (see Docs/ARCHITECTURE.md's "250-stage difficulty curve" section).
+  - **Phantom Arena / "虚影演武" (`begin_phantom_arena`, `content.PHANTOM_CULTIVATORS`)**: a
+    daily-limited duel mode against one of 4 fixed phantom-cultivator bosses, scaled by
+    `profile.unlocked`. Reuses the full existing combat pipeline (same deck/upgrades/relics/
+    mastery) — no new systems, just new encounter data plus `profile.phantom_arena = {day,
+    wins_today, claimed_today}` (daily reset via `_ensure_phantom_arena_current()`). A win
+    grants gold per the normal `_grant_stage_rewards()` path; a separate once-daily bonus
+    chest unlocks after your first win of the day. A loss is inert — full HP restored, no
+    streak or floor tracked, closer to Sandbox's "repeatable side activity" than Abyss's
+    escalating gauntlet.
+  - **A cleared stage can never be re-fought — this is a real, enforced gate, not just a
+    warning label.** Tapping an already-cleared pin (`_on_pin_pressed()` → `_is_replay(index)`)
+    opens `_show_replay_mode_prompt()`, which offers only informational shortcuts (Cultivate/
+    Tune Deck/Phantom Arena) — there is no button anywhere that starts a battle against a
+    stage below `profile.unlocked`. (An earlier version of this screen's copy already claimed
+    "past stages cannot be farmed repeatedly" while the Normal/Hard Replay buttons underneath
+    it still worked exactly as before; that mismatch is what got fixed here — if you're
+    tempted to add a "replay for reduced rewards" path back, that promise is the reason not
+    to without changing the copy too.)
 
 - **Deckbuilding depth: rune resonance, curse cards, high-stakes boss relics**:
   - **Rune Resonance (`content.RUNE_SETS` / `content.active_rune_sets()`)**: socketing both

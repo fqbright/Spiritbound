@@ -249,6 +249,72 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-16 — Off-roadmap batch: battle VFX/rig overhaul, map redesign, AFK Harvest, Phantom
+### Arena, HP-reset rule change; plus doc-drift fixes and 2 bug fixes found reviewing it
+None of this maps to an existing lettered item above — it landed as 12 commits with empty
+commit bodies, and this file wasn't updated as it went in, which is why this entry exists
+after the fact rather than checkboxes moving to `[x]` in place. Recording it now so it isn't
+lost like the others already found un-logged in this same review pass.
+
+**What shipped** (not implemented by whoever is reading this entry — reviewed and partly
+fixed by the next agent, see below): a diagonal battle formation with a fox-specific layered
+rig (body/tail/orb/ground-aura, each with its own secondary-motion tween) and a card-play VFX
+chain (shield unfold → character-attach → barrier ring; heal bloom; buff pillar; attack slash)
+dispatched by effect category, not hero or element; Cinzel+WenKai fonts (see AGENTS.md); a
+single-chapter map view replacing the old scrollable 50-chapter strip, with a realm-transition
+cutscene on clearing a chapter and the 5 in-chapter waypoints reordered bottom-to-top (see
+AGENTS.md's Map section for both); AFK Harvest and Phantom Arena (see AGENTS.md); a
+defeat-diagnosis card after a loss with a rule-based tip; and the single biggest rules change
+in the batch — every stage, win or lose, now resets `profile.health` to a flat 60, removing
+the inter-battle healing/attrition the tuned difficulty curve was originally validated against
+(Docs/ARCHITECTURE.md's "250-stage difficulty curve" section now documents this gap directly).
+
+**Reviewed 2026-09-16, user consulted on the two genuinely ambiguous calls**:
+- **HP-reset-to-60-every-battle: user chose to keep it as-is.** Not reverted. Docs/
+  ARCHITECTURE.md updated to say plainly that the curve's tuning premise no longer holds and
+  hasn't been revalidated, rather than silently continuing to assert something now false.
+- **"Cleared stages can't be farmed" copy vs. code mismatch: user chose to make the copy true.**
+  The replay-prompt text already claimed this while the Normal/Hard Replay buttons underneath
+  still worked exactly as before (commit-message overstatement, not implemented). Fixed by
+  actually removing the battle-entry path for an already-cleared stage — see AGENTS.md's new
+  bullet on this — and deleting everything that only existed to support the now-impossible
+  replay case (`is_hard_replay`, the reward-halving branch, 6 orphaned UI_TEXT strings).
+
+**Bugs found and fixed in this same review pass** (both pre-existing, not introduced by the
+12-commit batch itself, but the batch made the first one far more visible and the second one
+is unrelated):
+- **Battle screen always showed Fox Spirit regardless of the equipped hero.**
+  `_build_player_stage()` hardcoded `"fox"` for both the rig gate and the sprite fallback.
+  Fixed to key off `content.hero_class(profile.hero_class).sprite`; also fixed the fallback's
+  sprite scaling, which assumed a fixed atlas-cell width even for Miasma Witch's standalone
+  portrait (wrong pixel size for that texture) — now uses the resolved texture's own
+  `get_width()`, matching how the map traveler avatar already handled the same situation.
+- **`NotoSansSC.ttf` (17.7MB) looked orphaned by the font swap** (zero script references) but
+  was still `project.godot`'s `[gui] theme/custom_font` — a script-only grep misses project
+  settings. Repointed that setting to `LXGWWenKai-Medium.ttf` (CJK-capable on its own) first,
+  confirmed zero references anywhere, then deleted it. If you're ever about to delete an
+  asset because grep found nothing, check `project.godot` too before trusting that.
+
+**Still not addressed, flagged for whoever picks this up next**:
+- `show_chapter_transition()` (`game_map_screen.gd`) throws "Cannot call method 'create_tween'
+  on a previously freed instance" under `ui_smoke.gd` — a real async race (a tween racing
+  against a later `_clear()`), not something introduced by this review's own changes (confirmed
+  present before any of this session's edits). It doesn't currently fail a specific `check()`,
+  so both suites still report all-green, but the underlying bug is real.
+- `diagnose_battle_defeat()`'s `action` field (`"deck"` vs `"cultivate"`) is computed but never
+  consumed — the defeat-diagnosis card shows both buttons unconditionally regardless of which
+  action was recommended.
+- `spirit_curse_seal.png` was painted for this batch's VFX set but never wired to anything —
+  the Curse cards (`decay_blight`/`void_curse`) and the enemy "curse" intent still have no
+  visual treatment.
+- The Fox Spirit rig's 4 textures (`fox_body`/`fox_tail`/`fox_orb`/`ground_aura`) and
+  `spirit_shield_crest.png` all ship at 1024×1024 despite rendering at roughly 40-95px on
+  screen — worth downscaling for app size/decode cost before this ships anywhere real.
+- Of the 12 commits, only 3 touched either test file — the visually biggest ones (the rig, the
+  VFX chain, the diagonal layout, all 3 map commits) shipped with zero new assertions, against
+  this project's own Rule #3. Both suites currently pass, but that's because nothing added by
+  those commits is being checked, not because it was verified against a written assertion.
+
 ### 2026-09-15 — game.gd split into 5 composed screen classes (user-requested tech debt)
 Not a report item — the user asked for this directly after `game.gd` grew to ~7200 lines
 across this session's feature work. Result: `game.gd` (now `class_name SpiritGame`) is down
