@@ -1615,17 +1615,19 @@ func _run() -> void:
 	game._mark_stage_event_claimed(42)
 	check(game._is_stage_event_claimed(42), "stage 42 event is marked as claimed")
 	game.profile.unlocked = 5
-	check(game._is_replay(2), "stage 2 is detected as replay")
-	check(game._is_stage_event_claimed(2), "replay stage 2 event is treated as claimed")
+	check(game._is_replay(2), "stage 2, below the unlock frontier, is detected as already cleared")
+	check(game._is_stage_event_claimed(2), "an already-cleared stage's one-time event is treated as claimed")
+	# A battle-type stage's own _grant_stage_rewards() no longer has a "replay" case to test
+	# here at all — a cleared stage can never be re-entered in the first place, see the D2
+	# section ("stage purified") and _on_pin_pressed()/_show_replay_mode_prompt().
 	game.current_stage = 2
-	var test_replay_combat := SpiritCombat.new(game.content)
-	test_replay_combat.create(1, game.content.encounters[2], game.content.raw.startingDeck, 60)
-	test_replay_combat.state.player.health = 35
-	game.combat = test_replay_combat
+	var test_win_combat := SpiritCombat.new(game.content)
+	test_win_combat.create(1, game.content.encounters[2], game.content.raw.startingDeck, 60)
+	test_win_combat.state.player.health = 35
+	game.combat = test_win_combat
 	game._grant_stage_rewards()
 	check(game.profile.health == 60, "stage victory sets profile health to full 60")
-	check(game.pending_rewards.get("replay", false) == true, "stage replay is flagged in pending_rewards")
-	check(str(game.pending_rewards.get("equipment", "")) == "", "stage replay does not drop equipment")
+	check(int(game.pending_rewards.get("gold", 0)) > 0, "a stage win still grants gold with no replay-halving logic left to zero it out")
 
 	section("== milestone 1: combat transparency & mobile controls ==")
 	game.begin_battle(0)
@@ -2152,15 +2154,27 @@ func _run() -> void:
 	check(game.root.find_child("BattleLogList", true, false) != null, "battle log screen renders its entry list")
 	check(_find_label_containing(game.root, game.content.ui("ui.battle_log_title", game.lang)), "battle log screen shows its title")
 
-	# D2: Opt-in hard replay
+	# D2 (revised): a cleared stage can never be re-entered at all — tapping its pin shows a
+	# purely informational prompt (Cultivate/Tune Deck/Phantom Arena shortcuts), with no button
+	# anywhere that actually starts a battle against it.
 	game.profile.unlocked = 5
-	game.begin_hard_replay(2)
-	check(game.is_hard_replay, "begin_hard_replay sets is_hard_replay mode")
-	check(game.active_modifier.get("id", "") == "trial_hard", "hard replay assigns trial_hard modifier")
-	game.combat.state.phase = "won"
-	game._grant_stage_rewards()
-	check(bool(game.pending_rewards.get("is_hard_replay", false)), "hard replay marks is_hard_replay in pending_rewards")
-	check(not bool(game.pending_rewards.get("replay", false)), "hard replay overrides standard replay halved penalties")
+	check(game._is_replay(2), "stage 2, below the unlock frontier, is recognized as already cleared")
+	game._show_replay_mode_prompt(2)
+	await process_frame
+	var purified_modal: Node = game.overlay.get_node_or_null("ReplayModal")
+	check(purified_modal != null, "the cleared-stage prompt opens")
+	check(purified_modal.find_child("ReplayNormalBtn", true, false) == null, "no way to re-fight a cleared stage at standard rewards")
+	check(purified_modal.find_child("ReplayHardBtn", true, false) == null, "no way to re-fight a cleared stage at hard difficulty either")
+	check(purified_modal.find_child("PurifiedCultivateBtn", true, false) != null, "PurifiedCultivateBtn shortcut exists in the cleared-stage prompt")
+	check(purified_modal.find_child("PurifiedDeckBtn", true, false) != null, "PurifiedDeckBtn shortcut exists in the cleared-stage prompt")
+	var phantom_shortcut: Button = purified_modal.find_child("PurifiedPhantomBtn", true, false) as Button
+	check(phantom_shortcut != null, "PurifiedPhantomBtn shortcut exists in the cleared-stage prompt")
+	phantom_shortcut.pressed.emit()
+	await process_frame
+	check(game.in_phantom_arena, "the Phantom Arena shortcut actually starts a phantom arena battle instead of re-fighting the cleared stage")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_phantom_arena, "leaving the phantom arena battle cleans up its state")
 
 	section("== visual assets: logo, removed subtitle & card illustrations ==")
 	game.show_map()
@@ -2365,17 +2379,20 @@ func _run() -> void:
 		await process_frame
 		check(game.overlay.find_child("SettingsModal", true, false) == null, "SettingsCloseBtn click dismisses modal")
 
-	# 2. Stage Replay Modal Clickability
+	# 2. Cleared-Stage Prompt Clickability (no ReplayNormalBtn/ReplayHardBtn — a cleared stage
+	# can no longer be re-fought at all, see the D2 section above)
 	game._show_replay_mode_prompt(0)
 	await process_frame
 	var chk_replay_modal: Node = game.overlay.find_child("ReplayModal", true, false)
 	check(chk_replay_modal != null, "ReplayModal opens on stage replay prompt")
 	if chk_replay_modal != null:
 		_sweep_buttons_clickable(chk_replay_modal, "ReplayModal")
-		var chk_replay_normal: Control = chk_replay_modal.find_child("ReplayNormalBtn", true, false) as Control
-		check_clickable(chk_replay_normal, "ReplayNormalBtn")
-		var chk_replay_hard: Control = chk_replay_modal.find_child("ReplayHardBtn", true, false) as Control
-		check_clickable(chk_replay_hard, "ReplayHardBtn")
+		var chk_replay_cultivate: Control = chk_replay_modal.find_child("PurifiedCultivateBtn", true, false) as Control
+		check_clickable(chk_replay_cultivate, "PurifiedCultivateBtn")
+		var chk_replay_deck: Control = chk_replay_modal.find_child("PurifiedDeckBtn", true, false) as Control
+		check_clickable(chk_replay_deck, "PurifiedDeckBtn")
+		var chk_replay_phantom: Control = chk_replay_modal.find_child("PurifiedPhantomBtn", true, false) as Control
+		check_clickable(chk_replay_phantom, "PurifiedPhantomBtn")
 		var chk_replay_close: Control = chk_replay_modal.find_child("ReplayCloseBtn", true, false) as Control
 		check_clickable(chk_replay_close, "ReplayCloseBtn")
 		tap_button(chk_replay_close, "ReplayCloseBtn")

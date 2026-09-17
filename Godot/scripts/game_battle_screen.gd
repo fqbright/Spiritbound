@@ -23,19 +23,7 @@ func _modifier(seed: int, stage: int) -> Dictionary:
 func begin_battle(index: int) -> void:
 	g.current_stage = index
 	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
-	if g.is_hard_replay:
-		g.active_modifier = {
-			"id": "trial_hard",
-			"name": "试炼强化",
-			"name_en": "Trial Hard",
-			"detail": "敌人生命 +25%，攻击 +2，恢复全额掉落",
-			"detail_en": "Enemy HP +25%, ATK +2, Full Drops",
-			"health_scale": 1.25,
-			"damage_bonus": 2,
-			"reward_scale": 1.0
-		}
-	else:
-		g.active_modifier = _modifier(seed, index)
+	g.active_modifier = _modifier(seed, index)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var battle_deck: Array = g.profile.deck

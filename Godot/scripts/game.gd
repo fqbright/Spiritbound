@@ -47,7 +47,6 @@ const TEXT_SCALE_OPTIONS: Array[float] = [0.9, 1.0, 1.1, 1.2]
 var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
-var is_hard_replay: bool = false
 var in_phantom_arena: bool = false
 var clipboard_cache: String = ""
 var _back_action := Callable()
@@ -1731,10 +1730,13 @@ func _on_pin_pressed(index: int) -> void:
 	if _is_replay(index) and content.node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
 		_show_replay_mode_prompt(index)
 	else:
-		is_hard_replay = false
 		_travel_to(index)
 
-func _show_replay_mode_prompt(index: int) -> void:
+# Shown when tapping a pin for a stage already cleared (index < profile.unlocked) — a
+# cleared stage can no longer be re-entered at all (see ui.stage_purified_desc), so this is
+# purely informational plus three shortcuts to the places that actually grant more gold/
+# progress once you're stuck: Cultivate (AFK harvest), Tune Deck, and Phantom Arena.
+func _show_replay_mode_prompt(_index: int) -> void:
 	var existing: Node = overlay.get_node_or_null("ReplayModal")
 	if existing:
 		if existing.get_parent(): existing.get_parent().remove_child(existing)
@@ -1785,7 +1787,7 @@ func _show_replay_mode_prompt(index: int) -> void:
 
 	list.add_child(_label(t("ui.stage_purified_desc"), 9.5, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
-	var nav_box := HBoxContainer.new()
+	var nav_box := VBoxContainer.new()
 	nav_box.add_theme_constant_override("separation", 8)
 	var cult_btn := _button(t("ui.stage_purified_goto_cultivate"), func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
@@ -1795,7 +1797,6 @@ func _show_replay_mode_prompt(index: int) -> void:
 		show_idle_harvest_modal()
 	, GOLD, Vector2(0, 36))
 	cult_btn.name = "PurifiedCultivateBtn"
-	cult_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav_box.add_child(cult_btn)
 
 	var deck_btn := _button(t("ui.stage_purified_goto_deck"), func():
@@ -1806,35 +1807,18 @@ func _show_replay_mode_prompt(index: int) -> void:
 		show_deck()
 	, JADE, Vector2(0, 36))
 	deck_btn.name = "PurifiedDeckBtn"
-	deck_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav_box.add_child(deck_btn)
+
+	var phantom_btn := _button(t("ui.stage_purified_goto_phantom"), func():
+		var ex: Node = overlay.get_node_or_null("ReplayModal")
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+		begin_phantom_arena()
+	, Color("6b3410"), Vector2(0, 36))
+	phantom_btn.name = "PurifiedPhantomBtn"
+	nav_box.add_child(phantom_btn)
 	list.add_child(nav_box)
-
-	var normal_btn := _button(t("ui.replay_normal_title"), func():
-		var ex: Node = overlay.get_node_or_null("ReplayModal")
-		if ex:
-			if ex.get_parent(): ex.get_parent().remove_child(ex)
-			ex.queue_free()
-		is_hard_replay = false
-		_travel_to(index)
-	, Color("17363e"), Vector2(0, 36))
-	normal_btn.name = "ReplayNormalBtn"
-	list.add_child(normal_btn)
-
-	var hard_btn := _button(t("ui.replay_hard_title"), func():
-		var ex: Node = overlay.get_node_or_null("ReplayModal")
-		if ex:
-			if ex.get_parent(): ex.get_parent().remove_child(ex)
-			ex.queue_free()
-		is_hard_replay = true
-		_travel_to(index)
-	, EMBER, Vector2(0, 36))
-	hard_btn.name = "ReplayHardBtn"
-	list.add_child(hard_btn)
-
-func begin_hard_replay(index: int) -> void:
-	is_hard_replay = true
-	begin_battle(index)
 
 func _build_victory_recap_card(stats: Dictionary) -> Control:
 	var panel := Panel.new()

@@ -143,9 +143,8 @@ func _compendium_totals() -> Vector2i:
 	return Vector2i(discovered, total)
 
 # Every battle win feeds mastery XP to whichever hero is currently equipped — a boss kill is
-# worth double a regular fight, halved again on a campaign replay, same discount campaign
-# gold already takes. Abyss and Daily Trial wins call this with their own flat amounts since
-# neither has a "kind"/"replay" concept to scale off of.
+# worth double a regular fight. Abyss and Daily Trial wins call this with their own flat
+# amounts since neither has a "kind" to scale off of.
 func _grant_mastery_xp(amount: int) -> void:
 	if amount <= 0: return
 	var hero_id: String = str(g.profile.hero_class)
@@ -194,7 +193,7 @@ func _grant_stage_rewards() -> void:
 		g._add_season_xp(50)
 		g.profile.health = 60
 		g._toast(g.tf("ui.phantom_arena_chest_toast", gold_gain), g.GOLD)
-		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "phantom_arena": true}
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "phantom_arena": true}
 		SpiritSave.write(g.profile)
 		return
 	if g.in_draft_battle:
@@ -213,7 +212,7 @@ func _grant_stage_rewards() -> void:
 			g._add_season_xp(200)
 		else:
 			g._toast(g.tf("ui.draft_victory_toast", [wins, gold_gain]), g.GOLD)
-		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": ""}
 		SpiritSave.write(g.profile)
 		return
 	if g.in_boss_rush:
@@ -224,7 +223,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.boss_rush_floor = br_floor + 1
 		g.profile.boss_rush_record = maxi(int(g.profile.get("boss_rush_record", 0)), br_floor)
 		g.profile.health = 60
-		g.pending_rewards = {"gold": br_gold, "equipment": "", "rune": "", "relic": "", "replay": false, "boss_rush": true, "boss_rush_floor": br_floor}
+		g.pending_rewards = {"gold": br_gold, "equipment": "", "rune": "", "relic": "", "boss_rush": true, "boss_rush_floor": br_floor}
 		SpiritSave.write(g.profile)
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", br_gold)
@@ -241,7 +240,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.abyss_floor = floor_num + 1
 		g.profile.abyss_record = maxi(int(g.profile.get("abyss_record", 0)), floor_num)
 		g.profile.health = 60
-		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": ""}
 		SpiritSave.write(g.profile)
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", gold_gain)
@@ -271,7 +270,7 @@ func _grant_stage_rewards() -> void:
 					g.profile.gold += bonus_gold
 					g._toast(g.tf("ui.trial_streak_reward_toast", [target, bonus_gold]), g.GOLD)
 			g.profile.daily_trial_record.streak_claimed = streak_claimed
-		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "daily_trial": true, "daily_trial_stage": stage_num, "daily_trial_completed": completed}
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "daily_trial": true, "daily_trial_stage": stage_num, "daily_trial_completed": completed}
 		SpiritSave.write(g.profile)
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", gold_gain)
@@ -290,7 +289,7 @@ func _grant_stage_rewards() -> void:
 		var w_completed: bool = w_stage_num >= SpiritContent.WEEKLY_CHALLENGE_STAGES
 		if w_completed:
 			g.profile.weekly_challenge_record.badges = int(g.profile.weekly_challenge_record.get("badges", 0)) + 1
-		g.pending_rewards = {"gold": w_gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false, "weekly_challenge": true, "weekly_challenge_stage": w_stage_num, "weekly_challenge_completed": w_completed}
+		g.pending_rewards = {"gold": w_gold_gain, "equipment": "", "rune": "", "relic": "", "weekly_challenge": true, "weekly_challenge_stage": w_stage_num, "weekly_challenge_completed": w_completed}
 		SpiritSave.write(g.profile)
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", w_gold_gain)
@@ -300,11 +299,10 @@ func _grant_stage_rewards() -> void:
 	var encounter: Dictionary = g.content.encounters[g.current_stage]
 	var multiplier: float = g.active_modifier.get("reward_scale", 1.0)
 	if g.profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
-	var replay := _is_replay(g.current_stage) and not g.is_hard_replay
-	# Farming an old stage pays half and drops no items, so grinding gold stays possible
-	# while re-collecting cards and gear does not.
-	if replay: multiplier *= 0.5
-	g.pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay, "is_hard_replay": g.is_hard_replay}
+	# A cleared stage can no longer be re-entered at all (see _show_replay_mode_prompt), so
+	# every campaign win reaching here is a genuine first clear — no more halved "replay"
+	# rewards to compute.
+	g.pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": ""}
 	g.profile.gold += int(g.pending_rewards.gold)
 	g.profile.health = 60
 	g.profile.unlocked = maxi(int(g.profile.unlocked), mini(g.content.encounters.size() - 1, g.current_stage + 1))
@@ -317,16 +315,11 @@ func _grant_stage_rewards() -> void:
 	if g.content.is_boss_kind(kind) or kind == "elite": g._advance_quest("clear_elite_or_boss", 1)
 	if kind == "greatboss": g._advance_quest("defeat_great_boss", 1)
 	var mastery_xp: int = 24 if g.content.is_boss_kind(kind) else 12
-	if replay: mastery_xp = int(mastery_xp / 2)
 	_grant_mastery_xp(mastery_xp)
-	g._add_season_xp(15 if replay else 35)
-	if replay:
-		g.is_hard_replay = false
-		SpiritSave.write(g.profile)
-		return
+	g._add_season_xp(35)
 
 	var is_chapter_final: bool = (g.current_stage % 5 == 4)
-	if is_chapter_final and not replay:
+	if is_chapter_final:
 		g.pending_rewards["chapter_transition"] = true
 		g.pending_rewards["cleared_chapter"] = g.current_stage / 5
 		g.pending_rewards["next_chapter"] = (g.current_stage / 5) + 1
@@ -343,8 +336,8 @@ func _grant_stage_rewards() -> void:
 		var relic_pool: Array = SpiritContent.RELICS
 		if kind == "greatboss":
 			# E2: flags this specific win as recap-worthy — checked by show_reward_details() to
-			# offer the shareable Run Recap card. Only a fresh (non-replay) kill reaches this
-			# branch at all, since the `if replay: ... return` above already exited earlier.
+			# offer the shareable Run Recap card. A great boss can only ever be fought once
+			# (a cleared stage can't be re-entered), so every kill reaching here is fresh.
 			g.pending_rewards.great_boss_kill = true
 			relic_pool = SpiritContent.RELICS.filter(func(r): return SpiritContent.BOSS_RELIC_IDS.has(r.id))
 		else:
@@ -359,7 +352,6 @@ func _grant_stage_rewards() -> void:
 		g.profile.rune_inventory[rune.id] = g.profile.rune_inventory.get(rune.id, 0) + 1
 		g.pending_rewards.rune = rune.id
 		_mark_discovered("runes", rune.id)
-	g.is_hard_replay = false
 	SpiritSave.write(g.profile)
 
 func show_reward_details() -> void:
@@ -409,11 +401,6 @@ func show_reward_details() -> void:
 	if not rune_id.is_empty():
 		var rune := g.content.rune(rune_id)
 		list.add_child(_reward_item(g.tf("ui.elite_rune_title", [rune.icon, g._rune_name(rune)]), g._rune_detail(rune), Color(rune.color)))
-
-	if bool(g.pending_rewards.get("replay", false)):
-		list.add_child(g._label(g.t("ui.reward_replay_note"), 12, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
-		page.add_child(g._button(g.t("ui.return_map"), _finish_reward, g.EMBER, Vector2(0, 50)))
-		return
 
 	if bool(g.pending_rewards.get("daily_trial", false)):
 		if bool(g.pending_rewards.get("daily_trial_completed", false)):
