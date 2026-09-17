@@ -1002,6 +1002,18 @@ func _run() -> void:
 	var player_sprite: CanvasItem = game.root.find_child("PlayerSprite", true, false) as CanvasItem
 	check(player_sprite != null and player_sprite.material is ShaderMaterial, "player sprite also carries the hit-flash shader")
 
+	# Fox Spirit's layered rig (_build_player_stage(), gated on hero_sprite_key == "fox" and
+	# the rig files existing) had zero test coverage before this — one of several visually
+	# significant pieces of this batch that shipped with no new assertions.
+	check(game.profile.hero_class == "fox_spirit", "sanity-checking the fixture: this battle is still Fox Spirit's own")
+	check(game.root.find_child("PlayerGroundAura", true, false) != null, "the fox rig's ground aura layer renders")
+	var rig_tail: Node = game.root.find_child("PlayerTail", true, false)
+	check(rig_tail != null, "the fox rig's tail layer renders")
+	check(rig_tail != null and player_sprite.get_meta("rig_tail", null) == rig_tail, "PlayerSprite tracks its own tail via meta, for the tail-follow tween logic")
+	var rig_orb: Node = game.root.find_child("PlayerSpiritOrb", true, false)
+	check(rig_orb != null, "the fox rig's floating spirit orb layer renders")
+	check(rig_orb != null and player_sprite.get_meta("rig_orb", null) == rig_orb, "PlayerSprite tracks its own orb via meta")
+
 	# _build_player_stage() used to hardcode "fox" for every hero's battle sprite regardless
 	# of which of the 4 archetypes was actually equipped — every non-Fox-Spirit player saw a
 	# fox in battle no matter what they picked. Confirms each hero's own real sprite renders.
@@ -2015,6 +2027,41 @@ func _run() -> void:
 	game._leave_battle()
 	check(not game.in_sandbox, "_leave_battle clears in_sandbox on a loss")
 	check(int(game.profile.health) == 10, "a sandbox loss also leaves the real campaign health completely untouched")
+
+	section("== growth batch: Phantom Arena camp section ==")
+	# _phantom_arena_section() (Camp's Challenges tab) had zero test coverage before this —
+	# one of several visually-significant screens in the same batch that shipped with no
+	# new assertions at all.
+	game.profile.phantom_arena = {"day": -1, "wins_today": 0, "claimed_today": false}
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(_find_label_containing(game.root, game.content.ui("ui.phantom_arena_title", game.lang)), "Phantom Arena section renders in the challenges tab")
+	check(game.root.find_child("PhantomArenaEnterBtn", true, false) != null, "PhantomArenaEnterBtn exists")
+	check(game.root.find_child("PhantomArenaClaimBtn", true, false) == null, "PhantomArenaClaimBtn does not render before the first win of the day")
+
+	var phantom_gold_before: int = int(game.profile.gold)
+	game.begin_phantom_arena()
+	await process_frame
+	check(game.in_phantom_arena, "PhantomArenaEnterBtn's begin_phantom_arena() starts a phantom arena battle")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_phantom_arena, "_grant_stage_rewards clears in_phantom_arena after granting")
+	check(int(game.profile.phantom_arena.wins_today) == 1, "winning a phantom arena bout increments wins_today")
+	check(int(game.profile.gold) > phantom_gold_before, "winning a phantom arena bout grants gold")
+
+	game.show_camp()
+	await process_frame
+	var phantom_claim_btn: Button = game.root.find_child("PhantomArenaClaimBtn", true, false) as Button
+	check(phantom_claim_btn != null, "PhantomArenaClaimBtn appears once wins_today >= 1")
+	check(not phantom_claim_btn.disabled, "the daily chest is claimable, not yet claimed")
+	var phantom_gold_before_claim: int = int(game.profile.gold)
+	phantom_claim_btn.pressed.emit()
+	await process_frame
+	check(int(game.profile.gold) > phantom_gold_before_claim, "claiming the daily phantom arena chest grants a gold bonus")
+	check(bool(game.profile.phantom_arena.claimed_today), "claiming the chest marks it claimed for today")
+	var phantom_claim_btn_after: Button = game.root.find_child("PhantomArenaClaimBtn", true, false) as Button
+	check(phantom_claim_btn_after != null and phantom_claim_btn_after.disabled, "the chest button is disabled once already claimed today")
 
 	section("== defeat diagnosis: recommended action is visually distinguished ==")
 	# diagnose_battle_defeat()'s "action" field used to be computed and never read by the
