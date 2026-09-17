@@ -19,6 +19,8 @@ var _rewards_screen: RewardsScreen
 var _shop_deck_screen: ShopDeckScreen
 var _camp_screen: CampScreen
 var enemy_boxes: Array[Control] = []
+var hand_zone: Control
+var _last_hand_size := 0
 var selected_rune := ""
 var muted := false
 var lang := "zh-Hans"

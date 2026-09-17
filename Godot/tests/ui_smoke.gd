@@ -2676,6 +2676,48 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	section("== card draw and discard animations ==")
+	game.begin_battle(0)
+	await process_frame
+	check(game.hand_zone != null and is_instance_valid(game.hand_zone), "hand_zone is tracked so animations can find tiles by hand_index")
+	var opening_tiles: Array = game.hand_zone.get_children()
+	check(opening_tiles.size() == 5, "opening hand deals 5 cards, sanity-checking the fixture")
+	var last_dealt: HandCard = null
+	for child in opening_tiles:
+		if child is HandCard and int((child as HandCard).hand_index) == 4: last_dealt = child as HandCard
+	check(last_dealt != null, "found the 5th (last-dealt) opening hand card")
+	if last_dealt != null:
+		check(not last_dealt.position.is_equal_approx(last_dealt.home_pos), "the last-dealt card starts away from its resting spot, mid draw-in animation")
+		check(last_dealt.modulate.a < 0.9, "the last-dealt card starts faded in rather than fully opaque")
+	# The 5th card is also the most staggered (stagger_index 4), so it needs the longest wait
+	# of the batch to finish settling — comfortably covers every other card's shorter one too.
+	await create_timer(0.75).timeout
+	if last_dealt != null and is_instance_valid(last_dealt):
+		check(last_dealt.position.is_equal_approx(last_dealt.home_pos), "the draw-in animation settles into the card's resting position")
+		check(is_equal_approx(last_dealt.modulate.a, 1.0), "the draw-in animation fully fades the card back in")
+
+	var play_index := 0
+	var play_card: Dictionary = game.content.card(str(game.combat.state.hand[play_index].card_id))
+	var play_target := -1
+	if game._card_target_mode(play_card) == "enemy":
+		var living: Array = game._living_enemies()
+		play_target = living[0] if living.size() > 0 else -1
+	game._attempt_play_card(play_index, play_target)
+	var discard_tile: HandCard = null
+	for child in game.hand_zone.get_children():
+		if child is HandCard and int((child as HandCard).hand_index) == play_index: discard_tile = child as HandCard
+	check(discard_tile != null and is_instance_valid(discard_tile), "the played card's tile is still around right after playing, ready to fly to the discard pile")
+	if discard_tile != null:
+		check(discard_tile.current_tween != null and discard_tile.current_tween.is_valid(), "playing a card starts a discard-fly tween on its tile")
+	await create_timer(0.4).timeout
+	if discard_tile != null and is_instance_valid(discard_tile):
+		check(discard_tile.modulate.a < 0.5, "the discard-fly animation fades the played card out")
+	var discard_resolve_wait := 0.0
+	while game.resolving and discard_resolve_wait < 8.0:
+		await create_timer(0.1).timeout
+		discard_resolve_wait += 0.1
+	check(not game.resolving, "the play resolves cleanly after the discard-fly animation")
+
 	# A broad, name-agnostic safety net across the game's busiest screens: every visible,
 	# enabled button anywhere in each of these has to be occlusion-clean, not just the
 	# specific buttons other checks above remembered to name. This is what would have caught

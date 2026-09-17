@@ -42,6 +42,7 @@ func begin_battle(index: int) -> void:
 	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
+	g._last_hand_size = 0
 	show_battle()
 	if index == 0 and not bool(g.profile.get("tutorial_seen", false)): _show_battle_tutorial()
 	_maybe_end_turn()
@@ -790,11 +791,27 @@ func _add_hand(page: VBoxContainer) -> void:
 	hand_zone.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hand_zone.mouse_filter = Control.MOUSE_FILTER_PASS
 	page.add_child(hand_zone)
+	g.hand_zone = hand_zone
 
+	# show_battle() fully rebuilds the hand from scratch every time (fresh HandCard tiles,
+	# not reused ones), so a card that was already in hand looks identical to one just
+	# drawn — the only way to tell them apart is by comparing sizes across rebuilds, since
+	# _draw_one() (combat.gd) always appends, so the newest cards are always the LAST
+	# `new_count` entries. begin_battle() resets _last_hand_size to 0 so the opening deal
+	# animates in the same way a mid-battle draw does.
 	var count: int = g.combat.state.hand.size()
+	var new_count: int = maxi(0, count - g._last_hand_size)
+	g._last_hand_size = count
 	for index in count:
 		var card_tile := _card_view(g.combat.state.hand[index], index, count)
+		# _card_view() can come back null if the hand holds an instance whose card_id no
+		# longer resolves to real content (e.g. a deck too small to deal a full opening
+		# hand) — pre-existing, unrelated to drawing, but the draw-in animation below is a
+		# new reason something would actually dereference this result, so it needs the guard.
+		if card_tile == null: continue
 		hand_zone.add_child(card_tile)
+		if index >= count - new_count:
+			_animate_card_draw_in(card_tile, index - (count - new_count))
 
 func _card_is_attack(card: Dictionary) -> bool:
 	for effect in card.effects:
@@ -1344,6 +1361,49 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 
 	return tile
 
+# Plays as soon as a freshly-drawn tile is added to the hand (see _add_hand()'s new_count
+# bookkeeping) — arrives from the draw pile's side of the status row, above and to the left
+# of the fan, growing and fading into its resting spot. stagger_index is this card's position
+# among just the newly-drawn ones (0-based), so a 2-card turn draw deals them one after another
+# instead of both popping in at once.
+func _animate_card_draw_in(tile: HandCard, stagger_index: int) -> void:
+	var final_pos: Vector2 = tile.position
+	var final_rot: float = tile.rotation
+	tile.position = final_pos + Vector2(-26.0, -92.0)
+	tile.rotation = 0.0
+	tile.scale = Vector2(0.42, 0.42)
+	tile.modulate.a = 0.0
+	var tw := tile.create_tween()
+	tile.current_tween = tw
+	tw.tween_interval(g._battle_delay(0.07) * float(stagger_index))
+	tw.tween_property(tile, "position", final_pos, g._battle_delay(0.32)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(tile, "rotation", final_rot, g._battle_delay(0.32))
+	tw.parallel().tween_property(tile, "scale", Vector2.ONE, g._battle_delay(0.28))
+	tw.parallel().tween_property(tile, "modulate:a", 1.0, g._battle_delay(0.2))
+
+# Fired the instant a card is played (see _resolve_play()), while its tile is still the one
+# left over from the hand's last render — show_battle() at the end of that same resolve
+# sequence is what actually removes it, so without this it would otherwise just sit there
+# unchanged until it vanishes. Flies up toward the discard chip's side of the status row,
+# shrinking and spinning away, so "played" reads as "gone to the discard pile" rather than a
+# card simply blinking out of existence.
+func _animate_card_to_discard(hand_index: int) -> void:
+	if g.hand_zone == null or not is_instance_valid(g.hand_zone): return
+	var tile: HandCard = null
+	for child in g.hand_zone.get_children():
+		if child is HandCard and int((child as HandCard).hand_index) == hand_index:
+			tile = child as HandCard
+			break
+	if tile == null or not is_instance_valid(tile): return
+	if tile.current_tween: tile.current_tween.kill()
+	tile.z_index = 90
+	var tw := tile.create_tween()
+	tile.current_tween = tw
+	tw.tween_property(tile, "position", tile.position + Vector2(96.0, -140.0), g._battle_delay(0.34)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(tile, "rotation", tile.rotation + deg_to_rad(30.0), g._battle_delay(0.34))
+	tw.parallel().tween_property(tile, "scale", Vector2(0.3, 0.3), g._battle_delay(0.34))
+	tw.parallel().tween_property(tile, "modulate:a", 0.0, g._battle_delay(0.26))
+
 # Mirrors the bonuses g.combat.play() applies, so the number on screen matches what lands.
 func _predict_damage(card: Dictionary, enemy_index: int) -> Dictionary:
 	var result := {"damage": 0, "blocked": 0, "lethal": false, "is_attack": false}
@@ -1655,11 +1715,15 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 		return false
 	g.selected_card = -1
 	g.resolving = true
-	_resolve_play(before, player_shield_before, player_health_before, player_focus_before, player_strength_before, card)
+	_resolve_play(hand_index, before, player_shield_before, player_health_before, player_focus_before, player_strength_before, card)
 	return true
 
-func _resolve_play(before: Array, player_shield_before: int = 0, player_health_before: int = 0, player_focus_before: int = 0, player_strength_before: int = 0, card: Dictionary = {}) -> void:
-	# 0. Hero Signature Action Animation (lunge charge / weapon swing / shadow dash / staff wave)
+func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0, player_health_before: int = 0, player_focus_before: int = 0, player_strength_before: int = 0, card: Dictionary = {}) -> void:
+	# 0. The just-played card flies off to the discard pile — fire-and-forget, so it plays
+	# out alongside everything below rather than delaying it.
+	_animate_card_to_discard(hand_index)
+
+	# 0.5. Hero Signature Action Animation (lunge charge / weapon swing / shadow dash / staff wave)
 	if not card.is_empty():
 		await _animate_player_action(card)
 
