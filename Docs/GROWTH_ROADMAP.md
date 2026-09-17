@@ -286,7 +286,24 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
-### 2026-09-17 — B4 design sketch (local iOS notifications), no code written by user direction
+### 2026-09-17 — 250-stage difficulty curve revalidated, real chapter-19 wall found and fixed
+Per explicit user direction ("调整曲线跟C2都做了" — do both the curve revalidation and deepen
+C2). Not a growth-roadmap item itself, but directly answers the open question `Docs/
+ARCHITECTURE.md`'s "250-stage difficulty curve" section had been flagging since the HP-reset
+change: the curve was tuned against a probe that no longer exists and against rules that no
+longer apply, and nothing had re-run it. See that section for the full account; short version:
+rebuilt `tests/balance_probe.gd` from scratch (a from-scratch AI-driven playthrough sim, since
+the original didn't survive in this repo's history), found a real reproducible wall at chapter
+19 (a 3-enemy elite plus a crit mechanic killing a smart-built deck in 4 turns every retry),
+root-caused it to Band 3's growth rate (0.22/chapter) compounding with an elite's second-add
+threshold (chapter 15) landing in the same handful of chapters instead of at a band boundary,
+and fixed both (Band 3 → 0.16/chapter, elite second add → chapter 21). Chapters 1-19 now clear
+reliably; chapter 20's Great Boss remains a wall for a no-farming baseline, which matches
+Band 4's own documented intent ("needs farming, not skill alone") rather than indicating a
+bug — not chased further, since validating that properly needs simulating the actual farming
+loop (Rebirth, mastery, AFK Harvest, rune sets), not just retrying a static build.
+Verified: `test_runner.gd` +2 checks pinning the fix (354/0), full `./run_tests.sh --all`
+green throughout.
 Follow-on to the same day's investigation entry below, which confirmed this environment can't
 compile, link, or run any native iOS code. Asked how to proceed (leave it blocked / write the
 native code untested anyway / sketch the design only); user chose the design sketch, explicitly

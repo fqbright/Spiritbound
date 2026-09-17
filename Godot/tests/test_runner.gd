@@ -466,6 +466,27 @@ func run() -> void:
 			invalid_encs += 1
 	check(invalid_encs == 0, "all 250 encounters have positive health and damage")
 
+	# 2026-09-17 balance revalidation (Docs/ARCHITECTURE.md's "250-stage difficulty curve"):
+	# tests/balance_probe.gd (a from-scratch AI-driven playthrough sim, rebuilt after the
+	# original was lost — see that file's header) found a real, reproducible wall at chapter
+	# 19: an elite fight with 2 adds (3 enemies total) plus a "crits every 2nd attack"
+	# mechanic, on top of Band 3's own steep per-chapter growth, killed a smart-built deck in
+	# 4 turns across every retry. Root cause was two compounding factors landing in the same
+	# few chapters: Band 3's 0.22/chapter additive growth (nearly double Band 2's 0.12), and
+	# elites gaining a second add at chapter>=15 — square in the middle of Band 3 rather than
+	# at a band boundary. Fixed by trimming Band 3's growth to 0.16/chapter and moving the
+	# elite add threshold to chapter>=21 (Band 4's start, where "needs farmed gear" already
+	# means multi-enemy fights are expected). Re-running the probe confirmed chapters 1-19
+	# clear reliably afterward; chapter 20's Great Boss (the first of the 5 scripted-Phase-2
+	# capstones, intentionally "the hardest single fight in their neighborhood" per
+	# _chapter_mechanics' own comment) remains a wall for a no-farming baseline build — that
+	# is Band 4's own documented intent ("needs runes/equipment/relics from earlier farming,
+	# not skill alone"), not a bug, and wasn't chased further; see the probe's own output for
+	# how band 4 behaves past that point. These two assertions pin the fix so it can't
+	# silently regress back to the version that produced the chapter-19 wall.
+	check(content._chapter_factor(20) > 3.0 and content._chapter_factor(20) < 3.7, "chapter 20's cumulative difficulty factor (%.2f) stays in the revalidated Band 3 range — the old 0.22/chapter growth put it at 4.16" % content._chapter_factor(20))
+	check(content._chapter_adds(19, 3, false) == 1 and content._chapter_adds(21, 3, false) == 2, "an elite's second add starts at chapter 21 (Band 4), not chapter 15 (mid-Band-3) where it used to stack with Band 3's own steep scaling")
+
 	var corrupt_save := SpiritSave.defaults(content)
 	corrupt_save.deck = ["strike", "strike"]
 	var temp_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)

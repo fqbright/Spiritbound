@@ -957,7 +957,9 @@ func roll_shop_stock(day_seed: int, count: int) -> Dictionary:
 #   11-20 (stages  51-100): needs a deliberately built deck.
 #   21-50 (stages 101-250): needs runes/equipment/relics from earlier farming, not skill alone.
 # Tuned against tests/balance_probe.gd — see Docs/ARCHITECTURE.md for the win-rate curve
-# that came out of it and why these constants ended up where they did.
+# that came out of it and why these constants ended up where they did. Band 3's 0.16 (was
+# 0.22 until the 2026-09-17 revalidation) is the fixed value — see that section and
+# test_runner.gd's own pinning assertion for what the old value broke.
 const BAND_1_END = 4
 const BAND_2_END = 10
 const BAND_3_END = 20
@@ -970,7 +972,7 @@ func _chapter_factor(chapter: int) -> float:
 		return base_a + float(chapter - BAND_1_END) * 0.12
 	if chapter <= BAND_3_END:
 		var base_b: float = _chapter_factor(BAND_2_END)
-		return base_b + float(chapter - BAND_2_END) * 0.22
+		return base_b + float(chapter - BAND_2_END) * 0.16
 	var base_c: float = _chapter_factor(BAND_3_END)
 	return base_c * pow(1.062, float(chapter - BAND_3_END))
 
@@ -999,9 +1001,13 @@ func _chapter_adds(chapter: int, level: int, is_great_boss: bool) -> int:
 	var adds := 0
 	if level == 3:
 		# Elites: a real group fight from the deckbuilding band onward, which is exactly
-		# why the cleave finishers (stormArc/worldFlame/spiritNova) exist.
+		# why the cleave finishers (stormArc/worldFlame/spiritNova) exist. The second add used
+		# to start at chapter 15 — square in the middle of Band 3, where it stacked with that
+		# band's own steep per-chapter growth into an unwinnable wall (see the 2026-09-17
+		# revalidation note above _chapter_factor). Moved to chapter 21, Band 4's own start,
+		# where a second add is already part of what "needs farmed gear" means.
 		if chapter >= 3: adds += 1
-		if chapter >= 15: adds += 1
+		if chapter >= 21: adds += 1
 		if chapter >= 35: adds += 1
 	elif level in [1, 2]:
 		if chapter >= 6: adds += 1
