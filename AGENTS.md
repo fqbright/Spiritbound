@@ -179,8 +179,9 @@ Every one of these produced a wrong screen with no error in the log. They are th
 - A card with any `target: "opponent"` effect aims at enemies; everything else aims at the
   player. `_is_attack` (damage only) drives damage bonuses; `_targets_opponent` drives
   targeting. Conflating them either loses pure-debuff cards or wastes Focus on them.
-- 39 cards, 250 stages across 50 chapters, a four-band difficulty curve (see
-  Docs/ARCHITECTURE.md), and three enemy debuffs beyond burn/stun: `vulnerable` (+50% damage
+- 47 cards (45 collectible + 2 battle-only curses), 250 stages across 50 chapters, a
+  four-band difficulty curve (see Docs/ARCHITECTURE.md), and three enemy debuffs beyond
+  burn/stun: `vulnerable` (+50% damage
   taken) and `weak` (-25% damage dealt), both decaying by one enemy turn; `poison`
   (`enemy.poison`), Miasma Witch's signature status, deals its stack count as damage every
   turn like Burn but — unlike Burn — never decays on its own, only clearing on a heal or a

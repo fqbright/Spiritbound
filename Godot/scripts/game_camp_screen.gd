@@ -618,6 +618,7 @@ func show_challenges() -> void:
 func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
 	list.add_child(_hero_archetypes_section())
+	list.add_child(_rebirth_section())
 
 # "Modes you enter": the two challenge tracks (Daily Trial, Endless Abyss) plus the campaign's
 # own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
@@ -654,6 +655,114 @@ func _difficulty_tier_section() -> Control:
 	section.add_child(row)
 	section.add_child(g._label(g.t("ui.camp_desc"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 	return section
+
+# C2: 轮回 (Rebirth) — eligibility is deliberately just these two already-tracked signals
+# (full 250-stage clear + challenge tier currently at A5) rather than also gating on hero
+# mastery level: mastery is per-hero, so gating on it would arbitrarily punish a player who
+# tried multiple archetypes. profile.difficulty is a freely-switchable "what am I fighting at
+# right now" setting rather than a per-tier clear ladder, so this reads as "cleared the whole
+# campaign, and currently set to the hardest tier" rather than a literal historical proof of
+# having beaten A5 specifically — the closest verifiable signal this save shape already has.
+func _rebirth_section() -> Control:
+	var eligible: bool = int(g.profile.unlocked) >= 250 and int(g.profile.difficulty) >= 5
+	var count: int = int(g.profile.get("rebirth_count", 0))
+	var section := VBoxContainer.new()
+	section.name = "RebirthSection"
+	section.add_theme_constant_override("separation", 8)
+	section.add_child(g._label(g.t("ui.rebirth_title"), 15, g.GOLD if count > 0 else g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+
+	if count > 0:
+		var current: Dictionary = g.content.rebirth_bonuses(count)
+		section.add_child(g._label(g.tf("ui.rebirth_count_fmt", count), 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
+		section.add_child(g._label(g.tf("ui.rebirth_bonus_fmt", [int(current.get("max_hp", 0)), int(current.get("shield_start", 0))]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	if not eligible:
+		section.add_child(g._label("🔒 " + g.t("ui.rebirth_locked_desc"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		var locked_btn := g._button("🔒 " + g.t("ui.locked"), Callable(), Color("2d2218"), Vector2(180, 40))
+		locked_btn.name = "RebirthBtn"
+		locked_btn.disabled = true
+		locked_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		section.add_child(locked_btn)
+		return section
+
+	var next: Dictionary = g.content.rebirth_bonuses(count + 1)
+	section.add_child(g._label(g.tf("ui.rebirth_next_bonus_fmt", [int(next.get("max_hp", 0)), int(next.get("shield_start", 0))]), 10, Color("ffb765"), HORIZONTAL_ALIGNMENT_CENTER, true))
+	var btn := g._button(g.t("ui.rebirth_button"), _show_rebirth_confirm, Color("6b2040"), Vector2(180, 40))
+	btn.name = "RebirthBtn"
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	section.add_child(btn)
+	return section
+
+func _show_rebirth_confirm() -> void:
+	var modal := g._modal_dialog("RebirthConfirmModal", func():
+		var ex: Node = g.overlay.get_node_or_null("RebirthConfirmModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 0)
+	var pstyle := g._panel(Color("1a0c14"), 14, Color("6b2040"))
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 14
+	pstyle.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.name = "RebirthConfirmList"
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	list.add_child(g._label(g.t("ui.rebirth_confirm_title"), 16, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER))
+	list.add_child(g._label(g.t("ui.rebirth_confirm_resets"), 11, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+	list.add_child(g._label(g.t("ui.rebirth_confirm_keeps"), 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	list.add_child(row)
+
+	var cancel_btn := g._button(g.t("ui.rebirth_cancel_btn"), func(): modal.queue_free(), Color("1c333a"), Vector2(0, 40))
+	cancel_btn.name = "RebirthCancelBtn"
+	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(cancel_btn)
+
+	var confirm_btn := g._button(g.t("ui.rebirth_confirm_btn"), func(): modal.queue_free(); _perform_rebirth(), Color("6b2040"), Vector2(0, 40))
+	confirm_btn.name = "RebirthConfirmBtn"
+	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(confirm_btn)
+
+# Resets exactly the campaign-run state a fresh save starts with (mirrors SpiritSave.defaults()'s
+# deck/collection shape), while deliberately leaving every account-level/meta system untouched —
+# currencies, hero mastery, achievements, compendium, and the Daily Trial/Weekly Challenge/Abyss/
+# Boss Rush/Phantom Arena tracks are their own permanent progress, not "campaign progress," and
+# wiping them would make the reward (a small permanent bonus, see content.rebirth_bonuses())
+# a net loss rather than a prestige gain. profile.difficulty is deliberately left alone too, so
+# the next cycle doesn't force re-climbing tiers already reached.
+func _perform_rebirth() -> void:
+	g.profile.rebirth_count = int(g.profile.get("rebirth_count", 0)) + 1
+	g.profile.unlocked = 0
+	g.profile.position = 0
+	g.profile.health = 60
+	g.profile.deck = g.content.raw.startingDeck.duplicate()
+	var collection := {}
+	for id in g.content.raw.startingDeck: collection[id] = collection.get(id, 0) + 1
+	g.profile.collection = collection
+	g.profile.upgrades = {}
+	g.profile.relics = []
+	g.profile.equipment_owned = []
+	g.profile.equipment_slots = {}
+	g.profile.rune_inventory = {}
+	g.profile.card_runes = {}
+	SpiritSave.write(g.profile)
+	g._toast(g.tf("ui.rebirth_toast", int(g.profile.rebirth_count)), Color("ff6b9d"))
+	g.show_map()
 
 func _relics_section() -> Control:
 	var section := VBoxContainer.new()

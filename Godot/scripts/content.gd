@@ -582,12 +582,12 @@ const ACHIEVEMENTS = [
 	{"id":"greatboss5","kind":"stat","stat":"defeat_great_boss","target":5,"tier":"gold","nameKey":"ach.greatboss5.name","descKey":"ach.greatboss5.desc"},
 	{"id":"rune_play50","kind":"stat","stat":"play_runed_cards","target":50,"tier":"silver","nameKey":"ach.rune_play50.name","descKey":"ach.rune_play50.desc"},
 	{"id":"collect20","kind":"card_collection","target":20,"tier":"bronze","nameKey":"ach.collect20.name","descKey":"ach.collect20.desc"},
-	# target == cards.size() (all of them collectible today, since decay_blight/void_curse
-	# currently live in core.json's "statuses" array rather than "cards" — see the spawned
-	# task about moving them). If that move happens, this target must drop by 2 (or the
-	# card_collection progress reader must start excluding rarity=="Curse"), or 100% collection
-	# becomes permanently impossible.
-	{"id":"collect_all","kind":"card_collection","target":39,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	# target must equal the number of non-Curse cards (profile.collection can never hold a
+	# Curse id — see AGENTS.md's Curse cards note — so that's the true max achievable value).
+	# This has drifted silently before as cards were added; test_runner.gd now asserts this
+	# target against the live count so a future addition fails loudly instead of quietly
+	# making "collect all" completable early.
+	{"id":"collect_all","kind":"card_collection","target":45,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
@@ -657,6 +657,18 @@ func mastery_bonuses(hero_id: String, level: int) -> Dictionary:
 		var kind: String = str(p.kind)
 		result[kind] = int(result.get(kind, 0)) + int(p.value)
 	return result
+
+# C2: 轮回 (Rebirth) — a prestige loop for players who've cleared the full 250-stage campaign
+# at the hardest tier (see game_camp_screen.gd's _rebirth_section() for the exact eligibility
+# check). Each cycle grants a small permanent combat bonus through the same hero_bonuses hook
+# hero mastery perks already use (combat.gd's max_hp/shield_start handling), so no new engine
+# surface was needed for the reward itself — only the reset flow is new.
+const REBIRTH_MAX_HP_PER_CYCLE = 3
+const REBIRTH_SHIELD_PER_CYCLE = 1
+
+func rebirth_bonuses(count: int) -> Dictionary:
+	if count <= 0: return {}
+	return {"max_hp": count * REBIRTH_MAX_HP_PER_CYCLE, "shield_start": count * REBIRTH_SHIELD_PER_CYCLE}
 
 # Daily Seeded Trial: a 15-stage gauntlet, independent of campaign progress, that resets at
 # the same day boundary as the daily quests (game.gd's DAY_SECONDS). Every device rolling
@@ -1099,6 +1111,18 @@ const UI_TEXT = {
 	"ui.camp_tier": {"zh-Hans":"挑战等级 A%d", "en":"Challenge Tier A%d"},
 	"ui.camp_relics": {"zh-Hans":"已获得遗物 %d/5", "en":"Relics collected %d/5"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
+	"ui.rebirth_title": {"zh-Hans":"轮回", "en":"Rebirth"},
+	"ui.rebirth_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A5后解锁", "en":"Clear all 250 stages with Challenge Tier set to A5 to unlock"},
+	"ui.rebirth_count_fmt": {"zh-Hans":"已轮回 %d 次", "en":"Rebirths: %d"},
+	"ui.rebirth_bonus_fmt": {"zh-Hans":"当前永久加成：+%d 最大生命，+%d 初始护盾", "en":"Current permanent bonus: +%d Max HP, +%d Starting Shield"},
+	"ui.rebirth_next_bonus_fmt": {"zh-Hans":"下次轮回后：+%d 最大生命，+%d 初始护盾", "en":"After next rebirth: +%d Max HP, +%d Starting Shield"},
+	"ui.rebirth_button": {"zh-Hans":"轮回转生", "en":"Undergo Rebirth"},
+	"ui.rebirth_confirm_title": {"zh-Hans":"确认轮回？", "en":"Confirm Rebirth?"},
+	"ui.rebirth_confirm_resets": {"zh-Hans":"⚠ 将重置：关卡进度、牌组与卡牌收藏、卡牌强化、装备、符文、遗物", "en":"⚠ Will reset: stage progress, deck & card collection, card upgrades, equipment, runes, relics"},
+	"ui.rebirth_confirm_keeps": {"zh-Hans":"✓ 将保留：金币与灵玉、英雄专精、成就、图鉴、日常/周常/深渊等其他进度", "en":"✓ Will keep: gold & jade, hero mastery, achievements, compendium, and all other modes' progress"},
+	"ui.rebirth_confirm_btn": {"zh-Hans":"确认轮回", "en":"Confirm Rebirth"},
+	"ui.rebirth_cancel_btn": {"zh-Hans":"取消", "en":"Cancel"},
+	"ui.rebirth_toast": {"zh-Hans":"轮回完成！第 %d 次轮回的力量已融入你的血脉。", "en":"Rebirth complete! The power of cycle %d flows through you."},
 	"ui.thorns_toast": {"zh-Hans":"荆棘反伤 −%d", "en":"Thorns reflect −%d"},
 	"ui.quests_title": {"zh-Hans":"探险委托", "en":"Quest Commissions"},
 	"ui.quests_sub": {"zh-Hans":"每日与每周探险委派", "en":"Daily & weekly commissions"},

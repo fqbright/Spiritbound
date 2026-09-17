@@ -1959,6 +1959,110 @@ func _run() -> void:
 	await process_frame
 	check(_find_label_containing(game.root, "Lv.1"), "hero archetypes section shows the reached mastery level")
 
+	# C2: 轮回 (Rebirth) — this block mutates a large chunk of profile state (unlocked, deck,
+	# collection, upgrades, relics, equipment, runes) to exercise the locked path, the eligible
+	# path, and a real end-to-end reset, so every touched field is saved before and restored
+	# straight after — the same shared-profile discipline this suite's F1/digest entries already
+	# established (unlocked/deck/relics/equipment in particular are depended on by many later
+	# sections in this long-lived suite).
+	var saved_unlocked_rb: int = int(game.profile.unlocked)
+	var saved_position_rb: int = int(game.profile.position)
+	var saved_difficulty_rb: int = int(game.profile.difficulty)
+	var saved_deck_rb: Array = game.profile.deck.duplicate()
+	var saved_collection_rb: Dictionary = game.profile.collection.duplicate(true)
+	var saved_upgrades_rb: Dictionary = game.profile.upgrades.duplicate(true)
+	var saved_relics_rb: Array = game.profile.relics.duplicate()
+	var saved_equip_owned_rb: Array = game.profile.equipment_owned.duplicate()
+	var saved_equip_slots_rb: Dictionary = game.profile.equipment_slots.duplicate(true)
+	var saved_rune_inv_rb: Dictionary = game.profile.rune_inventory.duplicate(true)
+	var saved_card_runes_rb: Dictionary = game.profile.card_runes.duplicate(true)
+	var saved_rebirth_count_rb: int = int(game.profile.get("rebirth_count", 0))
+	var saved_health_rb: int = int(game.profile.health)
+
+	game.profile.unlocked = 10
+	game.profile.difficulty = 0
+	game.profile.rebirth_count = 0
+	game.camp_tab = "character"
+	game.show_camp()
+	await process_frame
+	var rebirth_btn_locked: Button = game.root.find_child("RebirthBtn", true, false) as Button
+	check(rebirth_btn_locked != null, "RebirthBtn renders in the character tab even before eligibility")
+	check(rebirth_btn_locked != null and rebirth_btn_locked.disabled, "RebirthBtn is disabled before the campaign is fully cleared at A5")
+
+	game.profile.unlocked = 250
+	game.profile.difficulty = 5
+	game.show_camp()
+	await process_frame
+	var rebirth_btn: Button = game.root.find_child("RebirthBtn", true, false) as Button
+	check(rebirth_btn != null and not rebirth_btn.disabled, "RebirthBtn becomes enabled once the campaign is fully cleared at Challenge Tier A5")
+
+	rebirth_btn.pressed.emit()
+	await process_frame
+	check(game.overlay.get_node_or_null("RebirthConfirmModal") != null, "pressing RebirthBtn opens RebirthConfirmModal")
+	var cancel_btn: Button = game.root.find_child("RebirthCancelBtn", true, false) as Button
+	check(cancel_btn != null, "RebirthConfirmModal has a cancel button")
+	cancel_btn.pressed.emit()
+	await process_frame
+	check(game.overlay.get_node_or_null("RebirthConfirmModal") == null, "cancel closes the modal")
+	check(int(game.profile.unlocked) == 250, "cancel leaves profile.unlocked untouched")
+	check(int(game.profile.rebirth_count) == 0, "cancel does not perform a rebirth")
+
+	# Mutate deck/collection/relics/equipment/runes away from the starting shape so the reset
+	# assertions below actually prove something changed, not just that these fields already
+	# happened to be at their defaults.
+	game.profile.deck = ["strike", "strike"]
+	game.profile.collection = {"strike": 2}
+	game.profile.upgrades = {"0": true}
+	game.profile.relics = ["cursedTome"]
+	game.profile.equipment_owned = ["emberBlade"]
+	game.profile.equipment_slots = {"weapon": "emberBlade"}
+	game.profile.rune_inventory = {"swift": 1}
+	game.profile.card_runes = {"0": "swift"}
+	var gold_before_rb: int = int(game.profile.gold)
+	var masteries_before_rb: Dictionary = game.profile.hero_masteries.duplicate(true)
+
+	rebirth_btn.pressed.emit()
+	await process_frame
+	var confirm_btn: Button = game.root.find_child("RebirthConfirmBtn", true, false) as Button
+	check(confirm_btn != null, "RebirthConfirmModal has a confirm button")
+	confirm_btn.pressed.emit()
+	await process_frame
+
+	check(int(game.profile.rebirth_count) == 1, "confirming rebirth increments rebirth_count")
+	check(game.overlay.get_node_or_null("RebirthConfirmModal") == null, "confirming rebirth closes the modal")
+	check(int(game.profile.unlocked) == 0, "rebirth resets campaign position back to stage 0")
+	check(int(game.profile.position) == 0, "rebirth resets profile.position")
+	check(game.profile.deck == game.content.raw.startingDeck, "rebirth resets the deck back to the exact starting deck")
+	check(game.profile.upgrades.is_empty(), "rebirth clears card upgrades")
+	check(game.profile.relics.is_empty(), "rebirth clears relics")
+	check(game.profile.equipment_owned.is_empty(), "rebirth clears owned equipment")
+	check(game.profile.equipment_slots.is_empty(), "rebirth clears equipped slots")
+	check(game.profile.rune_inventory.is_empty(), "rebirth clears the rune inventory")
+	check(game.profile.card_runes.is_empty(), "rebirth clears card-socketed runes")
+	check(int(game.profile.gold) == gold_before_rb, "rebirth does not touch currencies")
+	check(game.profile.hero_masteries == masteries_before_rb, "rebirth does not touch hero mastery progress")
+	check(int(game.profile.difficulty) == 5, "rebirth leaves the selected challenge tier untouched so the next cycle doesn't re-climb it")
+
+	var bonus_after_rb: Dictionary = game.content.rebirth_bonuses(1)
+	check(int(bonus_after_rb.get("max_hp", 0)) == SpiritContent.REBIRTH_MAX_HP_PER_CYCLE, "rebirth_bonuses(1) grants exactly one cycle's worth of bonus")
+	check(int(game.content.rebirth_bonuses(0).size()) == 0, "rebirth_bonuses(0) grants nothing before any cycle is completed")
+	var merged_bonuses_rb: Dictionary = game._current_hero_mastery_bonuses()
+	check(int(merged_bonuses_rb.get("max_hp", 0)) >= SpiritContent.REBIRTH_MAX_HP_PER_CYCLE, "the rebirth bonus is merged into the hero_bonuses dict combat.create() receives")
+
+	game.profile.unlocked = saved_unlocked_rb
+	game.profile.position = saved_position_rb
+	game.profile.difficulty = saved_difficulty_rb
+	game.profile.deck = saved_deck_rb
+	game.profile.collection = saved_collection_rb
+	game.profile.upgrades = saved_upgrades_rb
+	game.profile.relics = saved_relics_rb
+	game.profile.equipment_owned = saved_equip_owned_rb
+	game.profile.equipment_slots = saved_equip_slots_rb
+	game.profile.rune_inventory = saved_rune_inv_rb
+	game.profile.card_runes = saved_card_runes_rb
+	game.profile.rebirth_count = saved_rebirth_count_rb
+	game.profile.health = saved_health_rb
+
 	# Daily Trial: force a fresh day so the run starts at stage 0, then drive it through to
 	# completion via the same "force phase to won, then grant rewards" shortcut the pre-existing
 	# replay test above uses, rather than actually playing out 15 full battles.
@@ -2179,9 +2283,13 @@ func _run() -> void:
 	# screen that displays its tip — both buttons rendered in the same color regardless of
 	# which one was actually recommended. A deck this thin on shield cards (2, under the
 	# threshold of 3) with a low average cost (all 1-cost) deterministically recommends
-	# "deck" over the generic "cultivate" fallback.
+	# "deck" over the generic "cultivate" fallback. Uses "ward" (the real starter shield
+	# card) rather than a made-up id — a fictitious "defend" id here used to silently crash
+	# _card_view() with "Invalid access to property or key 'id'" the moment the hand
+	# rendered (content.card() returns {} for an unknown id), invisibly, since nothing here
+	# asserts on the absence of a SCRIPT ERROR.
 	var saved_deck_for_diagnosis: Array = game.profile.deck.duplicate()
-	game.profile.deck = ["strike", "strike", "defend", "defend"]
+	game.profile.deck = ["strike", "strike", "ward", "ward"]
 	game.current_stage = 0
 	game.begin_battle(0)
 	await process_frame
@@ -2204,6 +2312,17 @@ func _run() -> void:
 		check(tune_style is StyleBoxFlat and cult_style is StyleBoxFlat and (tune_style as StyleBoxFlat).bg_color != (cult_style as StyleBoxFlat).bg_color, "the recommended action's button is visually distinguished from the other one, not identically colored")
 		check((tune_style as StyleBoxFlat).bg_color == game.GOLD, "the recommended action (Tune Deck) specifically gets the emphasized gold color")
 	game._leave_battle()
+
+	# Regression check for a real bug found while touching this section: diagnose_battle_defeat()
+	# was reading each effect's "op" key, but every card's effects actually use "operation" (see
+	# combat.gd's _resolve_effects) — so shield_cards silently counted 0 for every deck in the
+	# game, always, for every player, making the "you lack shield cards" tip fire regardless of
+	# the deck's real shield count. A deck with 3 real shield cards (at the "not thin" threshold)
+	# must fall through to the generic tip instead of the low-shield one.
+	game.profile.deck = ["ward", "ward", "ward", "strike"]
+	var diag_with_shields: Dictionary = game.diagnose_battle_defeat()
+	check(str(diag_with_shields.get("action", "")) == "cultivate", "a deck with 3 real shield cards is no longer misdiagnosed as shield-poor (op vs operation key-name regression)")
+
 	game.profile.deck = saved_deck_for_diagnosis
 
 	section("== achievements ==")

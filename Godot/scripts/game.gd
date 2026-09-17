@@ -2148,7 +2148,7 @@ func diagnose_battle_defeat() -> Dictionary:
 		total_cost += int(card.get("cost", 1))
 		var is_shield := false
 		for eff in card.get("effects", []):
-			if str(eff.get("op", "")) == "shield":
+			if str(eff.get("operation", "")) == "shield":
 				is_shield = true
 				break
 		if is_shield:

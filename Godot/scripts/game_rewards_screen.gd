@@ -168,6 +168,9 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	var hero_id: String = str(g.profile.hero_class)
 	var xp: int = int(g.profile.get("hero_masteries", {}).get(hero_id, {}).get("xp", 0))
 	var bonuses: Dictionary = g.content.mastery_bonuses(hero_id, g.content.mastery_level_for_xp(xp)).duplicate()
+	var rebirth: Dictionary = g.content.rebirth_bonuses(int(g.profile.get("rebirth_count", 0)))
+	for key in rebirth:
+		bonuses[key] = int(bonuses.get(key, 0)) + int(rebirth[key])
 	var consumables: Dictionary = g.profile.get("combat_consumables", {})
 	if int(consumables.get("strength", 0)) > 0:
 		bonuses.strength_start = int(bonuses.get("strength_start", 0)) + int(consumables.strength)

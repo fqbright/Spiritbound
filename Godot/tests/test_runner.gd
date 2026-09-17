@@ -457,6 +457,9 @@ func run() -> void:
 	var curse_cards: Array = content.cards.filter(func(c): return c.get("rarity", "") == "Curse")
 	check(invalid_cards == 0 and content.cards.size() == 47 and curse_cards.size() == 2, "all 45 collectible cards have valid costs/effects and 2 curses exist")
 
+	var collect_all_ach: Dictionary = SpiritContent.ACHIEVEMENTS.filter(func(a): return a.id == "collect_all")[0]
+	check(int(collect_all_ach.target) == content.cards.size() - curse_cards.size(), "collect_all achievement target (%d) tracks the live non-Curse card count (%d), not a stale literal" % [int(collect_all_ach.target), content.cards.size() - curse_cards.size()])
+
 	var invalid_encs := 0
 	for enc in content.encounters:
 		if int(enc.health) <= 0 or int(enc.damage) <= 0:
