@@ -240,6 +240,32 @@ func _run() -> void:
 		active_modal.queue_free()
 		await process_frame
 
+	# =========================================================================
+	# PHASE 9: Rebirth (C2) — softlock check after a real campaign-progress reset
+	# =========================================================================
+	section("Phase 9: Rebirth Softlock Check")
+	game.profile.unlocked = 250
+	game.profile.difficulty = 5
+	game.camp_tab = "character"
+	game.show_camp()
+	await process_frame
+	var rebirth_btn: Button = game.root.find_child("RebirthBtn", true, false) as Button
+	check(rebirth_btn != null and not rebirth_btn.disabled, "RebirthBtn is enabled once eligible (full clear + Tier A5)")
+	if rebirth_btn:
+		rebirth_btn.pressed.emit()
+		await process_frame
+		var rebirth_confirm_btn: Button = game.root.find_child("RebirthConfirmBtn", true, false) as Button
+		if rebirth_confirm_btn:
+			rebirth_confirm_btn.pressed.emit()
+			await process_frame
+	check(int(game.profile.rebirth_count) == 1, "rebirth completed (rebirth_count incremented)")
+	check(int(game.profile.unlocked) == 0, "campaign progress reset to stage 0")
+	check(game.profile.deck.size() == 25, "deck reset to the 25-card starting deck")
+	# The actual softlock check: the player must be able to immediately fight and win stage 0
+	# again after a rebirth, not get stuck on a screen or a combat that can't proceed.
+	var post_rebirth_won: bool = await _simulate_battle(game, 0)
+	check(post_rebirth_won, "player can immediately fight and win stage 0 again post-rebirth, with no softlock")
+
 	final_hp = int(game.profile.get("current_hp", 60))
 	var elapsed_sec := (Time.get_ticks_msec() - start_time) / 1000.0
 

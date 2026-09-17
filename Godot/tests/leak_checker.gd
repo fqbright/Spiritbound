@@ -71,6 +71,35 @@ func _run() -> void:
 	check(modal_node_delta <= 5, "Modal open/close leaves no orphaned nodes (delta: %d nodes, allowed <= 5)" % modal_node_delta)
 
 	# -------------------------------------------------------------------------
+	# TEST 1b: RebirthConfirmModal Churn Leak Check (C2, added 2026-09-17 alongside the
+	# feature itself — the only other modal this profiler knew about was the pre-existing
+	# TreasuryInspectorModal above, and AGENTS.md's "every new feature needs tests" rule
+	# extends to this profiler too, not just ui_smoke.gd's functional coverage).
+	# -------------------------------------------------------------------------
+	print("\nTest 1b: RebirthConfirmModal Open/Dismiss Lifecycle (8 cycles)...")
+	game.profile.unlocked = 250
+	game.profile.difficulty = 5
+	game.camp_tab = "character"
+	for i in 8:
+		game.show_camp()
+		await process_frame
+		var rebirth_btn: Button = game.root.find_child("RebirthBtn", true, false) as Button
+		if rebirth_btn and not rebirth_btn.disabled:
+			rebirth_btn.pressed.emit()
+			await process_frame
+		var rebirth_modal: Node = game.overlay.get_node_or_null("RebirthConfirmModal")
+		if rebirth_modal:
+			rebirth_modal.queue_free()
+		await process_frame
+
+	await _settle()
+	var post_rebirth_modal_nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var rebirth_modal_node_delta: int = post_rebirth_modal_nodes - base_nodes
+	check(rebirth_modal_node_delta <= 5, "RebirthConfirmModal open/close leaves no orphaned nodes (delta: %d nodes, allowed <= 5)" % rebirth_modal_node_delta)
+	game.profile.unlocked = 0
+	game.profile.difficulty = 0
+
+	# -------------------------------------------------------------------------
 	# TEST 2: Screen Navigation Round Trips (5 complete cycles)
 	# -------------------------------------------------------------------------
 	print("\nTest 2: Multi-Screen Navigation Lifecycle (5 round trips)...")
