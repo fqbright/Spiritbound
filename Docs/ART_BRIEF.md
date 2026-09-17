@@ -46,14 +46,15 @@ quality bar." Any new asset should match this painted style, not a flat/vector i
    (flame/sparkle/leaf/wave/drop/bolt/rings/cross_blade/eye/crescent/spiral/shield_mark) to
    use as the visual theme.
 
-2. **4th hero portrait missing — "Miasma Witch" (D3, 灵界拓展手记 item).**
-   Fully implemented mechanically (deck, relic, mastery perks) but has no unique art — the
-   game shows a dimmed/desaturated borrowed portrait and an "Art Coming Soon" label
-   (`art_pending: true` in `content.gd`, `ui.hero_art_pending`). The 3×3 character atlas is
-   completely full (3 heroes + enemy pool use all 9 cells), so this needs a **standalone
-   portrait file**, not another atlas cell — matches the painted style of the other 3 hero
-   portraits in the atlas (fox/stone/shadow themed; this one should read as a poison/miasma
-   witch). Same aspect ratio as one atlas cell.
+2. **4th hero portrait — "Miasma Witch" (瘴气巫女 / `miasma_witch`) — 【真人画师专属，非AI生成】**
+   - **Current State**: Uses a borrowed/tinted Stone Sentinel placeholder (or interim asset).
+   - **MANDATORY DIRECTIVE FOR AGENTS**: **Requires a real human artist to paint (需要真人画师出图，不是AI/Agent能生成的)**. Do **NOT** attempt to generate this asset with AI models or prompt generators.
+   - **Reason**: The hero portrait serves as the primary visual pillar for a playable archetype. It requires delicate, human-crafted brushwork, specific Xianxia costume tailoring, and emotional nuance that seamlessly matches the hand-painted 3×3 hero atlas.
+   - **Human Artist Commission Specifications (供后续对接真人画师使用)**:
+     - **Theme/Lore**: Xianxia poison/miasma attrition witch (操控剧毒瘴气的诡异女修士/法师，袖带暗纹、紫青毒雾缭绕、随身配戴碧玉药囊与蚀骨咒符，神态清冷诡异而典雅).
+     - **Format**: Standalone transparent PNG (no atlas cell constraint, 512×512 or higher).
+     - **Framing & Aspect Ratio**: Matching the portrait framing and aspect ratio of Fox Spirit Master and Stone Sentinel.
+     - **Target File Path**: `assets/characters/miasma_witch.png` (loaded automatically by `game.gd`'s standalone hero portrait priority loader).
 
 3. **5 battle backgrounds are stock-feeling JPGs, not the game's painted style.**
    `assets/backgrounds/battlefield-v1.jpg`, `lantern-marsh-v1.jpg`, `rune-ravine-v1.jpg`,
@@ -106,7 +107,8 @@ quality bar." Any new asset should match this painted style, not a flat/vector i
    equipment/runes that already got this treatment.
 2. Battle backgrounds (5-6) — highest visibility (seen in every fight), currently the
    biggest stylistic mismatch with the rest of the game.
-3. Miasma Witch portrait (1) — closes a very visible "Art Coming Soon" label a player will
-   actually see if they pick that hero.
-4. Everything else (map pins, nav icons, intent icons, achievement badges, the 4
+3. Map pins (7) — illustrated pin/waypost designs in painted style.
+4. Everything else (nav icons, intent icons, achievement badges, the 4
    low-contrast chapter roads) is polish, roughly in that order.
+
+*(Note: Miasma Witch portrait is strictly excluded from AI generation and assigned to the Human Artist Commission pipeline).*
