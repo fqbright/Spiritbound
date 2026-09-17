@@ -287,6 +287,45 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — Fresh audit continued: _travel_to() had the same tail-race as _resolve_play()
+Same audit session as the deck-code entry below. Read `game_map_screen.gd` end to end next
+(also untouched all session) and found the identical fire-and-forget coroutine race the
+`_resolve_play()` fix had already documented as a general risk, this time in map travel.
+
+`_travel_to()` is called fire-and-forget (no `await`) from `_on_pin_pressed()` (tapping a stage
+pin), and its hop-to-the-target-stage animation is a fixed 2 seconds (longer across a chapter
+crossing, via `show_chapter_transition()`) with no input lock stopping the player from tapping
+anything else meanwhile. Once that animation finished, the coroutine unconditionally called
+`show_event()`/`begin_battle()` for the tapped stage and wrote `profile.position` — regardless
+of whether the player had already navigated to Camp, Quests, Settings, or a different pin in
+the meantime. A player who tapped a distant pin then immediately tapped Camp would get silently
+yanked out of Camp and into a battle they didn't ask for a moment later, with `profile.position`
+also silently advancing to a stage they never actually walked to.
+
+Fixed with a new general-purpose primitive rather than a second bespoke counter:
+`g.screen_generation`, bumped once inside `_clear()` itself (the one shared choke point every
+`show_X()` screen transition already calls). `_travel_to()` captures it right before its
+risky await points and checks it again after each one, bailing out before `show_event()`/
+`begin_battle()`/writing `profile.position` if the player navigated elsewhere in the meantime.
+One real subtlety hit while writing this (see AGENTS.md's updated "fire-and-forget coroutine"
+entry for the full explanation): the chapter-crossing branch calls `show_chapter_transition()`,
+which calls `g._clear()` as its own first line — capturing `screen_generation` *before* that
+call and checking it after would make the check fail even in the ordinary, non-race case, since
+the function's own clear already bumps the counter. That branch is deliberately left unguarded
+by this mechanism; it already has its own correct protection (an existing `is_instance_valid()`
+check on the transition's own nodes, added for an earlier freed-node crash), which doesn't have
+the same problem because it lives inside the function whose own `_clear()` call is the one that
+matters.
+
+Added a `ui_smoke.gd` regression test: start a 2-hop same-chapter travel, immediately navigate
+to Camp before the hop tween finishes (using `Engine.time_scale = 20.0` to let the interrupted
+tween's remaining real-world duration elapse in a fraction of a second, the same technique the
+existing chapter-transition-skip test already uses), then confirm `profile.position` didn't
+silently advance, no `PlayerSprite` (a battle-only marker) appeared, and Camp is still the
+screen actually showing. Verified with revert-and-reconfirm: reverting just the final guard
+reproduced all 3 new failures immediately, nothing else, before restoring it. Full
+`./run_tests.sh --all` (6 suites, chaos monkey included) green afterward.
+
 ### 2026-09-17 — Fresh audit: deck-code import could bypass the 25-card deck invariant
 With every roadmap item now done or explicitly blocked (B4 needs a Mac + a human decision
 already made once; E3/E4 need a backend), asked to do another deep-dive audit like the ones

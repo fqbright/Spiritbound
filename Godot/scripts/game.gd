@@ -34,6 +34,17 @@ var resolving := false
 # current — silently replacing the map (or wherever _leave_battle() navigated to) with the old
 # battle's UI. See _resolve_play()'s own guard for where this is checked.
 var battle_session := 0
+# Bumped by _clear() itself — the one shared choke point every screen transition goes through
+# (show_map/show_camp/show_battle/show_shop/... all call it). A general-purpose cancellation
+# token for any fire-and-forget coroutine that survives past a point where the player could
+# plausibly navigate elsewhere before it finishes — see _travel_to()'s own guard (tapping a
+# distant stage pin starts a multi-second hop animation with no input lock; tapping Camp/
+# Quests/another pin mid-animation used to leave that stale coroutine to unconditionally call
+# show_event()/begin_battle() on whatever screen the player had already moved to once its tween
+# finished) for the shape of bug this exists to prevent. battle_session above solves the same
+# problem for _resolve_play() specifically (and also resets g.resolving, which this doesn't) —
+# this is the general version for everything else.
+var screen_generation := 0
 var loadout_tab := "equipment"
 var pending_rewards: Dictionary = {}
 var selected_card := -1
@@ -758,6 +769,7 @@ func _safe_bottom() -> int:
 	return 22
 
 func _clear() -> void:
+	screen_generation += 1
 	for child in get_children():
 		if child != map_music and child != battle_music: child.queue_free()
 	_back_action = Callable()

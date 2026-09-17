@@ -191,7 +191,21 @@ Every one of these produced a wrong screen with no error in the log. They are th
   trusting the coroutine to get there. Any new fire-and-forget coroutine that survives past a
   point where the player could plausibly navigate away needs the same kind of check before it
   touches shared screen state, not just a `is_instance_valid()` guard on the nodes it animates
-  (that prevents a crash; it does not prevent the tail from acting on stale state).
+  (that prevents a crash; it does not prevent the tail from acting on stale state). The exact
+  same shape turned up independently in `_travel_to()` (`game_map_screen.gd`): tapping a distant
+  stage pin starts a fixed 2-second (or, across a chapter crossing, longer) hop animation with
+  no input lock, so tapping Camp/Quests/another pin mid-hop used to leave the interrupted
+  coroutine to call `show_event()`/`begin_battle()` on whatever screen the player had already
+  moved to. Rather than a second bespoke counter, this one uses `g.screen_generation` — bumped
+  by `_clear()` itself, the one shared choke point every screen transition already goes through
+  — as a general-purpose version of the same cancellation-token pattern `battle_session` uses
+  for battle specifically. One trap in reusing it: a branch that itself calls a function
+  starting with its own `_clear()` (e.g. `show_chapter_transition()`) must not capture the
+  generation *before* that call — its own clear already bumps the counter, so a value captured
+  first is stale before the real wait even begins. `show_chapter_transition()`'s branch is left
+  unguarded by `screen_generation` for exactly this reason; it already has its own equivalent
+  protection (`is_instance_valid()` checks on its own transition nodes), which doesn't have this
+  problem because it's inside the same function as the `_clear()` call, not outside it.
 
 ## Game rules worth knowing before touching balance
 

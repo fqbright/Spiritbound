@@ -296,6 +296,38 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	# Regression check for a real race found this session: _travel_to() is invoked fire-and-
+	# forget (no await) from _on_pin_pressed(), with no input lock during its up-to-2-second hop
+	# animation — tapping Camp/Quests/another pin mid-travel used to leave the interrupted
+	# coroutine to unconditionally call show_event()/begin_battle() on whatever screen the
+	# player had already moved to once its tween finished, silently yanking them into a battle
+	# they didn't ask for at that moment. Fixed with g.screen_generation (bumped by g._clear(),
+	# the one shared choke point every screen transition goes through) — same shape as
+	# _resolve_play()'s battle_session fix, see AGENTS.md's "fire-and-forget coroutine" trap.
+	var saved_unlocked_race: int = int(game.profile.unlocked)
+	var saved_position_race: int = int(game.profile.position)
+	game.profile.unlocked = 2
+	game.profile.position = 0
+	game.current_map_chapter = 0
+	game.traveler.position = game._map_point(0) - Vector2(0, 26)
+	game._travel_to(2)
+	await process_frame
+	game.camp_tab = "character"
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("BeginnerRecBadge", true, false) != null, "navigating to Camp mid-travel actually shows Camp")
+	Engine.time_scale = 20.0
+	await create_timer(2.2).timeout
+	Engine.time_scale = 1.0
+	await process_frame
+	check(int(game.profile.position) == 0, "an abandoned mid-flight travel does not silently advance profile.position once its tween finishes")
+	check(game.root.find_child("PlayerSprite", true, false) == null, "an abandoned mid-flight travel does not start a battle over whatever screen the player navigated to")
+	check(game.root.find_child("BeginnerRecBadge", true, false) != null, "Camp is still the screen showing after the abandoned travel's tween finishes")
+	game.profile.unlocked = saved_unlocked_race
+	game.profile.position = saved_position_race
+	game.show_map()
+	await process_frame
+
 	section("== next-stage travel snaps the map back to the player's real chapter first ==")
 	var saved_pos_travel_sync: int = int(game.profile.position)
 	var saved_unlocked_travel_sync: int = int(game.profile.unlocked)

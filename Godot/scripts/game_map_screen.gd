@@ -1177,7 +1177,18 @@ func _travel_to(index: int) -> void:
 	if g.current_map_chapter != start_index / 5:
 		g.current_map_chapter = start_index / 5
 		show_map()
+		var pre_wait_generation: int = g.screen_generation
 		await g.get_tree().create_timer(g._battle_delay(0.3)).timeout
+		if g.screen_generation != pre_wait_generation: return
+	# Captured here — after the resync snap-back above, whose own show_map() call is part of
+	# this same travel, not an external navigation — so a mismatch from any point on below means
+	# the player actually navigated elsewhere (tapped Camp/Quests/Settings/another pin) while
+	# this coroutine was suspended, with no input lock preventing it during a 2-second (or,
+	# across a chapter crossing, much longer) hop animation. Same shape as _resolve_play()'s
+	# battle_session fix (see AGENTS.md's "fire-and-forget coroutine" trap) — this one guards
+	# show_event()/begin_battle() from firing on whatever screen the player has moved to by the
+	# time this resumes, since neither of those calls otherwise know the travel was abandoned.
+	var generation: int = g.screen_generation
 	if index == start_index:
 		var kind := g.content.node_kind(index)
 		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
@@ -1199,6 +1210,14 @@ func _travel_to(index: int) -> void:
 		# to jump straight to show_map() + begin_battle with no animation at all; now the walk
 		# only plays once the player actually asks to go there (tapping the next-stage dock
 		# button or the new chapter's stage-0 pin), not automatically the instant the boss dies.
+		# No screen_generation guard needed here (unlike the two branches below): show_chapter_
+		# transition() already calls g._clear() itself as its very first line, which would make
+		# a captured-before-the-call generation value stale even in the ordinary case — and it
+		# already has its own, correct protection against exactly this race (is_instance_valid()
+		# checks on transition_layer/pin_container right after its own animation await, added
+		# for the freed-node crash this same gap used to cause — see that function's comment).
+		# If those nodes were freed by an external _clear() mid-animation, it returns before
+		# ever reaching _finish_chapter_transition(), so enter_next below never fires stale.
 		var enter_next := func():
 			var kind := g.content.node_kind(index)
 			if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
@@ -1228,7 +1247,9 @@ func _travel_to(index: int) -> void:
 		if g.map_scroll:
 			tween.parallel().tween_method(func(y): if g.map_scroll: g.map_scroll.scroll_vertical = int(y), scroll_from, scroll_to, hop_duration)
 		scroll_from = scroll_to
-	await tween.finished; g.profile.position = index; SpiritSave.write(g.profile)
+	await tween.finished
+	if g.screen_generation != generation: return
+	g.profile.position = index; SpiritSave.write(g.profile)
 	var kind := g.content.node_kind(index)
 	if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 		g.show_event(index, kind)
