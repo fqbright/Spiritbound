@@ -1262,6 +1262,17 @@ func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Calla
 	await seq.finished
 	if bob_tween.is_valid(): bob_tween.kill()
 
+	# show_chapter_transition() is deliberately fire-and-forget (its one caller,
+	# _finish_reward(), doesn't await it — the cutscene is meant to play out in the
+	# background, not block anything), so by the time this ~2.2s tween sequence actually
+	# finishes, something completely unrelated may have already rebuilt the screen (a
+	# different show_X() call elsewhere runs g._clear(), which frees transition_layer and
+	# everything under it, including pin_container). is_finished[0] alone doesn't catch this
+	# — it's only set by this function's own finish_cb, never by an external _clear() — so
+	# this coroutine must also check its own nodes are still alive before touching them.
+	if not is_instance_valid(transition_layer) or not is_instance_valid(pin_container):
+		return
+
 	if not is_finished[0]:
 		g._haptic("heavy")
 		var pop := pin_container.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

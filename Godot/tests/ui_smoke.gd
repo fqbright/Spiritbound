@@ -281,6 +281,29 @@ func _run() -> void:
 		await process_frame
 		check(game.current_map_chapter == 1, "transition sets current_map_chapter to next chapter (1)")
 		check(int(game.profile.position) == 5, "transition sets profile.position to first stage of new chapter (5)")
+
+	# show_chapter_transition() is fire-and-forget (_finish_reward(), its one caller, never
+	# awaits it) — skipping immediately (above) frees transition_layer/pin_container via
+	# show_map()'s _clear() long before the ~2.2s walk tween the coroutine is still suspended
+	# on actually finishes. Engine.time_scale sped way up lets that background tween genuinely
+	# finish here instead of skipping the wait, without burning ~2.6 real seconds every run.
+	# NOTE: the bug this targets — a SCRIPT ERROR ("Cannot call method 'create_tween' on a
+	# previously freed instance") logged when the coroutine resumes and touches its own
+	# already-freed nodes — does not, by itself, fail any check() here or corrupt state the
+	# game can't recover from; it was invisible until a screen elsewhere happened to break
+	# because of it. Confirmed by temporarily reverting the is_instance_valid() guard in
+	# show_chapter_transition() and re-running this suite: the error reappears in the log, but
+	# every check() below still passes regardless. The real verification for this class of fix
+	# is "no SCRIPT ERROR line appears in a full run's output", not a specific assertion — this
+	# block is the closest a check() gets, confirming the game is at least left in a working
+	# state rather than a silent hang or a cascading failure.
+	Engine.time_scale = 20.0
+	await create_timer(2.6).timeout
+	Engine.time_scale = 1.0
+	game.show_map()
+	await process_frame
+	check(game.root.find_child("SettingsButton", true, false) != null, "the map still renders normally well after a skipped chapter transition's background tween would have finished")
+
 	game.profile.unlocked = saved_unlocked_trans
 	game.profile.position = saved_position_trans
 	game.current_map_chapter = saved_ch_trans
