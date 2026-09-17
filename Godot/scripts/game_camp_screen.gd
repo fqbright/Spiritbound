@@ -648,24 +648,40 @@ func _difficulty_tier_section() -> Control:
 	if not unlocked:
 		section.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch5"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
 		return section
-	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
-	for value in 6:
-		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(0,40))
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(button)
+	# C2: each Rebirth cycle raises the max selectable tier by one past the original A0-A5
+	# ceiling (see content.difficulty_modifier() for why tier now actually matters — it used
+	# to be purely cosmetic). HFlowContainer instead of HBoxContainer so an arbitrary number
+	# of tiers (a player who rebirths many times) wraps onto more rows instead of squeezing
+	# ever-thinner on a fixed 390px-wide screen.
+	var max_tier: int = 5 + int(g.profile.get("rebirth_count", 0))
+	var row := HFlowContainer.new()
+	row.name = "DifficultyTierRow"
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	row.alignment = FlowContainer.ALIGNMENT_CENTER
+	for value in max_tier + 1:
+		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(46,40))
+		row.add_child(button)
 	section.add_child(row)
+	if max_tier > 5:
+		section.add_child(g._label(g.tf("ui.camp_tier_rebirth_unlocked", max_tier), 10, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER, true))
 	section.add_child(g._label(g.t("ui.camp_desc"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 	return section
 
 # C2: 轮回 (Rebirth) — eligibility is deliberately just these two already-tracked signals
-# (full 250-stage clear + challenge tier currently at A5) rather than also gating on hero
-# mastery level: mastery is per-hero, so gating on it would arbitrarily punish a player who
-# tried multiple archetypes. profile.difficulty is a freely-switchable "what am I fighting at
-# right now" setting rather than a per-tier clear ladder, so this reads as "cleared the whole
-# campaign, and currently set to the hardest tier" rather than a literal historical proof of
-# having beaten A5 specifically — the closest verifiable signal this save shape already has.
+# (full 250-stage clear + challenge tier currently at the max tier this many rebirths have
+# unlocked) rather than also gating on hero mastery level: mastery is per-hero, so gating on
+# it would arbitrarily punish a player who tried multiple archetypes. profile.difficulty is a
+# freely-switchable "what am I fighting at right now" setting rather than a per-tier clear
+# ladder, so this reads as "cleared the whole campaign, and currently set to the hardest tier
+# rebirths have unlocked so far" rather than a literal historical proof of having beaten every
+# stage specifically at that tier — the closest verifiable signal this save shape already has.
+# The required tier itself escalates with rebirth_count (content.difficulty_modifier() is what
+# makes that requirement mean something now, rather than a free re-tap of the same button).
 func _rebirth_section() -> Control:
-	var eligible: bool = int(g.profile.unlocked) >= 250 and int(g.profile.difficulty) >= 5
 	var count: int = int(g.profile.get("rebirth_count", 0))
+	var required_tier: int = 5 + count
+	var eligible: bool = int(g.profile.unlocked) >= 250 and int(g.profile.difficulty) >= required_tier
 	var section := VBoxContainer.new()
 	section.name = "RebirthSection"
 	section.add_theme_constant_override("separation", 8)
@@ -677,7 +693,7 @@ func _rebirth_section() -> Control:
 		section.add_child(g._label(g.tf("ui.rebirth_bonus_fmt", [int(current.get("max_hp", 0)), int(current.get("shield_start", 0))]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	if not eligible:
-		section.add_child(g._label("🔒 " + g.t("ui.rebirth_locked_desc"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		section.add_child(g._label("🔒 " + g.tf("ui.rebirth_locked_desc", required_tier), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
 		var locked_btn := g._button("🔒 " + g.t("ui.locked"), Callable(), Color("2d2218"), Vector2(180, 40))
 		locked_btn.name = "RebirthBtn"
 		locked_btn.disabled = true

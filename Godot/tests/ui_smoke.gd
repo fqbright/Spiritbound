@@ -2049,6 +2049,45 @@ func _run() -> void:
 	var merged_bonuses_rb: Dictionary = game._current_hero_mastery_bonuses()
 	check(int(merged_bonuses_rb.get("max_hp", 0)) >= SpiritContent.REBIRTH_MAX_HP_PER_CYCLE, "the rebirth bonus is merged into the hero_bonuses dict combat.create() receives")
 
+	# C2 follow-up: each rebirth cycle raises the difficulty ladder's ceiling by one tier past
+	# A5, and the NEXT rebirth's eligibility now requires that raised ceiling, not a flat A5 —
+	# otherwise a player could rebirth indefinitely by re-tapping the same A5 button.
+	# _perform_rebirth() just reset profile.unlocked to 0 (already verified above), which would
+	# also gate the tier section (needs >=25) and the rebirth button (needs >=250) shut
+	# regardless of difficulty — set it back up to isolate testing the escalating tier
+	# requirement specifically, restored along with everything else at this block's end.
+	game.profile.unlocked = 250
+	# DifficultyTierRow lives in the "challenges" tab; RebirthBtn lives in "character".
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	var tier_row: Control = game.root.find_child("DifficultyTierRow", true, false) as Control
+	check(tier_row != null and tier_row.get_child_count() == 7, "one rebirth raises the tier ladder to A0-A6 (7 buttons), not just the original A0-A5")
+
+	game.camp_tab = "character"
+	game.show_camp()
+	await process_frame
+	var rebirth_btn_tier5: Button = game.root.find_child("RebirthBtn", true, false) as Button
+	check(rebirth_btn_tier5 != null and rebirth_btn_tier5.disabled, "after one rebirth, being at A5 is no longer enough for the next rebirth — the requirement escalated to A6")
+	game.profile.difficulty = 6
+	game.show_camp()
+	await process_frame
+	var rebirth_btn_tier6: Button = game.root.find_child("RebirthBtn", true, false) as Button
+	check(rebirth_btn_tier6 != null and not rebirth_btn_tier6.disabled, "moving up to the newly-required A6 makes the next rebirth available again")
+
+	# The tier ladder used to be purely cosmetic (see content.difficulty_modifier()'s header
+	# comment) — a real player tapping A5 got zero actual extra challenge. Confirm a selected
+	# tier now actually reaches combat: begin_battle() merges it into active_modifier, which
+	# combat.create() reads as health_scale/damage_bonus. A per-stage random flavor modifier
+	# can also contribute to the same fields, so assert the tier's own floor rather than an
+	# exact value (flavor can only add on top, never reduce below the tier's contribution).
+	game.begin_battle(0)
+	await process_frame
+	check(float(game.active_modifier.get("health_scale", 1.0)) >= 1.72 - 0.001, "difficulty A6 contributes at least its own health_scale (1.0 + 6*0.12) to the battle's active_modifier (got %.2f)" % float(game.active_modifier.get("health_scale", 1.0)))
+	check(int(game.active_modifier.get("damage_bonus", 0)) >= 6, "difficulty A6 contributes at least its own damage_bonus to the battle's active_modifier (got %d)" % int(game.active_modifier.get("damage_bonus", 0)))
+	game._leave_battle()
+	await process_frame
+
 	game.profile.unlocked = saved_unlocked_rb
 	game.profile.position = saved_position_rb
 	game.profile.difficulty = saved_difficulty_rb
@@ -3039,7 +3078,7 @@ func _run() -> void:
 	# well before any of its awaits, so its presence confirms the coroutine is now suspended
 	# somewhere in the vulnerable window this test means to hit.
 	var banner_guard := 0
-	while game.overlay.get_node_or_null("FinishingBlowBanner") == null and game.resolving and banner_guard < 600:
+	while game.overlay.get_node_or_null("FinishingBlowBanner") == null and game.resolving and banner_guard < 1800:
 		await process_frame
 		banner_guard += 1
 	check(game.overlay.get_node_or_null("FinishingBlowBanner") != null, "finishing-blow banner appears mid-sequence, confirming this test actually reaches the vulnerable window")

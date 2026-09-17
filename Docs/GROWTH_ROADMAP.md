@@ -166,10 +166,17 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   combat bonus (`content.rebirth_bonuses()`: `+3 max_hp`/`+1 shield_start` per cycle, stacking)
   through the exact same `hero_bonuses` hook hero mastery perks already use in
   `combat.create()` — no new engine surface needed for the reward itself, only the reset flow.
-  No new A6+ difficulty tier and no cosmetic card back — of the roadmap's three suggested
-  reward shapes, the stacking combat bonus was the only one buildable without either extending
-  the difficulty ladder's UI/scaling logic (a bigger, separate commitment) or new art no agent
-  here can produce.
+  **Deepened 2026-09-17** (per explicit user direction, alongside the difficulty-curve
+  revalidation): real A6+ tiers now exist. This surfaced a genuine pre-existing bug —
+  `profile.difficulty` had **zero effect on actual combat** despite `ui.camp_desc`'s own text
+  claiming otherwise, only ever shifting which boss-equipment/elite-rune drops rotate to.
+  Fixed via `content.difficulty_modifier(tier)` (health_scale/damage_bonus/reward_scale,
+  merged with the existing per-stage flavor modifier in `_apply_difficulty()`), with tier 0
+  kept a deliberate no-op so the just-revalidated base curve can't retroactively get harder.
+  Each rebirth now raises the max selectable tier by one past A5 (`5 + rebirth_count`), and
+  the *next* rebirth's own eligibility escalates to match (`difficulty >= 5 + rebirth_count`,
+  not a flat A5) — otherwise a player could rebirth indefinitely off one button. Still no
+  cosmetic card back (needs art no agent here can produce).
   *Built on:* `_current_hero_mastery_bonuses()` (`game_rewards_screen.gd`) as the single choke
   point all 7 `combat.create()` call sites already share; `_modal_dialog()` for the confirm
   prompt. 352/0 rules, UI smoke +24 checks, both suites 0 failures.
@@ -285,6 +292,41 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-17 — C2 deepened with real A6+ tiers; found profile.difficulty did nothing
+Same user direction as the curve revalidation below ("调整曲线跟C2都做了"): deepen C2 past its
+first pass, which had shipped without a new difficulty tier since building one meant first
+understanding how `profile.difficulty` (the A0-A5 selector in Camp) actually worked. Turned
+out it didn't, in the one sense that mattered: `ui.camp_desc` has always claimed "higher tiers
+increase enemy HP & damage," but grepping every `profile.difficulty` read site found only
+reward-rotation offsets (`_grant_stage_rewards()`'s boss-equipment/elite-rune picks) — nothing
+ever fed it into `combat.create()`'s modifier. Selecting A5 has always been purely cosmetic for
+actual combat difficulty, since the feature shipped.
+Fixed via `content.difficulty_modifier(tier)` — `health_scale`/`damage_bonus`/`reward_scale`
+scaling by tier, tier 0 a hard no-op (the difficulty-curve revalidation below specifically
+validated the base curve at zero extra scaling; this must never retroactively invalidate that)
+— merged with the existing per-stage random flavor modifier in a new `_apply_difficulty()`
+(`game_battle_screen.gd`), rather than one overwriting the other. Extended the ladder past A5:
+each Rebirth cycle raises the max selectable tier by one (`5 + rebirth_count`), and updated
+Rebirth's own eligibility to match (`difficulty >= 5 + rebirth_count`, escalating each cycle —
+a flat "A5 forever" requirement would let one rebirth repeat indefinitely off the same button
+now that tiers actually matter). `_difficulty_tier_section()` switched from `HBoxContainer` to
+`HFlowContainer` so an unbounded number of unlocked tiers wraps onto more rows instead of
+squeezing thinner forever on a 390px screen.
+**A real bug found and fixed while testing this**: giving the tier modifier its own
+`health_scale`/`damage_bonus` made `active_modifier` non-empty even when the random per-stage
+flavor modifier rolled empty (52% of the time) — but `_build_player_stage()`'s modifier badge
+reads `name`/`name_en`/`detail`/`detail_en` *unconditionally* whenever `active_modifier` isn't
+empty, the exact same invariant `content.daily_trial_modifier()`'s own comment already
+documents crashing on once before. Every difficulty-tier battle without a flavor modifier
+would have crashed that badge outright. Fixed by giving `difficulty_modifier()` its own
+bilingual name/detail (shown in-battle, so a selected tier's effect is now actually visible to
+the player too, not just numerically real) and having `_apply_difficulty()` combine both
+modifiers' display text when both are present rather than dropping one.
+Verified: `test_runner.gd` +2 checks (`difficulty_modifier(0)` is empty, `difficulty_modifier(5)`
+matches the documented formula), `ui_smoke.gd` +5 checks (tier ladder grows with rebirth_count,
+the escalating eligibility gate, the modifier's real combat effect), full `./run_tests.sh --all`
+green throughout (356 total rules checks).
 
 ### 2026-09-17 — 250-stage difficulty curve revalidated, real chapter-19 wall found and fixed
 Per explicit user direction ("调整曲线跟C2都做了" — do both the curve revalidation and deepen

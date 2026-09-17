@@ -20,6 +20,35 @@ func _modifier(seed: int, stage: int) -> Dictionary:
 	var value: int = absi(seed ^ ((stage + 1) * 2654435761))
 	return {} if value % 100 < 48 else options[(value / 100) % options.size()]
 
+# Composes the per-stage random flavor modifier above with content.difficulty_modifier()'s
+# player-selected tier scaling — both can independently carry health_scale/damage_bonus/
+# reward_scale, so this multiplies (health_scale, reward_scale) and adds (damage_bonus)
+# rather than one silently overwriting the other. Also combines display text (name/name_en/
+# detail/detail_en) rather than dropping it: _build_player_stage()'s modifier badge reads
+# those four fields unconditionally whenever active_modifier isn't empty — the exact same
+# invariant content.daily_trial_modifier()'s own comment documents crashing on once already
+# (an early version returned only raw combat.gd keys with no display text). A tier-only
+# modifier (the common case — the flavor modifier above is empty 52% of the time) would hit
+# that same crash if it came back non-empty with no name/detail, so difficulty_modifier()
+# always carries its own.
+func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
+	if tier_mod.is_empty(): return base
+	var merged: Dictionary = base.duplicate()
+	merged["health_scale"] = float(base.get("health_scale", 1.0)) * float(tier_mod.get("health_scale", 1.0))
+	merged["damage_bonus"] = int(base.get("damage_bonus", 0)) + int(tier_mod.get("damage_bonus", 0))
+	merged["reward_scale"] = float(base.get("reward_scale", 1.0)) * float(tier_mod.get("reward_scale", 1.0))
+	if base.has("name"):
+		merged["name"] = "%s · %s" % [str(base.name), str(tier_mod.name)]
+		merged["name_en"] = "%s · %s" % [str(base.name_en), str(tier_mod.name_en)]
+		merged["detail"] = "%s；%s" % [str(base.detail), str(tier_mod.detail)]
+		merged["detail_en"] = "%s; %s" % [str(base.detail_en), str(tier_mod.detail_en)]
+	else:
+		merged["name"] = tier_mod.name
+		merged["name_en"] = tier_mod.name_en
+		merged["detail"] = tier_mod.detail
+		merged["detail_en"] = tier_mod.detail_en
+	return merged
+
 func begin_battle(index: int) -> void:
 	# Keep the map's browsed chapter in sync with whatever stage is actually being fought, so
 	# a map shown before this call (the header hides during battle, but the state persists)
@@ -28,7 +57,7 @@ func begin_battle(index: int) -> void:
 	g.current_map_chapter = index / 5
 	g.current_stage = index
 	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
-	g.active_modifier = _modifier(seed, index)
+	g.active_modifier = _apply_difficulty(_modifier(seed, index), g.content.difficulty_modifier(int(g.profile.difficulty)))
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var battle_deck: Array = g.profile.deck

@@ -976,6 +976,34 @@ func _chapter_factor(chapter: int) -> float:
 	var base_c: float = _chapter_factor(BAND_3_END)
 	return base_c * pow(1.062, float(chapter - BAND_3_END))
 
+# C2 follow-up (2026-09-17): profile.difficulty (the A0-A5+ ladder in Camp) previously had
+# zero effect on actual combat, despite ui.camp_desc's own "更高挑战提高敌人生命与伤害"
+# ("higher tiers increase enemy HP & damage") claiming otherwise — it only ever shifted which
+# boss-equipment/elite-rune drops rotate to (_grant_stage_rewards()), a reward-variety knob,
+# not a difficulty one. Wired here for real. Extended past the old A5 ceiling to support C2's
+# Rebirth (轮回): each rebirth cycle raises the max selectable tier by one (see
+# _rebirth_section()'s "5 + rebirth_count" eligibility, game_camp_screen.gd), so the escalating
+# tier ladder is now an actual escalating challenge ladder, not a cosmetic one, and Rebirth has
+# somewhere real to send a player who has run out of harder content otherwise.
+# Tier 0 (A0) is deliberately a no-op: tests/balance_probe.gd's revalidation (see
+# Docs/ARCHITECTURE.md) validated the base curve at zero extra scaling, and every existing
+# save already defaults to difficulty 0 — this must never retroactively make the validated
+# baseline harder.
+func difficulty_modifier(tier: int) -> Dictionary:
+	if tier <= 0: return {}
+	var hp_pct: int = int(round(float(tier) * 12.0))
+	var gold_pct: int = int(round(float(tier) * 10.0))
+	# Bilingual name/detail built directly into the dict rather than routed through UI_TEXT,
+	# matching game_battle_screen.gd's own _modifier() flavor-modifier pool and
+	# daily_trial_modifier()'s tag-synthesized text — both are procedurally generated content,
+	# not fixed static labels, so they carry both languages inline for the caller to pick from.
+	return {
+		"health_scale": 1.0 + float(tier) * 0.12, "damage_bonus": tier, "reward_scale": 1.0 + float(tier) * 0.1,
+		"name": "挑战等级 A%d" % tier, "name_en": "Challenge Tier A%d" % tier,
+		"detail": "敌人生命 +%d%%，伤害 +%d，金币 +%d%%" % [hp_pct, tier, gold_pct],
+		"detail_en": "Enemy HP +%d%%, damage +%d, gold +%d%%" % [hp_pct, tier, gold_pct],
+	}
+
 func _chapter_mechanics(chapter: int, is_great_boss: bool) -> Dictionary:
 	if chapter <= 2: return {}
 	if is_great_boss:
@@ -1117,8 +1145,9 @@ const UI_TEXT = {
 	"ui.camp_tier": {"zh-Hans":"挑战等级 A%d", "en":"Challenge Tier A%d"},
 	"ui.camp_relics": {"zh-Hans":"已获得遗物 %d/5", "en":"Relics collected %d/5"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
+	"ui.camp_tier_rebirth_unlocked": {"zh-Hans":"轮回已解锁至 A%d", "en":"Rebirth has unlocked up to A%d"},
 	"ui.rebirth_title": {"zh-Hans":"轮回", "en":"Rebirth"},
-	"ui.rebirth_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A5后解锁", "en":"Clear all 250 stages with Challenge Tier set to A5 to unlock"},
+	"ui.rebirth_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A%d后解锁", "en":"Clear all 250 stages with Challenge Tier set to A%d to unlock"},
 	"ui.rebirth_count_fmt": {"zh-Hans":"已轮回 %d 次", "en":"Rebirths: %d"},
 	"ui.rebirth_bonus_fmt": {"zh-Hans":"当前永久加成：+%d 最大生命，+%d 初始护盾", "en":"Current permanent bonus: +%d Max HP, +%d Starting Shield"},
 	"ui.rebirth_next_bonus_fmt": {"zh-Hans":"下次轮回后：+%d 最大生命，+%d 初始护盾", "en":"After next rebirth: +%d Max HP, +%d Starting Shield"},

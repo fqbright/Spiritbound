@@ -487,6 +487,14 @@ func run() -> void:
 	check(content._chapter_factor(20) > 3.0 and content._chapter_factor(20) < 3.7, "chapter 20's cumulative difficulty factor (%.2f) stays in the revalidated Band 3 range — the old 0.22/chapter growth put it at 4.16" % content._chapter_factor(20))
 	check(content._chapter_adds(19, 3, false) == 1 and content._chapter_adds(21, 3, false) == 2, "an elite's second add starts at chapter 21 (Band 4), not chapter 15 (mid-Band-3) where it used to stack with Band 3's own steep scaling")
 
+	# C2 follow-up: profile.difficulty (A0-A5+) used to have zero effect on actual combat
+	# stats despite its own UI text claiming otherwise — see content.difficulty_modifier()'s
+	# header comment. Tier 0 must stay a true no-op (the balance probe above validated the
+	# base curve at zero extra scaling, and every existing save defaults to difficulty 0).
+	check(content.difficulty_modifier(0).is_empty(), "difficulty tier 0 (A0) applies no combat modifier — the balance-probe-validated baseline must not retroactively get harder")
+	var tier5_mod: Dictionary = content.difficulty_modifier(5)
+	check(is_equal_approx(float(tier5_mod.health_scale), 1.6) and int(tier5_mod.damage_bonus) == 5 and is_equal_approx(float(tier5_mod.reward_scale), 1.5), "difficulty tier 5 (A5) scales health/damage/reward by the documented amount (got health_scale=%.2f, damage_bonus=%d, reward_scale=%.2f)" % [float(tier5_mod.health_scale), int(tier5_mod.damage_bonus), float(tier5_mod.reward_scale)])
+
 	var corrupt_save := SpiritSave.defaults(content)
 	corrupt_save.deck = ["strike", "strike"]
 	var temp_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
