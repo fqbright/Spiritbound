@@ -287,6 +287,39 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — Fresh audit: deck-code import could bypass the 25-card deck invariant
+With every roadmap item now done or explicitly blocked (B4 needs a Mac + a human decision
+already made once; E3/E4 need a backend), asked to do another deep-dive audit like the ones
+that found the Draft Arena and `_resolve_play()` bugs. Also fixed 4 hardcoded Chinese-only
+Draft Arena labels found while double-checking that feature's own code once more (`ui.
+draft_card_cost_fmt`/`draft_deck_progress_fmt`/`draft_deck_label`/`draft_next_opponent_fmt`
+now carry both languages; 4 new `ui_smoke.gd` checks confirm the English text renders).
+
+Read `game_shop_deck_screen.gd` end to end (untouched all session) looking for the same bug
+shapes already found elsewhere. `show_deck()`'s own manual editing enforces exactly 25 cards
+two different ways — `_deck_change()` refuses to add past 25, and `_confirm_deck()` refuses to
+save unless `deck.size() == 25` exactly — but `_show_import_deck_dialog()`'s deck-code import
+only ever checked `imported_cards.size() < 15`, no upper bound and not an exact match. A deck
+code is unsigned base64-encoded JSON (`SPB1:<base64>`) with no signature — trivial to hand-edit
+— and import writes `profile.deck` directly, never going through `_confirm_deck()`'s gate at
+all. A hand-edited or malformed shared code could silently install a 15-24 or 26+ card deck,
+breaking an invariant nearly every other deck-affecting system in this codebase assumes
+(`_smart_add`'s replace-when-full logic, the whole balance curve this session's
+`balance_probe.gd` work validated against, etc.) with no error shown to the player who imported
+it. Fixed by changing the check to `!= 25`, matching `_confirm_deck()` exactly.
+
+The existing `ui_smoke.gd` deck-code coverage only ever exercised the happy path (export your
+own 25-card deck, reimport it, confirm it succeeds) — never the rejection path at all. Added
+two new checks importing a 20-card and a 30-card code (both built from a card padded into
+`profile.collection` so the ownership check — which was already correct — doesn't also fire)
+and confirming both are rejected without touching `profile.deck`. Verified with revert-and-
+reconfirm: reverting to the old `< 15` check reproduced the bug immediately (the 20-card import
+actually succeeded, which then cascaded into a null-reference hang in the test's own reuse of
+the now-closed import modal for the second sub-test — informative, not a concern once the fix
+is in place) before restoring it. Full `./run_tests.sh` green afterward (one transient failure
+on an unrelated animation-timing check reproduced as flaky on a clean re-run too, matching this
+session's already-documented pre-existing flakiness class — not caused by this change).
+
 ### 2026-09-17 — `_resolve_play()` tail-race fixed: a stale coroutine could redraw battle over the map
 Third and last of the three items from the same recommendation the two entries below cover.
 `ui_smoke.gd`'s own finishing-blow-crash regression test (added earlier this session) already

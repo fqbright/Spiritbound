@@ -1119,7 +1119,12 @@ func _show_import_deck_dialog() -> void:
 			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
 			return
 		var imported_cards: Array = test_json.data
-		if imported_cards.size() < 15:
+		# Exactly 25, matching _confirm_deck()'s own gate on a manually-built deck — a code is
+		# unsigned base64 JSON a player can hand-edit, so without this an edited or malformed
+		# code could install a deck of any size (bypassing _confirm_deck() entirely, since
+		# import writes profile.deck directly) and silently break the 25-card invariant every
+		# other deck-affecting system in this codebase assumes.
+		if imported_cards.size() != 25:
 			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
 			return
 		var counts: Dictionary = {}

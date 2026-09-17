@@ -2625,6 +2625,39 @@ func _run() -> void:
 	await process_frame
 	check(game.overlay.find_child("DeckImportModal", true, false) == null, "DeckImportModal closes after successful import")
 
+	# Regression check for a real validation gap found this session: the size check on import
+	# only required >= 15 cards, not exactly 25 — the same screen's own manual _confirm_deck()
+	# refuses anything but exactly 25 (deck.size() != 25), so a hand-crafted or malformed
+	# shared deck code (codes are unsigned base64 JSON, trivial to edit) could silently install
+	# a 15-24 or 26+ card deck, bypassing that invariant entirely since import writes
+	# profile.deck directly without ever going through _confirm_deck()'s own gate.
+	game.profile.collection["strike"] = 100
+	var deck_before_bad_size: Array = game.profile.deck.duplicate()
+	var bad_size_deck_20: Array = []
+	for i in 20: bad_size_deck_20.append("strike")
+	var short_code: String = "SPB1:%s" % Marshalls.utf8_to_base64(JSON.stringify(bad_size_deck_20))
+	game.show_deck()
+	await process_frame
+	(game.root.find_child("DeckImportBtn", true, false) as Button).pressed.emit()
+	await process_frame
+	(game.overlay.find_child("DeckCodeInput", true, false) as LineEdit).text = short_code
+	(game.overlay.find_child("DeckImportConfirmBtn", true, false) as Button).pressed.emit()
+	await process_frame
+	check(game.overlay.find_child("DeckImportModal", true, false) != null, "a 20-card deck code is rejected (wrong size), import modal stays open")
+	check(game.profile.deck == deck_before_bad_size, "a rejected undersized deck code does not change profile.deck")
+
+	var bad_size_deck_30: Array = []
+	for i in 30: bad_size_deck_30.append("strike")
+	var long_code: String = "SPB1:%s" % Marshalls.utf8_to_base64(JSON.stringify(bad_size_deck_30))
+	(game.overlay.find_child("DeckCodeInput", true, false) as LineEdit).text = long_code
+	(game.overlay.find_child("DeckImportConfirmBtn", true, false) as Button).pressed.emit()
+	await process_frame
+	check(game.overlay.find_child("DeckImportModal", true, false) != null, "a 30-card deck code is rejected (wrong size), import modal stays open")
+	check(game.profile.deck == deck_before_bad_size, "a rejected oversized deck code does not change profile.deck")
+	var stale_import_modal: Node = game.overlay.get_node_or_null("DeckImportModal")
+	if stale_import_modal: stale_import_modal.queue_free()
+	await process_frame
+
 	# 3. Spirit Draft Arena
 	game.show_challenges()
 	await process_frame
