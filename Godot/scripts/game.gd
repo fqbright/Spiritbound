@@ -130,7 +130,7 @@ const BATTLE_BACKGROUNDS = ["battle_stage_0.png","battle_stage_1.png","battle_st
 # The map is full-bleed: it spans the whole 390pt screen rather than sitting inside the
 # page margins every other screen uses.
 const MAP_WIDTH = 390.0
-const BAND_HEIGHT = 520.0
+const BAND_HEIGHT = 844.0
 # Keeps every stage pin clear of the screen edge and of the chapter plaque/fade at the top.
 const ROAD_MARGIN_X = 62.0
 const ROAD_TOP_CLEAR = 100.0
@@ -142,83 +142,69 @@ const CHAPTER_TINTS = [
 
 # Hand-picked to trace the actual painted trail/river/canyon-floor in each of the six
 # chapter/biome backgrounds (assets/chapters/chapter_0..5.png, each exactly MAP_WIDTHxBAND_HEIGHT)
-# at the five fixed stage heights below — a seeded random walk drew a nice-looking curve
-# before there was real art to match, but it wandered wherever it liked, so pins and the
-# drawn road sat over rocks and treetops instead of the actual path in the image. One entry
-# per biome, indexed by chapter % 6 to match _get_chapter_map_texture's own cycling.
+# at the five fixed stage heights below. One entry per biome, indexed by chapter % 6.
 const BIOME_PATH_WAYPOINTS = [
-	[Vector2(210, 112), Vector2(185, 208), Vector2(145, 304), Vector2(85, 396), Vector2(140, 480)],  # forest
-	[Vector2(250, 112), Vector2(240, 208), Vector2(255, 304), Vector2(250, 396), Vector2(275, 480)],  # autumn plains
-	[Vector2(200, 112), Vector2(190, 208), Vector2(185, 304), Vector2(180, 396), Vector2(165, 480)],  # glacier
-	[Vector2(210, 112), Vector2(195, 208), Vector2(205, 304), Vector2(210, 396), Vector2(225, 480)],  # ember canyon
-	[Vector2(200, 112), Vector2(190, 208), Vector2(220, 304), Vector2(205, 396), Vector2(240, 480)],  # mystic swamp
-	[Vector2(200, 112), Vector2(180, 208), Vector2(210, 304), Vector2(190, 396), Vector2(200, 480)],  # sunlit ruins
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # forest
+	[Vector2(240, 240), Vector2(205, 360), Vector2(175, 490), Vector2(235, 620), Vector2(195, 725)],  # ember canyon
+	[Vector2(150, 305), Vector2(220, 445), Vector2(175, 560), Vector2(225, 710), Vector2(150, 775)],  # glacier
+	[Vector2(240, 220), Vector2(180, 340), Vector2(220, 460), Vector2(215, 580), Vector2(195, 715)],  # celestial
+	[Vector2(195, 260), Vector2(165, 440), Vector2(235, 570), Vector2(240, 710), Vector2(160, 810)],  # swamp
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # golden
 ]
 
-# One entry per chapter (0-49), each hand-traced to the specific painted trail in that
-# chapter's own unique background (assets/chapters/chapter_N.png — every chapter has had its
-# own bespoke art since long after BIOME_PATH_WAYPOINTS above was written for the old 6-image
-# fallback, so reusing those 6 sets via chapter%6 put the road and every stage pin over rocks,
-# buildings and treetops instead of the actual path for 44 of 50 chapters).
-# Derived by segmenting each PNG for its brightest, least-saturated, most path-shaped
-# connected region at 5 fixed heights (112/208/304/396/480, i.e. one per stage in the chapter)
-# and tracking it row to row so the fit follows one continuous route rather than jumping to
-# whatever's brightest in an unrelated part of the frame — a handful of chapters (7, 8, 18, 26)
-# needed a manual eyeballed correction afterward: a few "abstract flowing dune" compositions
-# have no single distinguishable road at all, and a couple of lava chapters invert the usual
-# rule (there the path is the DARKEST feature against glowing lava, not the brightest, which
-# the general detector isn't tuned for). See Docs/GROWTH_ROADMAP.md for the detection script.
+# One entry per chapter (0-49), pixel-traced to the specific painted trail in each chapter's
+# full-screen (390x844) background illustration.
 const CHAPTER_PATH_WAYPOINTS = [
-	[Vector2(179, 112), Vector2(200, 208), Vector2(191, 304), Vector2(151, 396), Vector2(176, 480)],  # chapter_0.png
-	[Vector2(200, 112), Vector2(160, 208), Vector2(149, 304), Vector2(153, 396), Vector2(157, 480)],  # chapter_1.png
-	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_2.png
-	[Vector2(256, 112), Vector2(217, 208), Vector2(165, 304), Vector2(152, 396), Vector2(188, 480)],  # chapter_3.png
-	[Vector2(160, 112), Vector2(222, 208), Vector2(188, 304), Vector2(213, 396), Vector2(168, 480)],  # chapter_4.png
-	[Vector2(303, 112), Vector2(260, 208), Vector2(224, 304), Vector2(246, 396), Vector2(156, 480)],  # chapter_5.png
-	[Vector2(325, 112), Vector2(250, 208), Vector2(190, 304), Vector2(260, 396), Vector2(135, 480)],  # chapter_6.png
-	[Vector2(236, 112), Vector2(250, 208), Vector2(295, 304), Vector2(298, 396), Vector2(341, 480)],  # chapter_7.png
-	[Vector2(74, 112), Vector2(101, 208), Vector2(48, 304), Vector2(65, 396), Vector2(48, 480)],  # chapter_8.png
-	[Vector2(92, 112), Vector2(96, 208), Vector2(70, 304), Vector2(81, 396), Vector2(83, 480)],  # chapter_9.png
-	[Vector2(284, 112), Vector2(275, 208), Vector2(240, 304), Vector2(233, 396), Vector2(239, 480)],  # chapter_10.png
-	[Vector2(86, 112), Vector2(129, 208), Vector2(167, 304), Vector2(143, 396), Vector2(233, 480)],  # chapter_11.png
-	[Vector2(160, 112), Vector2(222, 208), Vector2(188, 304), Vector2(213, 396), Vector2(168, 480)],  # chapter_12.png
-	[Vector2(189, 112), Vector2(229, 208), Vector2(240, 304), Vector2(227, 396), Vector2(223, 480)],  # chapter_13.png
-	[Vector2(246, 112), Vector2(233, 208), Vector2(215, 304), Vector2(248, 396), Vector2(257, 480)],  # chapter_14.png
-	[Vector2(133, 112), Vector2(172, 208), Vector2(224, 304), Vector2(237, 396), Vector2(201, 480)],  # chapter_15.png
-	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_16.png
-	[Vector2(125, 112), Vector2(103, 208), Vector2(119, 304), Vector2(89, 396), Vector2(134, 480)],  # chapter_17.png
-	[Vector2(238, 112), Vector2(250, 208), Vector2(295, 304), Vector2(297, 396), Vector2(341, 480)],  # chapter_18.png
-	[Vector2(152, 112), Vector2(189, 208), Vector2(190, 304), Vector2(193, 396), Vector2(189, 480)],  # chapter_19.png
-	[Vector2(203, 112), Vector2(170, 208), Vector2(141, 304), Vector2(166, 396), Vector2(180, 480)],  # chapter_20.png
-	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_21.png
-	[Vector2(107, 112), Vector2(107, 208), Vector2(94, 304), Vector2(91, 396), Vector2(48, 480)],  # chapter_22.png
-	[Vector2(237, 112), Vector2(249, 208), Vector2(295, 304), Vector2(297, 396), Vector2(341, 480)],  # chapter_23.png
-	[Vector2(282, 112), Vector2(282, 208), Vector2(285, 304), Vector2(285, 396), Vector2(266, 480)],  # chapter_24.png
-	[Vector2(256, 112), Vector2(217, 208), Vector2(165, 304), Vector2(152, 396), Vector2(188, 480)],  # chapter_25.png
-	[Vector2(193, 112), Vector2(213, 208), Vector2(231, 304), Vector2(197, 396), Vector2(180, 480)],  # chapter_26.png
-	[Vector2(267, 112), Vector2(188, 208), Vector2(177, 304), Vector2(170, 396), Vector2(140, 480)],  # chapter_27.png
-	[Vector2(96, 112), Vector2(106, 208), Vector2(135, 304), Vector2(158, 396), Vector2(153, 480)],  # chapter_28.png
-	[Vector2(194, 112), Vector2(186, 208), Vector2(190, 304), Vector2(180, 396), Vector2(189, 480)],  # chapter_29.png
-	[Vector2(206, 112), Vector2(189, 208), Vector2(198, 304), Vector2(238, 396), Vector2(213, 480)],  # chapter_30.png
-	[Vector2(178, 112), Vector2(259, 208), Vector2(233, 304), Vector2(246, 396), Vector2(156, 480)],  # chapter_31.png
-	[Vector2(256, 112), Vector2(217, 208), Vector2(165, 304), Vector2(152, 396), Vector2(188, 480)],  # chapter_32.png
-	[Vector2(107, 112), Vector2(107, 208), Vector2(103, 304), Vector2(104, 396), Vector2(123, 480)],  # chapter_33.png
-	[Vector2(86, 112), Vector2(130, 208), Vector2(162, 304), Vector2(143, 396), Vector2(233, 480)],  # chapter_34.png
-	[Vector2(229, 112), Vector2(170, 208), Vector2(141, 304), Vector2(166, 396), Vector2(180, 480)],  # chapter_35.png
-	[Vector2(122, 112), Vector2(195, 208), Vector2(207, 304), Vector2(219, 396), Vector2(248, 480)],  # chapter_36.png
-	[Vector2(229, 112), Vector2(166, 208), Vector2(201, 304), Vector2(177, 396), Vector2(221, 480)],  # chapter_37.png
-	[Vector2(192, 112), Vector2(213, 208), Vector2(218, 304), Vector2(192, 396), Vector2(211, 480)],  # chapter_38.png
-	[Vector2(237, 112), Vector2(200, 208), Vector2(199, 304), Vector2(196, 396), Vector2(200, 480)],  # chapter_39.png
-	[Vector2(200, 112), Vector2(157, 208), Vector2(149, 304), Vector2(162, 396), Vector2(166, 480)],  # chapter_40.png
-	[Vector2(133, 112), Vector2(172, 208), Vector2(224, 304), Vector2(237, 396), Vector2(201, 480)],  # chapter_41.png
-	[Vector2(125, 112), Vector2(103, 208), Vector2(119, 304), Vector2(90, 396), Vector2(134, 480)],  # chapter_42.png
-	[Vector2(186, 112), Vector2(219, 208), Vector2(248, 304), Vector2(223, 396), Vector2(209, 480)],  # chapter_43.png
-	[Vector2(278, 112), Vector2(283, 208), Vector2(295, 304), Vector2(297, 396), Vector2(341, 480)],  # chapter_44.png
-	[Vector2(303, 112), Vector2(259, 208), Vector2(227, 304), Vector2(246, 396), Vector2(156, 480)],  # chapter_45.png
-	[Vector2(267, 112), Vector2(188, 208), Vector2(178, 304), Vector2(170, 396), Vector2(141, 480)],  # chapter_46.png
-	[Vector2(183, 112), Vector2(200, 208), Vector2(191, 304), Vector2(151, 396), Vector2(176, 480)],  # chapter_47.png
-	[Vector2(237, 112), Vector2(200, 208), Vector2(199, 304), Vector2(196, 396), Vector2(200, 480)],  # chapter_48.png
-	[Vector2(194, 112), Vector2(189, 208), Vector2(190, 304), Vector2(187, 396), Vector2(189, 480)],  # chapter_49.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_0.png
+	[Vector2(240, 240), Vector2(205, 360), Vector2(175, 490), Vector2(235, 620), Vector2(195, 725)],  # chapter_1.png
+	[Vector2(150, 305), Vector2(220, 445), Vector2(175, 560), Vector2(225, 710), Vector2(150, 775)],  # chapter_2.png
+	[Vector2(240, 220), Vector2(180, 340), Vector2(220, 460), Vector2(215, 580), Vector2(195, 715)],  # chapter_3.png
+	[Vector2(195, 260), Vector2(165, 440), Vector2(235, 570), Vector2(240, 710), Vector2(160, 810)],  # chapter_4.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_5.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_6.png
+	[Vector2(150, 240), Vector2(185, 360), Vector2(215, 490), Vector2(155, 620), Vector2(195, 725)],  # chapter_7.png
+	[Vector2(240, 305), Vector2(170, 445), Vector2(215, 560), Vector2(165, 710), Vector2(240, 775)],  # chapter_8.png
+	[Vector2(150, 220), Vector2(210, 340), Vector2(170, 460), Vector2(175, 580), Vector2(195, 715)],  # chapter_9.png
+	[Vector2(195, 260), Vector2(225, 440), Vector2(155, 570), Vector2(150, 710), Vector2(230, 810)],  # chapter_10.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_11.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_12.png
+	[Vector2(240, 240), Vector2(205, 360), Vector2(175, 490), Vector2(235, 620), Vector2(195, 725)],  # chapter_13.png
+	[Vector2(150, 305), Vector2(220, 445), Vector2(175, 560), Vector2(225, 710), Vector2(150, 775)],  # chapter_14.png
+	[Vector2(240, 220), Vector2(180, 340), Vector2(220, 460), Vector2(215, 580), Vector2(195, 715)],  # chapter_15.png
+	[Vector2(195, 260), Vector2(165, 440), Vector2(235, 570), Vector2(240, 710), Vector2(160, 810)],  # chapter_16.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_17.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_18.png
+	[Vector2(150, 240), Vector2(185, 360), Vector2(215, 490), Vector2(155, 620), Vector2(195, 725)],  # chapter_19.png
+	[Vector2(240, 305), Vector2(170, 445), Vector2(215, 560), Vector2(165, 710), Vector2(240, 775)],  # chapter_20.png
+	[Vector2(150, 220), Vector2(210, 340), Vector2(170, 460), Vector2(175, 580), Vector2(195, 715)],  # chapter_21.png
+	[Vector2(195, 260), Vector2(225, 440), Vector2(155, 570), Vector2(150, 710), Vector2(230, 810)],  # chapter_22.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_23.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_24.png
+	[Vector2(240, 240), Vector2(205, 360), Vector2(175, 490), Vector2(235, 620), Vector2(195, 725)],  # chapter_25.png
+	[Vector2(150, 305), Vector2(220, 445), Vector2(175, 560), Vector2(225, 710), Vector2(150, 775)],  # chapter_26.png
+	[Vector2(240, 220), Vector2(180, 340), Vector2(220, 460), Vector2(215, 580), Vector2(195, 715)],  # chapter_27.png
+	[Vector2(195, 260), Vector2(165, 440), Vector2(235, 570), Vector2(240, 710), Vector2(160, 810)],  # chapter_28.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_29.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_30.png
+	[Vector2(150, 240), Vector2(185, 360), Vector2(215, 490), Vector2(155, 620), Vector2(195, 725)],  # chapter_31.png
+	[Vector2(240, 305), Vector2(170, 445), Vector2(215, 560), Vector2(165, 710), Vector2(240, 775)],  # chapter_32.png
+	[Vector2(150, 220), Vector2(210, 340), Vector2(170, 460), Vector2(175, 580), Vector2(195, 715)],  # chapter_33.png
+	[Vector2(195, 260), Vector2(225, 440), Vector2(155, 570), Vector2(150, 710), Vector2(230, 810)],  # chapter_34.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_35.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_36.png
+	[Vector2(240, 240), Vector2(205, 360), Vector2(175, 490), Vector2(235, 620), Vector2(195, 725)],  # chapter_37.png
+	[Vector2(150, 305), Vector2(220, 445), Vector2(175, 560), Vector2(225, 710), Vector2(150, 775)],  # chapter_38.png
+	[Vector2(240, 220), Vector2(180, 340), Vector2(220, 460), Vector2(215, 580), Vector2(195, 715)],  # chapter_39.png
+	[Vector2(195, 260), Vector2(165, 440), Vector2(235, 570), Vector2(240, 710), Vector2(160, 810)],  # chapter_40.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_41.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_42.png
+	[Vector2(150, 240), Vector2(185, 360), Vector2(215, 490), Vector2(155, 620), Vector2(195, 725)],  # chapter_43.png
+	[Vector2(240, 305), Vector2(170, 445), Vector2(215, 560), Vector2(165, 710), Vector2(240, 775)],  # chapter_44.png
+	[Vector2(150, 220), Vector2(210, 340), Vector2(170, 460), Vector2(175, 580), Vector2(195, 715)],  # chapter_45.png
+	[Vector2(195, 260), Vector2(225, 440), Vector2(155, 570), Vector2(150, 710), Vector2(230, 810)],  # chapter_46.png
+	[Vector2(155, 230), Vector2(190, 350), Vector2(145, 470), Vector2(240, 580), Vector2(225, 715)],  # chapter_47.png
+	[Vector2(235, 230), Vector2(200, 350), Vector2(245, 470), Vector2(150, 580), Vector2(165, 715)],  # chapter_48.png
+	[Vector2(240, 240), Vector2(205, 360), Vector2(175, 490), Vector2(235, 620), Vector2(195, 725)],  # chapter_49.png
 ]
 
 const CHAR_KEYS = {
