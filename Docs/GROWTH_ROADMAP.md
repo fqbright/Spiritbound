@@ -129,19 +129,44 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   *Built on:* `content.gd` card `effects`/`special` data (no schema change). 226/0 rules
   unaffected (this is 100% a game.gd rendering concern — correctly zero rules-engine change),
   UI smoke +5 checks, 0 failures.
-- `[ ]` **B4 — 本地推送提醒 (local iOS notifications)**
-  Remind players when a login-streak day or daily quest is about to expire. **Needs a native
-  iOS bridge** (Godot has no built-in local-notification API) — likely a small GDExtension or
-  a plugin. Flag for a dedicated investigation spike before committing to an implementation
-  approach; this is the one item in this list that may need a design decision from the human
-  before an agent should just start coding it.
+- `[ ]` **B4 — 本地推送提醒 (local iOS notifications)** — investigation spike done 2026-09-17,
+  still blocked on a human decision
+  Confirmed: Godot 4 has zero built-in local-notification API, `export_presets.cfg` has no
+  `plugins/` entry (no existing Godot iOS plugin scaffolding to extend), and the real iOS
+  build is a fresh Xcode project Godot generates into `Godot/build/ios/` on every
+  `--full-export` (`deploy_ios.sh`) — not the `App/Spiritbound.xcodeproj` AGENTS.md already
+  says to ignore as an abandoned prototype. A real fix needs a small Godot iOS plugin (Swift/
+  Obj-C wrapping `UNUserNotificationCenter`, registered via a `.gdip` descriptor) that an
+  agent session on this codebase cannot compile, link, or run: this environment has no
+  `xcodebuild`/`xcrun` at all (confirmed — this is a Linux sandbox, not the Mac the deploy
+  skill's own paths assume), and Godot's iOS export step itself requires the same toolchain.
+  Writing the native source blind, with no way to compile a single line of it before the user
+  tries it on their own Mac, is exactly the risk the original flag was warning about — so this
+  stays unimplemented pending the human decision the original entry already called for, not
+  because the design questions (what to remind about, when) are hard.
   *Builds on:* nothing yet — new native surface.
-- `[ ]` **C2 — 轮回 / New Game+ 机制**
-  A prestige layer for players who've maxed mastery, cleared all 250 stages, and beaten A5:
-  reset campaign progress for a permanent small bonus, a new A6+ difficulty tier, or an
-  exclusive card back. Needs real design decisions (what resets, what's kept, what the actual
-  reward is) — sketch the exact mechanic before implementing.
-  *Builds on:* `profile.difficulty` (A0-A5) ladder as the closest existing analog.
+- `[x]` **C2 — 轮回 / New Game+ 机制** — done 2026-09-17
+  Design decisions made (see the checkbox below and the progress log entry for the reasoning
+  behind each): eligibility is `profile.unlocked >= 250` (full clear) and
+  `profile.difficulty >= 5` (challenge tier currently at A5) — deliberately not also gated on
+  hero mastery level, since mastery is per-hero and would arbitrarily punish trying multiple
+  archetypes. A confirmed rebirth (`_rebirth_section()`/`_show_rebirth_confirm()`/
+  `_perform_rebirth()` in `game_camp_screen.gd`) resets exactly the campaign-run state a fresh
+  save starts with — `unlocked`, `position`, `health`, `deck`/`collection` (back to the
+  starting 25), `upgrades`, `relics`, `equipment_owned`/`equipment_slots`, `rune_inventory`/
+  `card_runes` — while leaving every account-level system untouched: currencies, hero mastery,
+  achievements, compendium, `profile.difficulty` itself, and the Daily Trial/Weekly Challenge/
+  Abyss/Boss Rush/Phantom Arena tracks. `profile.rebirth_count` grants a small permanent
+  combat bonus (`content.rebirth_bonuses()`: `+3 max_hp`/`+1 shield_start` per cycle, stacking)
+  through the exact same `hero_bonuses` hook hero mastery perks already use in
+  `combat.create()` — no new engine surface needed for the reward itself, only the reset flow.
+  No new A6+ difficulty tier and no cosmetic card back — of the roadmap's three suggested
+  reward shapes, the stacking combat bonus was the only one buildable without either extending
+  the difficulty ladder's UI/scaling logic (a bigger, separate commitment) or new art no agent
+  here can produce.
+  *Built on:* `_current_hero_mastery_bonuses()` (`game_rewards_screen.gd`) as the single choke
+  point all 7 `combat.create()` call sites already share; `_modal_dialog()` for the confirm
+  prompt. 352/0 rules, UI smoke +24 checks, both suites 0 failures.
 - `[x]` **D4 — 大首领专属机制 (unique Great Boss phase mechanics)** — done 2026-09-15
   Each of the 5 Great Bosses (Chapters 10, 20, 30, 40, 50 at Stage 50, 100, 150, 200, 250)
   features a unique scripted Phase 2 transition when HP falls below 50%:
@@ -196,14 +221,20 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   Standard Replay (half gold, no drops) and Trial Replay (hard affix modifier + restores 100% gold
   rewards and item/equipment drops). Supported via `begin_hard_replay(index)` and `is_hard_replay`.
   *Builds on:* `_show_replay_mode_prompt()`, `begin_hard_replay()`.
-- `[ ]` **E1 — 试炼历史走势图 (local-only)**
-  A simple trend line of `daily_trial_record.best_stage` over time. Purely local data, no
-  backend needed.
-  *Builds on:* extend `daily_trial_record` with a bounded history array.
-- `[ ]` **E2 — 战报分享卡片 (local-only)**
-  A shareable "run recap" image (hero, deck highlights, damage dealt) generated client-side
-  after a win or a Great Boss kill — pure client-side rendering, no server dependency.
-  *Builds on:* `_card_art_panel()`, `_panel()` and friends for the composed image.
+- `[x]` **E1 — 试炼历史走势图 (local-only)** — already done, discovered undocumented 2026-09-17
+  `daily_trial_record.history` (bounded to `SpiritContent.DAILY_TRIAL_HISTORY_LIMIT` = 30
+  entries, appended in `_ensure_daily_trial_current()`) plus a bar-per-day trend chart
+  (`_daily_trial_trend_chart()` in `game_camp_screen.gd`, `DailyTrialTrendChart`/`TrendBar_*`
+  nodes) were already fully implemented and already had real `ui_smoke.gd` coverage — this
+  checkbox and the E1 comments already in the code were the only things not in sync. See the
+  progress log entry below for how this was found.
+  *Built on:* `_stat_bar()`'s ProgressBar-as-a-styled-rect trick, oriented vertically.
+- `[x]` **E2 — 战报分享卡片 (local-only)** — already done, discovered undocumented 2026-09-17
+  `show_run_recap()` (`game_rewards_screen.gd`): a full "Boss Conquest Recap" screen (portrait,
+  defeated-boss stat row, deck highlights, a share/save button) shown via `ViewRunRecapBtn`
+  after any Great Boss kill (`pending_rewards.great_boss_kill`). Already had 7 `ui_smoke.gd`
+  assertions covering the full flow. Same doc-sync gap as E1.
+  *Built on:* `_build_victory_recap_card()`'s stat-row pattern (A3), `_panel()`.
 - `[x]` **F2 — 独立设置页面** — done 2026-09-15
   Consolidated settings into dedicated `show_settings()` modal accessible via `SettingsButton` (gear ⚙)
   in map top bar and Camp. Configures language, battle speed (1.0x / 1.5x / 2.0x), audio mute, and
@@ -248,6 +279,74 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-17 — Roadmap doc-sync audit, C2 New Game+ shipped, B4 investigated, 3 real bugs found
+Asked to implement "whatever's left in the growth roadmap and gaps." First step was
+re-verifying every open item against the actual code rather than trusting this file, since the
+last several sessions had already shown a pattern of real fixes landing without a matching
+checkbox or log entry (the 2026-09-16 entry's own "still not addressed" list, written after
+one such audit, was itself already stale by the time this session started — see below).
+
+**Discovered already fully implemented, just never checked off**: E1 (Daily Trial trend chart)
+and E2 (battle report share card) both exist in full, with complete `ui_smoke.gd` coverage
+already in place (7 assertions for E2, 3 for E1's chart alone). Marked `[x]` with a note rather
+than re-implementing. Also re-verified all 4 items the 2026-09-16 entry had flagged as "still
+not addressed" — 3 turned out to already be fixed by later, undocumented commits
+(`show_chapter_transition`'s freed-instance guard, `diagnose_battle_defeat`'s action-consuming
+UI, `spirit_curse_seal.png` wiring); only the "12 commits lacked tests" note was purely
+historical and needed no fix. See that entry's own strikethroughs for commit hashes.
+
+**C2 (轮回/New Game+) shipped** — see its checklist entry above for the exact design (what
+resets, what's kept, the reward formula) and reasoning. The short version: eligibility is
+`unlocked >= 250` and `difficulty >= 5` rather than a literal "beat A5" proof, because
+`profile.difficulty` is a freely-switchable "fighting at this tier right now" setting, not a
+per-tier clear ladder — there is no existing signal for "actually beat the campaign at A5
+specifically," and building one would be a much bigger feature than the roadmap's own framing
+implied. The reward reuses hero mastery's exact `hero_bonuses` mechanism rather than adding new
+combat.gd surface, which is why this shipped as a single `game_camp_screen.gd`-only change plus
+one line in `_current_hero_mastery_bonuses()`.
+
+**B4 (local iOS notifications) investigated, still not implemented** — confirmed this
+environment cannot compile, link, or run any native iOS code at all (no `xcodebuild`/`xcrun`;
+this is a Linux sandbox), and that Godot's own iOS export step needs the same toolchain. Writing
+a native Swift/GDExtension bridge with zero ability to compile a single line of it before the
+user's own Mac would be the first real test is exactly the risk the original entry's "may need
+a human decision" flag was about — so this stays open, not attempted blind. Flagged to the user
+directly rather than silently skipped or half-built.
+
+**Two real, previously-undiscovered bugs found while doing this audit** (both pre-existing, not
+introduced this session):
+1. `diagnose_battle_defeat()` (`game.gd`) checked `eff.get("op", "")` for the shield-card count,
+   but every card's effects actually key this field `"operation"` (`combat.gd`'s
+   `_resolve_effects` reads `effect.operation` directly). This meant `shield_cards` was silently
+   0 for every deck in the game, for every player, always — the "you lack shield cards" tip
+   could fire (or fail to be distinguished from a shield-healthy deck) regardless of the deck's
+   real composition. Fixed the key name; added a regression check in `ui_smoke.gd` with a
+   3-shield-card deck that must NOT get the low-shield diagnosis, which would have caught this
+   immediately.
+2. The same `ui_smoke.gd` test's own fixture deck used a fictitious `"defend"` card id (the
+   real starter shield card is `"ward"`) — `content.card()` returning `{}` for the unknown id
+   crashed `_card_view()`'s `card.id` access the moment the hand rendered, every single run,
+   with a `SCRIPT ERROR` that failed no `check()` and so was invisible in a green test run. Same
+   class of bug as `show_chapter_transition`'s freed-instance race above: a real error in the
+   log that no assertion catches. Fixed the fixture to use a real card id.
+
+**Also fixed**: `content.ACHIEVEMENTS`'s `collect_all` target was hardcoded to `39`, but the
+card pool has grown to 47 (45 collectible + 2 curse) since that number was last touched — this
+is the third time this exact literal has drifted (34 → 39 → now 45) as cards were added without
+anyone updating it, per this file's own D3/C1 entries below. Rather than fix the number a third
+time and leave the next drift equally silent, added a `test_runner.gd` assertion that checks the
+target against the live non-Curse card count directly, so the next card addition fails loudly
+instead of quietly making "collect every card" completable early. Also corrected AGENTS.md's
+stale "39 cards" prose mention to the real current count.
+
+**Verification**: `./run_tests.sh` (test_runner + ui_smoke + e2e_playthrough) run clean after
+every change in this session, not just at the end — 352/0 rules checks (+1 for the achievement
+target assertion), UI smoke +24 checks for C2 alone plus +1 for the shield-diagnosis regression,
+E2E playthrough unaffected. This session also installed Godot 4.7.2 itself into the sandbox
+(none of the prior sessions' claimed verification numbers could actually be re-run before this,
+since no `godot` binary existed here) — see this repo's own commit history around
+`e79d689`/this session's chat log if a future agent needs to redo that setup.
 
 ### 2026-09-17 — Strategic Depth (Elemental Resonance), Auto-Battle Idle Progression, and Stamina System
 Implemented directly per user direction to deepen combat strategy, prevent infinite brute-force grinding, and provide auto-battle idle progression:
@@ -336,25 +435,32 @@ is unrelated):
   confirmed zero references anywhere, then deleted it. If you're ever about to delete an
   asset because grep found nothing, check `project.godot` too before trusting that.
 
-**Still not addressed, flagged for whoever picks this up next**:
-- `show_chapter_transition()` (`game_map_screen.gd`) throws "Cannot call method 'create_tween'
-  on a previously freed instance" under `ui_smoke.gd` — a real async race (a tween racing
-  against a later `_clear()`), not something introduced by this review's own changes (confirmed
-  present before any of this session's edits). It doesn't currently fail a specific `check()`,
-  so both suites still report all-green, but the underlying bug is real.
-- `diagnose_battle_defeat()`'s `action` field (`"deck"` vs `"cultivate"`) is computed but never
-  consumed — the defeat-diagnosis card shows both buttons unconditionally regardless of which
-  action was recommended.
-- `spirit_curse_seal.png` was painted for this batch's VFX set but never wired to anything —
-  the Curse cards (`decay_blight`/`void_curse`) and the enemy "curse" intent still have no
-  visual treatment.
-- The Fox Spirit rig's 4 textures (`fox_body`/`fox_tail`/`fox_orb`/`ground_aura`) and
-  `spirit_shield_crest.png` all ship at 1024×1024 despite rendering at roughly 40-95px on
-  screen — worth downscaling for app size/decode cost before this ships anywhere real.
-- Of the 12 commits, only 3 touched either test file — the visually biggest ones (the rig, the
-  VFX chain, the diagonal layout, all 3 map commits) shipped with zero new assertions, against
-  this project's own Rule #3. Both suites currently pass, but that's because nothing added by
-  those commits is being checked, not because it was verified against a written assertion.
+**Still not addressed, flagged for whoever picks this up next** — status re-checked
+2026-09-17, first 4 of these 5 were fixed by later commits without a progress-log entry
+(discovered while auditing this file against the actual code; see that date's entry):
+- ~~`show_chapter_transition()` ... "Cannot call method 'create_tween' on a previously freed
+  instance"~~ — **fixed** (commit `ab290fd`): the function now guards its post-`await` tail
+  with `is_instance_valid(transition_layer)`/`is_instance_valid(pin_container)`, and
+  `ui_smoke.gd`'s own test comments document the fix and how it was verified (temporarily
+  reverting the guard and confirming the error reappears).
+- ~~`diagnose_battle_defeat()`'s `action` field ... computed but never consumed~~ — **fixed**
+  (commit `1d2d52f`): `game_battle_screen.gd`'s defeat card now reads `recommended_action` and
+  colors the matching button gold.
+- ~~`spirit_curse_seal.png` ... never wired to anything~~ — **fixed** (commit `27df0e7`): wired
+  into `game_battle_screen.gd`'s enemy curse-intent rendering, with `ui_smoke.gd` coverage.
+- ~~The Fox Spirit rig's 4 textures ... all ship at 1024×1024~~ — **fixed** (commits `a028fc4`,
+  `ac4d294`): downscaled, then a follow-up fix for a scale regression the downscale itself
+  introduced.
+- Of the original 12 commits, only 3 touched either test file — still true as a historical
+  fact about that batch specifically, not an open item; everything added since carries its own
+  coverage per Rule #3.
+
+**Two more real bugs found and fixed 2026-09-17** while auditing this file against the actual
+code (see that date's progress log entry for the full account): `diagnose_battle_defeat()` was
+reading each effect's `"op"` key when every card's effects actually use `"operation"`
+(`combat.gd`'s `_resolve_effects`), so it silently counted 0 shield cards for every deck in the
+game, always; and a `ui_smoke.gd` test fixture used a fictitious `"defend"` card id that
+crashed hand rendering with a silent `SCRIPT ERROR` nothing asserted against.
 
 ### 2026-09-15 — game.gd split into 5 composed screen classes (user-requested tech debt)
 Not a report item — the user asked for this directly after `game.gd` grew to ~7200 lines
