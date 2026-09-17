@@ -2601,6 +2601,23 @@ func _run() -> void:
 		await process_frame
 		check(game.overlay.find_child("DeckImportModal", true, false) == null, "DeckImportCloseBtn click dismisses modal")
 
+	section("== battle entry/exit syncs the map's browsed chapter ==")
+	var saved_ch_battle_sync: int = int(game.current_map_chapter)
+	var saved_unlocked_battle_sync: int = int(game.profile.unlocked)
+	game.profile.unlocked = maxi(saved_unlocked_battle_sync, 29)
+	game.current_map_chapter = 0
+	game.begin_battle(29) # stage 29 is chapter 5 (29 / 5 == 5)
+	await process_frame
+	check(game.current_map_chapter == 5, "entering a battle switches the map to that stage's chapter even if a different one was being browsed")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	await process_frame
+	check(game.current_map_chapter == 5, "returning from the battle leaves the map on the stage's chapter")
+	game.profile.unlocked = saved_unlocked_battle_sync
+	game.current_map_chapter = saved_ch_battle_sync
+	game.show_map()
+	await process_frame
+
 	# A broad, name-agnostic safety net across the game's busiest screens: every visible,
 	# enabled button anywhere in each of these has to be occlusion-clean, not just the
 	# specific buttons other checks above remembered to name. This is what would have caught

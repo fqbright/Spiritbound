@@ -21,6 +21,11 @@ func _modifier(seed: int, stage: int) -> Dictionary:
 	return {} if value % 100 < 48 else options[(value / 100) % options.size()]
 
 func begin_battle(index: int) -> void:
+	# Keep the map's browsed chapter in sync with whatever stage is actually being fought, so
+	# a map shown before this call (the header hides during battle, but the state persists)
+	# or after _leave_battle() returns to it (see its final else-branch) already lands on the
+	# right chapter instead of wherever the player last happened to be browsing.
+	g.current_map_chapter = index / 5
 	g.current_stage = index
 	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
 	g.active_modifier = _modifier(seed, index)
