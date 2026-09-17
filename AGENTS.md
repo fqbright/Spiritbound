@@ -172,6 +172,26 @@ Every one of these produced a wrong screen with no error in the log. They are th
   noticing which flags it didn't mention among the ones it did. `ui_smoke.gd` now forces a loss
   for every mode (`game.combat.state.phase = "lost"; game._leave_battle()`) and checks the flag
   actually clears; copy that shape for the next new mode instead of trusting the win path alone.
+- **A fire-and-forget coroutine's tail runs even after the state it started with is gone.**
+  `_attempt_play_card()` calls `_resolve_play()` without `await` (so the caller returns
+  immediately while the animation plays out) — a pattern used throughout the battle screen. If
+  the player leaves battle (`_leave_battle()`, a loss or a manual retreat) while that coroutine
+  is still suspended mid-animation, Godot resumes it anyway once its timer/tween fires,
+  regardless of what else has happened meanwhile — there is no implicit cancellation. Its tail
+  used to call `show_battle()` unconditionally, which wipes whatever screen is *currently*
+  showing, so a moment after the player navigated away the old battle screen would silently
+  reappear over the map. `g.resolving` (every play-a-card check's busy guard) had the same
+  problem: it was only ever cleared from inside that same tail, so a coroutine that never
+  reached it left card-play blocked for the rest of the session, exactly the "stuck flag"
+  shape above just for a boolean instead of an `in_<mode>` var. Fixed with `g.battle_session`,
+  a counter bumped by both `begin_battle()` and `_leave_battle()`: `_resolve_play()` captures it
+  synchronously at entry (before its first `await`, while it's still guaranteed correct) and
+  checks it again right before the one call in its tail that touches the screen, bailing out if
+  the session has moved on — and both bump sites also reset `g.resolving` directly rather than
+  trusting the coroutine to get there. Any new fire-and-forget coroutine that survives past a
+  point where the player could plausibly navigate away needs the same kind of check before it
+  touches shared screen state, not just a `is_instance_valid()` guard on the nodes it animates
+  (that prevents a crash; it does not prevent the tail from acting on stale state).
 
 ## Game rules worth knowing before touching balance
 

@@ -56,6 +56,12 @@ func begin_battle(index: int) -> void:
 	# right chapter instead of wherever the player last happened to be browsing.
 	g.current_map_chapter = index / 5
 	g.current_stage = index
+	# New battle invalidates any previous one's in-flight _resolve_play() coroutine (see
+	# battle_session's own comment in game.gd) — and resolving is this battle's own fresh
+	# start, never mid-card-resolution, regardless of what a stale coroutine from the last one
+	# might still be about to do.
+	g.battle_session += 1
+	g.resolving = false
 	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
 	g.active_modifier = _apply_difficulty(_modifier(seed, index), g.content.difficulty_modifier(int(g.profile.difficulty)))
 	g.combat = SpiritCombat.new(g.content)
@@ -1762,6 +1768,13 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	return true
 
 func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0, player_health_before: int = 0, player_focus_before: int = 0, player_strength_before: int = 0, card: Dictionary = {}) -> void:
+	# Captured before any await below, so a battle_session bump from _leave_battle() (a loss or
+	# a manual retreat reached while this coroutine is still mid-animation) or begin_battle() (a
+	# new battle already started) can be told apart from "still the same battle" once this
+	# resumes — see the guard right before show_battle() and battle_session's own comment in
+	# game.gd for what this prevents.
+	var session: int = g.battle_session
+
 	# 0. The just-played card flies off to the discard pile — fire-and-forget, so it plays
 	# out alongside everything below rather than delaying it.
 	_animate_card_to_discard(hand_index)
@@ -1802,6 +1815,12 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 			await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
 
 	await g.get_tree().create_timer(g._battle_delay(0.25)).timeout
+	# The battle this coroutine was resolving a card for is gone (a loss, a manual retreat, or
+	# a new battle already started while we were mid-animation) — show_battle() unconditionally
+	# wipes whatever screen is current, so calling it here would redraw this abandoned battle
+	# over the player's new location. _leave_battle()/begin_battle() already reset g.resolving
+	# themselves, so there is nothing left for this stale call to finish.
+	if g.battle_session != session: return
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
@@ -2703,6 +2722,14 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	seq.tween_callback(banner.queue_free)
 
 func _leave_battle() -> void:
+	# Invalidate any in-flight _resolve_play() coroutine still mid-animation from the battle
+	# being left (see battle_session's own comment in game.gd) before it can resume later and
+	# call show_battle(), which would wipe whatever screen we're about to navigate to and
+	# redraw this now-abandoned battle over it. resolving is reset here too rather than left
+	# for that coroutine's own tail to clear — the whole point is that tail may never reach its
+	# own "g.resolving = false" line once battle_session no longer matches.
+	g.battle_session += 1
+	g.resolving = false
 	if g.auto_battle_active: g.stop_auto_battle("manual")
 	g.selected_card = -1
 	if g.in_sandbox:

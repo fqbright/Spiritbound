@@ -25,6 +25,15 @@ var selected_rune := ""
 var muted := false
 var lang := "zh-Hans"
 var resolving := false
+# Bumped by begin_battle() (a new battle starts) and _leave_battle() (the current one ends) —
+# a cancellation token for _resolve_play()'s long await chain (card-fly, buff/heal/shield
+# animations, a per-enemy attack loop, then show_battle()/_maybe_end_turn()). Without it, a
+# stale _resolve_play() coroutine that was still mid-animation when the player left (a loss, a
+# manual retreat, anything reaching _leave_battle()) would resume once its timer/tween fires
+# regardless, and its tail's show_battle() call unconditionally wipes whatever screen is
+# current — silently replacing the map (or wherever _leave_battle() navigated to) with the old
+# battle's UI. See _resolve_play()'s own guard for where this is checked.
+var battle_session := 0
 var loadout_tab := "equipment"
 var pending_rewards: Dictionary = {}
 var selected_card := -1

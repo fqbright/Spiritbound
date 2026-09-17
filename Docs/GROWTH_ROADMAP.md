@@ -287,6 +287,38 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — `_resolve_play()` tail-race fixed: a stale coroutine could redraw battle over the map
+Third and last of the three items from the same recommendation the two entries below cover.
+`ui_smoke.gd`'s own finishing-blow-crash regression test (added earlier this session) already
+had a comment admitting this exact gap: leaving battle mid-animation left the interrupted
+`_resolve_play()` coroutine's tail (a couple more real-time delays, then its own
+`show_battle()`/`await _maybe_end_turn()`) to run later regardless, "out of scope to fix here."
+`show_battle()` unconditionally wipes whatever screen is current, so once that tail actually
+fired — a moment after the player had already navigated to the map (or wherever `_leave_battle()`
+sent them) — it would silently redraw the abandoned battle screen back over it. Worse,
+`g.resolving` (the "a card is mid-animation" guard every play-a-card check consults) was never
+reset by `_leave_battle()` either, so if that tail's own `show_battle()` call happened to be
+skipped for any reason, `resolving` could stay stuck `true` for the rest of the session, quietly
+blocking every future card play the same way this session's Draft Arena fix (below) blocked
+future battles via a stuck mode flag — same root cause shape, different flag.
+
+Fixed with a `battle_session: int` counter on `SpiritGame` (a cancellation token): bumped by
+`begin_battle()` (a new battle starts) and `_leave_battle()` (the current one ends), both of
+which also now reset `g.resolving = false` directly rather than trusting the interrupted
+coroutine's own tail to get there. `_resolve_play()` captures `battle_session` synchronously at
+entry (before its first `await`, so the captured value is always correct for the battle the
+card was actually played in) and checks it again right before `show_battle()` — the one call in
+its tail that actually touches the screen — returning early if the session has moved on instead
+of redrawing.
+
+Verified with this session's usual revert-and-reconfirm: temporarily disabled the guard and
+both new `_leave_battle()`/`begin_battle()` reset lines, re-ran `ui_smoke.gd`, and confirmed 2
+of the 4 new/extended assertions on the existing finishing-blow-crash test failed exactly as
+expected (`g.resolving` no longer clears immediately on leave; the map gets replaced by a stale
+battle screen a few seconds later) before restoring the fix. Full `./run_tests.sh --all` (all 6
+suites — core, chaos monkey, leak profiler, pixel-diff) green afterward, since this touches a
+hot path (every card play) rather than an isolated feature.
+
 ### 2026-09-17 — Band 4 farming-loop revalidation; Draft Arena's two stuck-flag bugs fixed
 Follow-up to a prior session's own recommendation ("what should we add/update/adjust next"),
 which had surfaced three items; user asked for all three to be done and fixed, with tests

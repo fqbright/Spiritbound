@@ -3171,19 +3171,31 @@ func _run() -> void:
 	game._leave_battle()
 	await process_frame
 	check(game.root != null and game.root.get_child_count() > 0, "leaving battle mid-finishing-blow-animation does not crash or leave a broken screen")
-	# The interrupted _resolve_play() still has its own tail to run (a couple more delays,
-	# then its own show_battle()/_maybe_end_turn() calls) even though the guards above make
-	# its nested _animate_finishing_blow() return early — that tail isn't itself guarded
-	# against "the player already left", so it can still redraw a stale battle-ish screen a
-	# moment later. Out of scope to fix here (a separate, broader issue from the reported
-	# auto-battle bug), but this suite shares one long-lived run across every section, so wait
-	# for it to fully finish before moving on rather than let it race the next section's checks.
-	var leave_settle_wait := 0.0
-	while game.resolving and leave_settle_wait < 5.0:
-		await create_timer(0.1).timeout
-		leave_settle_wait += 0.1
+	# _leave_battle() now bumps g.battle_session and resets g.resolving itself (see game.gd's
+	# comment on battle_session) rather than leaving both for the interrupted _resolve_play()'s
+	# own tail to eventually clear — so resolving is already false immediately, synchronously,
+	# not just eventually once that stale coroutine happens to finish.
+	check(not game.resolving, "_leave_battle() clears g.resolving immediately, not just once the interrupted coroutine's own tail eventually runs")
 	game.show_map()
 	await process_frame
+	check(game.root.find_child("MapAutoPushBtn", true, false) != null, "navigating to the map right after leaving mid-animation actually shows the map")
+	# The interrupted _resolve_play() still has its own tail to run (a couple more delays, then
+	# its own show_battle()/_maybe_end_turn() calls) even though the guards above make its
+	# nested _animate_finishing_blow() return early — this used to redraw a stale battle screen
+	# over the map a moment later, since that tail called show_battle() unconditionally with no
+	# way to tell "the player already left". Fixed by _resolve_play() capturing g.battle_session
+	# at entry and checking it again right before show_battle(): _leave_battle()'s bump above
+	# means the captured value no longer matches, so the stale tail now returns instead of
+	# calling show_battle(). Give that tail's remaining real-time delays a generous window to
+	# actually fire (rather than just not crashing within one frame) before checking the map is
+	# still intact — this is the regression check for that fix.
+	var post_leave_wait := 0.0
+	while post_leave_wait < 3.0:
+		await create_timer(0.1).timeout
+		post_leave_wait += 0.1
+	check(game.root.find_child("MapAutoPushBtn", true, false) != null, "the stale _resolve_play() tail does not redraw the battle screen over the map once it finishes")
+	check(game.root.find_child("PlayerSprite", true, false) == null, "no battle-only PlayerSprite reappears on the map from the stale coroutine's tail")
+	check(not game.resolving, "g.resolving stays false through the stale coroutine's whole remaining tail")
 
 	# 3. Map Auto Push Button
 	game.show_map()
