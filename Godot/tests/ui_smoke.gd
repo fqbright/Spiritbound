@@ -296,6 +296,27 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	section("== next-stage travel snaps the map back to the player's real chapter first ==")
+	var saved_pos_travel_sync: int = int(game.profile.position)
+	var saved_unlocked_travel_sync: int = int(game.profile.unlocked)
+	var saved_ch_travel_sync: int = int(game.current_map_chapter)
+	game.profile.position = 1
+	game.profile.unlocked = 2
+	game.current_map_chapter = 3 # simulate having swiped away to browse an unrelated chapter
+	game._travel_to(2)
+	check(game.current_map_chapter == 0, "tapping next-stage while browsing an unrelated chapter snaps the map back to the chapter the player is actually in before the walk starts")
+	await process_frame
+	var sync_wait := 0.0
+	while (game.resolving or int(game.profile.position) != 2) and sync_wait < 6.0:
+		await create_timer(0.1).timeout
+		sync_wait += 0.1
+	check(int(game.profile.position) == 2, "the walk still lands on the correct stage after snapping the map back")
+	game.profile.position = saved_pos_travel_sync
+	game.profile.unlocked = saved_unlocked_travel_sync
+	game.current_map_chapter = saved_ch_travel_sync
+	game.show_map()
+	await process_frame
+
 	# Chapter transition cutscene verification
 	var saved_unlocked_trans: int = int(game.profile.unlocked)
 	var saved_position_trans: int = int(game.profile.position)

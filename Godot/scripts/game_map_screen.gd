@@ -1134,6 +1134,17 @@ const TRAVEL_SECONDS_PER_STAGE := 2.0
 func _travel_to(index: int) -> void:
 	if index > int(g.profile.unlocked): return
 	var start_index: int = int(g.profile.position)
+	# The swipe gesture lets the player browse a chapter that has nothing to do with where
+	# they actually stand — tapping the next-stage dock button (or a pin) while browsing one
+	# of those doesn't mean "go from the chapter I'm looking at," it means "go from wherever
+	# profile.position actually is." Snap the map back to that chapter and let it render before
+	# the walk (hop-tween below, or show_chapter_transition() for a chapter crossing) starts,
+	# or the walk plays out over whichever unrelated chapter's terrain/pins happened to be on
+	# screen instead of the one the player is actually walking through.
+	if g.current_map_chapter != start_index / 5:
+		g.current_map_chapter = start_index / 5
+		show_map()
+		await g.get_tree().create_timer(g._battle_delay(0.3)).timeout
 	if index == start_index:
 		var kind := g.content.node_kind(index)
 		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
