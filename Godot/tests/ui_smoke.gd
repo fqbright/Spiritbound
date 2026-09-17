@@ -2958,6 +2958,108 @@ func _run() -> void:
 	game._leave_battle()
 	await process_frame
 
+	# 2b. Auto-Battle actually plays more than one card (user-reported bug: auto-battle only
+	# ever auto-played the very first card of the battle, then silently stopped). Root cause
+	# was _resolve_play() calling show_battle() (whose own internal "if auto_battle_active:
+	# _maybe_step_auto_battle()" branch is the only re-trigger point) while g.resolving was
+	# still true — _maybe_step_auto_battle()'s guard clause always bailed, and nothing else
+	# ever re-invoked it, so the chain died after card 1. Fixed by re-checking only after
+	# g.resolving is genuinely reset back to false. Uses the real starting deck (guaranteed
+	# all 1-cost, per AGENTS.md, so turn 1's energy affords at least 2 plays) rather than
+	# whatever the shared profile's deck has drifted to by this point in the suite, and a
+	# sped-up battle_speed so a full auto-played battle doesn't slow this suite down.
+	var saved_deck_autobattle: Array = game.profile.deck.duplicate()
+	var saved_speed_autobattle: float = game.battle_speed
+	game.profile.deck = game.content.raw.startingDeck.duplicate()
+	game.battle_speed = 50.0
+	game.toggle_auto_battle(true)
+	game.begin_battle(0)
+	await process_frame
+
+	var second_card_guard := 0
+	while game.combat != null and game.combat.state.phase == "player" and int(game.combat.state.stats.get("cards_played", 0)) < 2 and second_card_guard < 200:
+		await create_timer(0.05).timeout
+		second_card_guard += 1
+	check(game.combat != null and int(game.combat.state.stats.get("cards_played", 0)) >= 2, "auto-battle plays a second card once the first one resolves, not just the first (regression check: was stuck at exactly 1)")
+
+	# Let the fully-automated battle run to completion with zero manual card plays, proving
+	# the re-trigger chain carries the whole fight rather than just squeezing out one extra card.
+	var win_guard := 0
+	while game.combat != null and game.combat.state.phase == "player" and win_guard < 400:
+		await create_timer(0.05).timeout
+		win_guard += 1
+	game.stop_auto_battle("manual")
+	# combat.state.phase flips to "won" synchronously the instant the killing blow lands —
+	# well before _resolve_play()'s own animation chain for that card (still holding
+	# g.resolving true) actually finishes, including the finishing-blow banner sequence.
+	# Leaving immediately here would free the battle screen while that coroutine is still
+	# suspended mid-tween — same settle-before-leaving idiom e2e_playthrough.gd's
+	# _simulate_battle() already uses after its own win/loss loop, for the same reason.
+	var autobattle_settle_wait := 0.0
+	while game.resolving and autobattle_settle_wait < 5.0:
+		await create_timer(0.1).timeout
+		autobattle_settle_wait += 0.1
+	var final_cards_played: int = int(game.combat.state.stats.get("cards_played", 0)) if game.combat != null else -1
+	check(game.combat != null and game.combat.state.phase == "won", "auto-battle alone (no manual card plays) carries the battle all the way to a win (%d cards played)" % final_cards_played)
+
+	game.profile.deck = saved_deck_autobattle
+	game.battle_speed = saved_speed_autobattle
+	game._leave_battle()
+	await process_frame
+
+	# 2c. Regression check for a second bug the fix above surfaced: leaving battle (tapping
+	# "⌂") immediately after a killing blow. combat.state.phase flips to "won" synchronously
+	# the instant the hit lands, well before _resolve_play()'s finishing-blow banner sequence
+	# actually finishes — and the win/loss outcome screen (the only place the "⌂" button goes
+	# away) doesn't replace the battle screen until that whole chain completes, so a real
+	# player really can tap leave while it's still animating. This used to free g.overlay's
+	# children out from under the still-suspended _animate_finishing_blow() coroutine,
+	# crashing with "Cannot call method 'queue_free' on a previously freed instance." Fixed
+	# with is_instance_valid() guards there (game_battle_screen.gd), the same pattern
+	# show_chapter_transition()'s fix already uses. As with that fix, the real proof is "no
+	# SCRIPT ERROR in a full run's log" (confirmed by temporarily reverting the guards and
+	# re-running) — this check() is the closest a check() gets, confirming the game is at
+	# least left in a working state.
+	# Deliberately left at normal (1.0) battle_speed for this one check, not sped up like the
+	# tests above: _animate_finishing_blow()'s whole sequence is a fixed ~1.2s of real tween
+	# time, and the point of this test is to land inside that window, not race past it — a
+	# sped-up sequence can finish faster than a single process_frame, making the window too
+	# narrow to reliably hit rather than just making the test faster.
+	game.begin_battle(0)
+	await process_frame
+	# Force a guaranteed-lethal, guaranteed-attack card into hand[0] rather than trusting
+	# whatever the opening draw happens to contain (the draw shuffle is seeded from wall-clock
+	# time in begin_battle(), so it isn't deterministic run to run) — "strike" is a plain
+	# 1-cost, 6-damage hit to the opponent (core.json), always affordable on turn 1.
+	game.combat.state.hand[0] = {"uid": 90001, "card_id": "strike"}
+	game.combat.state.enemies[0].health = 1
+	game._attempt_play_card(0, 0)
+	# Wait for _animate_finishing_blow() to actually be mid-sequence (its banner node exists)
+	# rather than guessing a delay — the banner is created right at the top of that function,
+	# well before any of its awaits, so its presence confirms the coroutine is now suspended
+	# somewhere in the vulnerable window this test means to hit.
+	var banner_guard := 0
+	while game.overlay.get_node_or_null("FinishingBlowBanner") == null and game.resolving and banner_guard < 600:
+		await process_frame
+		banner_guard += 1
+	check(game.overlay.get_node_or_null("FinishingBlowBanner") != null, "finishing-blow banner appears mid-sequence, confirming this test actually reaches the vulnerable window")
+	game._leave_battle()
+	await process_frame
+	check(game.root != null and game.root.get_child_count() > 0, "leaving battle mid-finishing-blow-animation does not crash or leave a broken screen")
+	# The interrupted _resolve_play() still has its own tail to run (a couple more delays,
+	# then its own show_battle()/_maybe_end_turn() calls) even though the guards above make
+	# its nested _animate_finishing_blow() return early — that tail isn't itself guarded
+	# against "the player already left", so it can still redraw a stale battle-ish screen a
+	# moment later. Out of scope to fix here (a separate, broader issue from the reported
+	# auto-battle bug), but this suite shares one long-lived run across every section, so wait
+	# for it to fully finish before moving on rather than let it race the next section's checks.
+	var leave_settle_wait := 0.0
+	while game.resolving and leave_settle_wait < 5.0:
+		await create_timer(0.1).timeout
+		leave_settle_wait += 0.1
+	game.show_map()
+	await process_frame
+
 	# 3. Map Auto Push Button
 	game.show_map()
 	await process_frame

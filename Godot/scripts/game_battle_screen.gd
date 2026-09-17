@@ -1776,6 +1776,17 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
+	# Auto-Battle's real re-trigger point. show_battle()'s own internal check (its
+	# "if g.auto_battle_active: _maybe_step_auto_battle()" branch) fires from *inside* this
+	# same _resolve_play() call (via the show_battle() call two lines up, and again from
+	# within _maybe_end_turn()'s _enemy_turn() when a turn ends) — at both of those points
+	# g.resolving is still true, so _maybe_step_auto_battle()'s own guard clause always bails
+	# immediately. Nothing else ever called it again afterward, so auto-battle only ever
+	# played the one card kicked off from begin_battle()'s initial call (made before resolving
+	# is ever set true). This line is the fix: only once resolving is actually false again —
+	# meaning the previous card's animation and any resulting turn-end/enemy-turn have fully
+	# settled — do we check whether to play the next card.
+	if g.auto_battle_active: _maybe_step_auto_battle()
 
 func _animate_player_action(card: Dictionary) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -2332,16 +2343,28 @@ func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 
 	await tw.finished
 	await g.get_tree().create_timer(g._battle_delay(0.70)).timeout
+	# This whole function is awaited all the way from _resolve_play(), so it normally only
+	# ever runs while the battle screen it built these nodes onto is still current — but the
+	# still-visible "⌂ leave battle" button from that same screen (show_battle() doesn't
+	# redraw to the win/loss outcome screen until _resolve_play() finishes, well after this
+	# function returns) means a player really can tap away mid-animation and free g.overlay's
+	# children out from under this coroutine. Same class of bug as show_chapter_transition()'s
+	# freed-instance race (game_map_screen.gd) — same fix, checked at every resume point that
+	# still touches these nodes.
+	if not is_instance_valid(top_bar) or not is_instance_valid(btm_bar) or not is_instance_valid(banner):
+		return
 
 	var out_tw := g.create_tween().set_parallel(true)
 	out_tw.tween_property(banner, "modulate:a", 0.0, g._battle_delay(0.25))
 	out_tw.tween_property(banner, "scale", Vector2(1.2, 1.2), g._battle_delay(0.25))
 	out_tw.tween_property(top_bar, "position:y", -64.0, g._battle_delay(0.25))
 	out_tw.tween_property(btm_bar, "position:y", 844.0, g._battle_delay(0.25))
-	if sprite:
+	if sprite and is_instance_valid(sprite):
 		out_tw.tween_property(sprite, "modulate:a", 0.0, g._battle_delay(0.25))
 
 	await out_tw.finished
+	if not is_instance_valid(top_bar) or not is_instance_valid(btm_bar) or not is_instance_valid(banner):
+		return
 	top_bar.queue_free()
 	btm_bar.queue_free()
 	banner.queue_free()
