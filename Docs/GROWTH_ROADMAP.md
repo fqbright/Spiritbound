@@ -82,19 +82,13 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   witherTouch/1 miasmaBrew), 5-level mastery track mirroring fox_spirit's shape (`max_hp` →
   `poison_start` → `first_attack_bonus` → `poison_start` → `first_attack_bonus`), starting
   relic `bloodJade`.
-  **Known gap, not fixed in this pass:** no unique painted portrait. `character-atlas-v3.png`
+  **Known gap, designated for Human Artist:** no unique human-painted portrait. `character-atlas-v3.png`
   is a fixed 3x3 grid and all 9 cells are already claimed (3 heroes + the shared 5-enemy pool
-  + 1 spare). This hero borrows Stone Sentinel's sprite, deliberately dimmed
-  (`modulate = Color(0.6,0.6,0.6,0.55)`), with an explicit "美术资源开发中 / Art Coming Soon"
-  badge in `_hero_archetypes_section()` — chosen over either (a) silently reusing another
-  hero's face with no indication, which reads as a real bug, or (b) blocking all of D3's
-  mechanical work on an asset dependency no agent can resolve. **To actually finish this**:
-  someone needs to either commission/paint a new portrait and expand the atlas past 3x3 (or
-  add it as a standalone image + a new texture-loading path alongside `_get_character_texture`),
-  then remove `"art_pending": true` and the dimming/badge code once a real `sprite` key exists
-  for it. The map traveler avatar (`show_map()`'s `traveler.texture` line) was left un-dimmed
-  since a moving map icon has no adjacent text to explain a visual change — same caveat
-  applies there without one.
+  + 1 spare). This hero borrows Stone Sentinel's sprite as a placeholder, with an explicit
+  directive that **this portrait requires a real human artist to produce (需真人画师出图，非AI生成)**.
+  AI agents must NOT attempt to generate this asset. The standalone texture loader in `game.gd`
+  (`res://assets/characters/miasma_witch.png`) is prepared to receive the official artwork once
+  delivered by the human artist.
   *Built on:* `content.HERO_CLASSES`/`HERO_MASTERY_PERKS` data shape; `_resolve_effects()`'s
   already-fully-generic `"status"` operation needed zero changes to apply Poison — only the
   non-decaying tick line in `combat.gd`'s `end_turn()` and a `poison_start` hero-bonus hook

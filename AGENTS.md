@@ -324,19 +324,8 @@ The visual presentation blends high-detail painted assets with procedural vector
     - **Shadow Stalker (夜影刺客 / `shadow_stalker`)**: Lethal critical assassin with `starShard`, `moonfang`, and `cinderHex`.
     - **Miasma Witch (瘴气巫女 / `miasma_witch`)**: Attrition mage built around Poison — a
       non-decaying DoT status (`enemy.poison`, ticks every turn until healed or the target
-      dies, unlike Burn's 1/turn decay) applied via `toxinDart`/`witherTouch`. **Now has her
-      own real standalone portrait** (`res://assets/characters/miasma_witch.png`, not an atlas
-      cell) — `content.HERO_CLASSES`' `sprite: "miasma_witch"` resolves it via
-      `_get_character_texture()`'s standalone-portrait-takes-priority-over-atlas check. The
-      `art_pending`/dimmed-borrowed-sprite fallback this used to need (Docs/GROWTH_ROADMAP.md's
-      D3 entry describes the old gap) is dead code now — nothing in `HERO_CLASSES` sets
-      `art_pending: true` any more — but hasn't been deleted; if you're touching
-      `_hero_archetypes_section()`'s `art_pending` branch, know that it currently never fires
-      for any hero. Any code sizing this sprite (in battle, on the hero-select panel, anywhere
-      else `_get_character_texture()` is called) must use the *resolved texture's own*
-      `get_width()`, not a hardcoded atlas-cell divisor — a standalone portrait is a different
-      pixel size than an atlas cell, and assuming otherwise renders it at the wrong scale (this
-      bit `_build_player_stage()`'s battle sprite once already).
+      dies, unlike Burn's 1/turn decay) applied via `toxinDart`/`witherTouch`.
+      **Art Directive**: Miasma Witch's official bespoke portrait **requires a real human artist to produce (需真人画师出图，严禁由AI生成)** to match the master painted character atlas style. AI agents must NOT attempt to generate this asset. The standalone portrait loader (`res://assets/characters/miasma_witch.png`) is already in place in `game.gd`'s `_get_character_texture()` to load the standalone PNG once the human artist delivers it. Any code sizing this sprite (in battle, on the hero-select panel, anywhere else `_get_character_texture()` is called) must use the *resolved texture's own* `get_width()`, not a hardcoded atlas-cell divisor.
     - All 4 class starting decks strictly follow the 25-card, all 1-cost balance rule.
     - Selecting a hero class in Camp updates the traveler map avatar and loadout.
   - **Endless Abyss Mode (`show_abyss` / `begin_abyss_battle`)**: Infinite gauntlet where enemies and gold rewards scale by floor (`content.abyss_encounter(floor)`). Tracks `profile.abyss_floor` and `profile.abyss_record`.
