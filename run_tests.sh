@@ -5,10 +5,13 @@ set -e
 # Spiritbound Automated Test & Verification Suite
 # ==============================================================================
 # Usage:
-#   ./run_tests.sh                 # Run unit tests + UI smoke + E2E playthrough
-#   ./run_tests.sh --snapshots     # Run all tests + generate mobile visual screenshots
+#   ./run_tests.sh                 # Run core suites (unit + ui_smoke + e2e_playthrough)
+#   ./run_tests.sh --all           # Run EVERYTHING (unit + ui_smoke + e2e + monkey + leaks + diff)
+#   ./run_tests.sh --monkey        # Run Chaos Monkey stress tests
+#   ./run_tests.sh --leaks         # Run Memory & Object leak profiler
+#   ./run_tests.sh --diff          # Run Visual Pixel-Diff baseline comparison
+#   ./run_tests.sh --snapshots     # Generate/refresh 390x844 mobile screenshots
 #   ./run_tests.sh --only-e2e      # Run only the E2E campaign playthrough bot
-#   ./run_tests.sh --only-snapshots # Run only the visual snapshot tool
 # ==============================================================================
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,10 +30,39 @@ echo -e "${BLUE}========================================================${NC}"
 RUN_UNIT=true
 RUN_SMOKE=true
 RUN_E2E=true
+RUN_MONKEY=false
+RUN_LEAKS=false
+RUN_DIFF=false
 GEN_SNAPSHOTS=false
 
 for arg in "$@"; do
     case "$arg" in
+        --all)
+            RUN_UNIT=true
+            RUN_SMOKE=true
+            RUN_E2E=true
+            RUN_MONKEY=true
+            RUN_LEAKS=true
+            RUN_DIFF=true
+            ;;
+        --monkey)
+            RUN_UNIT=false
+            RUN_SMOKE=false
+            RUN_E2E=false
+            RUN_MONKEY=true
+            ;;
+        --leaks)
+            RUN_UNIT=false
+            RUN_SMOKE=false
+            RUN_E2E=false
+            RUN_LEAKS=true
+            ;;
+        --diff)
+            RUN_UNIT=false
+            RUN_SMOKE=false
+            RUN_E2E=false
+            RUN_DIFF=true
+            ;;
         --snapshots)
             GEN_SNAPSHOTS=true
             ;;
@@ -38,7 +70,6 @@ for arg in "$@"; do
             RUN_UNIT=false
             RUN_SMOKE=false
             RUN_E2E=true
-            GEN_SNAPSHOTS=false
             ;;
         --only-snapshots)
             RUN_UNIT=false
@@ -72,7 +103,28 @@ if [ "$RUN_E2E" = true ]; then
     echo -e "${GREEN}✓ E2E Campaign Playthrough passed without softlocks!${NC}"
 fi
 
-# 4. Mobile Visual Snapshots (Optional or Flagged)
+# 4. Chaos Monkey Stress Testing
+if [ "$RUN_MONKEY" = true ]; then
+    echo -e "\n${YELLOW}[+] Running Chaos Monkey Stress Tests (tests/chaos_monkey.gd)...${NC}"
+    godot --headless --path "${GODOT_DIR}" -s tests/chaos_monkey.gd
+    echo -e "${GREEN}✓ Chaos Monkey survived without crashes!${NC}"
+fi
+
+# 5. Memory & ObjectDB Leak Profiler
+if [ "$RUN_LEAKS" = true ]; then
+    echo -e "\n${YELLOW}[+] Running Memory & Object Leak Profiler (tests/leak_checker.gd)...${NC}"
+    godot --headless --path "${GODOT_DIR}" -s tests/leak_checker.gd
+    echo -e "${GREEN}✓ Leak Profiler confirmed zero unbounded leaks!${NC}"
+fi
+
+# 6. Visual Pixel-Diff Comparison
+if [ "$RUN_DIFF" = true ]; then
+    echo -e "\n${YELLOW}[+] Running Visual Pixel-Diff Comparison (tests/pixel_diff_test.gd)...${NC}"
+    godot --headless --path "${GODOT_DIR}" -s tests/pixel_diff_test.gd
+    echo -e "${GREEN}✓ Pixel-Diff verified all screens match baselines!${NC}"
+fi
+
+# 7. Mobile Visual Snapshots (Optional or Flagged)
 if [ "$GEN_SNAPSHOTS" = true ]; then
     echo -e "\n${YELLOW}[+] Capturing Mobile Visual Snapshots (390x844)...${NC}"
     godot --path "${GODOT_DIR}" --rendering-driver opengl3 -s tests/visual_snapshots.gd
