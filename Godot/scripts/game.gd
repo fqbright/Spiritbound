@@ -55,7 +55,20 @@ var _swipe_tracking := false
 var map_music: AudioStreamPlayer
 var battle_music: AudioStreamPlayer
 var battle_music_streams: Array[AudioStream] = []
-var font_cjk: Font = load("res://assets/fonts/NotoSansSC.ttf")
+static func _load_game_font() -> Font:
+	var en_font: FontFile = load("res://assets/fonts/Cinzel-SemiBold.ttf")
+	var cjk_font: FontFile = load("res://assets/fonts/LXGWWenKai-Medium.ttf")
+	if en_font and cjk_font:
+		var arr: Array[Font] = [cjk_font]
+		en_font.fallbacks = arr
+		return en_font
+	elif cjk_font:
+		return cjk_font
+	elif en_font:
+		return en_font
+	return null
+
+var font_cjk: Font = _load_game_font()
 
 var _char_atlas_tex: Texture2D = null
 var _card_atlas_1: Texture2D = null
@@ -971,6 +984,32 @@ func _label(text: String, size := 14, color := TEXT, align := HORIZONTAL_ALIGNME
 	else: value.autowrap_mode = TextServer.AUTOWRAP_OFF
 	return value
 
+func _bind_touch_guard(btn: Button, callback: Callable, slop: float = 14.0) -> void:
+	if not callback.is_valid(): return
+	var state := {
+		"press_start": Vector2.ZERO,
+		"drag_cancelled": false
+	}
+	btn.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventScreenTouch or (ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT):
+			if ev.pressed:
+				state.press_start = ev.position
+				state.drag_cancelled = false
+		elif ev is InputEventScreenDrag or ev is InputEventMouseMotion:
+			if not bool(state.drag_cancelled) and (ev.position - Vector2(state.press_start)).length() > slop:
+				state.drag_cancelled = true
+	)
+	btn.pressed.connect(func():
+		if bool(state.drag_cancelled):
+			state.drag_cancelled = false
+			return
+		if TouchScrollContainer.is_any_dragging:
+			return
+		if TouchScrollContainer.last_drag_finish_msec > 0 and Time.get_ticks_msec() - TouchScrollContainer.last_drag_finish_msec < 220:
+			return
+		callback.call()
+	)
+
 func _button(text: String, callback: Callable, color := PANEL, min_size := Vector2(0,44)) -> Button:
 	var value := Button.new(); value.text = text; value.custom_minimum_size = min_size
 	if font_cjk: value.add_theme_font_override("font", font_cjk)
@@ -980,7 +1019,8 @@ func _button(text: String, callback: Callable, color := PANEL, min_size := Vecto
 	value.add_theme_stylebox_override("hover", _panel(color.lightened(.1), 10, JADE))
 	value.add_theme_stylebox_override("pressed", _panel(color.darkened(.12), 10, EMBER))
 	value.add_theme_stylebox_override("disabled", _panel(color.darkened(.3), 10, Color("3a4a50")))
-	if callback.is_valid(): value.pressed.connect(callback)
+	if callback.is_valid():
+		_bind_touch_guard(value, callback)
 	return value
 
 func _texture(path: String) -> Texture2D:
@@ -1192,6 +1232,7 @@ func show_run_recap() -> void: _rewards_screen.show_run_recap()
 func _collect_card(card: Dictionary) -> void: _rewards_screen._collect_card(card)
 func _smart_add_card(card: Dictionary) -> void: _rewards_screen._smart_add_card(card)
 func show_event(index: int, kind: String) -> void: _rewards_screen.show_event(index, kind)
+func _reward_card_row(card: Dictionary) -> Control: return _rewards_screen._reward_card_row(card)
 
 # Thin delegators onto ShopDeckScreen (scripts/game_shop_deck_screen.gd) — see MapScreen's
 # header comment (game_map_screen.gd) for why composition rather than inheritance.

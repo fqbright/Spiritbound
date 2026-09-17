@@ -93,57 +93,83 @@ func _open_map_digest() -> void:
 	if quest_or_login_ready: g.show_quests()
 	else: g.camp_tab = "collection"; g.show_camp()
 
-func _add_map_digest_banner(parent: Control) -> void:
-	var count := _claimable_reward_count()
-	if count <= 0: return
-	var holder := MarginContainer.new()
-	holder.name = "MapDigestBanner"
-	holder.anchor_left = 0.0
-	holder.anchor_right = 1.0
-	holder.anchor_top = 0.0
-	holder.anchor_bottom = 0.0
-	holder.offset_left = 0.0
-	holder.offset_right = 0.0
-	holder.offset_top = float(g._safe_top()) + 58.0
-	holder.offset_bottom = float(g._safe_top()) + 58.0 + 34.0
-	holder.add_theme_constant_override("margin_left", 12)
-	holder.add_theme_constant_override("margin_right", 12)
-	parent.add_child(holder)
+func _add_map_right_rail(parent: Control) -> void:
+	var rail := VBoxContainer.new()
+	rail.name = "MapRightActionRail"
+	rail.anchor_left = 1.0
+	rail.anchor_right = 1.0
+	rail.anchor_top = 0.0
+	rail.anchor_bottom = 0.0
+	rail.offset_left = -58.0
+	rail.offset_right = -12.0
+	rail.offset_top = float(g._safe_top()) + 62.0
+	rail.offset_bottom = float(g._safe_top()) + 220.0
+	rail.add_theme_constant_override("separation", 10)
+	rail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rail.z_index = 100
+	parent.add_child(rail)
 
-	var btn := g._button(g.tf("ui.digest_ready_fmt", count), _open_map_digest, Color(0.169, 0.129, 0.043, 0.92), Vector2(0, 34))
-	btn.name = "MapDigestButton"
-	btn.add_theme_font_size_override("font_size", 13)
-	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	holder.add_child(btn)
-
-func _add_map_idle_harvest_pill(parent: Control) -> void:
-	var holder := MarginContainer.new()
-	holder.name = "MapIdleHarvestHolder"
-	holder.anchor_left = 0.0
-	holder.anchor_right = 1.0
-	holder.anchor_top = 0.0
-	holder.anchor_bottom = 0.0
-	holder.offset_left = 0.0
-	holder.offset_right = 0.0
-	var top_y: float = float(g._safe_top()) + 58.0
-	if parent.has_node("MapDigestBanner"):
-		top_y += 38.0
-	holder.offset_top = top_y
-	holder.offset_bottom = top_y + 32.0
-	holder.add_theme_constant_override("margin_left", 12)
-	holder.add_theme_constant_override("margin_right", 12)
-	parent.add_child(holder)
-
+	# 1. 宗门灵修 (Idle Harvest)
 	var unclaimed := g.get_idle_harvest_unclaimed_gold()
-	var text_str := g.tf("ui.idle_harvest_pill_fmt", unclaimed) if unclaimed > 0 else g.t("ui.idle_harvest_title")
-	var btn := g._button("✦ " + text_str, g.show_idle_harvest_modal, Color("142c33"), Vector2(0, 32))
-	btn.name = "MapIdleHarvestBtn"
-	btn.add_theme_font_size_override("font_size", 12)
-	btn.add_theme_color_override("font_color", g.GOLD)
-	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	holder.add_child(btn)
+	var harvest_btn := g._button("", g.show_idle_harvest_modal, Color("142c33"), Vector2(46, 46))
+	harvest_btn.name = "MapIdleHarvestBtn"
+	harvest_btn.custom_minimum_size = Vector2(46, 46)
+	harvest_btn.size = harvest_btn.custom_minimum_size
+	var harvest_icon := TextureRect.new()
+	harvest_icon.texture = load("res://assets/icons/pouch.png")
+	harvest_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	harvest_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	harvest_icon.custom_minimum_size = Vector2(28, 28)
+	harvest_icon.size = harvest_icon.custom_minimum_size
+	harvest_icon.position = Vector2(9, 9)
+	harvest_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	harvest_btn.add_child(harvest_icon)
 	if unclaimed > 0:
-		_add_notification_dot(btn, Vector2(18, 6))
+		_add_notification_dot(harvest_btn, Vector2(46, 46))
+	rail.add_child(harvest_btn)
+
+	# 2. 待领取奖励 (Today's Digest / Quests / Login Rewards)
+	var count := _claimable_reward_count()
+	if count > 0:
+		var banner_holder := Control.new()
+		banner_holder.name = "MapDigestBanner"
+		banner_holder.custom_minimum_size = Vector2(46, 46)
+		banner_holder.size = banner_holder.custom_minimum_size
+		banner_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		var digest_btn := g._button("", _open_map_digest, Color(0.22, 0.16, 0.06, 0.95), Vector2(46, 46))
+		digest_btn.name = "MapDigestButton"
+		digest_btn.custom_minimum_size = Vector2(46, 46)
+		digest_btn.size = digest_btn.custom_minimum_size
+		var digest_icon := TextureRect.new()
+		digest_icon.texture = load("res://assets/icons/quest.png")
+		digest_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		digest_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		digest_icon.custom_minimum_size = Vector2(28, 28)
+		digest_icon.size = digest_icon.custom_minimum_size
+		digest_icon.position = Vector2(9, 9)
+		digest_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		digest_btn.add_child(digest_icon)
+
+		# Number badge on top right corner
+		var badge := PanelContainer.new()
+		badge.name = "NotificationCountBadge"
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_theme_stylebox_override("panel", g._panel(g.EMBER, 8, Color("2b0a08")))
+		badge.position = Vector2(26, -4)
+		badge.z_index = 5
+		var badge_pad := MarginContainer.new()
+		badge_pad.add_theme_constant_override("margin_left", 4)
+		badge_pad.add_theme_constant_override("margin_right", 4)
+		badge_pad.add_theme_constant_override("margin_top", 1)
+		badge_pad.add_theme_constant_override("margin_bottom", 1)
+		badge.add_child(badge_pad)
+		var num_lbl := g._label(str(count), 10, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+		badge_pad.add_child(num_lbl)
+		digest_btn.add_child(badge)
+
+		banner_holder.add_child(digest_btn)
+		rail.add_child(banner_holder)
 
 # Drives the red notification dot on the Camp entry point — true the moment a Compendium
 # collection-milestone reward (50/80/100%) is reached and not yet claimed. Camp itself never
@@ -287,8 +313,7 @@ func show_map() -> void:
 	header.add_child(right_box)
 	header_holder.add_child(header)
 
-	_add_map_digest_banner(overlay_page)
-	_add_map_idle_harvest_pill(overlay_page)
+	_add_map_right_rail(overlay_page)
 
 	var stage_count: int = g.content.encounters.size()
 	var chapter_count: int = stage_count / 5
@@ -919,7 +944,7 @@ func _add_stage_pin(index: int) -> void:
 	pin.add_theme_stylebox_override("hover", g._panel(Color(1, 1, 1, 0.08), 16, g.EMBER))
 	pin.add_theme_stylebox_override("pressed", g._panel(Color(1, 1, 1, 0.14), 16, g.GOLD))
 	pin.add_theme_stylebox_override("disabled", g._panel(Color.TRANSPARENT, 16))
-	pin.pressed.connect(func(): g._on_pin_pressed(index))
+	g._bind_touch_guard(pin, func(): g._on_pin_pressed(index))
 	g.map_canvas.add_child(pin)
 
 	# Each node kind gets its own painted marker (pin_boss/pin_elite/pin_event/pin_greatboss/
@@ -993,6 +1018,13 @@ const TRAVEL_SECONDS_PER_STAGE := 2.0
 func _travel_to(index: int) -> void:
 	if index > int(g.profile.unlocked): return
 	var start_index: int = int(g.profile.position)
+	if index == start_index:
+		var kind := g.content.node_kind(index)
+		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+			g.show_event(index, kind)
+		else:
+			g.begin_battle(index)
+		return
 	var hop_count: int = maxi(1, absi(index - start_index))
 	var hop_duration: float = TOTAL_TRAVEL_SECONDS / float(hop_count)
 	var step: int = 1 if index >= start_index else -1

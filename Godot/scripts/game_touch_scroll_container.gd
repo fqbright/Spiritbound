@@ -40,10 +40,14 @@ func _apply(offset: Vector2) -> void:
 		_pos.y = clampf(_pos.y + offset.y, 0.0, limit.y)
 		scroll_vertical = int(round(_pos.y))
 
+static var is_any_dragging := false
+static var last_drag_finish_msec := 0
+
 func _press(pos: Vector2) -> void:
 	if not get_global_rect().has_point(pos): return
 	_is_touching = true
 	_is_dragging = false
+	is_any_dragging = false
 	_touch_start = pos
 	_last_pos = pos
 	_last_time = Time.get_ticks_msec() / 1000.0
@@ -59,6 +63,7 @@ func _drag_to(pos: Vector2) -> void:
 	_last_time = now
 	if not _is_dragging and (pos - _touch_start).length() > drag_threshold:
 		_is_dragging = true
+		is_any_dragging = true
 	if not _is_dragging: return
 	get_viewport().set_input_as_handled()
 	_apply(-delta)
@@ -72,9 +77,12 @@ func _release() -> void:
 	if _is_dragging:
 		get_viewport().set_input_as_handled()
 		_is_dragging = false
+		is_any_dragging = false
+		last_drag_finish_msec = Time.get_ticks_msec()
 		# A finger resting before release should stop the list, not fling it.
 		if (Time.get_ticks_msec() / 1000.0) - _last_time > 0.09: _velocity = Vector2.ZERO
 	else:
+		is_any_dragging = false
 		_velocity = Vector2.ZERO
 
 func _input(event: InputEvent) -> void:

@@ -405,6 +405,38 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	check(game.root.find_child("MapRightActionRail", true, false) != null, "MapRightActionRail exists on the map")
+	check(game.root.find_child("MapIdleHarvestBtn", true, false) != null, "MapIdleHarvestBtn exists on the right rail")
+
+	# Reward card row is a PanelContainer (not plain Panel) to dynamically fit long text without overflowing
+	var sample_card: Dictionary = game.content.cards[0]
+	var reward_row: Control = game._reward_card_row(sample_card)
+	check(reward_row is PanelContainer, "reward card row uses PanelContainer to prevent button overflow")
+
+	# Standing on same stage does not deadlock in _travel_to
+	var pos_before: int = int(game.profile.position)
+	await game._travel_to(pos_before)
+	check(game.combat != null, "traveling to current stage enters battle immediately without tween deadlock")
+	game.show_map()
+	await process_frame
+
+	# Touch slop drag cancellation test
+	var clicked := [false]
+	var test_btn: Button = game._button("Test", func(): clicked[0] = true)
+	var ev_touch := InputEventScreenTouch.new()
+	ev_touch.pressed = true
+	ev_touch.position = Vector2(10, 10)
+	test_btn.gui_input.emit(ev_touch)
+	var ev_drag := InputEventScreenDrag.new()
+	ev_drag.position = Vector2(10, 30)
+	test_btn.gui_input.emit(ev_drag)
+	test_btn.pressed.emit()
+	check(not clicked[0], "button tap is cancelled when finger dragged > 14px")
+	ev_touch.position = Vector2(10, 10)
+	test_btn.gui_input.emit(ev_touch)
+	test_btn.pressed.emit()
+	check(clicked[0], "button tap succeeds without drag")
+
 	section("== map pin markers ==")
 	# A pin used to just be a badge centred on its road point. It is now a badge floating
 	# above the point with a tail pointing straight down at it and a shadow cast on the

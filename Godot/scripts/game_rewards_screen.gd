@@ -443,13 +443,12 @@ func _reward_card_row(card: Dictionary) -> Control:
 	var owned: int = int(g.profile.collection.get(card.id, 0))
 	var in_deck: int = g.profile.deck.count(card.id)
 
-	var panel := Panel.new()
+	var panel := PanelContainer.new()
 	panel.custom_minimum_size.y = 126
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", g._panel(Color("11242a"), 12, accent))
 
 	var pad := MarginContainer.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 8)
 	panel.add_child(pad)
 
@@ -459,6 +458,7 @@ func _reward_card_row(card: Dictionary) -> Control:
 
 	var art_holder := Control.new()
 	art_holder.custom_minimum_size = Vector2(76, 106)
+	art_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	art_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(art_holder)
 	art_holder.add_child(g._card_art_panel(card.id, Vector2(76, 106)))
@@ -468,23 +468,23 @@ func _reward_card_row(card: Dictionary) -> Control:
 
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.add_theme_constant_override("separation", 2)
+	right.add_theme_constant_override("separation", 3)
 	row.add_child(right)
 
-	right.add_child(g._label(g.content.text(card.nameKey, g.lang), 15, g.TEXT))
+	right.add_child(g._label(g.content.text(card.nameKey, g.lang), 14, g.TEXT))
 	right.add_child(g._label("%s · %s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("element.%s" % card.get("element", "spirit")), card.rarity], 9, g.GOLD))
-	var desc := g._label(g._card_description(card), 11, Color("cfe3e0"), HORIZONTAL_ALIGNMENT_LEFT, true)
-	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var desc := g._label(g._card_description(card), 10, Color("cfe3e0"), HORIZONTAL_ALIGNMENT_LEFT, true)
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right.add_child(desc)
 	right.add_child(g._label("%s · %s" % [g.tf("ui.reward_owned", owned), g.tf("ui.reward_in_deck", in_deck)], 9, g.MUTED))
 
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 6)
 	right.add_child(actions)
-	var collect := g._button(g.t("ui.reward_collect"), func(): _collect_card(card), Color("24444b"), Vector2(0, 38))
+	var collect := g._button(g.t("ui.reward_collect"), func(): _collect_card(card), Color("24444b"), Vector2(0, 32))
 	collect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(collect)
-	var add := g._button(g.t("ui.reward_smart_add"), func(): _smart_add_card(card), Color("2f5c3f"), Vector2(0, 38))
+	var add := g._button(g.t("ui.reward_smart_add"), func(): _smart_add_card(card), Color("2f5c3f"), Vector2(0, 32))
 	add.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(add)
 

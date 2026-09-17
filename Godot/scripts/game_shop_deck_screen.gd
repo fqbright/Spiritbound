@@ -203,8 +203,7 @@ func show_shop() -> void:
 	var affordable: bool = int(g.profile.gold) >= 30
 	potion.add_theme_stylebox_override("normal", g._panel(Color("1d4a40"), 12, g.JADE if affordable else Color("2a3d42")))
 	potion.add_theme_stylebox_override("hover", g._panel(Color("245a4d"), 12, g.JADE))
-	potion.add_theme_stylebox_override("pressed", g._panel(Color("163a32"), 12, g.GOLD))
-	potion.pressed.connect(_buy_potion)
+	g._bind_touch_guard(potion, _buy_potion)
 	svc_row.add_child(potion)
 
 	var potion_row := HBoxContainer.new()
@@ -234,7 +233,7 @@ func show_shop() -> void:
 	purge_svc.add_theme_stylebox_override("normal", g._panel(Color("261d36"), 12, Color("c79bff") if can_purge else Color("2a3d42")))
 	purge_svc.add_theme_stylebox_override("hover", g._panel(Color("37264f"), 12, Color("c79bff")))
 	purge_svc.add_theme_stylebox_override("pressed", g._panel(Color("1c142b"), 12, g.GOLD))
-	purge_svc.pressed.connect(func(): show_deck_purge(show_shop, 50))
+	g._bind_touch_guard(purge_svc, func(): show_deck_purge(show_shop, 50))
 	svc_row.add_child(purge_svc)
 
 	var purge_row := HBoxContainer.new()
@@ -388,7 +387,7 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 	buy.add_theme_stylebox_override("pressed", g._panel(g.GOLD.darkened(0.2), 8, g.EMBER))
 	buy.add_theme_stylebox_override("disabled", g._panel(Color("2a2320"), 8, Color("53403a")))
 	buy.disabled = not can_afford
-	buy.pressed.connect(func(): _buy_card_with_feedback(btn, card, price))
+	g._bind_touch_guard(buy, func(): _buy_card_with_feedback(btn, card, price))
 	price_row.add_child(buy)
 	if owned > 0 and not on_sale:
 		price_row.add_child(g._label(g.tf("ui.shop_next_price", _shop_price(card, owned + 1)), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_CENTER))
@@ -928,7 +927,7 @@ func _tab_bar(tabs: Array, active: String, on_pick: Callable) -> Control:
 		btn.add_theme_stylebox_override("normal", active_style if is_active else StyleBoxEmpty.new())
 		btn.add_theme_stylebox_override("hover", active_style if is_active else g._panel(Color(1, 1, 1, 0.06), 22))
 		btn.add_theme_stylebox_override("pressed", g._panel(g.JADE.darkened(0.1), 22) if is_active else g._panel(Color(1, 1, 1, 0.1), 22))
-		btn.pressed.connect(func(): on_pick.call(id))
+		g._bind_touch_guard(btn, func(): on_pick.call(id))
 		row.add_child(btn)
 	return bar
 
@@ -992,7 +991,7 @@ func _build_equipment_tab(list: VBoxContainer) -> void:
 		btn.add_theme_stylebox_override("pressed", g._panel(Color("102c2e"), 12, accent))
 		btn.add_theme_stylebox_override("disabled", g._panel(Color("0e191d"), 12, Color("243135")))
 		btn.disabled = not owned
-		btn.pressed.connect(func(): g._equip(item))
+		g._bind_touch_guard(btn, func(): g._equip(item))
 		list.add_child(btn)
 
 		var pad := MarginContainer.new()
@@ -1055,7 +1054,7 @@ func _build_rune_tab(list: VBoxContainer) -> void:
 		btn.add_theme_stylebox_override("hover", g._panel(Color("1b444b"), 12, color))
 		btn.add_theme_stylebox_override("pressed", g._panel(Color("102026"), 12, color))
 		btn.add_theme_stylebox_override("disabled", g._panel(Color("0e191d"), 12, Color("222e31")))
-		btn.pressed.connect(func(): g.selected_rune = "" if is_selected else rune.id; show_loadout())
+		g._bind_touch_guard(btn, func(): g.selected_rune = "" if is_selected else rune.id; show_loadout())
 		bag.add_child(btn)
 
 		var stack := VBoxContainer.new()
