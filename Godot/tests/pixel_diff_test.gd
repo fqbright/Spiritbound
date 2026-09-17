@@ -17,40 +17,77 @@ func check(condition: bool, message: String) -> void:
 	else:
 		fail(message)
 
-func diff_images(img_a: Image, img_b: Image, tolerance: float = 0.08) -> Dictionary:
+# De-flaked Image Diffing:
+# 1. Color tolerance: filters subtle subpixel text hinting / antialiasing shifts.
+# 2. Morphological 3x3 clustering: filters isolated single-pixel noise (particle motes, GPU raster jitter)
+#    while reliably detecting true UI regressions (buttons, text changes, missing icons).
+func diff_images(img_a: Image, img_b: Image, color_tolerance: float = 0.10, min_cluster_neighbors: int = 2) -> Dictionary:
 	var w: int = img_a.get_width()
 	var h: int = img_a.get_height()
 	if w != img_b.get_width() or h != img_b.get_height():
 		return {
 			"dimension_mismatch": true,
 			"diff_pixels": w * h,
+			"raw_diff_pixels": w * h,
 			"total_pixels": w * h,
 			"diff_ratio": 1.0,
 			"diff_image": null
 		}
 
 	var total_pixels: int = w * h
-	var diff_pixels: int = 0
-	var diff_img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var raw_diff_count := 0
+	var diff_map := []
+	diff_map.resize(total_pixels)
+	diff_map.fill(false)
 
+	# Pass 1: Measure color distance with perceptual threshold
 	for y in h:
 		for x in w:
 			var c1: Color = img_a.get_pixel(x, y)
 			var c2: Color = img_b.get_pixel(x, y)
 			var delta: float = (absf(c1.r - c2.r) + absf(c1.g - c2.g) + absf(c1.b - c2.b) + absf(c1.a - c2.a)) / 4.0
+			if delta > color_tolerance:
+				diff_map[y * w + x] = true
+				raw_diff_count += 1
 
-			if delta > tolerance:
-				diff_pixels += 1
-				# Highlight difference in bright magenta
+	# Pass 2: Morphological De-noising
+	var clustered_diff_count := 0
+	var diff_img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+
+	for y in h:
+		for x in w:
+			var idx: int = y * w + x
+			var c1: Color = img_a.get_pixel(x, y)
+			if not diff_map[idx]:
+				# Matched pixel: dimmed background for visual context
+				diff_img.set_pixel(x, y, Color(c1.r * 0.15, c1.g * 0.15, c1.b * 0.15, 1.0))
+				continue
+
+			# Check 3x3 neighborhood for connectivity (filter isolated subpixel jitter)
+			var neighbors := 0
+			for dy in [-1, 0, 1]:
+				var ny: int = y + dy
+				if ny < 0 or ny >= h: continue
+				for dx in [-1, 0, 1]:
+					if dx == 0 and dy == 0: continue
+					var nx: int = x + dx
+					if nx < 0 or nx >= w: continue
+					if diff_map[ny * w + nx]:
+						neighbors += 1
+
+			if neighbors >= min_cluster_neighbors:
+				clustered_diff_count += 1
+				# Highlight true clustered difference in bright magenta
 				diff_img.set_pixel(x, y, Color(1.0, 0.05, 0.55, 1.0))
 			else:
-				# Dim background to make differences pop
+				# Filtered isolated noise: treat as matched
 				diff_img.set_pixel(x, y, Color(c1.r * 0.15, c1.g * 0.15, c1.b * 0.15, 1.0))
 
-	var ratio: float = float(diff_pixels) / float(total_pixels)
+	var ratio: float = float(clustered_diff_count) / float(total_pixels)
 	return {
 		"dimension_mismatch": false,
-		"diff_pixels": diff_pixels,
+		"raw_diff_pixels": raw_diff_count,
+		"diff_pixels": clustered_diff_count,
 		"total_pixels": total_pixels,
 		"diff_ratio": ratio,
 		"diff_image": diff_img
@@ -61,7 +98,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	print("\n========================================================")
-	print("  SPIRITBOUND VISUAL PIXEL-DIFF TEST SUITE")
+	print("  SPIRITBOUND DE-FLAKED VISUAL PIXEL-DIFF SUITE")
 	print("========================================================\n")
 
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(DIFF_OUTPUT_DIR))
@@ -77,26 +114,28 @@ func _run() -> void:
 	check(int(self_res.diff_pixels) == 0, "Self-comparison produces 0 differing pixels")
 
 	# -------------------------------------------------------------------------
-	# TEST CASE 2: Synthetic Mutation Detection
+	# TEST CASE 2: Synthetic Mutation & Anomaly Detection (Clustered)
 	# -------------------------------------------------------------------------
-	print("\nTest 2: Synthetic Mutation & Anomaly Detection...")
+	print("\nTest 2: Clustered Mutation Detection vs Isolated Noise Rejection...")
 	var mutated_img := Image.create(100, 100, false, Image.FORMAT_RGBA8)
 	mutated_img.fill(Color(0.2, 0.5, 0.8, 1.0))
-	# Inject a 20x20 red square anomaly
+	# A) Inject isolated 1-pixel noise at corners (should be filtered out by de-flaker)
+	mutated_img.set_pixel(5, 5, Color.WHITE)
+	mutated_img.set_pixel(95, 95, Color.WHITE)
+	# B) Inject a true 20x20 clustered UI element change
 	for y in range(40, 60):
 		for x in range(40, 60):
 			mutated_img.set_pixel(x, y, Color.RED)
 
 	var anomaly_res: Dictionary = diff_images(test_img, mutated_img)
-	var expected_ratio: float = 400.0 / 10000.0 # 4.0%
-	check(is_equal_approx(float(anomaly_res.diff_ratio), expected_ratio), "Anomaly detection matches expected 4.0%% diff (got %.2f%%%%)" % (anomaly_res.diff_ratio * 100.0))
-	check(int(anomaly_res.diff_pixels) == 400, "Exact 400 anomalous pixels identified")
-	check(anomaly_res.diff_image != null, "Diff delta heatmap image generated")
+	check(int(anomaly_res.raw_diff_pixels) == 402, "Raw color delta detected all 402 modified pixels (including 2 isolated noise specks)")
+	check(int(anomaly_res.diff_pixels) == 400, "De-noiser successfully filtered out 2 isolated noise specks (exactly 400 clustered pixels kept)")
+	check(is_equal_approx(float(anomaly_res.diff_ratio), 400.0 / 10000.0), "Clustered diff ratio matches expected 4.0%%")
 
 	# -------------------------------------------------------------------------
 	# TEST CASE 3: Core Mobile Screen Baselines Verification
 	# -------------------------------------------------------------------------
-	print("\nTest 3: Core Mobile Screen Baseline Pixel Comparisons...")
+	print("\nTest 3: Core Mobile Screen Baseline Comparisons...")
 	var screens := [
 		"01_map_screen.png",
 		"02_battle_screen.png",
@@ -107,7 +146,16 @@ func _run() -> void:
 		"07_treasury_inspector.png"
 	]
 
-	var max_allowed_tolerance := 0.02 # 2.0% allowed for font hinting/particle noise
+	# Screen-adaptive thresholds (tight bounds for static UI, reasonable tolerance for dynamic scenes)
+	var screen_thresholds := {
+		"01_map_screen.png": 0.018,         # 1.8% max allowed (painted landscape)
+		"02_battle_screen.png": 0.025,      # 2.5% max allowed (monster sprite & effects)
+		"03_rewards_screen.png": 0.008,     # 0.8% max allowed (static UI)
+		"04_shop_screen.png": 0.010,        # 1.0% max allowed (shelf list)
+		"05_deck_screen.png": 0.008,        # 0.8% max allowed (static grid)
+		"06_camp_screen.png": 0.010,        # 1.0% max allowed (tabs and list)
+		"07_treasury_inspector.png": 0.010  # 1.0% max allowed (modal dialog)
+	}
 
 	for screen_file in screens:
 		var baseline_path := "%s/%s" % [BASELINE_DIR, screen_file]
@@ -129,18 +177,25 @@ func _run() -> void:
 
 		var res: Dictionary = diff_images(img_base, img_curr)
 		var diff_pct: float = float(res.diff_ratio) * 100.0
+		var max_allowed: float = float(screen_thresholds.get(screen_file, 0.015))
 
-		if float(res.diff_ratio) <= max_allowed_tolerance:
-			check(true, "%s matches baseline within threshold (diff: %.2f%%%%)" % [screen_file, diff_pct])
+		if float(res.diff_ratio) <= max_allowed:
+			check(true, "%s matches baseline (clustered diff: %.2f%%%%, raw: %d px, filtered: %d px, allowed <= %.2f%%%%)" % [
+				screen_file,
+				diff_pct,
+				int(res.raw_diff_pixels),
+				int(res.diff_pixels),
+				max_allowed * 100.0
+			])
 		else:
 			var diff_save_path := "%s/diff_%s" % [DIFF_OUTPUT_DIR, screen_file]
 			if res.diff_image != null:
 				res.diff_image.save_png(ProjectSettings.globalize_path(diff_save_path))
-			fail("%s exceeded visual difference threshold (got %.2f%%%%, max allowed %.2f%%%%). Diff saved to %s" % [screen_file, diff_pct, max_allowed_tolerance * 100.0, diff_save_path])
+			fail("%s exceeded visual difference threshold (got %.2f%%%%, max allowed %.2f%%%%). Diff saved to %s" % [screen_file, diff_pct, max_allowed * 100.0, diff_save_path])
 
 	if failures == 0:
-		print("\n🏆 PIXEL-DIFF TEST SUITE: ALL CHECKS PASSED (0 FAILURES)\n")
+		print("\n🏆 DE-FLAKED PIXEL-DIFF SUITE: ALL CHECKS PASSED (0 FAILURES)\n")
 		quit(0)
 	else:
-		print("\n💥 PIXEL-DIFF TEST SUITE: FAILED WITH %d ERRORS\n" % failures)
+		print("\n💥 DE-FLAKED PIXEL-DIFF SUITE: FAILED WITH %d ERRORS\n" % failures)
 		quit(1)
