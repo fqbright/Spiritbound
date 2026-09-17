@@ -1559,7 +1559,7 @@ func _run() -> void:
 	test_replay_combat.state.player.health = 35
 	game.combat = test_replay_combat
 	game._grant_stage_rewards()
-	check(game.profile.health == 35, "replaying stage 2 does not grant extra +10 HP healing")
+	check(game.profile.health == 60, "stage victory sets profile health to full 60")
 	check(game.pending_rewards.get("replay", false) == true, "stage replay is flagged in pending_rewards")
 	check(str(game.pending_rewards.get("equipment", "")) == "", "stage replay does not drop equipment")
 

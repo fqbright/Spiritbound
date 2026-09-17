@@ -223,7 +223,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += br_gold
 		g.profile.boss_rush_floor = br_floor + 1
 		g.profile.boss_rush_record = maxi(int(g.profile.get("boss_rush_record", 0)), br_floor)
-		g.profile.health = mini(60, int(g.combat.state.player.health) + 15)
+		g.profile.health = 60
 		g.pending_rewards = {"gold": br_gold, "equipment": "", "rune": "", "relic": "", "replay": false, "boss_rush": true, "boss_rush_floor": br_floor}
 		SpiritSave.write(g.profile)
 		g._advance_quest("win_battles", 1)
@@ -240,7 +240,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g.profile.abyss_floor = floor_num + 1
 		g.profile.abyss_record = maxi(int(g.profile.get("abyss_record", 0)), floor_num)
-		g.profile.health = mini(60, int(g.combat.state.player.health) + 15)
+		g.profile.health = 60
 		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "replay": false}
 		SpiritSave.write(g.profile)
 		g._advance_quest("win_battles", 1)
@@ -257,7 +257,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g.profile.daily_trial_record.stage = stage_num
 		g.profile.daily_trial_record.best_stage = maxi(int(g.profile.daily_trial_record.get("best_stage", 0)), stage_num)
-		g.profile.health = mini(60, int(g.combat.state.player.health) + 8)
+		g.profile.health = 60
 		var completed: bool = stage_num >= SpiritContent.DAILY_TRIAL_STAGES
 		if completed:
 			g.profile.daily_trial_record.badges = int(g.profile.daily_trial_record.get("badges", 0)) + 1
@@ -286,7 +286,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += w_gold_gain
 		g.profile.weekly_challenge_record.stage = w_stage_num
 		g.profile.weekly_challenge_record.best_stage = maxi(int(g.profile.weekly_challenge_record.get("best_stage", 0)), w_stage_num)
-		g.profile.health = mini(60, int(g.combat.state.player.health) + 8)
+		g.profile.health = 60
 		var w_completed: bool = w_stage_num >= SpiritContent.WEEKLY_CHALLENGE_STAGES
 		if w_completed:
 			g.profile.weekly_challenge_record.badges = int(g.profile.weekly_challenge_record.get("badges", 0)) + 1
@@ -306,10 +306,7 @@ func _grant_stage_rewards() -> void:
 	if replay: multiplier *= 0.5
 	g.pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": "", "replay": replay, "is_hard_replay": g.is_hard_replay}
 	g.profile.gold += int(g.pending_rewards.gold)
-	if not replay:
-		g.profile.health = mini(60, int(g.combat.state.player.health) + 10)
-	else:
-		g.profile.health = int(g.combat.state.player.health)
+	g.profile.health = 60
 	g.profile.unlocked = maxi(int(g.profile.unlocked), mini(g.content.encounters.size() - 1, g.current_stage + 1))
 	g.profile.position = g.current_stage
 	_mark_stage_event_claimed(g.current_stage)
@@ -384,8 +381,6 @@ func show_reward_details() -> void:
 	spoils.add_theme_constant_override("separation", 14)
 	page.add_child(spoils)
 	spoils.add_child(g._label(g.tf("ui.reward_gold_line", int(g.pending_rewards.get("gold", 0))), 15, g.GOLD))
-	if not g.pending_rewards.get("replay", false):
-		spoils.add_child(g._label(g.t("ui.reward_heal_line"), 13, g.JADE))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
@@ -552,20 +547,18 @@ func show_event(index: int, kind: String) -> void:
 
 	if kind == "event":
 		page.add_child(g._button(g.t("ui.event_blood_pact"), func():
-			g.profile.health = maxi(1, g.profile.health - 15)
-			g.profile.gold += 60
-			g._advance_quest("earn_gold", 60)
+			g.profile.gold += 50
+			g._advance_quest("earn_gold", 50)
 			_mark_stage_event_claimed(index)
 			SpiritSave.write(g.profile)
 			g._haptic("heavy")
 			g.begin_battle(index)
 		, Color("591d1d"), Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.event_spirit_blessing"), func():
-			g.profile.health = mini(60, g.profile.health + 18)
-			_mark_stage_event_claimed(index)
-			SpiritSave.write(g.profile)
-			g._haptic("tap")
-			g.begin_battle(index)
+			g.show_deck_purge(func(): show_event(index, "event"), 0, func():
+				_mark_stage_event_claimed(index)
+				g.begin_battle(index)
+			)
 		, Color("21594e"), Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.rest_smith_choice"), func():
 			g.show_deck_upgrade(func(): show_event(index, "event"), func():
@@ -575,7 +568,8 @@ func show_event(index: int, kind: String) -> void:
 		, g.EMBER, Vector2(300, 48)))
 	elif kind == "rest":
 		page.add_child(g._button(g.t("ui.rest_heal_choice"), func():
-			g.profile.health = mini(60, g.profile.health + 20)
+			g.profile.gold += 35
+			g._advance_quest("earn_gold", 35)
 			_mark_stage_event_claimed(index)
 			SpiritSave.write(g.profile)
 			g._haptic("tap")
@@ -595,12 +589,11 @@ func show_event(index: int, kind: String) -> void:
 		, g.GOLD, Vector2(300, 48)))
 	else:
 		page.add_child(g._button(g.t("ui.event_opt_potion"), func():
-			if g.profile.gold >= 30:
-				g.profile.gold -= 30
-				g.profile.health = mini(60, g.profile.health + 25)
-				_mark_stage_event_claimed(index)
-				SpiritSave.write(g.profile)
-				g._haptic("tap")
+			g.profile.gold += 25
+			g._advance_quest("earn_gold", 25)
+			_mark_stage_event_claimed(index)
+			SpiritSave.write(g.profile)
+			g._haptic("tap")
 			g.begin_battle(index)
 		, g.EMBER, Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.shop_purge_service") + " · ◆50", func():

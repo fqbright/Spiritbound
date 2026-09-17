@@ -41,12 +41,12 @@ func begin_battle(index: int) -> void:
 	var battle_deck: Array = g.profile.deck
 	if g.in_draft_battle and g.profile.get("draft_arena", {}).get("deck", []).size() >= 15:
 		battle_deck = g.profile.draft_arena.deck
-	g.combat.create(seed,g.content.encounters[index],battle_deck,int(g.profile.health),g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
+	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(_combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[index].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[index])
-	g.pre_battle_health = int(g.profile.health)
+	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	show_battle()
@@ -2269,13 +2269,13 @@ func _leave_battle() -> void:
 		# bout number stays put so the next attempt re-fights the same boss at the same
 		# escalation, rather than resetting the whole streak.
 		g.in_boss_rush = false
-		g.profile.health = maxi(1, g.pre_battle_health)
+		g.profile.health = 60
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
 	if g.in_abyss:
 		g.in_abyss = false
-		g.profile.health = maxi(1, g.pre_battle_health)
+		g.profile.health = 60
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
@@ -2284,21 +2284,17 @@ func _leave_battle() -> void:
 		# stays un-cleared so today's next try re-fights it, same "attempt vs. run" split the
 		# comment above already uses for Abyss.
 		g.in_daily_trial = false
-		g.profile.health = maxi(1, g.pre_battle_health)
+		g.profile.health = 60
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
 	if g.in_phantom_arena:
 		g.in_phantom_arena = false
-		g.profile.health = maxi(1, g.pre_battle_health)
+		g.profile.health = 60
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
-	if g.combat != null:
-		# A defeat costs you the attempt, not the run: health returns to what you entered with.
-		# Retreating mid-battle still keeps the damage you took.
-		if g.combat.state.phase == "lost": g.profile.health = maxi(1, g.pre_battle_health)
-		else: g.profile.health = maxi(1, int(g.combat.state.player.health))
+	g.profile.health = 60
 	SpiritSave.write(g.profile)
 	g.show_map()
 

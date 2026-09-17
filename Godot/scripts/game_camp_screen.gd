@@ -715,7 +715,7 @@ func _phantom_arena_section() -> Control:
 	var claimed: bool = bool(arena.get("claimed_today", false))
 	var bg_col := Color("142226")
 	var border_col := g.JADE
-	var frame := _split_card_frame("res://assets/banners/banner_draft_arena.png", true, bg_col, border_col, 120.0)
+	var frame := _split_card_frame("res://assets/banners/banner_phantom_arena.png", true, bg_col, border_col, 120.0)
 	var panel: PanelContainer = frame.panel
 	var left: VBoxContainer = frame.left
 
@@ -1079,12 +1079,12 @@ func begin_boss_rush_battle() -> void:
 	}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[idx])
-	g.pre_battle_health = int(g.profile.health)
+	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	g.show_battle()
@@ -1161,12 +1161,12 @@ func begin_abyss_battle() -> void:
 	g.active_modifier["boons"] = g.profile.get("abyss_boons", []).duplicate()
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
-	g.pre_battle_health = int(g.profile.health)
+	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	g.show_battle()
@@ -1182,12 +1182,12 @@ func begin_phantom_arena() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var seed_val := int(Time.get_unix_time_from_system())
-	g.combat.create(seed_val, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
-	g.pre_battle_health = int(g.profile.health)
+	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	g.show_battle()
@@ -1207,12 +1207,12 @@ func begin_daily_trial() -> void:
 	g.active_modifier = g.content.daily_trial_modifier(day)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
-	g.pre_battle_health = int(g.profile.health)
+	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	g.show_battle()
@@ -1231,12 +1231,12 @@ func begin_weekly_challenge() -> void:
 	g.active_modifier = g.content.weekly_challenge_modifier(week)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, int(g.profile.health), g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
 		g._grant_bestiary_discovery_bonus(enc)
-	g.pre_battle_health = int(g.profile.health)
+	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
 	g.show_battle()

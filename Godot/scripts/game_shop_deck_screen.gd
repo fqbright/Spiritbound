@@ -196,34 +196,6 @@ func show_shop() -> void:
 	svc_row.add_theme_constant_override("separation", 8)
 	page.add_child(svc_row)
 
-	var potion := Button.new()
-	potion.custom_minimum_size.y = 56
-	potion.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	potion.focus_mode = Control.FOCUS_NONE
-	var affordable: bool = int(g.profile.gold) >= 30
-	potion.add_theme_stylebox_override("normal", g._panel(Color("1d4a40"), 12, g.JADE if affordable else Color("2a3d42")))
-	potion.add_theme_stylebox_override("hover", g._panel(Color("245a4d"), 12, g.JADE))
-	g._bind_touch_guard(potion, _buy_potion)
-	svc_row.add_child(potion)
-
-	var potion_row := HBoxContainer.new()
-	potion_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	potion_row.add_theme_constant_override("separation", 8)
-	potion_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	potion_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	potion.add_child(potion_row)
-	var potion_badge := CenterContainer.new()
-	potion_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	potion_badge.add_child(g._icon_badge("✚", g.JADE, 32, 16))
-	potion_row.add_child(potion_badge)
-	var potion_texts := VBoxContainer.new()
-	potion_texts.alignment = BoxContainer.ALIGNMENT_CENTER
-	potion_texts.add_theme_constant_override("separation", 1)
-	potion_texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	potion_row.add_child(potion_texts)
-	potion_texts.add_child(g._label(g.t("ui.shop_potion"), 11, g.TEXT))
-	potion_texts.add_child(g._label(g.tf("ui.shop_gold", 30), 10, g.GOLD))
-
 	var purge_svc := Button.new()
 	purge_svc.name = "ShopPurgeBtn"
 	purge_svc.custom_minimum_size.y = 56
@@ -393,14 +365,6 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 		price_row.add_child(g._label(g.tf("ui.shop_next_price", _shop_price(card, owned + 1)), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_CENTER))
 
 	return btn
-
-func _buy_potion() -> void:
-	if int(g.profile.gold) < 30: g._toast(g.t("ui.shop_no_gold")); return
-	g.profile.gold -= 30
-	g.profile.health = mini(60, int(g.profile.health) + 20)
-	SpiritSave.write(g.profile)
-	g._advance_quest("shop_purchase", 1)
-	show_shop()
 
 func _buy_card(card: Dictionary, price: int) -> void:
 	if g.profile.gold < price: g._toast(g.t("ui.shop_no_gold")); return
