@@ -618,7 +618,6 @@ func show_challenges() -> void:
 func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
 	list.add_child(_hero_archetypes_section())
-	list.add_child(_rebirth_section())
 
 # "Modes you enter": the two challenge tracks (Daily Trial, Endless Abyss) plus the campaign's
 # own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
@@ -632,6 +631,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_sandbox_section())
 	list.add_child(_abyss_section())
 	list.add_child(_difficulty_tier_section())
+	list.add_child(_samsara_section())
 
 # "What you've earned": the Compendium entry point plus the actual relics owned right now —
 # the Compendium already covers cards/gear/runes/bestiary/achievements, so relics-in-hand
@@ -644,16 +644,19 @@ func _difficulty_tier_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 25
 	var section := VBoxContainer.new()
 	section.add_theme_constant_override("separation", 8)
-	section.add_child(g._label(g.tf("ui.camp_tier", g.profile.difficulty), 17, g.JADE if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var tier_label := g.t("ui.camp_tier_a6_name") if int(g.profile.difficulty) == 6 else g.tf("ui.camp_tier", g.profile.difficulty)
+	section.add_child(g._label(tier_label, 17, g.JADE if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	if not unlocked:
 		section.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch5"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
 		return section
-	# C2: each Rebirth cycle raises the max selectable tier by one past the original A0-A5
+	# C2: each Samsara cycle raises the max selectable tier by one past the original A0-A5
 	# ceiling (see content.difficulty_modifier() for why tier now actually matters — it used
 	# to be purely cosmetic). HFlowContainer instead of HBoxContainer so an arbitrary number
-	# of tiers (a player who rebirths many times) wraps onto more rows instead of squeezing
-	# ever-thinner on a fixed 390px-wide screen.
-	var max_tier: int = 5 + int(g.profile.get("rebirth_count", 0))
+	# of tiers (a player who cycles through samsara many times) wraps onto more rows instead of
+	# squeezing ever-thinner on a fixed 390px-wide screen. Uncapped rather than a flat "A6 once
+	# and never again" ceiling, so a later samsara cycle keeps raising the stakes instead of
+	# repeating the same A6 tier forever.
+	var max_tier: int = 5 + int(g.profile.get("samsara_count", 0))
 	var row := HFlowContainer.new()
 	row.name = "DifficultyTierRow"
 	row.add_theme_constant_override("h_separation", 6)
@@ -661,124 +664,77 @@ func _difficulty_tier_section() -> Control:
 	row.alignment = FlowContainer.ALIGNMENT_CENTER
 	for value in max_tier + 1:
 		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(46,40))
+		button.name = "DifficultyTierBtn_A%d" % value
 		row.add_child(button)
 	section.add_child(row)
 	if max_tier > 5:
-		section.add_child(g._label(g.tf("ui.camp_tier_rebirth_unlocked", max_tier), 10, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER, true))
+		section.add_child(g._label(g.tf("ui.camp_tier_samsara_unlocked", max_tier), 10, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER, true))
 	section.add_child(g._label(g.t("ui.camp_desc"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 	return section
 
-# C2: 轮回 (Rebirth) — eligibility is deliberately just these two already-tracked signals
-# (full 250-stage clear + challenge tier currently at the max tier this many rebirths have
-# unlocked) rather than also gating on hero mastery level: mastery is per-hero, so gating on
-# it would arbitrarily punish a player who tried multiple archetypes. profile.difficulty is a
+# C2: Samsara (轮回) — eligibility is deliberately just these two already-tracked signals (full
+# 250-stage clear + challenge tier currently at the max tier this many samsara cycles have
+# unlocked) rather than also gating on hero mastery level: mastery is per-hero, so gating on it
+# would arbitrarily punish a player who tried multiple archetypes. profile.difficulty is a
 # freely-switchable "what am I fighting at right now" setting rather than a per-tier clear
 # ladder, so this reads as "cleared the whole campaign, and currently set to the hardest tier
-# rebirths have unlocked so far" rather than a literal historical proof of having beaten every
+# samsara has unlocked so far" rather than a literal historical proof of having beaten every
 # stage specifically at that tier — the closest verifiable signal this save shape already has.
-# The required tier itself escalates with rebirth_count (content.difficulty_modifier() is what
-# makes that requirement mean something now, rather than a free re-tap of the same button).
-func _rebirth_section() -> Control:
-	var count: int = int(g.profile.get("rebirth_count", 0))
-	var required_tier: int = 5 + count
-	var eligible: bool = int(g.profile.unlocked) >= 250 and int(g.profile.difficulty) >= required_tier
-	var section := VBoxContainer.new()
-	section.name = "RebirthSection"
-	section.add_theme_constant_override("separation", 8)
-	section.add_child(g._label(g.t("ui.rebirth_title"), 15, g.GOLD if count > 0 else g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-
-	if count > 0:
-		var current: Dictionary = g.content.rebirth_bonuses(count)
-		section.add_child(g._label(g.tf("ui.rebirth_count_fmt", count), 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
-		section.add_child(g._label(g.tf("ui.rebirth_bonus_fmt", [int(current.get("max_hp", 0)), int(current.get("shield_start", 0))]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
-
-	if not eligible:
-		section.add_child(g._label("🔒 " + g.tf("ui.rebirth_locked_desc", required_tier), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
-		var locked_btn := g._button("🔒 " + g.t("ui.locked"), Callable(), Color("2d2218"), Vector2(180, 40))
-		locked_btn.name = "RebirthBtn"
-		locked_btn.disabled = true
-		locked_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		section.add_child(locked_btn)
-		return section
-
-	var next: Dictionary = g.content.rebirth_bonuses(count + 1)
-	section.add_child(g._label(g.tf("ui.rebirth_next_bonus_fmt", [int(next.get("max_hp", 0)), int(next.get("shield_start", 0))]), 10, Color("ffb765"), HORIZONTAL_ALIGNMENT_CENTER, true))
-	var btn := g._button(g.t("ui.rebirth_button"), _show_rebirth_confirm, Color("6b2040"), Vector2(180, 40))
-	btn.name = "RebirthBtn"
-	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	section.add_child(btn)
-	return section
-
-func _show_rebirth_confirm() -> void:
-	var modal := g._modal_dialog("RebirthConfirmModal", func():
-		var ex: Node = g.overlay.get_node_or_null("RebirthConfirmModal")
-		if ex: ex.queue_free()
-	)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	modal.add_child(center)
-
+# The required tier itself escalates with samsara_count (content.difficulty_modifier() is what
+# makes that requirement mean something now, rather than a free re-tap of the same button) —
+# this replaces an earlier OR-based check (unlocked >= 249 OR difficulty >= 5) that became
+# trivially true forever after the first cycle, letting every later one repeat off the same
+# button with no re-escalation.
+func _samsara_section() -> Control:
+	var samsara_cnt: int = int(g.profile.get("samsara_count", 0))
+	var required_tier: int = 5 + samsara_cnt
+	var can_samsara: bool = int(g.profile.unlocked) >= 250 and int(g.profile.difficulty) >= required_tier
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(320, 0)
-	var pstyle := g._panel(Color("1a0c14"), 14, Color("6b2040"))
-	pstyle.content_margin_left = 16
-	pstyle.content_margin_right = 16
-	pstyle.content_margin_top = 14
-	pstyle.content_margin_bottom = 14
-	panel.add_theme_stylebox_override("panel", pstyle)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	center.add_child(panel)
+	panel.name = "SamsaraSection"
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f1922"), 10, g.JADE if can_samsara else Color("22363e")))
 
-	var list := VBoxContainer.new()
-	list.name = "RebirthConfirmList"
-	list.add_theme_constant_override("separation", 10)
-	panel.add_child(list)
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
 
-	list.add_child(g._label(g.t("ui.rebirth_confirm_title"), 16, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER))
-	list.add_child(g._label(g.t("ui.rebirth_confirm_resets"), 11, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
-	list.add_child(g._label(g.t("ui.rebirth_confirm_keeps"), 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER, true))
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	list.add_child(row)
+	var title_row := HBoxContainer.new()
+	title_row.add_child(g._label(g.t("ui.samsara_title"), 14, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	var realm_str: String = g.content.samsara_title(samsara_cnt, g.lang)
+	var realm_lbl := g._label(g.tf("ui.samsara_realm_fmt", realm_str), 11, g.JADE, HORIZONTAL_ALIGNMENT_RIGHT)
+	realm_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(realm_lbl)
+	vbox.add_child(title_row)
 
-	var cancel_btn := g._button(g.t("ui.rebirth_cancel_btn"), func(): modal.queue_free(), Color("1c333a"), Vector2(0, 40))
-	cancel_btn.name = "RebirthCancelBtn"
-	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(cancel_btn)
+	if samsara_cnt > 0:
+		var bonus_box := VBoxContainer.new()
+		bonus_box.name = "SamsaraBonusBox"
+		bonus_box.add_theme_constant_override("separation", 2)
+		bonus_box.add_child(g._label(g.tf("ui.samsara_count_fmt", samsara_cnt), 10, Color("80d4ff"), HORIZONTAL_ALIGNMENT_LEFT))
+		var active_bonuses: Dictionary = g.content.samsara_bonuses(samsara_cnt)
+		if active_bonuses.max_hp > 0:
+			bonus_box.add_child(g._label(g.tf("ui.samsara_blessing_hp", active_bonuses.max_hp), 9, Color("76e59b")))
+		if active_bonuses.starting_shield > 0:
+			bonus_box.add_child(g._label(g.tf("ui.samsara_blessing_shield", active_bonuses.starting_shield), 9, Color("68c5ff")))
+		if active_bonuses.turn1_draw > 0:
+			bonus_box.add_child(g._label(g.tf("ui.samsara_blessing_draw", active_bonuses.turn1_draw), 9, Color("ffd860")))
+		vbox.add_child(bonus_box)
+	else:
+		vbox.add_child(g._label(g.t("ui.samsara_none"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 
-	var confirm_btn := g._button(g.t("ui.rebirth_confirm_btn"), func(): modal.queue_free(); _perform_rebirth(), Color("6b2040"), Vector2(0, 40))
-	confirm_btn.name = "RebirthConfirmBtn"
-	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(confirm_btn)
+	if can_samsara:
+		var enter_btn := g._button(g.t("ui.samsara_enter_btn"), func(): g.show_samsara_modal(), Color("225046"), Vector2(180, 36))
+		enter_btn.name = "SamsaraEnterBtn"
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		vbox.add_child(enter_btn)
+	else:
+		vbox.add_child(g._label(g.tf("ui.samsara_locked_desc", required_tier), 9, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
-# Resets exactly the campaign-run state a fresh save starts with (mirrors SpiritSave.defaults()'s
-# deck/collection shape), while deliberately leaving every account-level/meta system untouched —
-# currencies, hero mastery, achievements, compendium, and the Daily Trial/Weekly Challenge/Abyss/
-# Boss Rush/Phantom Arena tracks are their own permanent progress, not "campaign progress," and
-# wiping them would make the reward (a small permanent bonus, see content.rebirth_bonuses())
-# a net loss rather than a prestige gain. profile.difficulty is deliberately left alone too, so
-# the next cycle doesn't force re-climbing tiers already reached.
-func _perform_rebirth() -> void:
-	g.profile.rebirth_count = int(g.profile.get("rebirth_count", 0)) + 1
-	g.profile.unlocked = 0
-	g.profile.position = 0
-	g.profile.health = 60
-	g.profile.deck = g.content.raw.startingDeck.duplicate()
-	var collection := {}
-	for id in g.content.raw.startingDeck: collection[id] = collection.get(id, 0) + 1
-	g.profile.collection = collection
-	g.profile.upgrades = {}
-	g.profile.relics = []
-	g.profile.equipment_owned = []
-	g.profile.equipment_slots = {}
-	g.profile.rune_inventory = {}
-	g.profile.card_runes = {}
-	SpiritSave.write(g.profile)
-	g._toast(g.tf("ui.rebirth_toast", int(g.profile.rebirth_count)), Color("ff6b9d"))
-	g.show_map()
+	return panel
 
 func _relics_section() -> Control:
 	var section := VBoxContainer.new()

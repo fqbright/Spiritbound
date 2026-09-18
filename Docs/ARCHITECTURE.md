@@ -127,7 +127,7 @@ to end on a chapter boundary rather than an arbitrary stage number:
   revalidation below). Needs a deliberately built deck.
 - Chapters 21-50 (stages 101-250): ×1.062 per chapter, compounding. Meant to outpace
   whatever a straight-line playthrough brings with it — the intended levers past this point
-  are runes, equipment, relics from farming earlier stages, hero mastery, Rebirth (see below),
+  are runes, equipment, relics from farming earlier stages, hero mastery, Samsara (see below),
   and later in-app purchases, not better play.
 
 Every 10th chapter is a "great boss" combining three mechanics at once (shield regen,
@@ -184,13 +184,13 @@ confirmed chapters 1-19 now clear reliably (Band 1/2: 100% first-try; Band 3: 97
 cleared, 93% first-try, climbing from ~3 to ~6 average turns per win as the bands progress —
 the "increasingly needs investment" shape the four bands are supposed to have). Chapter 20's
 Great Boss remains an immediate wall for this probe's baseline build (no rune-set socketing,
-no merchant purchases, no Rebirth bonuses, a single non-maxed hero) — expected, not a bug,
+no merchant purchases, no Samsara bonuses, a single non-maxed hero) — expected, not a bug,
 since that's both an intentional capstone fight and the literal first stage of Band 4, whose
 own documented intent is "needs farming, not skill alone." Continuing the probe past that one
 wall (a diagnostic-only mode real players can't use, since progress can't skip an unbeaten
 stage) showed Band 4 collapsing hard soon after without a maturing build to match its
 compounding growth — consistent with "this band assumes investment," not itself re-tuned,
-since simulating the intended farming loop (Rebirth cycles, hero mastery, AFK Harvest gold,
+since simulating the intended farming loop (Samsara cycles, hero mastery, AFK Harvest gold,
 socketed rune sets) was out of scope for this pass. If a future pass wants to actually validate
 Band 4, modeling that farming loop — not just retrying the same static build — is the
 prerequisite, the same way this pass's own fix depended on modeling deck growth realistically
@@ -229,9 +229,9 @@ Conclusion: **`_chapter_factor`'s ×1.062 Band 4 compounding is not changed by t
 build using every free lever plus modest, realistic gold spending clears 78% of the entire
 250-stage campaign (chapter 39 of 50) at high reliability, and continues clearing most of the
 remainder with retries rather than hard-walling — consistent with the band's documented intent
-that its last stretch, not the whole band, is where "hero mastery, Rebirth, and later in-app
+that its last stretch, not the whole band, is where "hero mastery, Samsara, and later in-app
 purchases, not better play" become the intended levers past free-to-play farming, rather than
-that gate applying from Band 4's very first stage. Simplifications still not modeled (Rebirth
+that gate applying from Band 4's very first stage. Simplifications still not modeled (Samsara
 bonuses, hero mastery beyond whatever XP a single run accumulates, AFK Harvest gold, more than
 one shop card bought per chapter) all push in the direction of clearing further still, so
 chapter 39 is a floor on what a real diligent player reaches, not a ceiling.

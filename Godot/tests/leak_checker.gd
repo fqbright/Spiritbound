@@ -71,33 +71,44 @@ func _run() -> void:
 	check(modal_node_delta <= 5, "Modal open/close leaves no orphaned nodes (delta: %d nodes, allowed <= 5)" % modal_node_delta)
 
 	# -------------------------------------------------------------------------
-	# TEST 1b: RebirthConfirmModal Churn Leak Check (C2, added 2026-09-17 alongside the
-	# feature itself — the only other modal this profiler knew about was the pre-existing
+	# TEST 1b: SamsaraModal Churn Leak Check (C2, added 2026-09-17 alongside the feature
+	# itself — the only other modal this profiler knew about was the pre-existing
 	# TreasuryInspectorModal above, and AGENTS.md's "every new feature needs tests" rule
 	# extends to this profiler too, not just ui_smoke.gd's functional coverage).
 	# -------------------------------------------------------------------------
-	print("\nTest 1b: RebirthConfirmModal Open/Dismiss Lifecycle (8 cycles)...")
+	print("\nTest 1b: SamsaraModal Open/Dismiss Lifecycle (8 cycles)...")
 	game.profile.unlocked = 250
 	game.profile.difficulty = 5
-	game.camp_tab = "character"
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await _settle()
+	# A fresh baseline taken on this same screen/tab right before the churn loop, rather than
+	# reusing the shared base_nodes captured on the map screen at the very top: Camp's
+	# Challenges tab (9 stacked sections) legitimately has more static nodes than the map, and
+	# a much-further-progressed profile.unlocked also changes what the map itself renders, so
+	# comparing this test's post-churn count against that unrelated baseline produced a
+	# false-positive "leak" that had nothing to do with the modal open/close cycle under test.
+	var samsara_base_nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
 	for i in 8:
 		game.show_camp()
 		await process_frame
-		var rebirth_btn: Button = game.root.find_child("RebirthBtn", true, false) as Button
-		if rebirth_btn and not rebirth_btn.disabled:
-			rebirth_btn.pressed.emit()
+		var samsara_enter_btn: Button = game.root.find_child("SamsaraEnterBtn", true, false) as Button
+		if samsara_enter_btn:
+			samsara_enter_btn.pressed.emit()
 			await process_frame
-		var rebirth_modal: Node = game.overlay.get_node_or_null("RebirthConfirmModal")
-		if rebirth_modal:
-			rebirth_modal.queue_free()
+		var samsara_modal: Node = game.overlay.get_node_or_null("SamsaraModal")
+		if samsara_modal:
+			samsara_modal.queue_free()
 		await process_frame
 
 	await _settle()
-	var post_rebirth_modal_nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
-	var rebirth_modal_node_delta: int = post_rebirth_modal_nodes - base_nodes
-	check(rebirth_modal_node_delta <= 5, "RebirthConfirmModal open/close leaves no orphaned nodes (delta: %d nodes, allowed <= 5)" % rebirth_modal_node_delta)
+	var post_samsara_modal_nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var samsara_modal_node_delta: int = post_samsara_modal_nodes - samsara_base_nodes
+	check(samsara_modal_node_delta <= 5, "SamsaraModal open/close leaves no orphaned nodes (delta: %d nodes, allowed <= 5)" % samsara_modal_node_delta)
 	game.profile.unlocked = 0
 	game.profile.difficulty = 0
+	game.show_map()
+	await _settle()
 
 	# -------------------------------------------------------------------------
 	# TEST 2: Screen Navigation Round Trips (5 complete cycles)

@@ -1991,148 +1991,137 @@ func _run() -> void:
 	await process_frame
 	check(_find_label_containing(game.root, "Lv.1"), "hero archetypes section shows the reached mastery level")
 
-	# C2: 轮回 (Rebirth) — this block mutates a large chunk of profile state (unlocked, deck,
-	# collection, upgrades, relics, equipment, runes) to exercise the locked path, the eligible
-	# path, and a real end-to-end reset, so every touched field is saved before and restored
-	# straight after — the same shared-profile discipline this suite's F1/digest entries already
-	# established (unlocked/deck/relics/equipment in particular are depended on by many later
-	# sections in this long-lived suite).
-	var saved_unlocked_rb: int = int(game.profile.unlocked)
-	var saved_position_rb: int = int(game.profile.position)
-	var saved_difficulty_rb: int = int(game.profile.difficulty)
-	var saved_deck_rb: Array = game.profile.deck.duplicate()
-	var saved_collection_rb: Dictionary = game.profile.collection.duplicate(true)
-	var saved_upgrades_rb: Dictionary = game.profile.upgrades.duplicate(true)
-	var saved_relics_rb: Array = game.profile.relics.duplicate()
-	var saved_equip_owned_rb: Array = game.profile.equipment_owned.duplicate()
-	var saved_equip_slots_rb: Dictionary = game.profile.equipment_slots.duplicate(true)
-	var saved_rune_inv_rb: Dictionary = game.profile.rune_inventory.duplicate(true)
-	var saved_card_runes_rb: Dictionary = game.profile.card_runes.duplicate(true)
-	var saved_rebirth_count_rb: int = int(game.profile.get("rebirth_count", 0))
-	var saved_health_rb: int = int(game.profile.health)
+	# C2: 轮回 (Samsara / Reincarnation) — this block mutates a chunk of profile state (unlocked,
+	# position, difficulty, samsara_count, health, gold, claimed_stage_events) to exercise the
+	# locked path, the eligible path, and a real end-to-end reset, so every touched field is
+	# saved before and restored straight after — the same shared-profile discipline this suite's
+	# F1/digest entries already established. This design (see AGENTS.md/GROWTH_ROADMAP.md for the
+	# merge history behind it — two independently-built prestige systems landed on the same
+	# roadmap item) deliberately does NOT reset deck/collection/relics/equipment/runes, unlike
+	# the alternate implementation it replaced, so this block also proves those survive a cycle
+	# untouched rather than saving/restoring them purely defensively.
+	var saved_unlocked_sm: int = int(game.profile.unlocked)
+	var saved_position_sm: int = int(game.profile.position)
+	var saved_difficulty_sm: int = int(game.profile.difficulty)
+	var saved_samsara_count_sm: int = int(game.profile.get("samsara_count", 0))
+	var saved_health_sm: int = int(game.profile.health)
+	var saved_gold_sm: int = int(game.profile.gold)
+	var saved_events_sm: Array = game.profile.claimed_stage_events.duplicate()
 
-	game.profile.unlocked = 10
+	# SamsaraSection lives in the "challenges" tab (DifficultyTierRow's neighbor), not "character".
+	game.camp_tab = "challenges"
+	game.profile.samsara_count = 0
+	game.profile.unlocked = 249
 	game.profile.difficulty = 0
-	game.profile.rebirth_count = 0
-	game.camp_tab = "character"
 	game.show_camp()
 	await process_frame
-	var rebirth_btn_locked: Button = game.root.find_child("RebirthBtn", true, false) as Button
-	check(rebirth_btn_locked != null, "RebirthBtn renders in the character tab even before eligibility")
-	check(rebirth_btn_locked != null and rebirth_btn_locked.disabled, "RebirthBtn is disabled before the campaign is fully cleared at A5")
+	check(game.root.find_child("SamsaraSection", true, false) != null, "SamsaraSection renders in the challenges tab even before eligibility")
+	check(game.root.find_child("SamsaraEnterBtn", true, false) == null, "SamsaraEnterBtn does NOT appear at unlocked=249/difficulty=0 — the discarded OR-based rule would have allowed this; the merged rule requires unlocked>=250 AND difficulty>=5")
 
 	game.profile.unlocked = 250
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("SamsaraEnterBtn", true, false) == null, "SamsaraEnterBtn still locked at unlocked=250 alone — difficulty must also reach the required tier")
+
 	game.profile.difficulty = 5
 	game.show_camp()
 	await process_frame
-	var rebirth_btn: Button = game.root.find_child("RebirthBtn", true, false) as Button
-	check(rebirth_btn != null and not rebirth_btn.disabled, "RebirthBtn becomes enabled once the campaign is fully cleared at Challenge Tier A5")
+	var samsara_enter_btn: Button = game.root.find_child("SamsaraEnterBtn", true, false) as Button
+	check(samsara_enter_btn != null, "SamsaraEnterBtn appears once BOTH unlocked>=250 AND difficulty>=5 hold")
 
-	rebirth_btn.pressed.emit()
-	await process_frame
-	check(game.overlay.get_node_or_null("RebirthConfirmModal") != null, "pressing RebirthBtn opens RebirthConfirmModal")
-	var cancel_btn: Button = game.root.find_child("RebirthCancelBtn", true, false) as Button
-	check(cancel_btn != null, "RebirthConfirmModal has a cancel button")
-	cancel_btn.pressed.emit()
-	await process_frame
-	check(game.overlay.get_node_or_null("RebirthConfirmModal") == null, "cancel closes the modal")
-	check(int(game.profile.unlocked) == 250, "cancel leaves profile.unlocked untouched")
-	check(int(game.profile.rebirth_count) == 0, "cancel does not perform a rebirth")
-
-	# Mutate deck/collection/relics/equipment/runes away from the starting shape so the reset
-	# assertions below actually prove something changed, not just that these fields already
-	# happened to be at their defaults.
+	# Mutate deck/collection/relics/equipment/runes away from the starting shape so the
+	# survives-untouched assertions below actually prove something, then restore them regardless
+	# of what the checks find.
+	var saved_deck_sm: Array = game.profile.deck.duplicate()
+	var saved_collection_sm: Dictionary = game.profile.collection.duplicate(true)
+	var saved_relics_sm: Array = game.profile.relics.duplicate()
+	var saved_equip_owned_sm: Array = game.profile.equipment_owned.duplicate()
+	var saved_equip_slots_sm: Dictionary = game.profile.equipment_slots.duplicate(true)
+	var saved_rune_inv_sm: Dictionary = game.profile.rune_inventory.duplicate(true)
 	game.profile.deck = ["strike", "strike"]
 	game.profile.collection = {"strike": 2}
-	game.profile.upgrades = {"0": true}
 	game.profile.relics = ["cursedTome"]
 	game.profile.equipment_owned = ["emberBlade"]
 	game.profile.equipment_slots = {"weapon": "emberBlade"}
 	game.profile.rune_inventory = {"swift": 1}
-	game.profile.card_runes = {"0": "swift"}
-	var gold_before_rb: int = int(game.profile.gold)
-	var masteries_before_rb: Dictionary = game.profile.hero_masteries.duplicate(true)
+	game.profile.position = 123
+	game.profile.claimed_stage_events = [1, 2, 3]
 
-	rebirth_btn.pressed.emit()
+	game.enter_samsara()
 	await process_frame
-	var confirm_btn: Button = game.root.find_child("RebirthConfirmBtn", true, false) as Button
-	check(confirm_btn != null, "RebirthConfirmModal has a confirm button")
-	confirm_btn.pressed.emit()
+	check(int(game.profile.samsara_count) == 1, "enter_samsara increments samsara_count")
+	check(int(game.profile.unlocked) == 0, "enter_samsara resets unlocked back to stage 0")
+	check(int(game.profile.position) == 0, "enter_samsara resets position back to stage 0")
+	check(game.profile.claimed_stage_events.is_empty(), "enter_samsara clears claimed_stage_events")
+	check(int(game.profile.health) == 60, "enter_samsara resets health to a flat 60, matching every other battle-end reset site")
+	check(game.profile.deck == ["strike", "strike"], "enter_samsara does NOT reset the deck (narrower reset scope than the discarded design)")
+	check(game.profile.collection == {"strike": 2}, "enter_samsara does NOT reset the card collection")
+	check(game.profile.relics == ["cursedTome"], "enter_samsara does NOT reset relics")
+	check(game.profile.equipment_owned == ["emberBlade"], "enter_samsara does NOT reset owned equipment")
+	check(game.profile.equipment_slots == {"weapon": "emberBlade"}, "enter_samsara does NOT reset equipped slots")
+	check(game.profile.rune_inventory == {"swift": 1}, "enter_samsara does NOT reset the rune inventory")
+	check(int(game.profile.difficulty) == 5, "enter_samsara leaves the selected challenge tier untouched so the next cycle doesn't re-climb it")
+
+	game.profile.deck = saved_deck_sm
+	game.profile.collection = saved_collection_sm
+	game.profile.relics = saved_relics_sm
+	game.profile.equipment_owned = saved_equip_owned_sm
+	game.profile.equipment_slots = saved_equip_slots_sm
+	game.profile.rune_inventory = saved_rune_inv_sm
+
+	# enter_samsara() also guards its own eligibility (mirrors _samsara_section()'s gate) rather
+	# than trusting only the UI button's visibility — confirm calling it again immediately (now
+	# ineligible, since unlocked just reset to 0) is a safe no-op, not a second free cycle.
+	game.enter_samsara()
 	await process_frame
+	check(int(game.profile.samsara_count) == 1, "enter_samsara is a no-op when called while ineligible (guards itself, not just the UI button)")
 
-	check(int(game.profile.rebirth_count) == 1, "confirming rebirth increments rebirth_count")
-	check(game.overlay.get_node_or_null("RebirthConfirmModal") == null, "confirming rebirth closes the modal")
-	check(int(game.profile.unlocked) == 0, "rebirth resets campaign position back to stage 0")
-	check(int(game.profile.position) == 0, "rebirth resets profile.position")
-	check(game.profile.deck == game.content.raw.startingDeck, "rebirth resets the deck back to the exact starting deck")
-	check(game.profile.upgrades.is_empty(), "rebirth clears card upgrades")
-	check(game.profile.relics.is_empty(), "rebirth clears relics")
-	check(game.profile.equipment_owned.is_empty(), "rebirth clears owned equipment")
-	check(game.profile.equipment_slots.is_empty(), "rebirth clears equipped slots")
-	check(game.profile.rune_inventory.is_empty(), "rebirth clears the rune inventory")
-	check(game.profile.card_runes.is_empty(), "rebirth clears card-socketed runes")
-	check(int(game.profile.gold) == gold_before_rb, "rebirth does not touch currencies")
-	check(game.profile.hero_masteries == masteries_before_rb, "rebirth does not touch hero mastery progress")
-	check(int(game.profile.difficulty) == 5, "rebirth leaves the selected challenge tier untouched so the next cycle doesn't re-climb it")
-
-	var bonus_after_rb: Dictionary = game.content.rebirth_bonuses(1)
-	check(int(bonus_after_rb.get("max_hp", 0)) == SpiritContent.REBIRTH_MAX_HP_PER_CYCLE, "rebirth_bonuses(1) grants exactly one cycle's worth of bonus")
-	check(int(game.content.rebirth_bonuses(0).size()) == 0, "rebirth_bonuses(0) grants nothing before any cycle is completed")
-	var merged_bonuses_rb: Dictionary = game._current_hero_mastery_bonuses()
-	check(int(merged_bonuses_rb.get("max_hp", 0)) >= SpiritContent.REBIRTH_MAX_HP_PER_CYCLE, "the rebirth bonus is merged into the hero_bonuses dict combat.create() receives")
-
-	# C2 follow-up: each rebirth cycle raises the difficulty ladder's ceiling by one tier past
-	# A5, and the NEXT rebirth's eligibility now requires that raised ceiling, not a flat A5 —
-	# otherwise a player could rebirth indefinitely by re-tapping the same A5 button.
-	# _perform_rebirth() just reset profile.unlocked to 0 (already verified above), which would
-	# also gate the tier section (needs >=25) and the rebirth button (needs >=250) shut
-	# regardless of difficulty — set it back up to isolate testing the escalating tier
-	# requirement specifically, restored along with everything else at this block's end.
+	# Each samsara cycle raises the difficulty ladder's ceiling by one tier past A5, uncapped —
+	# and the NEXT cycle's eligibility now requires that raised ceiling, not a flat A5, or a
+	# player could cycle indefinitely by re-tapping the same A5 button forever.
 	game.profile.unlocked = 250
-	# DifficultyTierRow lives in the "challenges" tab; RebirthBtn lives in "character".
-	game.camp_tab = "challenges"
 	game.show_camp()
 	await process_frame
 	var tier_row: Control = game.root.find_child("DifficultyTierRow", true, false) as Control
-	check(tier_row != null and tier_row.get_child_count() == 7, "one rebirth raises the tier ladder to A0-A6 (7 buttons), not just the original A0-A5")
+	check(tier_row != null and tier_row.get_child_count() == 7, "one samsara cycle raises the tier ladder to A0-A6 (7 buttons), not just the original A0-A5")
 
-	game.camp_tab = "character"
+	game.profile.difficulty = 5
 	game.show_camp()
 	await process_frame
-	var rebirth_btn_tier5: Button = game.root.find_child("RebirthBtn", true, false) as Button
-	check(rebirth_btn_tier5 != null and rebirth_btn_tier5.disabled, "after one rebirth, being at A5 is no longer enough for the next rebirth — the requirement escalated to A6")
+	check(game.root.find_child("SamsaraEnterBtn", true, false) == null, "after one cycle, being at A5 is no longer enough for the next cycle — the requirement escalated to A6")
 	game.profile.difficulty = 6
 	game.show_camp()
 	await process_frame
-	var rebirth_btn_tier6: Button = game.root.find_child("RebirthBtn", true, false) as Button
-	check(rebirth_btn_tier6 != null and not rebirth_btn_tier6.disabled, "moving up to the newly-required A6 makes the next rebirth available again")
+	check(game.root.find_child("SamsaraEnterBtn", true, false) != null, "moving up to the newly-required A6 makes the next cycle available again")
 
 	# The tier ladder used to be purely cosmetic (see content.difficulty_modifier()'s header
 	# comment) — a real player tapping A5 got zero actual extra challenge. Confirm a selected
 	# tier now actually reaches combat: begin_battle() merges it into active_modifier, which
-	# combat.create() reads as health_scale/damage_bonus. A per-stage random flavor modifier
-	# can also contribute to the same fields, so assert the tier's own floor rather than an
-	# exact value (flavor can only add on top, never reduce below the tier's contribution).
+	# combat.create() reads as health_scale/damage_bonus. A per-stage random flavor modifier can
+	# also contribute to the same fields, so assert the tier's own floor rather than an exact
+	# value (flavor can only add on top, never reduce below the tier's contribution). Bumped
+	# directly to samsara_count=2 (past the shield-blessing milestone, content.samsara_bonuses())
+	# to also confirm that blessing reaches a real battle through the same hero_bonuses hook Hero
+	# Mastery uses, not just the pure content.samsara_bonuses() dict in isolation.
+	game.profile.samsara_count = 2
 	game.begin_battle(0)
 	await process_frame
 	check(float(game.active_modifier.get("health_scale", 1.0)) >= 1.72 - 0.001, "difficulty A6 contributes at least its own health_scale (1.0 + 6*0.12) to the battle's active_modifier (got %.2f)" % float(game.active_modifier.get("health_scale", 1.0)))
 	check(int(game.active_modifier.get("damage_bonus", 0)) >= 6, "difficulty A6 contributes at least its own damage_bonus to the battle's active_modifier (got %d)" % int(game.active_modifier.get("damage_bonus", 0)))
+	check(int(game.combat.state.player.shield) >= 4, "samsara level 2's +4 starting shield blessing reaches a real battle")
 	game._leave_battle()
 	await process_frame
 
-	game.profile.unlocked = saved_unlocked_rb
-	game.profile.position = saved_position_rb
-	game.profile.difficulty = saved_difficulty_rb
-	game.profile.deck = saved_deck_rb
-	game.profile.collection = saved_collection_rb
-	game.profile.upgrades = saved_upgrades_rb
-	game.profile.relics = saved_relics_rb
-	game.profile.equipment_owned = saved_equip_owned_rb
-	game.profile.equipment_slots = saved_equip_slots_rb
-	game.profile.rune_inventory = saved_rune_inv_rb
-	game.profile.card_runes = saved_card_runes_rb
-	game.profile.rebirth_count = saved_rebirth_count_rb
-	game.profile.health = saved_health_rb
+	var merged_bonuses_sm: Dictionary = game._current_hero_mastery_bonuses()
+	check(int(merged_bonuses_sm.get("max_hp", 0)) >= 6, "samsara's max_hp blessing is merged into the hero_bonuses dict combat.create() receives")
+
+	game.profile.unlocked = saved_unlocked_sm
+	game.profile.position = saved_position_sm
+	game.profile.difficulty = saved_difficulty_sm
+	game.profile.samsara_count = saved_samsara_count_sm
+	game.profile.health = saved_health_sm
+	game.profile.gold = saved_gold_sm
+	game.profile.claimed_stage_events = saved_events_sm
 
 	# Daily Trial: force a fresh day so the run starts at stage 0, then drive it through to
 	# completion via the same "force phase to won, then grant rewards" shortcut the pre-existing
@@ -3318,6 +3307,37 @@ func _run() -> void:
 	await process_frame
 	var map_auto_btn: Control = game.root.find_child("MapAutoPushBtn", true, false) as Control
 	check(map_auto_btn != null, "MapAutoPushBtn present on map rail")
+
+	# 4. Samsara / Reincarnation Section and Modal (C2)
+	section("== samsara reincarnation section and modal ==")
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	var samsara_sec: Node = game.root.find_child("SamsaraSection", true, false)
+	check(samsara_sec != null, "SamsaraSection renders in Camp challenges tab")
+
+	game.profile.unlocked = 250
+	game.profile.difficulty = 5
+	game.show_camp()
+	await process_frame
+	var samsara_enter := game.root.find_child("SamsaraEnterBtn", true, false) as Button
+	check(samsara_enter != null, "SamsaraEnterBtn appears when unlocked >= 250 AND difficulty >= 5")
+	game.show_samsara_modal()
+	await process_frame
+	var samsara_dialog: Node = game.overlay.find_child("SamsaraModal", true, false)
+	check(samsara_dialog != null, "SamsaraModal opens on show_samsara_modal")
+	var s_confirm := game.overlay.find_child("SamsaraConfirmBtn", true, false) as Button
+	check(s_confirm != null, "SamsaraConfirmBtn is present in modal")
+	var s_cancel := game.overlay.find_child("SamsaraCancelBtn", true, false) as Button
+	check(s_cancel != null, "SamsaraCancelBtn is present in modal")
+	tap_button(s_cancel, "SamsaraCancelBtn")
+	await process_frame
+	check(game.overlay.find_child("SamsaraModal", true, false) == null, "SamsaraModal closes on cancel")
+
+	game.profile.samsara_count = 1
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A6", true, false) != null, "DifficultyTierBtn_A6 appears when samsara_count >= 1")
 
 	game.show_map()
 	await process_frame

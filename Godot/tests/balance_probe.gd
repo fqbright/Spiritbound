@@ -14,7 +14,7 @@ extends SceneTree
 # this well, usually better): no purchases from the always-available Shop's randomized daily
 # stock (its RNG isn't reproduced here — only the deterministic per-stage rest/event/merchant
 # choices below are modeled), and a single fixed hero (fox_spirit, the beginner-recommended
-# class) with no Rebirth bonuses. Equipment/relic/rune drops follow the same deterministic
+# class) with no Samsara bonuses. Equipment/relic/rune drops follow the same deterministic
 # rotation _grant_stage_rewards() uses at difficulty A0; card rewards use the same
 # _card_build_score formula and smart-add replacement rule show_reward_details()'s "smart add"
 # button uses (duplicated here rather than calling into game_shop_deck_screen.gd, the same

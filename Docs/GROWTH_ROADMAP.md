@@ -145,35 +145,51 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   sketch has been written** — not even the cross-platform GDScript stub the sketch itself
   flags as safe to build headlessly — so implementation starts from zero whenever picked up.
   *Builds on:* nothing yet — new native surface.
-- `[x]` **C2 — 轮回 / New Game+ 机制** — done 2026-09-17
-  Design decisions made (see the checkbox below and the progress log entry for the reasoning
-  behind each): eligibility is `profile.unlocked >= 250` (full clear) and
-  `profile.difficulty >= 5` (challenge tier currently at A5) — deliberately not also gated on
-  hero mastery level, since mastery is per-hero and would arbitrarily punish trying multiple
-  archetypes. A confirmed rebirth (`_rebirth_section()`/`_show_rebirth_confirm()`/
-  `_perform_rebirth()` in `game_camp_screen.gd`) resets exactly the campaign-run state a fresh
-  save starts with — `unlocked`, `position`, `health`, `deck`/`collection` (back to the
-  starting 25), `upgrades`, `relics`, `equipment_owned`/`equipment_slots`, `rune_inventory`/
-  `card_runes` — while leaving every account-level system untouched: currencies, hero mastery,
-  achievements, compendium, `profile.difficulty` itself, and the Daily Trial/Weekly Challenge/
-  Abyss/Boss Rush/Phantom Arena tracks. `profile.rebirth_count` grants a small permanent
-  combat bonus (`content.rebirth_bonuses()`: `+3 max_hp`/`+1 shield_start` per cycle, stacking)
-  through the exact same `hero_bonuses` hook hero mastery perks already use in
-  `combat.create()` — no new engine surface needed for the reward itself, only the reset flow.
-  **Deepened 2026-09-17** (per explicit user direction, alongside the difficulty-curve
-  revalidation): real A6+ tiers now exist. This surfaced a genuine pre-existing bug —
-  `profile.difficulty` had **zero effect on actual combat** despite `ui.camp_desc`'s own text
-  claiming otherwise, only ever shifting which boss-equipment/elite-rune drops rotate to.
-  Fixed via `content.difficulty_modifier(tier)` (health_scale/damage_bonus/reward_scale,
-  merged with the existing per-stage flavor modifier in `_apply_difficulty()`), with tier 0
-  kept a deliberate no-op so the just-revalidated base curve can't retroactively get harder.
-  Each rebirth now raises the max selectable tier by one past A5 (`5 + rebirth_count`), and
-  the *next* rebirth's own eligibility escalates to match (`difficulty >= 5 + rebirth_count`,
-  not a flat A5) — otherwise a player could rebirth indefinitely off one button. Still no
-  cosmetic card back (needs art no agent here can produce).
+- `[x]` **C2 — 轮回 / New Game+ 机制 (Samsara Reincarnation)** — done 2026-09-17, merged 2026-09-18
+  Two independently-built implementations of this item landed in parallel — a human
+  collaborator's "Samsara" alongside this agent's own earlier "Rebirth" — and were merged into
+  one final design per explicit user direction, picking specific pieces from each side rather
+  than choosing one wholesale:
+  - **Eligibility** (this agent's design, kept): `profile.unlocked >= 250` (full clear) AND
+    `profile.difficulty >= 5 + samsara_count` (challenge tier at the max tier this many cycles
+    have unlocked so far, escalating every cycle) — not also gated on hero mastery level, since
+    mastery is per-hero and would arbitrarily punish trying multiple archetypes. Replaces the
+    collaborator's initial OR-based check (`unlocked >= 249 OR difficulty >= 5`), which became
+    trivially true forever after the first cycle and would have let every later one repeat off
+    the same button with no re-escalation.
+  - **Reset scope** (collaborator's design, kept): `game.enter_samsara()` resets only
+    `unlocked`, `position`, `claimed_stage_events`, and `health` — deck, card collection,
+    upgrades, equipment, runes, and relics are all deliberately left untouched. Narrower than
+    this agent's own initial design, which also wiped those back to a fresh starting deck.
+  - **Bonus formula** (collaborator's design, kept): `content.samsara_bonuses(count)`,
+    milestone-based rather than flat-per-cycle — Lv1 +6 max_hp/+50 gold, Lv2 +4
+    starting_shield, Lv3 +1 turn1_draw, Lv4+ an additional +4 max_hp/+2 starting_shield per
+    tier past 3 — applied through the same `hero_bonuses` hook hero mastery perks already use
+    in `combat.create()`, plus `content.samsara_title(count)`'s themed realm names ("凡体肉胎"
+    through "N转极境天仙").
+  - **Tier cap** (this agent's design, kept): uncapped rather than a flat "A6 once you've
+    cycled, never grows further" ceiling — each cycle raises the max selectable difficulty
+    tier by one past the original A0-A5 ceiling (`5 + samsara_count`). `content.
+    difficulty_modifier(tier)` (health_scale/damage_bonus/reward_scale, tier 0 a deliberate
+    no-op so the already-validated base curve can't retroactively get harder) is what makes
+    every tier including 6+ a real combat effect rather than the purely cosmetic selector
+    `profile.difficulty` used to be — shared groundwork both implementations built on, not
+    exclusive to either side.
+  - Two real bugs found and fixed while merging (see the merge's own progress log entry for
+    the full account): the collaborator's separate A6-specific `combat.gd` block (a flat +25%
+    enemy HP/+2 Strength, gated on `hero_bonuses.difficulty == 6`) was redundant with the
+    smoothly-scaling `difficulty_modifier()` mechanism above, and its "+2 Strength" half had no
+    effect at all — `enemy.strength` was set but never read anywhere in the engine, the same
+    "field set but never consulted" shape as this file's own `thorns` precedent — so the whole
+    block was removed rather than kept alongside the real mechanism. `enter_samsara()`'s
+    one-time `profile.health = clampi(60 + max_hp, ...)` was dead code too, since
+    `begin_battle()` always hardcodes a flat 60 into `combat.create()` regardless of
+    `profile.health`'s stored value (the real bonus reaches combat through `hero_bonuses.
+    max_hp`, never through this display-only field) — simplified to a flat 60, matching every
+    other battle-end reset site in the game.
   *Built on:* `_current_hero_mastery_bonuses()` (`game_rewards_screen.gd`) as the single choke
   point all 7 `combat.create()` call sites already share; `_modal_dialog()` for the confirm
-  prompt. 352/0 rules, UI smoke +24 checks, both suites 0 failures.
+  prompt.
 - `[x]` **D4 — 大首领专属机制 (unique Great Boss phase mechanics)** — done 2026-09-15
   Each of the 5 Great Bosses (Chapters 10, 20, 30, 40, 50 at Stage 50, 100, 150, 200, 250)
   features a unique scripted Phase 2 transition when HP falls below 50%:
@@ -228,20 +244,23 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   Standard Replay (half gold, no drops) and Trial Replay (hard affix modifier + restores 100% gold
   rewards and item/equipment drops). Supported via `begin_hard_replay(index)` and `is_hard_replay`.
   *Builds on:* `_show_replay_mode_prompt()`, `begin_hard_replay()`.
-- `[x]` **E1 — 试炼历史走势图 (local-only)** — already done, discovered undocumented 2026-09-17
-  `daily_trial_record.history` (bounded to `SpiritContent.DAILY_TRIAL_HISTORY_LIMIT` = 30
-  entries, appended in `_ensure_daily_trial_current()`) plus a bar-per-day trend chart
+- `[x]` **E1 — 试炼历史走势图 (local-only)** — done 2026-09-15
+  A simple vertical-bar trend line of `daily_trial_record.best_stage` over recent days
   (`_daily_trial_trend_chart()` in `game_camp_screen.gd`, `DailyTrialTrendChart`/`TrendBar_*`
-  nodes) were already fully implemented and already had real `ui_smoke.gd` coverage — this
-  checkbox and the E1 comments already in the code were the only things not in sync. See the
-  progress log entry below for how this was found.
-  *Built on:* `_stat_bar()`'s ProgressBar-as-a-styled-rect trick, oriented vertically.
-- `[x]` **E2 — 战报分享卡片 (local-only)** — already done, discovered undocumented 2026-09-17
-  `show_run_recap()` (`game_rewards_screen.gd`): a full "Boss Conquest Recap" screen (portrait,
-  defeated-boss stat row, deck highlights, a share/save button) shown via `ViewRunRecapBtn`
-  after any Great Boss kill (`pending_rewards.great_boss_kill`). Already had 7 `ui_smoke.gd`
-  assertions covering the full flow. Same doc-sync gap as E1.
-  *Built on:* `_build_victory_recap_card()`'s stat-row pattern (A3), `_panel()`.
+  nodes). Purely local data, bounded to `SpiritContent.DAILY_TRIAL_HISTORY_LIMIT` (30) entries
+  via `_ensure_daily_trial_current()`. The checkbox/log entry briefly drifted out of sync with
+  the code — a later 2026-09-17 audit found the feature (and its existing `ui_smoke.gd`
+  coverage) already fully shipped; no functional change came from that audit, just the roadmap
+  catching up to what already existed.
+  *Builds on:* `daily_trial_record.history`, `_stat_bar()`'s ProgressBar-as-a-styled-rect trick
+  oriented vertically.
+- `[x]` **E2 — 战报分享卡片 (local-only)** — done 2026-09-15
+  `show_run_recap()` (`game_rewards_screen.gd`): a full "Boss Conquest Recap" screen (hero
+  portrait, damage dealt, cards played, shields gained, deck highlights, a share/save button)
+  shown via `ViewRunRecapBtn` after any Great Boss kill (`pending_rewards.great_boss_kill`).
+  Same doc-sync gap as E1, found and reconciled in the same 2026-09-17 audit — already had 7
+  `ui_smoke.gd` assertions covering the full flow.
+  *Builds on:* `combat.state.stats`, `_build_victory_recap_card()`'s stat-row pattern (A3).
 - `[x]` **F2 — 独立设置页面** — done 2026-09-15
   Consolidated settings into dedicated `show_settings()` modal accessible via `SettingsButton` (gear ⚙)
   in map top bar and Camp. Configures language, battle speed (1.0x / 1.5x / 2.0x), audio mute, and
@@ -286,6 +305,75 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-18 — Merged two parallel C2 implementations (Rebirth + Samsara) into one design
+While syncing this branch with `origin/main` before pushing unrelated work, found a human
+collaborator had independently built a full "Samsara Reincarnation" prestige system on
+`origin/main` targeting the exact same roadmap item (C2) this session had already shipped
+earlier as "Rebirth" — different names, fields (`rebirth_count` vs `samsara_count`), and logic,
+both live at once. `git merge origin/main` produced real conflicts in `game_camp_screen.gd`,
+`save_store.gd`, and this file. Rather than pick one side wholesale, compared both
+implementations point by point and asked the user to choose per-dimension; the compact
+form the user replied with ("1和4用你的，其他保留协作者的" — mine for eligibility and the tier
+cap, the collaborator's for reset scope and the bonus formula) is what this entry documents
+implementing. See the C2 checklist entry above for the full merged design and its precise
+reasoning per dimension; short version of what changed from each side's original:
+- Eligibility tightened from the collaborator's OR-based check (which became trivially true
+  forever after one cycle) to this session's escalating AND-based one.
+- Reset scope narrowed from this session's full wipe (deck/collection/upgrades/relics/
+  equipment/runes) to the collaborator's narrower one (only unlocked/position/
+  claimed_stage_events/health) — the bigger behavior change of the two for a real player.
+- The bonus formula and realm titles are the collaborator's or unmodified.
+- The tier cap was un-flattened from the collaborator's fixed "A6 forever" back to this
+  session's uncapped `5 + samsara_count`, so a later cycle keeps raising the stakes.
+
+**Two real bugs found and fixed while reading both sides closely enough to merge them** (both
+pre-existing in whichever side introduced them, not introduced by the merge itself):
+1. The collaborator's A6-specific `combat.gd` block (`if hero_bonuses.get("difficulty",0)>=6:
+   enemy.health *= 1.25; enemy.strength += 2`) had a completely dead half — `enemy.strength` is
+   never read anywhere else in the engine (only `state.player.strength`, a different field on a
+   different dictionary, is), the same "a field is set but nothing ever reads it" shape this
+   file's own `thorns` precedent already warns about. The health-scaling half was also fully
+   redundant with this session's own `content.difficulty_modifier()`, which already scales
+   every tier including 6+ smoothly and for real (see that C2 entry's own bug writeup below).
+   Removed the whole block rather than keep two competing difficulty mechanisms.
+2. `enter_samsara()`'s one-time `profile.health = clampi(60 + max_hp, 1, 100)` was dead on
+   arrival: `begin_battle()` always hardcodes a flat `60` into `combat.create()`'s health
+   parameter regardless of `profile.health`'s stored value — the real max_hp bonus reaches
+   combat exclusively through `hero_bonuses.max_hp`, a completely different parameter. The
+   bonus-adjusted value would have silently reverted to a plain 60 the moment the player
+   finished their very next battle of any kind (every battle-end site in the game flatly resets
+   this same display-only field to 60). Simplified to match every other reset site instead of
+   computing a number that could never actually stick.
+Also added a defensive eligibility check inside `enter_samsara()` itself (mirroring
+`_samsara_section()`'s own gate) rather than trusting only the button's visibility — the
+original Rebirth design had the same single-layer gap, never caught because nothing ever
+called `_perform_rebirth()` except through its own gated button.
+
+**Test fallout**: this system had test coverage in four different suites (`ui_smoke.gd`,
+`test_runner.gd`, `e2e_playthrough.gd`, `leak_checker.gd`) referencing the now-deleted
+`RebirthBtn`/`RebirthConfirmModal`/`rebirth_count`/`rebirth_bonuses()` — all four rewritten to
+exercise the merged Samsara design instead (new AND-eligibility assertions including a
+deliberately-locked case the old OR-rule would have wrongly allowed, the narrower keeps-your-
+deck/relics/equipment/runes reset scope, the uncapped tier ladder, and the real
+`active_modifier.health_scale`/`damage_bonus` combat-integration check ported over unchanged
+since `difficulty_modifier()` itself didn't change). `test_runner.gd`'s own A6 combat check was
+trimmed to drop the two assertions for the now-removed enemy-health/strength mechanic while
+keeping the still-valid shield/draw-bonus ones.
+
+**A third bug, this time in the test suite itself, not the product**: `leak_checker.gd`'s new
+SamsaraModal churn test initially reported a false "25 orphaned nodes" leak. Root cause: the
+whole file compares every sub-test's post-churn node count against one shared `base_nodes`
+captured once at the very start while parked on the map screen — Test 2 and Test 3 both already
+knew to return to `show_map()` before measuring for exactly this reason, and the new Test 1b
+didn't, so it was really just measuring "Camp's Challenges tab (9 stacked sections) has more
+static nodes than the map" and misreporting that fixed offset as a leak. Confirmed with a
+scratch diagnostic script comparing raw node counts across screens before touching the real
+test. Fixed by capturing a fresh local baseline on the same tab immediately before the churn
+loop instead of reusing the unrelated shared one.
+
+Full `./run_tests.sh --all` (all 6 suites) green after every fix above: 377/0 rules checks,
+UI smoke/e2e/chaos-monkey/leak-profiler/pixel-diff all passing.
 
 ### 2026-09-17 — Fresh audit continued: _travel_to() had the same tail-race as _resolve_play()
 Same audit session as the deck-code entry below. Read `game_map_screen.gd` end to end next
@@ -625,6 +713,22 @@ E2E playthrough unaffected. This session also installed Godot 4.7.2 itself into 
 (none of the prior sessions' claimed verification numbers could actually be re-run before this,
 since no `godot` binary existed here) — see this repo's own commit history around
 `e79d689`/this session's chat log if a future agent needs to redo that setup.
+
+### 2026-09-17 — C2 Samsara Reincarnation Prestige System & Roadmap Sync
+Implemented C2 from the Growth Roadmap and synchronized roadmap tracking for previously built items (E1, E2):
+- **Samsara / Reincarnation Prestige System (`profile.samsara_count`)**:
+  - Gated behind clearing Chapter 50 (unlocked >= 249) or Ascension 5.
+  - Rebirth (`game.enter_samsara()`): resets stage progression (`unlocked = 0`, `position = 0`, `claimed_stage_events = []`) while preserving all card collections, card upgrades, runes, equipment inventory, relics, hero masteries, currencies (Gold, Spirit Jade, Spirit Dust, Stamina), and achievements.
+  - Permanent Combat Perks (`content.samsara_bonuses()`):
+    - Lv 1: "凡蜕化灵" (+6 Max HP, +50 Rebirth Gold).
+    - Lv 2: "太虚凝气" (+4 Starting Shield in every combat).
+    - Lv 3: "灵机顿悟" (+1 Card Draw on Turn 1).
+    - Lv 4+: "九转登仙" (+4 Max HP & +2 Starting Shield per additional reincarnation).
+  - Unlocks Ascension **A6** ("万劫归一 / Cataclysm"): Enemies have +25% HP and start with 2 Strength. Available in Camp difficulty ladder once reincarnated.
+  - UI & Modal: Added `_samsara_section()` in Camp Challenges tab and atmospheric `show_samsara_modal()` explaining preserved assets and rebirth rewards.
+  - Achievement: "轮回证道" (`samsara1`) added to `content.ACHIEVEMENTS` and evaluated in `_achievement_progress()`.
+  - Roadmap Sync: Ticked checkboxes for E1 (Daily Trial Trend Chart) and E2 (Run Recap Card) which were verified active in code.
+- **Verification**: `test_runner.gd` (374 checks, 0 failures) and `ui_smoke.gd` (all checks passed) verified green.
 
 ### 2026-09-17 — Strategic Depth (Elemental Resonance), Auto-Battle Idle Progression, and Stamina System
 Implemented directly per user direction to deepen combat strategy, prevent infinite brute-force grinding, and provide auto-battle idle progression:

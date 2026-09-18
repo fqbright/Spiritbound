@@ -168,9 +168,6 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	var hero_id: String = str(g.profile.hero_class)
 	var xp: int = int(g.profile.get("hero_masteries", {}).get(hero_id, {}).get("xp", 0))
 	var bonuses: Dictionary = g.content.mastery_bonuses(hero_id, g.content.mastery_level_for_xp(xp)).duplicate()
-	var rebirth: Dictionary = g.content.rebirth_bonuses(int(g.profile.get("rebirth_count", 0)))
-	for key in rebirth:
-		bonuses[key] = int(bonuses.get(key, 0)) + int(rebirth[key])
 	var consumables: Dictionary = g.profile.get("combat_consumables", {})
 	if int(consumables.get("strength", 0)) > 0:
 		bonuses.strength_start = int(bonuses.get("strength_start", 0)) + int(consumables.strength)
@@ -182,6 +179,12 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	if int(consumables.get("strength", 0)) > 0 or int(consumables.get("focus", 0)) > 0 or int(consumables.get("energy", 0)) > 0:
 		g.profile.combat_consumables = {"strength": 0, "focus": 0, "energy": 0}
 		SpiritSave.write(g.profile)
+	var samsara_cnt: int = int(g.profile.get("samsara_count", 0))
+	if samsara_cnt > 0:
+		var s_bonuses: Dictionary = g.content.samsara_bonuses(samsara_cnt)
+		bonuses.max_hp = int(bonuses.get("max_hp", 0)) + int(s_bonuses.get("max_hp", 0))
+		bonuses.shield_start = int(bonuses.get("shield_start", 0)) + int(s_bonuses.get("starting_shield", 0))
+		bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(s_bonuses.get("turn1_draw", 0))
 	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into

@@ -557,6 +557,46 @@ func abyss_boon(id: String) -> Dictionary:
 		if b.id == id: return b
 	return {}
 
+# Samsara / Reincarnation (C2): scaling permanent blessings granted on rebirth
+func samsara_bonuses(count: int) -> Dictionary:
+	var bonuses := {
+		"max_hp": 0,
+		"starting_shield": 0,
+		"turn1_draw": 0,
+		"starting_gold": 0,
+	}
+	if count <= 0:
+		return bonuses
+	# Level 1: "凡蜕化灵" (+6 Max HP, +50 Starting Gold upon rebirth)
+	bonuses.max_hp += 6
+	bonuses.starting_gold += 50
+	if count >= 2:
+		# Level 2: "太虚凝气" (+4 Starting Shield)
+		bonuses.starting_shield += 4
+	if count >= 3:
+		# Level 3: "灵机顿悟" (+1 Card Draw on Turn 1)
+		bonuses.turn1_draw += 1
+	if count >= 4:
+		# Level 4+: "九转登仙" (+4 Max HP and +2 Starting Shield per additional tier)
+		var extra: int = count - 3
+		bonuses.max_hp += extra * 4
+		bonuses.starting_shield += extra * 2
+	return bonuses
+
+func samsara_title(count: int, language := "zh-Hans") -> String:
+	if count <= 0:
+		return "凡体肉胎" if language == "zh-Hans" else "Mortal"
+	elif count == 1:
+		return "一转散仙" if language == "zh-Hans" else "1st Samsara (Wandering Immortal)"
+	elif count == 2:
+		return "二转真仙" if language == "zh-Hans" else "2nd Samsara (True Immortal)"
+	elif count == 3:
+		return "三转玄仙" if language == "zh-Hans" else "3rd Samsara (Mystic Immortal)"
+	elif count == 4:
+		return "四转金仙" if language == "zh-Hans" else "4th Samsara (Golden Immortal)"
+	else:
+		return ("%d转极境天仙" % count) if language == "zh-Hans" else ("%dth Samsara (Celestial Lord)" % count)
+
 # Hero Mastery: every battle won with a hero equipped earns that hero XP (see
 # game.gd's _grant_mastery_xp), climbing a permanent Lv1-5 track. Each level adds one
 # always-on perk to a small, reusable vocabulary of battle-start/first-attack/per-turn hooks
@@ -603,6 +643,7 @@ const ACHIEVEMENTS = [
 	{"id":"trial_badges20","kind":"daily_trial_badges","target":20,"tier":"gold","nameKey":"ach.trial_badges20.name","descKey":"ach.trial_badges20.desc"},
 	{"id":"compendium50","kind":"compendium_percent","target":50,"tier":"silver","nameKey":"ach.compendium50.name","descKey":"ach.compendium50.desc"},
 	{"id":"compendium100","kind":"compendium_percent","target":100,"tier":"platinum","nameKey":"ach.compendium100.name","descKey":"ach.compendium100.desc"},
+	{"id":"samsara1","kind":"samsara_count","target":1,"tier":"platinum","nameKey":"ach.samsara1.name","descKey":"ach.samsara1.desc"},
 ]
 
 const HERO_MASTERY_XP_FOR_LEVEL = [60, 150, 300, 500, 800]
@@ -664,18 +705,6 @@ func mastery_bonuses(hero_id: String, level: int) -> Dictionary:
 		var kind: String = str(p.kind)
 		result[kind] = int(result.get(kind, 0)) + int(p.value)
 	return result
-
-# C2: 轮回 (Rebirth) — a prestige loop for players who've cleared the full 250-stage campaign
-# at the hardest tier (see game_camp_screen.gd's _rebirth_section() for the exact eligibility
-# check). Each cycle grants a small permanent combat bonus through the same hero_bonuses hook
-# hero mastery perks already use (combat.gd's max_hp/shield_start handling), so no new engine
-# surface was needed for the reward itself — only the reset flow is new.
-const REBIRTH_MAX_HP_PER_CYCLE = 3
-const REBIRTH_SHIELD_PER_CYCLE = 1
-
-func rebirth_bonuses(count: int) -> Dictionary:
-	if count <= 0: return {}
-	return {"max_hp": count * REBIRTH_MAX_HP_PER_CYCLE, "shield_start": count * REBIRTH_SHIELD_PER_CYCLE}
 
 # Daily Seeded Trial: a 15-stage gauntlet, independent of campaign progress, that resets at
 # the same day boundary as the daily quests (game.gd's DAY_SECONDS). Every device rolling
@@ -988,10 +1017,11 @@ func _chapter_factor(chapter: int) -> float:
 # ("higher tiers increase enemy HP & damage") claiming otherwise — it only ever shifted which
 # boss-equipment/elite-rune drops rotate to (_grant_stage_rewards()), a reward-variety knob,
 # not a difficulty one. Wired here for real. Extended past the old A5 ceiling to support C2's
-# Rebirth (轮回): each rebirth cycle raises the max selectable tier by one (see
-# _rebirth_section()'s "5 + rebirth_count" eligibility, game_camp_screen.gd), so the escalating
-# tier ladder is now an actual escalating challenge ladder, not a cosmetic one, and Rebirth has
-# somewhere real to send a player who has run out of harder content otherwise.
+# Samsara (轮回): each samsara cycle raises the max selectable tier by one, uncapped (see
+# _samsara_section()'s "5 + samsara_count" eligibility, game_camp_screen.gd), so the escalating
+# tier ladder is now an actual escalating challenge ladder, not a cosmetic one, and Samsara has
+# somewhere real to send a player who has run out of harder content otherwise — every cycle
+# raises the bar again rather than a flat, one-time A6 ceiling.
 # Tier 0 (A0) is deliberately a no-op: tests/balance_probe.gd's revalidation (see
 # Docs/ARCHITECTURE.md) validated the base curve at zero extra scaling, and every existing
 # save already defaults to difficulty 0 — this must never retroactively make the validated
@@ -1152,19 +1182,8 @@ const UI_TEXT = {
 	"ui.camp_tier": {"zh-Hans":"挑战等级 A%d", "en":"Challenge Tier A%d"},
 	"ui.camp_relics": {"zh-Hans":"已获得遗物 %d/5", "en":"Relics collected %d/5"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
-	"ui.camp_tier_rebirth_unlocked": {"zh-Hans":"轮回已解锁至 A%d", "en":"Rebirth has unlocked up to A%d"},
-	"ui.rebirth_title": {"zh-Hans":"轮回", "en":"Rebirth"},
-	"ui.rebirth_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A%d后解锁", "en":"Clear all 250 stages with Challenge Tier set to A%d to unlock"},
-	"ui.rebirth_count_fmt": {"zh-Hans":"已轮回 %d 次", "en":"Rebirths: %d"},
-	"ui.rebirth_bonus_fmt": {"zh-Hans":"当前永久加成：+%d 最大生命，+%d 初始护盾", "en":"Current permanent bonus: +%d Max HP, +%d Starting Shield"},
-	"ui.rebirth_next_bonus_fmt": {"zh-Hans":"下次轮回后：+%d 最大生命，+%d 初始护盾", "en":"After next rebirth: +%d Max HP, +%d Starting Shield"},
-	"ui.rebirth_button": {"zh-Hans":"轮回转生", "en":"Undergo Rebirth"},
-	"ui.rebirth_confirm_title": {"zh-Hans":"确认轮回？", "en":"Confirm Rebirth?"},
-	"ui.rebirth_confirm_resets": {"zh-Hans":"⚠ 将重置：关卡进度、牌组与卡牌收藏、卡牌强化、装备、符文、遗物", "en":"⚠ Will reset: stage progress, deck & card collection, card upgrades, equipment, runes, relics"},
-	"ui.rebirth_confirm_keeps": {"zh-Hans":"✓ 将保留：金币与灵玉、英雄专精、成就、图鉴、日常/周常/深渊等其他进度", "en":"✓ Will keep: gold & jade, hero mastery, achievements, compendium, and all other modes' progress"},
-	"ui.rebirth_confirm_btn": {"zh-Hans":"确认轮回", "en":"Confirm Rebirth"},
-	"ui.rebirth_cancel_btn": {"zh-Hans":"取消", "en":"Cancel"},
-	"ui.rebirth_toast": {"zh-Hans":"轮回完成！第 %d 次轮回的力量已融入你的血脉。", "en":"Rebirth complete! The power of cycle %d flows through you."},
+	"ui.camp_tier_samsara_unlocked": {"zh-Hans":"轮回已解锁至 A%d", "en":"Samsara has unlocked up to A%d"},
+	"ui.samsara_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A%d后解锁", "en":"Clear all 250 stages with Challenge Tier set to A%d to unlock"},
 	"ui.thorns_toast": {"zh-Hans":"荆棘反伤 −%d", "en":"Thorns reflect −%d"},
 	"ui.quests_title": {"zh-Hans":"探险委托", "en":"Quest Commissions"},
 	"ui.quests_sub": {"zh-Hans":"每日与每周探险委派", "en":"Daily & weekly commissions"},
@@ -1773,6 +1792,26 @@ const UI_TEXT = {
 	"ui.resonance_combustion": {"zh-Hans":"【灵火燎原】五行共鸣！烈焰波及全场敌人 3 点伤害！", "en":"[Combustion] Elemental Resonance! 3 splash damage to all enemies!"},
 	"ui.resonance_sunder": {"zh-Hans":"【破甲震荡】五行共鸣！削减护盾并施加易伤！", "en":"[Sunder] Elemental Resonance! Shattered shield & applied Vulnerable!"},
 	"ui.resonance_fortify": {"zh-Hans":"【金石磐石】五行共鸣！稳固身形获得 +4 护盾！", "en":"[Fortify] Elemental Resonance! Gained +4 bonus Shield!"},
+	"ui.samsara_title": {"zh-Hans":"轮回仙途 · 逆天重修", "en":"Samsara · Reincarnation"},
+	"ui.samsara_realm_fmt": {"zh-Hans":"当前境界: %s", "en":"Current Realm: %s"},
+	"ui.samsara_count_fmt": {"zh-Hans":"已渡轮回: %d 次", "en":"Reincarnations: %d"},
+	"ui.samsara_active_blessings": {"zh-Hans":"✦ 轮回道果加护", "en":"✦ Active Samsara Blessings"},
+	"ui.samsara_blessing_hp": {"zh-Hans":"凡蜕化灵: 最大生命 +%d", "en":"Mortal Shedding: Max HP +%d"},
+	"ui.samsara_blessing_shield": {"zh-Hans":"太虚凝气: 战局开局护盾 +%d", "en":"Ether Ward: Battle Start Shield +%d"},
+	"ui.samsara_blessing_draw": {"zh-Hans":"灵机顿悟: 首回合摸牌 +%d", "en":"Spiritual Insight: Turn 1 Card Draw +%d"},
+	"ui.samsara_blessing_gold": {"zh-Hans":"道基深厚: 轮回开局赠送灵石 +%d", "en":"Abundant Heritage: Rebirth Gold +%d"},
+	"ui.samsara_none": {"zh-Hans":"暂未入轮回，尚未激活加护。", "en":"Not yet reincarnated. No active blessings."},
+	"ui.samsara_enter_btn": {"zh-Hans":"开启轮回 · 逆天改命", "en":"Enter Samsara"},
+	"ui.samsara_modal_title": {"zh-Hans":"六道轮回 · 涅槃重生", "en":"Samsara Rebirth Ceremony"},
+	"ui.samsara_modal_lore": {"zh-Hans":"散尽凡躯凡尘路，九死一生踏仙途。\n轮回将重置主线关卡进度，但你收集的所有卡牌、装备、灵石灵玉与流派修为将永驻道基！", "en":"Shed the mortal coil to ascend higher into the immortal path.\nReincarnation restarts campaign stages, while preserving all your cards, equipment, currencies, masteries, and memories!"},
+	"ui.samsara_modal_kept": {"zh-Hans":"✅ 永久保留: 全卡组收藏、强化、装备符文、灵石灵玉、流派熟练度与图鉴成就", "en":"✅ Preserved: All cards, upgrades, equipment, runes, currencies, masteries, and achievements"},
+	"ui.samsara_modal_reset": {"zh-Hans":"🔄 重新开始: 关卡进度重置为第1章第1关，刷新奇遇与推图奖励", "en":"🔄 Reset: Campaign progress resets to Chapter 1, Stage 1 to earn new rewards"},
+	"ui.samsara_modal_gain": {"zh-Hans":"🌟 获得加护: 轮回等级提升，解锁永久战斗属性加成与更高难度挑战！", "en":"🌟 Gained: Reincarnation tier rises, granting permanent combat boosts & higher difficulty"},
+	"ui.samsara_confirm_btn": {"zh-Hans":"确认轮回 · 散功再修", "en":"Confirm Reincarnation"},
+	"ui.samsara_toast_success": {"zh-Hans":"轮回成功！褪去凡胎，道行晋升为: %s", "en":"Reincarnation complete! Ascended to: %s"},
+	"ui.camp_tier_a6_name": {"zh-Hans":"A6 · 万劫归一", "en":"A6 · Cataclysm"},
+	"ach.samsara1.name": {"zh-Hans":"轮回证道", "en":"Path of Samsara"},
+	"ach.samsara1.desc": {"zh-Hans":"首次经历六道轮回，散功重修登临仙境", "en":"Complete your first Samsara reincarnation"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
