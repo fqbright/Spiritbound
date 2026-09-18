@@ -22,6 +22,9 @@ func _modifier(seed: int, stage: int) -> Dictionary:
 	return {} if value % 100 < 48 else options[(value / 100) % options.size()]
 
 func begin_battle(index: int) -> void:
+	g.resolving = false
+	auto_stepping = false
+
 	# Keep the map's browsed chapter in sync with whatever stage is actually being fought, so
 	# a map shown before this call (the header hides during battle, but the state persists)
 	# or after _leave_battle() returns to it (see its final else-branch) already lands on the
@@ -72,11 +75,18 @@ func show_battle() -> void:
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(speed_btn)
 	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
-	var auto_btn := g._button(auto_label, func():
+	var auto_btn: Button
+	var on_toggle_auto = func():
 		g.toggle_auto_battle()
-		show_battle()
-		if g.auto_battle_active: _maybe_step_auto_battle()
-	, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(56, 28))
+		if auto_btn != null and is_instance_valid(auto_btn):
+			auto_btn.text = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
+			var btn_color := Color("205944") if g.auto_battle_active else Color("1a3a42")
+			auto_btn.add_theme_stylebox_override("normal", g._panel(btn_color, 10, g.GOLD))
+			auto_btn.add_theme_stylebox_override("hover", g._panel(btn_color.lightened(0.1), 10, g.JADE))
+			auto_btn.add_theme_stylebox_override("pressed", g._panel(btn_color.darkened(0.12), 10, g.EMBER))
+		if g.auto_battle_active and not g.resolving and g.combat != null and g.combat.state.phase == "player":
+			_maybe_step_auto_battle()
+	auto_btn = g._button(auto_label, on_toggle_auto, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(56, 28))
 	auto_btn.name = "AutoBattleToggle"
 	auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(auto_btn)
@@ -1780,6 +1790,7 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
 		_maybe_step_auto_battle()
 
+
 func _animate_player_action(card: Dictionary) -> void:
 	if g.overlay == null or g.get_tree() == null: return
 	var player_sprite: Node2D = g.root.find_child("PlayerSprite", true, false) as Node2D
@@ -2200,7 +2211,7 @@ func _maybe_step_auto_battle() -> void:
 	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving or auto_stepping:
 		return
 	auto_stepping = true
-	await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
 	auto_stepping = false
 	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
 		return
@@ -2372,6 +2383,7 @@ func _advance_to_reward() -> void:
 	g.show_reward()
 
 func _enemy_turn() -> void:
+	g.resolving = true
 	g.selected_card = -1
 	# Snapshot the telegraphed intents before end_turn consumes them, so each enemy can play
 	# the animation for what it actually promised.
@@ -2398,6 +2410,10 @@ func _enemy_turn() -> void:
 	# Give a brief pause after all enemy actions and damage resolve before player can act
 	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
 	show_battle()
+	g.resolving = false
+	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
+		_maybe_step_auto_battle()
+
 
 # The tint a sprite should rest at once its action animation finishes — plain white unless
 # a persistent status (currently just Weak) is dulling it, in which case resetting to pure
@@ -2664,6 +2680,8 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 func _leave_battle() -> void:
 	if g.auto_battle_active: g.stop_auto_battle("manual")
 	g.selected_card = -1
+	g.resolving = false
+	auto_stepping = false
 	if g.in_sandbox:
 		# Zero-stakes: profile.health was never touched on the way in, so there is nothing to
 		# restore and nothing worth writing to disk on the way out either.

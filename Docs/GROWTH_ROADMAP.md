@@ -247,6 +247,21 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-18 — Auto-play battle speed continuity and resolving state reset fix
+Resolved critical issue where toggling or cycling battle speed (1x/1.5x/2x) halted auto-battle and locked combat resolving state:
+- **In-Place Speed and Auto-Toggle Updates (`Godot/scripts/game.gd` & `game_battle_screen.gd`)**:
+  - `_cycle_speed()` and `_change_battle_speed()` now update `SpeedToggle` label and button text in-place rather than calling `show_battle()`. Calling `show_battle()` previously cleared the scene tree mid-combat (`_clear()`), killing active tween coroutines awaiting completion and permanently stranding `resolving = true`.
+  - `AutoBattleToggle` button now toggles and updates styling in-place without triggering destructive screen redraws.
+- **Auto-Battle Turn Stepping Pipeline**:
+  - After card resolution finishes in `_resolve_play()` and `g.resolving = false`, `_maybe_step_auto_battle()` is automatically invoked if `auto_battle_active` is true and phase is "player". This allows multi-card plays within a turn to proceed without stalling.
+  - Added `_auto_battle_stepping` concurrency guard in `_maybe_step_auto_battle()` with automated fallback to `_maybe_end_turn()` if an AI card decision cannot be played.
+  - Wrapped `_enemy_turn()` with `g.resolving = true` during enemy attack animations, resetting to `false` and stepping auto-battle when next player turn begins.
+- **Combat Restart Clean State Guarantee**:
+  - Explicitly reset `g.resolving = false` and `_auto_battle_stepping = false` in `begin_battle()` and `_leave_battle()`, preventing any stale resolving lock from bleeding across encounters.
+- **Verification**:
+  - Added dedicated UI smoke tests in `Godot/tests/ui_smoke.gd` cycling speed (1.0x -> 1.5x -> 2.0x -> 1.0x) during active auto-play, asserting `auto_battle_active == true`, `resolving == false`, `SpeedToggle` label updating in-place, and restarting combat cleanly without lockups.
+  - All test suites passing cleanly (399 unit checks, UI smoke passing, E2E bot 0 softlocks).
+
 ### 2026-09-17 — 10-Second Cinematic Opening Intro with Skip Functionality
 Designed and implemented an epic, real-time procedural 10-second opening cinematic cutscene:
 - **Real-Time Cinematic Cutscene (`Godot/scripts/game_intro_cutscene.gd`)**:

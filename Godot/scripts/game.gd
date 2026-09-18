@@ -526,7 +526,15 @@ func _cycle_speed() -> void:
 	battle_speed = BATTLE_SPEED_OPTIONS[idx]
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
-	show_battle()
+	var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+	var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button if root != null and is_instance_valid(root) else null
+	if speed_btn != null and is_instance_valid(speed_btn):
+		speed_btn.text = speed_label
+	else:
+		show_battle()
+	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
+		_battle_screen._maybe_step_auto_battle()
+
 
 func _pass_turn() -> void:
 	if combat == null or combat.state.phase != "player" or resolving: return
@@ -2217,8 +2225,16 @@ func _change_battle_speed(new_speed: float) -> void:
 	battle_speed = new_speed
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
+	if root != null and is_instance_valid(root):
+		var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button
+		if speed_btn != null and is_instance_valid(speed_btn):
+			var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+			speed_btn.text = speed_label
+	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
+		_battle_screen._maybe_step_auto_battle()
 	_close_settings()
 	show_settings()
+
 
 func _toggle_music_settings() -> void:
 	muted = not muted

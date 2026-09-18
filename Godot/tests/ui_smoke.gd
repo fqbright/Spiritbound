@@ -2923,6 +2923,56 @@ func _run() -> void:
 	game.battle_speed = 1.0
 	await process_frame
 
+	# 2b. Auto battle speed cycling continuity and restart verification
+	game.begin_battle(0)
+	await process_frame
+	var auto_btn2: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
+	var speed_btn2: Button = game.root.find_child("SpeedToggle", true, false) as Button
+	check(auto_btn2 != null, "AutoBattleToggle present for speed cycle test")
+	check(speed_btn2 != null, "SpeedToggle present for speed cycle test")
+	if auto_btn2 != null and speed_btn2 != null:
+		tap_button(auto_btn2, "AutoBattleToggle")
+		await process_frame
+		check(game.auto_battle_active == true, "auto battle active before speed change")
+		# Change speed to 1.5x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 1.5, "speed changed to 1.5x")
+		check(game.auto_battle_active == true, "auto battle remains active after changing to 1.5x")
+		check(speed_btn2.text == "1.5x", "speed toggle button text updated to 1.5x in-place")
+		# Change speed to 2.0x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 2.0, "speed changed to 2.0x")
+		check(game.auto_battle_active == true, "auto battle remains active after changing to 2.0x")
+		check(speed_btn2.text == "2x", "speed toggle button text updated to 2x in-place")
+		# Change speed to 1.0x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 1.0, "speed cycled back to 1.0x")
+		check(game.auto_battle_active == true, "auto battle remains active after cycling to 1.0x")
+		check(speed_btn2.text == "1x", "speed toggle button text updated to 1x in-place")
+		check(not game.resolving, "resolving is false after speed cycles")
+		game.stop_auto_battle("manual")
+	game._leave_battle()
+	await process_frame
+	check(not game.resolving, "resolving is cleanly reset to false after leaving battle")
+
+	# Restart combat and verify auto-play can start without being blocked
+	game.begin_battle(0)
+	await process_frame
+	check(not game.resolving, "resolving is false at start of restarted combat")
+	var auto_btn_restart: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
+	check(auto_btn_restart != null, "AutoBattleToggle present on restarted combat")
+	if auto_btn_restart != null:
+		tap_button(auto_btn_restart, "AutoBattleToggle")
+		await process_frame
+		check(game.auto_battle_active == true, "auto-battle can successfully start on restarted combat")
+		game.stop_auto_battle("manual")
+	game._leave_battle()
+	await process_frame
+
+
 	# 3. Map Auto Push Button
 	game.show_map()
 	await process_frame
