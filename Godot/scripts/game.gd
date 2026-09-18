@@ -387,8 +387,17 @@ func _ready() -> void:
 	_ensure_daily_trial_current()
 	_ensure_weekly_challenge_current()
 	_ensure_login_reward_current()
-	if SpiritSave.has_account_name(profile): show_map()
-	else: show_account_setup()
+	var should_play_intro := not bool(profile.get("intro_seen", false)) and DisplayServer.get_name() != "headless"
+	if should_play_intro:
+		play_intro_cutscene(func():
+			profile.intro_seen = true
+			SpiritSave.write(profile)
+			if SpiritSave.has_account_name(profile): show_map()
+			else: show_account_setup()
+		)
+	else:
+		if SpiritSave.has_account_name(profile): show_map()
+		else: show_account_setup()
 
 const DAY_SECONDS := 86400
 const WEEK_SECONDS := 604800
@@ -1937,7 +1946,39 @@ func show_settings() -> void:
 
 		account_box.add_child(sync_row)
 
+	# 4c. Cinematic Intro Video Replay
+	var intro_box := VBoxContainer.new()
+	intro_box.add_theme_constant_override("separation", 6)
+	intro_box.add_child(_label(t("ui.settings_replay_intro"), 12, TEXT))
+	var replay_intro_btn := _button(t("ui.settings_replay_intro"), func():
+		_close_settings()
+		play_intro_cutscene(func():
+			show_settings()
+		)
+	, Color("17363e"), Vector2(0, 36))
+	replay_intro_btn.name = "ReplayIntroBtn"
+	replay_intro_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	intro_box.add_child(replay_intro_btn)
+	list.add_child(intro_box)
+
 	list.add_child(account_box)
+
+func play_intro_cutscene(on_done: Callable = Callable()) -> IntroCutscene:
+	var old_intro: Node = get_node_or_null("IntroCutscene")
+	if old_intro != null:
+		old_intro.queue_free()
+
+	if map_music != null and map_music.playing:
+		map_music.stop()
+
+	var cutscene := IntroCutscene.new()
+	cutscene.name = "IntroCutscene"
+	cutscene.setup(lang, func():
+		if on_done.is_valid():
+			on_done.call()
+	)
+	add_child(cutscene)
+	return cutscene
 
 func _close_settings() -> void:
 	if overlay == null: return

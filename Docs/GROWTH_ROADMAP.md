@@ -247,6 +247,25 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-17 — 10-Second Cinematic Opening Intro with Skip Functionality
+Designed and implemented an epic, real-time procedural 10-second opening cinematic cutscene:
+- **Real-Time Cinematic Cutscene (`Godot/scripts/game_intro_cutscene.gd`)**:
+  - Zero-bloat, retina 60/120fps procedural presentation tailored for 390x844 mobile viewport.
+  - Four distinct cinematic movements:
+    - Act I (0-2.5s): Primordial chaos with swirling spirit embers (`CPUParticles2D`).
+    - Act II (2.5-5.5s): Dual-layered rotating ancient runic circle with exploding shockwave seal burst.
+    - Act III (5.5-8.0s): Fox Spirit avatar emergence with orbiting spirit orbs and breathing luminescence.
+    - Act IV (8.0-10.0s): Majestic golden "SPIRITBOUND / 灵界之契" title card slam and subtitle.
+  - Elegant top-right Skip button (`IntroSkipBtn`) with live countdown (`跳过 10s ⏭`, `跳过 9s ⏭` ... `跳过 ⏭`).
+  - Smooth fade-to-black transition with audio crossfade.
+- **Game Lifecycle & Settings Integration (`Godot/scripts/game.gd`)**:
+  - Plays automatically on first launch (`profile.intro_seen = false`) for real players, then smoothly transitions to map or account creation.
+  - Replay button (`ReplayIntroBtn`) added in Settings menu ("重播开场动画 / Replay Intro Video").
+- **Verification & Test Coverage**:
+  - Unit tests in `Godot/tests/test_runner.gd` verifying `intro_seen` defaults and bilingual strings.
+  - UI smoke tests in `Godot/tests/ui_smoke.gd` verifying `play_intro_cutscene()`, `IntroSkipBtn` presence, click execution, and clean disposal.
+  - All 6 test suites passed cleanly with 0 failures.
+
 ### 2026-09-17 — Supabase Multi-Provider Auth & Two-Way Cloud Save Sync
 Integrated Supabase backend for multi-method authentication and cloud save synchronization:
 - **Supabase REST & Auth Client (`Godot/scripts/supabase_client.gd`)**:

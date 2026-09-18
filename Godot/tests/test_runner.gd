@@ -1222,6 +1222,18 @@ func run() -> void:
 	check(content.ui("ui.auth_modal_title", "zh-Hans") == "账号与云端同步", "auth modal title localized in Chinese")
 	check(content.ui("ui.auth_modal_title", "en") == "Account & Cloud Sync", "auth modal title localized in English")
 
+	# Intro Cutscene tests
+	var intro_test_prof := SpiritSave.defaults(content)
+	check(intro_test_prof.has("intro_seen") and intro_test_prof.intro_seen == false, "defaults contains intro_seen as false")
+	check(content.ui("ui.intro_skip", "zh-Hans") == "跳过 ⏭", "intro skip button localized in Chinese")
+	check(content.ui("ui.intro_skip", "en") == "Skip ⏭", "intro skip button localized in English")
+	check(content.ui("ui.intro_act1", "zh-Hans") == "混沌初开 · 万灵归虚", "intro act 1 localized in Chinese")
+	check(content.ui("ui.intro_act2", "zh-Hans") == "远古封印 · 灵潮涌动", "intro act 2 localized in Chinese")
+	check(content.ui("ui.intro_act3", "zh-Hans") == "灵狐降世 · 宿命抉择", "intro act 3 localized in Chinese")
+	check(content.ui("ui.intro_act4_title", "zh-Hans") == "灵界之契", "intro title localized in Chinese")
+	check(content.ui("ui.settings_replay_intro", "zh-Hans") == "重播开场动画", "settings replay intro localized in Chinese")
+	check(content.ui("ui.settings_replay_intro", "en") == "Replay Intro Video", "settings replay intro localized in English")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

@@ -2314,6 +2314,8 @@ func _run() -> void:
 	check(settings_close != null, "SettingsCloseBtn exists")
 	var open_auth_btn := settings_modal.find_child("OpenAuthModalBtn", true, false) as Button
 	check(open_auth_btn != null, "OpenAuthModalBtn exists in settings for unlinked account")
+	var replay_intro_setting_btn := settings_modal.find_child("ReplayIntroBtn", true, false) as Button
+	check(replay_intro_setting_btn != null, "ReplayIntroBtn exists in settings")
 	settings_close.emit_signal("pressed")
 	await process_frame
 	check(game.overlay.get_node_or_null("SettingsModal") == null, "closing SettingsModal frees it")
@@ -2356,6 +2358,22 @@ func _run() -> void:
 	auth_close.emit_signal("pressed")
 	await process_frame
 	check(game.overlay.get_node_or_null("AuthModal") == null, "AuthCloseBtn closes and frees AuthModal")
+
+	# Intro Cutscene & Skip Button Smoke Tests
+	var intro_done := [false]
+	var cutscene: IntroCutscene = game.play_intro_cutscene(func(): intro_done[0] = true)
+	await process_frame
+	check(cutscene != null and game.get_node_or_null("IntroCutscene") != null, "play_intro_cutscene adds IntroCutscene to scene")
+	var intro_skip_btn := cutscene.find_child("IntroSkipBtn", true, false) as Button
+	check(intro_skip_btn != null, "IntroSkipBtn exists on IntroCutscene")
+	intro_skip_btn.emit_signal("pressed")
+	var wait_steps := 0
+	while wait_steps < 35 and not intro_done[0]:
+		await process_frame
+		wait_steps += 1
+	await process_frame
+	check(intro_done[0], "pressing IntroSkipBtn completes intro and triggers callback")
+	check(game.get_node_or_null("IntroCutscene") == null, "IntroCutscene is freed after completion")
 
 	# F3: Deck builder filter chips and search
 	game.show_deck()
