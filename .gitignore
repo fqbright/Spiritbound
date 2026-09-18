@@ -5,4 +5,6 @@ Godot/build/
 Godot/.godot/
 .claude/settings.local.json
 Godot/tests/snapshots/*.png
+Godot/tests/snapshots/*.png.import
+Godot/tests/snapshots/baselines/*.png.import
 Godot/tests/snapshots/diffs/*.png

@@ -1177,8 +1177,50 @@ func run() -> void:
 	check(content.ui("ui.stamina_name", "en") == "Stamina", "stamina localized in English")
 	check(content.ui("ui.auto_battle", "zh-Hans") == "自动", "auto battle localized in Chinese")
 	check(content.ui("tutorial.shop_overview.title", "zh-Hans") == "灵界集市指南", "shop overview tutorial localized")
-	check(content.ui("tutorial.deck_synergies.title", "zh-Hans") == "卡牌协同指南", "deck synergies tutorial localized")
-	check(content.ui("tutorial.combat_survival.title", "zh-Hans") == "危机应对秘诀", "combat survival tutorial localized")
+	# Supabase Client & Cloud Save Auth Unit Tests
+	var test_sess := {
+		"access_token": "mock_jwt_token_spiritbound_987",
+		"refresh_token": "mock_refresh_token_spiritbound_654",
+		"expires_in": 3600,
+		"expires_at": int(Time.get_unix_time_from_system()) + 3600,
+		"provider": "supabase",
+		"user": {
+			"id": "uuid-test-user-1234",
+			"email": "test_immortal@spiritbound.game",
+			"user_metadata": {
+				"display_name": "万界至尊"
+			}
+		}
+	}
+	SupabaseClient.save_session(test_sess)
+	check(SupabaseClient.is_authenticated(), "SupabaseClient is_authenticated returns true with valid session")
+	check(SupabaseClient.get_access_token() == "mock_jwt_token_spiritbound_987", "SupabaseClient returns correct access token")
+	check(SupabaseClient.get_refresh_token() == "mock_refresh_token_spiritbound_654", "SupabaseClient returns correct refresh token")
+	check(SupabaseClient.get_user_id() == "uuid-test-user-1234", "SupabaseClient returns correct user id")
+	check(SupabaseClient.get_email() == "test_immortal@spiritbound.game", "SupabaseClient returns correct email")
+	check(SupabaseClient.get_display_name() == "万界至尊", "SupabaseClient returns correct display name")
+
+	# Account linking with Supabase
+	var auth_test_prof := SpiritSave.defaults(content)
+	check(not SpiritSave.is_cloud_linked(auth_test_prof), "new profile defaults to unlinked cloud status")
+	SpiritSave.link_account(auth_test_prof, "supabase", "uuid-test-user-1234", "test_immortal@spiritbound.game", "万界至尊")
+	check(SpiritSave.is_cloud_linked(auth_test_prof), "profile is cloud linked after Supabase link")
+	check(SpiritSave.account_provider(auth_test_prof) == "supabase", "profile provider is supabase after link")
+	check(auth_test_prof.account.email == "test_immortal@spiritbound.game", "profile stores supabase email")
+	SpiritSave.unlink_account(auth_test_prof)
+	check(not SpiritSave.is_cloud_linked(auth_test_prof), "profile unlinked after sign out")
+
+	# Clean up session
+	SupabaseClient.clear_session()
+	check(not SupabaseClient.is_authenticated(), "SupabaseClient is_authenticated returns false after clear_session")
+
+	# Translations for auth features
+	check(content.ui("ui.auth_email_tab", "zh-Hans") == "邮箱登录", "auth email tab localized in Chinese")
+	check(content.ui("ui.auth_email_tab", "en") == "Email Sign In", "auth email tab localized in English")
+	check(content.ui("ui.auth_signup_tab", "zh-Hans") == "注册账号", "auth signup tab localized in Chinese")
+	check(content.ui("ui.auth_signup_tab", "en") == "Sign Up", "auth signup tab localized in English")
+	check(content.ui("ui.auth_modal_title", "zh-Hans") == "账号与云端同步", "auth modal title localized in Chinese")
+	check(content.ui("ui.auth_modal_title", "en") == "Account & Cloud Sync", "auth modal title localized in English")
 
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)

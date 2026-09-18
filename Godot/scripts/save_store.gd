@@ -106,7 +106,8 @@ static func has_account_name(profile: Dictionary) -> bool:
 
 static func is_cloud_linked(profile: Dictionary) -> bool:
 	var provider: String = str(profile.get("account", {}).get("provider", "guest"))
-	return provider in ["apple", "google"]
+	var user_id: String = str(profile.get("account", {}).get("user_id", "")).strip_edges()
+	return (provider in ["apple", "google", "supabase", "email"]) and not user_id.is_empty()
 
 static func account_provider(profile: Dictionary) -> String:
 	return str(profile.get("account", {}).get("provider", "guest"))

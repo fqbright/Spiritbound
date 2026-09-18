@@ -2312,9 +2312,50 @@ func _run() -> void:
 
 	var settings_close := settings_modal.find_child("SettingsCloseBtn", true, false) as Button
 	check(settings_close != null, "SettingsCloseBtn exists")
+	var open_auth_btn := settings_modal.find_child("OpenAuthModalBtn", true, false) as Button
+	check(open_auth_btn != null, "OpenAuthModalBtn exists in settings for unlinked account")
 	settings_close.emit_signal("pressed")
 	await process_frame
 	check(game.overlay.get_node_or_null("SettingsModal") == null, "closing SettingsModal frees it")
+
+	# Auth Modal Interaction & Tab Switching Smoke Tests
+	game.show_auth_modal()
+	await process_frame
+	var auth_modal: Node = game.overlay.get_node_or_null("AuthModal")
+	check(auth_modal != null, "show_auth_modal opens AuthModal on overlay")
+	var auth_close := auth_modal.find_child("AuthCloseBtn", true, false) as Button
+	check(auth_close != null, "AuthCloseBtn exists in AuthModal")
+	var auth_tab_login := auth_modal.find_child("AuthTabLogin", true, false) as Button
+	check(auth_tab_login != null, "AuthTabLogin exists in AuthModal")
+	var auth_tab_signup := auth_modal.find_child("AuthTabSignup", true, false) as Button
+	check(auth_tab_signup != null, "AuthTabSignup exists in AuthModal")
+	var auth_email := auth_modal.find_child("AuthEmailInput", true, false) as LineEdit
+	check(auth_email != null, "AuthEmailInput exists in AuthModal")
+	var auth_pass := auth_modal.find_child("AuthPasswordInput", true, false) as LineEdit
+	check(auth_pass != null, "AuthPasswordInput exists in AuthModal")
+	var auth_name := auth_modal.find_child("AuthNameInput", true, false) as LineEdit
+	check(auth_name != null, "AuthNameInput exists in AuthModal")
+	check(not auth_name.visible, "AuthNameInput is hidden initially in login tab")
+	var auth_submit := auth_modal.find_child("AuthSubmitBtn", true, false) as Button
+	check(auth_submit != null, "AuthSubmitBtn exists in AuthModal")
+	check(auth_modal.find_child("AuthAppleBtn", true, false) != null, "AuthAppleBtn exists in AuthModal")
+	check(auth_modal.find_child("AuthGoogleBtn", true, false) != null, "AuthGoogleBtn exists in AuthModal")
+	check(auth_modal.find_child("AuthForgotBtn", true, false) != null, "AuthForgotBtn exists in AuthModal")
+
+	# Switch to signup tab
+	auth_tab_signup.emit_signal("pressed")
+	await process_frame
+	check(auth_name.visible, "AuthNameInput becomes visible in signup mode")
+
+	# Switch back to login tab
+	auth_tab_login.emit_signal("pressed")
+	await process_frame
+	check(not auth_name.visible, "AuthNameInput hides when switched back to login mode")
+
+	# Close auth modal
+	auth_close.emit_signal("pressed")
+	await process_frame
+	check(game.overlay.get_node_or_null("AuthModal") == null, "AuthCloseBtn closes and frees AuthModal")
 
 	# F3: Deck builder filter chips and search
 	game.show_deck()

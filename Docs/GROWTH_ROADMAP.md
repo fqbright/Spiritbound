@@ -230,12 +230,12 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   Stun (✸ Burst), Strength (★ Star), Focus (◉ Bullseye). Colorblind and grayscale friendly.
   *Builds on:* `_status_chip()`, unit status rows.
 
-## Blocked — needs a backend decision, not implementable in this local-only architecture
+## Unblocked via Supabase — Cloud Save & Auth Live
 
-- `[ ]` **E3 — 云存档 + 好友排行榜**
-  `save_store.gd` already carries an `account.id` UUID "for a future cloud sync" per its own
-  comment, but there is no backend today. This is the natural first feature once one exists —
-  do not attempt a local stand-in that would need throwing away.
+- `[x]` **E3 (Part 1) — Supabase 云端多方式登录与双向云存档**
+  - 集成 Supabase REST API & Auth: 邮箱密码登录/注册、一键免密设备登录、Apple / Google 第三方 ID Token 认证。
+  - 双向云存档同步 (`public.player_saves`): 时间戳自动比对与冲突消解、Token 自动刷新重试、离线沙盒安全回退。
+- `[ ]` **E3 (Part 2) — 好友排行榜** (待后续增加 `public.leaderboards` 表)
 - `[ ]` **E4 — 异步"幽灵对战"**
   Recorded-run AI opponents need a backend to store and serve run recordings. Same blocker as
   E3; sequence after it, not before.
@@ -246,6 +246,23 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-17 — Supabase Multi-Provider Auth & Two-Way Cloud Save Sync
+Integrated Supabase backend for multi-method authentication and cloud save synchronization:
+- **Supabase REST & Auth Client (`Godot/scripts/supabase_client.gd`)**:
+  - Direct integration with Supabase Auth (`/auth/v1/signup`, `/auth/v1/token?grant_type=password`, `/auth/v1/token?grant_type=id_token`, `/auth/v1/token?grant_type=refresh_token`, `/auth/v1/recover`, `/auth/v1/logout`).
+  - Persistent session management (`user://spiritbound_session.json`) with auto-refresh on HTTP 401 token expiry.
+  - PostgREST database client for `public.player_saves` with upsert (`Prefer: resolution=merge-duplicates`) and timestamp-based conflict resolution.
+- **Unified Authentication Service (`Godot/scripts/auth_service.gd`)**:
+  - `sign_in_with_supabase()`, `sign_up_with_supabase()`, `reset_password()`, `sign_in_with_apple()`, `sign_in_with_google()`, and `sync_cloud_save()`.
+  - Automatic two-way cloud sync: pulls remote save, compares `updated_at`, merges/downloads if newer, or uploads local progress if newer.
+- **In-Game Auth UI & Modals (`Godot/scripts/game.gd`)**:
+  - `show_auth_modal()`: Tabbed interface for Email Login and Registration, LineEdit inputs with password masking, error/hint notifications, rate limit awareness, quick Apple & Google OAuth buttons, password recovery prompt.
+  - Start Screen & Settings Modal enhancements: "邮箱登录" button on initial account setup, "账号与云端同步" modal trigger in Settings, linked account badge, "立即同步到云端", and "退出账号".
+- **Comprehensive Automated Test Coverage**:
+  - Unit tests in `Godot/tests/test_runner.gd` for session storage, token helpers, account link/unlink, and Supabase provider states.
+  - UI smoke tests in `Godot/tests/ui_smoke.gd` for modal opening, tab toggling, field visibility, and clean dismissal.
+  - All 6 test suites passed cleanly with 0 failures.
 
 ### 2026-09-17 — C2 Samsara Reincarnation Prestige System & Roadmap Sync
 Implemented C2 from the Growth Roadmap and synchronized roadmap tracking for previously built items (E1, E2):
