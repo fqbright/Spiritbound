@@ -53,6 +53,11 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	if _has_relic("chaosPrism"):
 		for enemy in state.enemies:
 			enemy.shield += 6
+	if int(hero_bonuses.get("difficulty", 0)) >= 6:
+		for enemy in state.enemies:
+			enemy.health = int(round(enemy.health * 1.25))
+			enemy.max_health = int(round(enemy.max_health * 1.25))
+			enemy.strength = int(enemy.get("strength", 0)) + 2
 	# Hero Mastery: small always-on bonuses from the active hero's permanent Lv1-5 perks —
 	# the same battle-start/first-attack/per-turn hooks relics and equipment already use
 	# (see _resolve_effects, play(), end_turn()), just keyed off save-file progression

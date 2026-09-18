@@ -1122,7 +1122,53 @@ func run() -> void:
 	var best_atk := ai_combat.ai_best_play()
 	check(best_atk.hand_index == 0, "AI prioritizes lethal strike on vulnerable enemy")
 
+	# Samsara / Reincarnation (C2) tests
+	var s0 := content.samsara_bonuses(0)
+	check(s0.max_hp == 0 and s0.starting_shield == 0 and s0.turn1_draw == 0 and s0.starting_gold == 0, "samsara level 0 has zero bonuses")
+	var s1 := content.samsara_bonuses(1)
+	check(s1.max_hp == 6 and s1.starting_gold == 50 and s1.starting_shield == 0 and s1.turn1_draw == 0, "samsara level 1 grants +6 Max HP and +50 starting gold")
+	var s2 := content.samsara_bonuses(2)
+	check(s2.starting_shield == 4, "samsara level 2 adds +4 starting shield")
+	var s3 := content.samsara_bonuses(3)
+	check(s3.turn1_draw == 1, "samsara level 3 adds +1 turn 1 draw")
+	var s4 := content.samsara_bonuses(4)
+	check(s4.max_hp == 10 and s4.starting_shield == 6 and s4.turn1_draw == 1, "samsara level 4 scales max_hp and shield")
+	check(content.samsara_title(0, "zh-Hans") == "凡体肉胎", "samsara title level 0 in Chinese")
+	check(content.samsara_title(1, "zh-Hans") == "一转散仙", "samsara title level 1 in Chinese")
+	check(content.samsara_title(1, "en") == "1st Samsara (Wandering Immortal)", "samsara title level 1 in English")
+
+	var samsara_game := SpiritGame.new()
+	samsara_game.content = content
+	samsara_game.profile = SpiritSave.defaults(content)
+	samsara_game.profile.unlocked = 50
+	samsara_game.profile.position = 50
+	samsara_game.profile.claimed_stage_events = [5, 10]
+	var init_gold: int = int(samsara_game.profile.gold)
+	samsara_game.enter_samsara()
+	check(int(samsara_game.profile.samsara_count) == 1, "enter_samsara increments samsara_count to 1")
+	check(int(samsara_game.profile.unlocked) == 0, "enter_samsara resets campaign progress to stage 0")
+	check(int(samsara_game.profile.position) == 0, "enter_samsara resets campaign map position to stage 0")
+	check(samsara_game.profile.claimed_stage_events.is_empty(), "enter_samsara clears claimed_stage_events for replayability")
+	check(int(samsara_game.profile.gold) == init_gold + 50, "enter_samsara awards +50 gold heritage")
+	check(int(samsara_game.profile.health) == 66, "enter_samsara resets health to new max HP (60 + 6 = 66)")
+	check(samsara_game._achievement_progress({"kind":"samsara_count"}) == 1, "achievement reader tracks samsara_count correctly")
+	samsara_game.free()
+
+	# Difficulty A6 and Samsara Combat perks verification
+	var a6_combat := SpiritCombat.new(content)
+	var enc := encounter(100, 0)
+	var base_enc_hp: int = enc.health
+	a6_combat.create(1, enc, Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"difficulty": 6, "shield_start": 4, "draw_turn1": 1})
+	check(a6_combat.state.enemies[0].health == int(round(base_enc_hp * 1.25)), "A6 difficulty increases enemy health by 25%")
+	check(int(a6_combat.state.enemies[0].get("strength", 0)) == 2, "A6 difficulty gives enemies 2 starting strength")
+	check(a6_combat.state.player.shield == 4, "samsara starting shield applied in combat")
+	check(a6_combat.state.hand.size() == 6, "samsara turn 1 draw applied (5 base + 1 = 6)")
+
 	# Translations for new features
+	check(content.ui("ui.samsara_title", "zh-Hans") == "轮回仙途 · 逆天重修", "samsara title localized in Chinese")
+	check(content.ui("ui.samsara_title", "en") == "Samsara · Reincarnation", "samsara title localized in English")
+	check(content.ui("ui.camp_tier_a6_name", "zh-Hans") == "A6 · 万劫归一", "camp tier A6 localized in Chinese")
+	check(content.ui("ui.camp_tier_a6_name", "en") == "A6 · Cataclysm", "camp tier A6 localized in English")
 	check(content.ui("ui.treasury_title", "zh-Hans") == "灵界珍宝库", "treasury title localized in Chinese")
 	check(content.ui("ui.treasury_title", "en") == "Spirit Treasury", "treasury title localized in English")
 	check(content.ui("ui.novice_journey_title", "zh-Hans") == "七日修行录", "novice journey title localized in Chinese")

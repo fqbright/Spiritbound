@@ -179,6 +179,13 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	if int(consumables.get("strength", 0)) > 0 or int(consumables.get("focus", 0)) > 0 or int(consumables.get("energy", 0)) > 0:
 		g.profile.combat_consumables = {"strength": 0, "focus": 0, "energy": 0}
 		SpiritSave.write(g.profile)
+	var samsara_cnt: int = int(g.profile.get("samsara_count", 0))
+	if samsara_cnt > 0:
+		var s_bonuses: Dictionary = g.content.samsara_bonuses(samsara_cnt)
+		bonuses.max_hp = int(bonuses.get("max_hp", 0)) + int(s_bonuses.get("max_hp", 0))
+		bonuses.shield_start = int(bonuses.get("shield_start", 0)) + int(s_bonuses.get("starting_shield", 0))
+		bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(s_bonuses.get("turn1_draw", 0))
+	bonuses.difficulty = int(g.profile.get("difficulty", 0))
 	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into

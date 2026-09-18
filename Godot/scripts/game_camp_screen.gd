@@ -631,6 +631,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_sandbox_section())
 	list.add_child(_abyss_section())
 	list.add_child(_difficulty_tier_section())
+	list.add_child(_samsara_section())
 
 # "What you've earned": the Compendium entry point plus the actual relics owned right now —
 # the Compendium already covers cards/gear/runes/bestiary/achievements, so relics-in-hand
@@ -643,17 +644,71 @@ func _difficulty_tier_section() -> Control:
 	var unlocked := int(g.profile.unlocked) >= 25
 	var section := VBoxContainer.new()
 	section.add_theme_constant_override("separation", 8)
-	section.add_child(g._label(g.tf("ui.camp_tier", g.profile.difficulty), 17, g.JADE if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var tier_label := g.t("ui.camp_tier_a6_name") if int(g.profile.difficulty) == 6 else g.tf("ui.camp_tier", g.profile.difficulty)
+	section.add_child(g._label(tier_label, 17, g.JADE if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	if not unlocked:
 		section.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch5"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
 		return section
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
-	for value in 6:
+	var max_tier := 6 if int(g.profile.get("samsara_count", 0)) > 0 else 5
+	for value in (max_tier + 1):
 		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(0,40))
+		button.name = "DifficultyTierBtn_A%d" % value
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(button)
 	section.add_child(row)
-	section.add_child(g._label(g.t("ui.camp_desc"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	var desc_text := g.t("ui.camp_tier_a6_desc") if int(g.profile.difficulty) == 6 else g.t("ui.camp_desc")
+	section.add_child(g._label(desc_text, 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 	return section
+
+func _samsara_section() -> Control:
+	var samsara_cnt: int = int(g.profile.get("samsara_count", 0))
+	var can_samsara: bool = int(g.profile.unlocked) >= 249 or int(g.profile.get("difficulty", 0)) >= 5 or samsara_cnt > 0
+	var panel := PanelContainer.new()
+	panel.name = "SamsaraSection"
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f1922"), 10, g.JADE if can_samsara else Color("22363e")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var title_row := HBoxContainer.new()
+	title_row.add_child(g._label(g.t("ui.samsara_title"), 14, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	var realm_str: String = g.content.samsara_title(samsara_cnt, g.lang)
+	var realm_lbl := g._label(g.tf("ui.samsara_realm_fmt", realm_str), 11, g.JADE, HORIZONTAL_ALIGNMENT_RIGHT)
+	realm_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(realm_lbl)
+	vbox.add_child(title_row)
+
+	if samsara_cnt > 0:
+		var bonus_box := VBoxContainer.new()
+		bonus_box.name = "SamsaraBonusBox"
+		bonus_box.add_theme_constant_override("separation", 2)
+		bonus_box.add_child(g._label(g.tf("ui.samsara_count_fmt", samsara_cnt), 10, Color("80d4ff"), HORIZONTAL_ALIGNMENT_LEFT))
+		var active_bonuses: Dictionary = g.content.samsara_bonuses(samsara_cnt)
+		if active_bonuses.max_hp > 0:
+			bonus_box.add_child(g._label(g.tf("ui.samsara_blessing_hp", active_bonuses.max_hp), 9, Color("76e59b")))
+		if active_bonuses.starting_shield > 0:
+			bonus_box.add_child(g._label(g.tf("ui.samsara_blessing_shield", active_bonuses.starting_shield), 9, Color("68c5ff")))
+		if active_bonuses.turn1_draw > 0:
+			bonus_box.add_child(g._label(g.tf("ui.samsara_blessing_draw", active_bonuses.turn1_draw), 9, Color("ffd860")))
+		vbox.add_child(bonus_box)
+	else:
+		vbox.add_child(g._label(g.t("ui.samsara_none"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+
+	if can_samsara:
+		var enter_btn := g._button(g.t("ui.samsara_enter_btn"), func(): g.show_samsara_modal(), Color("225046"), Vector2(180, 36))
+		enter_btn.name = "SamsaraEnterBtn"
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		vbox.add_child(enter_btn)
+	else:
+		vbox.add_child(g._label(g.t("ui.samsara_lock_hint"), 9, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	return panel
 
 func _relics_section() -> Control:
 	var section := VBoxContainer.new()

@@ -576,6 +576,7 @@ func _achievement_progress(ach: Dictionary) -> int:
 			return int(round(100.0 * float(totals.x) / maxf(1.0, float(totals.y))))
 		"relic_count": return profile.get("relics", []).size()
 		"card_collection": return profile.get("collection", {}).size()
+		"samsara_count": return int(profile.get("samsara_count", 0))
 		_: return 0
 
 # Unlocks are permanent and one-time: once achievements_unlocked[id] is true it never gets
@@ -943,18 +944,18 @@ func _build_audio() -> void:
 func _play_music(battle := false, stage_level: int = 0) -> void:
 	if muted: return
 	if battle:
-		map_music.stop()
+		if map_music != null: map_music.stop()
 		var stream_idx: int = clampi(stage_level, 0, battle_music_streams.size() - 1)
 		if battle_music_streams.size() > stream_idx and battle_music_streams[stream_idx] != null:
 			var target_stream: AudioStream = battle_music_streams[stream_idx]
-			if battle_music.stream != target_stream or not battle_music.playing:
+			if battle_music != null and (battle_music.stream != target_stream or not battle_music.playing):
 				battle_music.stream = target_stream
 				battle_music.play()
 		else:
-			if not battle_music.playing: battle_music.play()
+			if battle_music != null and not battle_music.playing: battle_music.play()
 	else:
-		battle_music.stop()
-		if not map_music.playing: map_music.play()
+		if battle_music != null: battle_music.stop()
+		if map_music != null and not map_music.playing: map_music.play()
 
 func _panel(color: Color, radius := 12, border := Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new(); style.bg_color = color
@@ -1595,6 +1596,119 @@ func show_treasury_inspector() -> void:
 	close_btn.name = "TreasuryCloseBtn"
 	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	vbox.add_child(close_btn)
+
+func enter_samsara() -> void:
+	var prev: int = int(profile.get("samsara_count", 0))
+	var new_count: int = prev + 1
+	profile.samsara_count = new_count
+	var s_bonuses: Dictionary = content.samsara_bonuses(new_count)
+	profile.gold = int(profile.get("gold", 0)) + int(s_bonuses.get("starting_gold", 0))
+	profile.unlocked = 0
+	profile.position = 0
+	profile.claimed_stage_events = []
+	profile.health = clampi(60 + int(s_bonuses.get("max_hp", 0)), 1, 100)
+	SpiritSave.write(profile)
+	_advance_quest("samsara", 1)
+	_refresh_achievements()
+	var realm_title := content.samsara_title(new_count, lang)
+	_toast(tf("ui.samsara_toast_success", realm_title), GOLD)
+	show_camp()
+
+func show_samsara_modal() -> void:
+	var existing: Node = overlay.get_node_or_null("SamsaraModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		return
+
+	var modal := _modal_dialog("SamsaraModal", func():
+		var m: Node = overlay.get_node_or_null("SamsaraModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "SamsaraModalPanel"
+	panel.custom_minimum_size = Vector2(340, 440)
+	panel.add_theme_stylebox_override("panel", _panel(Color("0d171d"), 14, JADE))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	pad.add_child(vbox)
+
+	var title_box := VBoxContainer.new()
+	title_box.add_theme_constant_override("separation", 3)
+	title_box.add_child(_label(t("ui.samsara_modal_title"), 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var cur_count: int = int(profile.get("samsara_count", 0))
+	var next_count: int = cur_count + 1
+	var cur_realm := content.samsara_title(cur_count, lang)
+	var next_realm := content.samsara_title(next_count, lang)
+	title_box.add_child(_label("%s -> %s" % [cur_realm, next_realm], 11, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	vbox.add_child(title_box)
+
+	var lore_panel := PanelContainer.new()
+	lore_panel.add_theme_stylebox_override("panel", _panel(Color("13222a"), 8, Color("1f3944")))
+	var lore_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: lore_pad.add_theme_constant_override("margin_%s" % s, 8)
+	lore_panel.add_child(lore_pad)
+	lore_pad.add_child(_label(t("ui.samsara_modal_lore"), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	vbox.add_child(lore_panel)
+
+	var details_box := VBoxContainer.new()
+	details_box.add_theme_constant_override("separation", 6)
+	details_box.add_child(_label(t("ui.samsara_modal_kept"), 9, Color("8af0a0"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	details_box.add_child(_label(t("ui.samsara_modal_reset"), 9, Color("ffd080"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	details_box.add_child(_label(t("ui.samsara_modal_gain"), 9, Color("70dcff"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	vbox.add_child(details_box)
+
+	var preview_box := VBoxContainer.new()
+	preview_box.add_theme_constant_override("separation", 4)
+	preview_box.add_child(_label(t("ui.samsara_active_blessings"), 10, GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	var next_bonuses: Dictionary = content.samsara_bonuses(next_count)
+	if next_bonuses.max_hp > 0:
+		preview_box.add_child(_label(tf("ui.samsara_blessing_hp", next_bonuses.max_hp), 9, JADE))
+	if next_bonuses.starting_shield > 0:
+		preview_box.add_child(_label(tf("ui.samsara_blessing_shield", next_bonuses.starting_shield), 9, Color("68c5ff")))
+	if next_bonuses.turn1_draw > 0:
+		preview_box.add_child(_label(tf("ui.samsara_blessing_draw", next_bonuses.turn1_draw), 9, Color("ffd860")))
+	if next_bonuses.starting_gold > 0:
+		preview_box.add_child(_label(tf("ui.samsara_blessing_gold", next_bonuses.starting_gold), 9, GOLD))
+	vbox.add_child(preview_box)
+
+	var btn_box := HBoxContainer.new()
+	btn_box.add_theme_constant_override("separation", 8)
+	var cancel_btn := _button(t("ui.cancel"), func():
+		var m: Node = overlay.get_node_or_null("SamsaraModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	, MUTED, Vector2(100, 38))
+	cancel_btn.name = "SamsaraCancelBtn"
+	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_box.add_child(cancel_btn)
+
+	var confirm_btn := _button(t("ui.samsara_confirm_btn"), func():
+		var m: Node = overlay.get_node_or_null("SamsaraModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+		enter_samsara()
+	, Color("963228"), Vector2(180, 38))
+	confirm_btn.name = "SamsaraConfirmBtn"
+	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_box.add_child(confirm_btn)
+	vbox.add_child(btn_box)
 
 func show_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")

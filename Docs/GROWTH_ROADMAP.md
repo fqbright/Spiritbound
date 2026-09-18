@@ -130,12 +130,18 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   approach; this is the one item in this list that may need a design decision from the human
   before an agent should just start coding it.
   *Builds on:* nothing yet — new native surface.
-- `[ ]` **C2 — 轮回 / New Game+ 机制**
-  A prestige layer for players who've maxed mastery, cleared all 250 stages, and beaten A5:
-  reset campaign progress for a permanent small bonus, a new A6+ difficulty tier, or an
-  exclusive card back. Needs real design decisions (what resets, what's kept, what the actual
-  reward is) — sketch the exact mechanic before implementing.
-  *Builds on:* `profile.difficulty` (A0-A5) ladder as the closest existing analog.
+- `[x]` **C2 — 轮回 / New Game+ 机制 (Samsara Reincarnation Prestige)** — done 2026-09-17
+  Comprehensive prestige layer unlocked after clearing all 250 stages or Ascension 5:
+  - **Rebirth & Heritage**: resets campaign progress (`unlocked = 0`, `position = 0`, `claimed_stage_events = []`) while permanently preserving all card collections, upgrades, equipment, runes, relics, masteries, currencies (Gold, Jade, Dust, Stamina), and achievements.
+  - **Samsara Blessings (`content.samsara_bonuses()`)**: scaling permanent combat perks per rebirth level:
+    - Lv 1 ("凡蜕化灵"): +6 Max HP, +50 Gold heritage.
+    - Lv 2 ("太虚凝气"): +4 Starting Shield in every battle.
+    - Lv 3 ("灵机顿悟"): +1 Card Draw on Turn 1.
+    - Lv 4+ ("九转登仙"): +4 Max HP and +2 Starting Shield per additional tier.
+  - **New Ascension Tier A6 ("万劫归一 / Cataclysm")**: Enemies have +25% HP and start with 2 Strength. Unlocked once reincarnated at least once (`samsara_count >= 1`).
+  - **Samsara Section & Modal**: `_samsara_section()` in Camp Challenges tab displaying current realm title (`content.samsara_title()`) and active blessings, with `show_samsara_modal()` explaining preserved assets vs. resets.
+  - **Achievement**: Added "轮回证道" (`samsara1`) platinum achievement.
+  *Built on:* `content.samsara_bonuses()`, `game.enter_samsara()`, `show_samsara_modal()`, `_samsara_section()`.
 - `[x]` **D4 — 大首领专属机制 (unique Great Boss phase mechanics)** — done 2026-09-15
   Each of the 5 Great Bosses (Chapters 10, 20, 30, 40, 50 at Stage 50, 100, 150, 200, 250)
   features a unique scripted Phase 2 transition when HP falls below 50%:
@@ -190,14 +196,12 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   Standard Replay (half gold, no drops) and Trial Replay (hard affix modifier + restores 100% gold
   rewards and item/equipment drops). Supported via `begin_hard_replay(index)` and `is_hard_replay`.
   *Builds on:* `_show_replay_mode_prompt()`, `begin_hard_replay()`.
-- `[ ]` **E1 — 试炼历史走势图 (local-only)**
-  A simple trend line of `daily_trial_record.best_stage` over time. Purely local data, no
-  backend needed.
-  *Builds on:* extend `daily_trial_record` with a bounded history array.
-- `[ ]` **E2 — 战报分享卡片 (local-only)**
-  A shareable "run recap" image (hero, deck highlights, damage dealt) generated client-side
-  after a win or a Great Boss kill — pure client-side rendering, no server dependency.
-  *Builds on:* `_card_art_panel()`, `_panel()` and friends for the composed image.
+- `[x]` **E1 — 试炼历史走势图 (local-only)** — done 2026-09-15
+  A simple vertical-bar trend line of `daily_trial_record.best_stage` over recent days (`DailyTrialTrendChart` in `game_camp_screen.gd`). Purely local data, bounded to `DAILY_TRIAL_HISTORY_LIMIT` entries via `_ensure_daily_trial_current()`.
+  *Builds on:* `daily_trial_record.history`, `_daily_trial_trend_chart()`.
+- `[x]` **E2 — 战报分享卡片 (local-only)** — done 2026-09-15
+  Composed screenshot-friendly `RunRecapCard` for Great Boss victories rendered client-side via `show_run_recap()` in `game_rewards_screen.gd`. Surfaces hero portrait, damage dealt, cards played, shields gained, deck highlights, and share hint.
+  *Builds on:* `combat.state.stats`, `show_run_recap()`.
 - `[x]` **F2 — 独立设置页面** — done 2026-09-15
   Consolidated settings into dedicated `show_settings()` modal accessible via `SettingsButton` (gear ⚙)
   in map top bar and Camp. Configures language, battle speed (1.0x / 1.5x / 2.0x), audio mute, and
@@ -242,6 +246,22 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-17 — C2 Samsara Reincarnation Prestige System & Roadmap Sync
+Implemented C2 from the Growth Roadmap and synchronized roadmap tracking for previously built items (E1, E2):
+- **Samsara / Reincarnation Prestige System (`profile.samsara_count`)**:
+  - Gated behind clearing Chapter 50 (unlocked >= 249) or Ascension 5.
+  - Rebirth (`game.enter_samsara()`): resets stage progression (`unlocked = 0`, `position = 0`, `claimed_stage_events = []`) while preserving all card collections, card upgrades, runes, equipment inventory, relics, hero masteries, currencies (Gold, Spirit Jade, Spirit Dust, Stamina), and achievements.
+  - Permanent Combat Perks (`content.samsara_bonuses()`):
+    - Lv 1: "凡蜕化灵" (+6 Max HP, +50 Rebirth Gold).
+    - Lv 2: "太虚凝气" (+4 Starting Shield in every combat).
+    - Lv 3: "灵机顿悟" (+1 Card Draw on Turn 1).
+    - Lv 4+: "九转登仙" (+4 Max HP & +2 Starting Shield per additional reincarnation).
+  - Unlocks Ascension **A6** ("万劫归一 / Cataclysm"): Enemies have +25% HP and start with 2 Strength. Available in Camp difficulty ladder once reincarnated.
+  - UI & Modal: Added `_samsara_section()` in Camp Challenges tab and atmospheric `show_samsara_modal()` explaining preserved assets and rebirth rewards.
+  - Achievement: "轮回证道" (`samsara1`) added to `content.ACHIEVEMENTS` and evaluated in `_achievement_progress()`.
+  - Roadmap Sync: Ticked checkboxes for E1 (Daily Trial Trend Chart) and E2 (Run Recap Card) which were verified active in code.
+- **Verification**: `test_runner.gd` (374 checks, 0 failures) and `ui_smoke.gd` (all checks passed) verified green.
 
 ### 2026-09-17 — Strategic Depth (Elemental Resonance), Auto-Battle Idle Progression, and Stamina System
 Implemented directly per user direction to deepen combat strategy, prevent infinite brute-force grinding, and provide auto-battle idle progression:

@@ -2845,6 +2845,36 @@ func _run() -> void:
 	var map_auto_btn: Control = game.root.find_child("MapAutoPushBtn", true, false) as Control
 	check(map_auto_btn != null, "MapAutoPushBtn present on map rail")
 
+	# 4. Samsara / Reincarnation Section and Modal (C2)
+	section("== samsara reincarnation section and modal ==")
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	var samsara_sec: Node = game.root.find_child("SamsaraSection", true, false)
+	check(samsara_sec != null, "SamsaraSection renders in Camp challenges tab")
+
+	game.profile.unlocked = 249
+	game.show_camp()
+	await process_frame
+	var samsara_enter := game.root.find_child("SamsaraEnterBtn", true, false) as Button
+	check(samsara_enter != null, "SamsaraEnterBtn appears when campaign unlocked >= 249")
+	game.show_samsara_modal()
+	await process_frame
+	var samsara_dialog: Node = game.overlay.find_child("SamsaraModal", true, false)
+	check(samsara_dialog != null, "SamsaraModal opens on show_samsara_modal")
+	var s_confirm := game.overlay.find_child("SamsaraConfirmBtn", true, false) as Button
+	check(s_confirm != null, "SamsaraConfirmBtn is present in modal")
+	var s_cancel := game.overlay.find_child("SamsaraCancelBtn", true, false) as Button
+	check(s_cancel != null, "SamsaraCancelBtn is present in modal")
+	tap_button(s_cancel, "SamsaraCancelBtn")
+	await process_frame
+	check(game.overlay.find_child("SamsaraModal", true, false) == null, "SamsaraModal closes on cancel")
+
+	game.profile.samsara_count = 1
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A6", true, false) != null, "DifficultyTierBtn_A6 appears when samsara_count >= 1")
+
 	game.show_map()
 	await process_frame
 	_sweep_buttons_clickable(game.root, "Map screen")
