@@ -5,6 +5,7 @@ class_name BattleScreen
 # why. `g` is the live SpiritGame instance; every reference to shared state or another
 # screen's function goes through it.
 var g: SpiritGame
+var auto_stepping: bool = false
 
 func _init(game: SpiritGame) -> void:
 	g = game
@@ -1776,6 +1777,8 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
+	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
+		_maybe_step_auto_battle()
 
 func _animate_player_action(card: Dictionary) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -2194,18 +2197,26 @@ func _maybe_end_turn() -> void:
 		await _enemy_turn()
 
 func _maybe_step_auto_battle() -> void:
-	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
+	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving or auto_stepping:
 		return
-	await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
+	auto_stepping = true
+	await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
+	auto_stepping = false
 	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
 		return
 	var decision: Dictionary = g.combat.ai_best_play()
 	var hand_idx: int = int(decision.get("hand_index", -1))
 	var target_idx: int = int(decision.get("target_index", -1))
 	if hand_idx >= 0:
-		_attempt_play_card(hand_idx, target_idx)
+		var played: bool = _attempt_play_card(hand_idx, target_idx)
+		if not played:
+			await _maybe_end_turn()
+			if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player" and not g.resolving:
+				_maybe_step_auto_battle()
 	else:
-		_maybe_end_turn()
+		await _maybe_end_turn()
+		if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player" and not g.resolving:
+			_maybe_step_auto_battle()
 
 func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	var box: Control = null

@@ -591,17 +591,7 @@ func _finish_reward() -> void:
 		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
 		var kind := g.content.node_kind(next_idx)
 		if kind in ["event","merchant","rest"] and not _is_stage_event_claimed(next_idx) and not _is_replay(next_idx):
-			if kind == "rest":
-				g.profile.gold += 35
-				_mark_stage_event_claimed(next_idx)
-				g.begin_battle(next_idx)
-			elif kind == "event":
-				g.profile.gold += 50
-				_mark_stage_event_claimed(next_idx)
-				g.begin_battle(next_idx)
-			else:
-				_mark_stage_event_claimed(next_idx)
-				g.begin_battle(next_idx)
+			show_event(next_idx, kind)
 		else:
 			g.begin_battle(next_idx)
 		return
@@ -684,7 +674,50 @@ func show_event(index: int, kind: String) -> void:
 		, Color("3d2154"), Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.event_opt_direct"), func(): g.begin_battle(index), Color("21594e"), Vector2(300, 48)))
 
-	page.add_child(g._button(g.t("ui.return_map"), g.show_map, Color("17363e"), Vector2(170, 42)))
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 10)
+	var ret_btn := g._button(g.t("ui.return_map"), g.show_map, Color("17363e"), Vector2(170, 42))
+	btn_row.add_child(ret_btn)
+	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
+	var auto_btn := g._button(auto_label, func():
+		g.toggle_auto_battle()
+		show_event(index, kind)
+	, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(90, 42))
+	auto_btn.name = "EventAutoBattleToggle"
+	btn_row.add_child(auto_btn)
+	page.add_child(btn_row)
+
+	if g.auto_battle_active:
+		_auto_handle_stage_event(index, kind)
+
+func _auto_handle_stage_event(index: int, kind: String) -> void:
+	await g.get_tree().create_timer(g._battle_delay(0.55)).timeout
+	if not g.auto_battle_active or _is_stage_event_claimed(index): return
+	if kind == "event":
+		g.profile.gold += 50
+		g._advance_quest("earn_gold", 50)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("heavy")
+		g._toast(g.t("ui.event_blood_pact") + " +50", g.GOLD)
+		g.begin_battle(index)
+	elif kind == "rest":
+		g.profile.gold += 35
+		g._advance_quest("earn_gold", 35)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("tap")
+		g._toast(g.t("ui.rest_heal_choice") + " +35", g.GOLD)
+		g.begin_battle(index)
+	else:
+		g.profile.gold += 25
+		g._advance_quest("earn_gold", 25)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("tap")
+		g._toast(g.t("ui.event_opt_potion") + " +25", g.GOLD)
+		g.begin_battle(index)
 
 # A turn-by-turn readout of everything combat.gd's `event` signal fired during the just-
 # finished fight (BattleLog just records kind/payload/turn as they happen — see battle_log.gd —

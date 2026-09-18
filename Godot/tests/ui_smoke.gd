@@ -2883,7 +2883,8 @@ func _run() -> void:
 		stam_modal.queue_free()
 		await process_frame
 
-	# 2. Battle Auto Toggle Button
+	# 2. Battle Auto Toggle Button and Multi-Card Chaining
+	game.battle_speed = 10.0
 	game.begin_battle(0)
 	await process_frame
 	var auto_btn: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
@@ -2893,9 +2894,33 @@ func _run() -> void:
 		tap_button(auto_btn, "AutoBattleToggle")
 		await process_frame
 		check(game.auto_battle_active == true, "AutoBattleToggle enables auto-battle")
+		var starting_hand: int = game.combat.state.hand.size()
+		for _step in 15:
+			await create_timer(0.08).timeout
+			if game.combat == null or game.combat.state.energy < 2:
+				break
+		check(game.combat != null and game.combat.state.hand.size() < starting_hand, "auto-battle played cards in combat")
 		game.stop_auto_battle("manual")
 		check(game.auto_battle_active == false, "stop_auto_battle disables auto-battle")
 	game._leave_battle()
+	game.battle_speed = 1.0
+	await process_frame
+
+	# 2b. Event Auto-Selection
+	game.battle_speed = 10.0
+	game.toggle_auto_battle(true)
+	game.show_event(3, "rest")
+	await process_frame
+	var event_auto_btn := game.root.find_child("EventAutoBattleToggle", true, false) as Button
+	check(event_auto_btn != null, "EventAutoBattleToggle present on event screen")
+	for _wait in 10:
+		await create_timer(0.08).timeout
+		if game.combat != null:
+			break
+	check(game.combat != null, "auto-battle automatically selected event choice and started battle")
+	game.stop_auto_battle("manual")
+	game._leave_battle()
+	game.battle_speed = 1.0
 	await process_frame
 
 	# 3. Map Auto Push Button
