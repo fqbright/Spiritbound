@@ -3209,6 +3209,28 @@ func _run() -> void:
 	while game.combat != null and game.combat.state.phase == "player" and win_guard < 400:
 		await create_timer(0.05).timeout
 		win_guard += 1
+	var pre_stop_cards_played: int = int(game.combat.state.stats.get("cards_played", 0)) if game.combat != null else -1
+	check(game.combat != null and game.combat.state.phase == "won", "auto-battle alone (no manual card plays) carries the battle all the way to a win (%d cards played)" % pre_stop_cards_played)
+
+	# DIAGNOSTIC: does auto-battle's "Auto Push" cross-stage chain (_finish_reward()'s own
+	# "if auto_battle_active: begin_battle(next_idx)" branch, reached via the chest-opening
+	# flow after a win) actually continue into the next stage's battle with no manual tap?
+	# Never previously verified here — the check below this comment used to call
+	# stop_auto_battle() immediately after the win, before the chest-opening chain even had a
+	# chance to run, so this exact continuation was untested.
+	var first_stage_cleared: int = int(game.current_stage)
+	var stage2_guard := 0
+	while game.auto_battle_active and int(game.current_stage) == first_stage_cleared and stage2_guard < 200:
+		await create_timer(0.05).timeout
+		stage2_guard += 1
+	check(int(game.current_stage) != first_stage_cleared, "auto-battle's Auto Push chain advances to the next stage automatically after a win, with no manual tap")
+	if int(game.current_stage) != first_stage_cleared:
+		var stage2_card_guard := 0
+		while game.combat != null and game.combat.state.phase == "player" and int(game.combat.state.stats.get("cards_played", 0)) < 1 and stage2_card_guard < 200:
+			await create_timer(0.05).timeout
+			stage2_card_guard += 1
+		check(game.combat != null and int(game.combat.state.stats.get("cards_played", 0)) >= 1, "auto-battle plays at least one card in the automatically-advanced next stage too")
+
 	game.stop_auto_battle("manual")
 	# combat.state.phase flips to "won" synchronously the instant the killing blow lands —
 	# well before _resolve_play()'s own animation chain for that card (still holding
@@ -3220,8 +3242,6 @@ func _run() -> void:
 	while game.resolving and autobattle_settle_wait < 5.0:
 		await create_timer(0.1).timeout
 		autobattle_settle_wait += 0.1
-	var final_cards_played: int = int(game.combat.state.stats.get("cards_played", 0)) if game.combat != null else -1
-	check(game.combat != null and game.combat.state.phase == "won", "auto-battle alone (no manual card plays) carries the battle all the way to a win (%d cards played)" % final_cards_played)
 
 	game.profile.deck = saved_deck_autobattle
 	game.battle_speed = saved_speed_autobattle
