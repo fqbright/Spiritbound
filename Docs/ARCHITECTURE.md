@@ -246,3 +246,16 @@ that gate applying from Band 4's very first stage. Simplifications still not mod
 bonuses, hero mastery beyond whatever XP a single run accumulates, AFK Harvest gold, more than
 one shop card bought per chapter) all push in the direction of clearing further still, so
 chapter 39 is a floor on what a real diligent player reaches, not a ceiling.
+
+**2026-09-19: gold-economy suggestion (BALANCE_REVALIDATION.md #1) confirms the finding above
+under a real, non-topped-up economy, not just the infinite-gold assumption.** `balance_probe.gd`
+gained a `--gold`/`--balance-gold` mode that runs the identical farmed trajectory without
+topping gold up to 9999 every stage — the farming loop's shop/merchant spends are for real,
+gated by whatever `_grant_stage_rewards()` has actually paid out. Result: chapter 37 (stage
+182) before its first wall, versus chapter 40 (stage 199) with gold assumed infinite — only a
+3-chapter gap — and the run still ends with 8,798 gold unspent. The always-available Shop
+apparently can't absorb gold nearly as fast as the campaign generates it even when nothing else
+competes for it, so "can a diligent player afford this deck" already has a comfortable yes;
+this mode is diagnostic only (no depth guardrail yet — see its own header) rather than a hard
+CI gate, both because one measurement isn't enough to responsibly floor a regression check
+against and because the answer it gave was reassuring rather than alarming.

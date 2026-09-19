@@ -1,7 +1,16 @@
 # Balance Revalidation & Doc Corrections
 
-Status: complete and green. This is the handoff note for whoever (human or agent) picks
-this up next. Read it before re-touching anything in this area.
+Status: complete and green as of when it was written — since superseded by a merge with a
+parallel session's own rebuild of this same suite. **The specific numbers below (chapter 20
+wall, digest `933924288`, "now 7 suites," the guardrail reaching only "chapter 11") describe
+that snapshot, not the current probe** — left as-is rather than rewritten, since this doc is a
+dated record of what that pass found and fixed. For the current, actually-merged behavior
+(the farming loop, the chapter 40/20 full/quick depths, the 8-suite count, the `--balance-gold`
+mode), see Docs/ARCHITECTURE.md's "250-stage difficulty curve" section — that is the canonical
+account from here on. This is still the handoff note for whoever picks up the **suggestions**
+below, most of which remain relevant regardless of which probe implementation is current; read
+it before re-touching this area, but verify any specific number here against ARCHITECTURE.md
+first.
 
 ## Why this work happened
 
@@ -103,31 +112,60 @@ and the step counters still said `[1/3]` / `[2/3]` / `[3/3]` from when there wer
 
 ## Remaining suggestions for the next agent
 
-These are opinions, not completed work — take them or leave them:
+These were opinions, not completed work, when this doc was first written. This repo's balance
+probe has since been merged with a second, independently-built rewrite from a parallel session
+(see Docs/ARCHITECTURE.md's "250-stage difficulty curve" for the synthesis and what it changed);
+the note under each item below is what happened to that suggestion in the process, written by
+whichever agent did that merge:
 
-1. **Model the gold economy.** The bot deliberately tops up gold and stamina every stage, so
-   it answers "is combat beatable?" but not "is progression affordable?". A second pass that
-   spends real reward gold through the shop would catch economy regressions the current
-   guardrails cannot see. This was explicitly out of scope, but it is the obvious next layer.
+1. **Model the gold economy.** ✅ Done. `balance_probe.gd` gained a `--gold`/`--balance-gold`
+   mode (`./run_tests.sh --balance-gold`) that runs the same farmed trajectory without topping
+   gold up every stage, so the farming loop's shop/merchant spends are real. Result: chapter 37
+   before the first wall (vs. chapter 40 with gold assumed infinite) and 8,798 gold still
+   unspent at the end — the Shop can't absorb gold as fast as the campaign generates it, so
+   "is progression affordable" already reads as a comfortable yes. Left as diagnostic telemetry
+   rather than a hard CI gate, since one measurement isn't enough to responsibly floor a
+   regression check against yet.
 
-2. **Pin the digest once the curve is considered frozen.** `EXPECTED_DIGEST` is currently
-   `NO_DIGEST`. If the team wants a canary for *any* engine change (not just curve changes),
-   set it to `1806550714` — but expect it to churn whenever combat, cards, or rewards move.
+2. **Pin the digest once the curve is considered frozen.** Still not done, deliberately. The
+   merge changed the probe's architecture and the curve's measured depth outright (chapter 39→40
+   full, plus the new chapter 20 quick-mode figure), so `1806550714` is now stale on its face —
+   pinning immediately after a change this size would just guarantee the next legitimate tweak
+   fails CI for the wrong reason. `EXPECTED_DIGEST` stays `NO_DIGEST`; the current live digests
+   (1405138167 full / 972245937 quick) are printed by every run if a future agent wants to pin
+   once the curve holds still for a while.
 
-3. **Broaden the bot past the first wall.** Stopping at the first loss is fast and
-   deterministic, but it means chapters 21-50 are never measured. A "give the bot a tuned
-   starter deck per band" mode could probe the late game without a real player.
+3. **Broaden the bot past the first wall.** Not done. The farming loop already extends real
+   measurement to chapter 40 (up from chapter 20), which covers most of what this suggestion
+   was after, but a synthetic "tuned starter deck per band" for chapters past that wall needs a
+   real design call (which deck, which relics/equipment to assume) that isn't this merge's to
+   make unilaterally.
 
-4. **De-duplicate the test-invocation guidance.** `AGENTS.md`, `README.md`, `Godot/README.md`,
-   `Docs/GROWTH_ROADMAP.md`, `.cursorrules`, `.github/copilot-instructions.md` and two
-   `SKILL.md` files all restate the suite commands. They were all updated here, but they will
-   drift again. One canonical source referenced by the rest would be more maintainable.
+4. **De-duplicate the test-invocation guidance.** Partially done. While reconciling the two
+   probes, several of these files (this doc included, plus `AGENTS.md`, `README.md`, and the
+   `godot-game-dev` skill) turned out to have drifted *again* already — a stale card count (47
+   vs. the real 53), a stale check count (575 vs. 655), and a bestiary description describing 5
+   sprites where 125 unique monsters now exist. Fixed those on sight, and fixed the skill's
+   `verify.sh` helper, which had drifted worse than a doc ever could: it silently ran only 2 of
+   the 8 real suites instead of restating a stale list, so it now just delegates to
+   `./run_tests.sh` instead of keeping its own copy. Did not attempt a full restructure to one
+   canonical source for the rest — README.md and AGENTS.md serve different audiences (human
+   contributor vs. agent instructions) and some duplication between them is expected in most
+   projects; the actual failure mode worth guarding against is an executable copy that goes
+   stale silently, which was the one fixed here.
 
-5. **The `active_modifier` time-seed.** `begin_battle()` still seeds the shuffle and modifier
-   from the wall clock, which is *why* the probe has to bypass it. If a reproducible live
-   battle ever matters (replay, bug reports, deterministic daily challenges), moving that seed
-   into the save/battle record would kill two birds.
+5. **The `active_modifier` time-seed.** Not done. Still the highest-risk item on this list —
+   it touches every real battle's core seeding, not just test infrastructure, and this
+   session's own experience reconciling an unrelated pre-existing test flake (see
+   `ui_smoke.gd`'s "finishing-blow banner" check, now documented in AGENTS.md's Traps section)
+   was a fresh reminder of how easy it is to misjudge a timing/seeding change in this codebase
+   without dedicated, isolated verification. Left for a session that can give it that.
 
-6. **The pre-existing ObjectDB leak warning.** Not introduced here and does not fail anything,
-   but a leak-checker pass that actually pins it to zero would remove a distracting warning
-   from every headless run.
+6. **The pre-existing ObjectDB leak warning.** Not done, and this merge now has a considered
+   opinion on why not: `leak_checker.gd`'s own delta-based checks (open/close a modal N times,
+   assert the node count returns to baseline) already confirm zero *unbounded* leaks, which is
+   the property that actually matters. The raw "N ObjectDB instances leaked at exit" warning
+   varies run to run (observed 2 to 457 across different suites in this merge's own verification
+   pass) because it's counting whatever a headless script's `quit()` didn't get around to
+   tearing down before the process ended, not a real accumulating leak. Chasing it to exactly
+   zero would mean chasing engine shutdown-order noise rather than fixing anything.

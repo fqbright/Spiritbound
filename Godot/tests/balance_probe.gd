@@ -41,11 +41,15 @@ extends SceneTree
 #     is the identical rules engine begin_battle drives, minus animation.
 #   * It does not drive battle-screen animations (irrelevant to balance) and does not touch the
 #     camera/UI.
-#   * It does not model the gold economy itself as a constraint — stamina and gold are topped
-#     up every stage (the farming loop above does spend gold, but it's always replenished by the
-#     very next stage's top-up), so this measures combat difficulty and deck-building quality
-#     only, never "can a player afford this." See Docs/BALANCE_REVALIDATION.md's suggestion #1
-#     for a proposed separate pass that would model gold as a real constraint.
+#   * By default it does not model the gold economy itself as a constraint — stamina and gold
+#     are topped up every stage (the farming loop above does spend gold, but it's always
+#     replenished by the very next stage's top-up), so this measures combat difficulty and
+#     deck-building quality only, never "can a player afford this." --gold (Docs/
+#     BALANCE_REVALIDATION.md's suggestion #1) switches that off: gold then starts at the real
+#     default and is never topped up, so the same farming loop's shop/merchant spends are for
+#     real. Diagnostic only for now (see gold_mode's own comment) — it reports depth and final
+#     gold rather than gating CI, since there's no measured baseline yet to responsibly floor it
+#     against.
 #   * It does not reproduce the Shop's true once-per-wall-clock-day stock reset (only that its
 #     roll is itself deterministic given a seed) — it approximates "checks the shop about once
 #     per chapter" by feeding the chapter number in as the day-seed proxy instead of a real
@@ -54,6 +58,7 @@ extends SceneTree
 # USAGE
 #   godot --headless --path Godot -s tests/balance_probe.gd              # full
 #   godot --headless --path Godot -s tests/balance_probe.gd -- --quick   # CI
+#   godot --headless --path Godot -s tests/balance_probe.gd -- --gold    # gold-constrained (diagnostic)
 #
 # FULL vs QUICK
 #   Full retries a lost stage up to MAX_RETRIES times before calling it a wall; quick caps
@@ -61,7 +66,7 @@ extends SceneTree
 #   stop the trajectory at the first stage that can't be won within its retry budget (a lost
 #   stage grants no reward, so the deck cannot improve and every later stage would be repeated
 #   against harder content with a weaker build than it should have). Both stay byte-reproducible
-#   — every seed comes from _seed_for(), never from the clock.
+#   — every seed comes from _seed_for(), never from the clock. --gold combines with either.
 # =============================================================================
 
 const MAX_RETRIES := 8
@@ -92,6 +97,16 @@ const FARMED_DEPTH_FLOOR_STAGE_FULL := 170
 const FARMED_DEPTH_FLOOR_STAGE_QUICK := 80
 
 var quick_mode := false
+# Docs/BALANCE_REVALIDATION.md suggestion #1: everything above this models combat difficulty
+# only, topping gold up to 9999 every stage specifically to isolate the encounter curve from
+# the economy. --gold disables that top-up so the farming loop's shop/merchant spends (which
+# already check affordability against whatever game.profile.gold really is — see
+# _maybe_shop_visit()/_handle_noncombat_node()) are for real. Diagnostic only for now: there is
+# no measured baseline yet to responsibly floor a depth guardrail against, so this mode reports
+# telemetry (final gold, depth reached) without failing the run on depth or losses. Expect a
+# gold-constrained build to fall meaningfully short of the infinite-gold depth above — that gap
+# is the signal this mode exists to measure, not a bug in it.
+var gold_mode := false
 var failures := 0
 var saved_profile := ""
 var had_profile := false
@@ -114,6 +129,8 @@ func _initialize() -> void:
 		var flag := str(arg)
 		if flag == "--quick" or flag == "--balance-quick":
 			quick_mode = true
+		if flag == "--gold" or flag == "--balance-gold":
+			gold_mode = true
 	_run()
 
 func section(name: String) -> void:
@@ -363,12 +380,13 @@ func _run_trajectory(game: Control) -> void:
 	var max_retries: int = QUICK_MAX_RETRIES if quick_mode else MAX_RETRIES
 	var index := 0
 	while index < total_stages:
-		# Isolate combat difficulty from the stamina/gold economy (see the file header) — the
-		# farming loop below does spend gold, but it's topped back up right here every stage, so
-		# it never actually gates anything; it exists to exercise the real deck-improvement code
-		# paths, not to model a finite economy.
+		# Isolate combat difficulty from the stamina economy (see the file header) — stamina is
+		# always topped up. Gold is too, UNLESS --gold is set, in which case the farming loop's
+		# shop/merchant spends below are constrained by whatever gold real stage rewards have
+		# actually produced (see gold_mode's own comment).
 		game.profile.stamina.current = int(game.profile.stamina.max)
-		game.profile.gold = maxi(int(game.profile.gold), 9999)
+		if not gold_mode:
+			game.profile.gold = maxi(int(game.profile.gold), 9999)
 
 		var chapter := _chapter_of(index)
 		if index % 5 == 0: _maybe_shop_visit(game, chapter)
@@ -425,6 +443,7 @@ func _losses_in_chapters(low: int, high: int) -> int:
 func _report(game: Control, start_ms: int) -> void:
 	var elapsed := (Time.get_ticks_msec() - start_ms) / 1000.0
 	var mode := "quick" if quick_mode else "full"
+	if gold_mode: mode += ", gold-constrained"
 
 	var band_battles := [0, 0, 0, 0]
 	var band_wins := [0, 0, 0, 0]
@@ -474,6 +493,7 @@ func _report(game: Control, start_ms: int) -> void:
 	for lvl in game.profile.upgrades.values(): upgrade_total += int(lvl)
 	var starters_left: int = game.profile.deck.filter(func(cid): return str(game.content.card(cid).get("rarity", "")) == "Starter").size()
 	print("  🔥 Farming:                %d starter(s) left, %d upgrade level(s), active rune sets: %s" % [starters_left, upgrade_total, active_set_names])
+	if gold_mode: print("  💰 Final gold:             %d" % int(game.profile.gold))
 	print("--------------------------------------------------------")
 
 	section("Curve Guardrails")
@@ -481,8 +501,14 @@ func _report(game: Control, start_ms: int) -> void:
 	var loss_ch1_10 := _losses_in_chapters(1, 10)
 	check(loss_ch1_4 == 0, "chapters 1-4 clearable on autopilot (losses=%d)" % loss_ch1_4)
 	check(loss_ch1_10 == 0, "chapters 1-10 clearable without a single loss (losses=%d)" % loss_ch1_10)
-	var depth_floor: int = FARMED_DEPTH_FLOOR_STAGE_QUICK if quick_mode else FARMED_DEPTH_FLOOR_STAGE_FULL
-	check(depth_stage >= depth_floor, "farmed build reaches at least stage %d / chapter %d before a wall (deepest stage=%d, chapter %d)" % [depth_floor, _chapter_of(depth_floor), depth_stage, _chapter_of(mini(depth_stage, total_stages - 1))])
+	if gold_mode:
+		# Docs/BALANCE_REVALIDATION.md suggestion #1: diagnostic only for now — report the
+		# gold-constrained depth rather than failing on it, since there's no measured baseline
+		# yet to responsibly floor it against (see gold_mode's own comment at the top).
+		print("  ℹ️  gold-constrained depth: stage %d / chapter %d (informational — not gated yet)" % [depth_stage, _chapter_of(mini(depth_stage, total_stages - 1))])
+	else:
+		var depth_floor: int = FARMED_DEPTH_FLOOR_STAGE_QUICK if quick_mode else FARMED_DEPTH_FLOOR_STAGE_FULL
+		check(depth_stage >= depth_floor, "farmed build reaches at least stage %d / chapter %d before a wall (deepest stage=%d, chapter %d)" % [depth_floor, _chapter_of(depth_floor), depth_stage, _chapter_of(mini(depth_stage, total_stages - 1))])
 	check(not softlocked, "no stage exceeded the %d-turn guard (softlock)" % TURN_GUARD)
 	if EXPECTED_DIGEST != NO_DIGEST:
 		check(digest == EXPECTED_DIGEST, "trajectory digest matches pinned baseline (%d)" % digest)
@@ -511,10 +537,13 @@ func _run() -> void:
 	root.add_child(game)
 	await process_frame
 
-	# Fresh campaign profile, ample resources: stamina/gold are topped up again every stage (and
-	# after every farming spend), so these only need to be valid at the start.
+	# Fresh campaign profile. Stamina is topped up again every stage regardless of mode. Gold
+	# starts at the same ample 9999 unless --gold is set, in which case it keeps
+	# SpiritSave.defaults()'s real starting amount and is never topped up again (see gold_mode's
+	# own comment) — everything the farming loop spends from here on is real.
 	game.profile = SpiritSave.defaults(game.content)
-	game.profile.gold = 9999
+	if not gold_mode:
+		game.profile.gold = 9999
 	game.profile.spirit_jade = 100
 	game.profile.stamina = {
 		"current": 100,
@@ -525,7 +554,9 @@ func _run() -> void:
 	game.battle_speed = 50.0
 	await process_frame
 
-	section("Trajectory (%s)" % ("quick" if quick_mode else "full"))
+	var mode_label := "quick" if quick_mode else "full"
+	if gold_mode: mode_label += ", gold-constrained"
+	section("Trajectory (%s)" % mode_label)
 	_run_trajectory(game)
 	_report(game, start_ms)
 

@@ -12,6 +12,7 @@ set -e
 #   ./run_tests.sh --diff          # Run Visual Pixel-Diff baseline comparison
 #   ./run_tests.sh --balance       # Run only the 250-stage balance trajectory bot (full)
 #   ./run_tests.sh --balance-quick # Run the same bot retry-capped (fast, for CI)
+#   ./run_tests.sh --balance-gold  # Run the same bot gold-constrained (diagnostic, not gated)
 #   ./run_tests.sh --gut           # Run only the GUT suite (tests/gut/test_*.gd)
 #   ./run_tests.sh --snapshots     # Generate/refresh 390x844 mobile screenshots
 #   ./run_tests.sh --only-e2e      # Run only the E2E campaign playthrough bot
@@ -39,6 +40,7 @@ RUN_MONKEY=false
 RUN_LEAKS=false
 RUN_DIFF=false
 BALANCE_QUICK=false
+BALANCE_GOLD=false
 GEN_SNAPSHOTS=false
 
 for arg in "$@"; do
@@ -91,6 +93,14 @@ for arg in "$@"; do
             RUN_GUT=false
             RUN_BALANCE=true
             BALANCE_QUICK=true
+            ;;
+        --balance-gold)
+            RUN_UNIT=false
+            RUN_SMOKE=false
+            RUN_E2E=false
+            RUN_GUT=false
+            RUN_BALANCE=true
+            BALANCE_GOLD=true
             ;;
         --gut)
             RUN_UNIT=false
@@ -145,7 +155,11 @@ fi
 
 # 4. 250-Stage Balance Trajectory Bot
 if [ "$RUN_BALANCE" = true ]; then
-    if [ "$BALANCE_QUICK" = true ]; then
+    if [ "$BALANCE_GOLD" = true ]; then
+        echo -e "\n${YELLOW}[4/8] Running 250-Stage Balance Trajectory Bot, gold-constrained (tests/balance_probe.gd --gold)...${NC}"
+        echo -e "${YELLOW}  (diagnostic only — see Docs/BALANCE_REVALIDATION.md suggestion #1; not gated on depth yet)${NC}"
+        godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd -- --gold
+    elif [ "$BALANCE_QUICK" = true ]; then
         echo -e "\n${YELLOW}[4/8] Running 250-Stage Balance Trajectory Bot, quick (tests/balance_probe.gd --quick)...${NC}"
         godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd -- --quick
     else
