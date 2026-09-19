@@ -141,6 +141,25 @@ func run() -> void:
 	var utility := content.card("foxBlessing")
 	check(game_inst._card_build_score(attacker) > game_inst._card_build_score(utility), "a reliable attacker outscores a narrow utility card of the same cost")
 
+	# === PHASE 10: BATTLE RECAP SHARE CARD (POSTER CONTROL TREE) ===
+	# _build_recap_poster_control() only reads its recap_data argument plus g.content/pure
+	# helpers (_get_character_texture/_card_color/_label/_panel) — none of g.combat/g.profile
+	# — so it builds correctly even on an instance never added to a tree, same as
+	# _card_build_score() above.
+	var recap_sample: Dictionary = {
+		"hero_sprite": "fox", "hero_name": "测试英雄",
+		"boss_name": "测试首领", "location": "测试地点", "turns": 7,
+		"damage_dealt": 42, "cards_played": 5, "shield_gained": 10, "deck_highlights": ["strike", "moonfang"],
+	}
+	var poster: Control = game_inst._build_recap_poster_control(recap_sample)
+	check(poster != null and poster.name == "RecapPoster", "the recap poster's Control tree builds successfully")
+	check(poster.size == Vector2(RewardsScreen.RECAP_POSTER_SIZE), "the recap poster is sized to the documented fixed 9:16-ish dimensions")
+	var poster_stats: Node = poster.find_child("RecapPosterStats", true, false)
+	check(poster_stats != null, "the recap poster's stat row exists")
+	var poster_deck: Node = poster.find_child("RecapPosterDeck", true, false)
+	check(poster_deck != null and poster_deck.get_child_count() == 2, "the recap poster's deck-highlight row renders one badge per supplied card")
+	poster.free()
+
 	game_inst.free()
 
 	# Costs were 1 on every card but two, so 3 energy never bound against the 2-play cap —

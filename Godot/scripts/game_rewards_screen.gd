@@ -355,6 +355,16 @@ func _grant_stage_rewards() -> void:
 		g._add_season_xp(50)
 		if floor_num % 5 == 0:
 			g.pending_boon_draft = true
+			# Phase 10: Abyss milestones are recap-worthy too, per the plan's own literal spec
+			# ("after Great Boss defeats and Abyss milestones") — same recap_encounter shape
+			# the Great Boss branch above writes, so show_run_recap() doesn't need to know
+			# which trigger it came from.
+			g.pending_rewards.abyss_milestone = true
+			var abyss_enc: Dictionary = g.content.abyss_encounter(floor_num)
+			g.pending_rewards.recap_encounter = {
+				"boss_name": str(abyss_enc.name), "boss_name_en": str(abyss_enc.get("name_en", abyss_enc.name)),
+				"location": g.content.ui("ui.abyss_stage_label_fmt", "zh-Hans") % floor_num, "location_en": g.content.ui("ui.abyss_stage_label_fmt", "en") % floor_num,
+			}
 		return
 	if g.in_daily_trial:
 		g.in_daily_trial = false
@@ -481,6 +491,15 @@ func _grant_stage_rewards() -> void:
 			# offer the shareable Run Recap card. A great boss can only ever be fought once
 			# (a cleared stage can't be re-entered), so every kill reaching here is fresh.
 			g.pending_rewards.great_boss_kill = true
+			# Baked into both languages now (not re-derived from g.current_stage at render
+			# time) since show_run_recap() also has to serve the Abyss-milestone trigger
+			# (Phase 10), where g.current_stage is left at its Abyss placeholder of 0 by the
+			# time this renders and would resolve to the wrong encounter entirely.
+			var gb_enc: Dictionary = g.content.encounters[g.current_stage]
+			g.pending_rewards.recap_encounter = {
+				"boss_name": str(gb_enc.name), "boss_name_en": str(gb_enc.get("name_en", gb_enc.name)),
+				"location": g.content.chapter_name(g.current_stage / 5, "zh-Hans"), "location_en": g.content.chapter_name(g.current_stage / 5, "en"),
+			}
 			relic_pool = SpiritContent.RELICS.filter(func(r): return SpiritContent.BOSS_RELIC_IDS.has(r.id))
 		else:
 			relic_pool = SpiritContent.RELICS.filter(func(r): return not SpiritContent.BOSS_RELIC_IDS.has(r.id))
@@ -506,7 +525,7 @@ func show_reward_details() -> void:
 		log_btn.name = "ViewBattleLogBtn"
 		page.add_child(log_btn)
 
-	if bool(g.pending_rewards.get("great_boss_kill", false)):
+	if bool(g.pending_rewards.get("great_boss_kill", false)) or bool(g.pending_rewards.get("abyss_milestone", false)):
 		var recap_btn := g._button(g.t("ui.run_recap_view_btn"), show_run_recap, g.GOLD, Vector2(0, 36))
 		recap_btn.name = "ViewRunRecapBtn"
 		page.add_child(recap_btn)
@@ -900,16 +919,24 @@ func show_run_recap() -> void:
 
 	stack.add_child(g._label(g.content.hero_name(hero, g.lang), 18, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
-	var encounter: Dictionary = g.content.encounters[g.current_stage]
-	var boss_name: String = str(encounter.get("name_en", encounter.name)) if g.lang == "en" else str(encounter.name)
+	# recap_encounter is baked (both languages) at the moment the win was granted — see
+	# _grant_stage_rewards()'s great_boss_kill/abyss_milestone branches — rather than
+	# re-derived from g.current_stage here, since an Abyss-triggered recap leaves
+	# g.current_stage at its Abyss placeholder of 0, which would resolve to the wrong
+	# (chapter 1) encounter entirely.
+	var recap_enc: Dictionary = g.pending_rewards.get("recap_encounter", {})
+	var boss_name: String = str(recap_enc.get("boss_name_en", "")) if g.lang == "en" else str(recap_enc.get("boss_name", ""))
+	var location_label: String = str(recap_enc.get("location_en", "")) if g.lang == "en" else str(recap_enc.get("location", ""))
 	stack.add_child(g._label(g.tf("ui.run_recap_defeated_fmt", boss_name), 14, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(g._label(g.content.chapter_name(g.current_stage / 5, g.lang), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(location_label, 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
+	var turns_taken: int = int(g.combat.state.get("turn", 1)) if g.combat and g.combat.state else 0
 	var stat_row := HBoxContainer.new()
 	stat_row.name = "RunRecapStats"
 	stat_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	stat_row.add_theme_constant_override("separation", 16)
+	stat_row.add_child(g._label(g.tf("ui.recap_turns", turns_taken), 12, Color("f0d080")))
 	stat_row.add_child(g._label(g.tf("ui.recap_damage", int(stats.get("damage_dealt", 0))), 12, Color("ff8a8a")))
 	stat_row.add_child(g._label(g.tf("ui.recap_cards", int(stats.get("cards_played", 0))), 12, Color("a8dcff")))
 	stat_row.add_child(g._label(g.tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 12, Color("9fd8ff")))
@@ -953,9 +980,13 @@ func show_run_recap() -> void:
 		highlight_row.add_child(c_badge)
 	stack.add_child(highlight_panel)
 
-	var share_btn := g._button(g.t("ui.run_recap_share_btn"), func():
-		g._toast(g.t("ui.run_recap_saved_toast"), g.GOLD)
-	, g.GOLD, Vector2(200, 40))
+	var recap_data: Dictionary = {
+		"hero_sprite": str(hero.get("sprite", "fox")), "hero_name": g.content.hero_name(hero, g.lang),
+		"boss_name": boss_name, "location": location_label, "turns": turns_taken,
+		"damage_dealt": int(stats.get("damage_dealt", 0)), "cards_played": int(stats.get("cards_played", 0)),
+		"shield_gained": int(stats.get("shield_gained", 0)), "deck_highlights": shown_cards,
+	}
+	var share_btn := g._button(g.t("ui.run_recap_share_btn"), func(): _export_recap_poster(recap_data), g.GOLD, Vector2(200, 40))
 	share_btn.name = "RunRecapShareBtn"
 	share_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stack.add_child(share_btn)
@@ -966,6 +997,123 @@ func show_run_recap() -> void:
 	done_btn.name = "RunRecapDoneBtn"
 	done_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	page.add_child(done_btn)
+
+# Phase 10 — Battle Recap Share Card: a dedicated 9:16 poster, independent of RunRecapCard
+# above (which is laid out for a scrollable reward page, not a shareable image), captured via
+# an off-screen SubViewport per the plan's own spec. Confirmed empirically that
+# ViewportTexture.get_image() returns null under `godot --headless` (its dummy rendering
+# backend has no real framebuffer to read back — logs an engine-level ERROR, but does not
+# raise a GDScript exception), so every caller below treats a null image as "capture
+# unavailable in this environment," not a bug. The poster's own Control tree still builds
+# identically everywhere; only this last capture step is environment-dependent.
+const RECAP_POSTER_SIZE := Vector2i(720, 1280)
+
+func _build_recap_poster_control(recap_data: Dictionary) -> Control:
+	var root := Panel.new()
+	root.name = "RecapPoster"
+	root.custom_minimum_size = Vector2(RECAP_POSTER_SIZE)
+	root.size = Vector2(RECAP_POSTER_SIZE)
+	root.add_theme_stylebox_override("panel", g._panel(Color("0c0a14"), 0, g.GOLD))
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 48)
+	root.add_child(pad)
+
+	var stack := VBoxContainer.new()
+	stack.name = "RecapPosterStack"
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 24)
+	pad.add_child(stack)
+
+	stack.add_child(g._label(g.t("ui.recap_poster_title"), 30, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var portrait := TextureRect.new()
+	portrait.texture = g._get_character_texture(str(recap_data.get("hero_sprite", "fox")))
+	portrait.custom_minimum_size = Vector2(240, 240)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(portrait)
+
+	stack.add_child(g._label(str(recap_data.get("hero_name", "")), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(g.tf("ui.run_recap_defeated_fmt", str(recap_data.get("boss_name", ""))), 22, Color("ffb765"), HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(str(recap_data.get("location", "")), 16, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var stat_row := HBoxContainer.new()
+	stat_row.name = "RecapPosterStats"
+	stat_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	stat_row.add_theme_constant_override("separation", 26)
+	stat_row.add_child(g._label(g.tf("ui.recap_turns", int(recap_data.get("turns", 0))), 18, Color("f0d080")))
+	stat_row.add_child(g._label(g.tf("ui.recap_damage", int(recap_data.get("damage_dealt", 0))), 18, Color("ff8a8a")))
+	stat_row.add_child(g._label(g.tf("ui.recap_cards", int(recap_data.get("cards_played", 0))), 18, Color("a8dcff")))
+	stack.add_child(stat_row)
+
+	var deck_row := HBoxContainer.new()
+	deck_row.name = "RecapPosterDeck"
+	deck_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	deck_row.add_theme_constant_override("separation", 10)
+	for cid in recap_data.get("deck_highlights", []):
+		var c_data: Dictionary = g.content.card(str(cid))
+		if c_data.is_empty(): continue
+		var c_col: Color = g._card_color(c_data)
+		var badge := PanelContainer.new()
+		badge.add_theme_stylebox_override("panel", g._panel(Color("16242a"), 10, c_col))
+		badge.add_child(g._label(g.content.text(c_data.nameKey, g.lang), 16, c_col))
+		deck_row.add_child(badge)
+	stack.add_child(deck_row)
+
+	stack.add_child(g._label(g.t("ui.recap_poster_footer"), 14, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	return root
+
+# Renders recap_data's poster off-screen and reads back its pixels. Returns null wherever the
+# rendering backend can't actually produce a framebuffer to read (godot --headless's dummy
+# renderer; possibly other constrained environments) — callers must treat that as "not
+# available here," never a crash.
+#
+# g.root gets torn down and rebuilt by the next _clear() (any screen navigation at all — see
+# game.gd's own comment on _clear()), which would free this function's own temporary
+# SubViewport out from under it if the player backs out mid-capture, same "fire-and-forget
+# coroutine resumes into a screen that already moved on" shape AGENTS.md documents at length
+# for _resolve_play()/_travel_to(). Guarded the same way: capture g.screen_generation before
+# the awaits and re-check it (plus is_instance_valid as a belt-and-braces second check) before
+# touching the viewport again afterward.
+func _capture_recap_image(recap_data: Dictionary) -> Image:
+	var generation := g.screen_generation
+	var vp := SubViewport.new()
+	vp.size = RECAP_POSTER_SIZE
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.transparent_bg = false
+	g.root.add_child(vp)
+	vp.add_child(_build_recap_poster_control(recap_data))
+	# Two frames: one to let the viewport actually draw its freshly-added children, one for the
+	# render thread to hand the frame back — matching the settle time _leak_checker.gd and
+	# friends already give animated UI elsewhere in this codebase.
+	await g.get_tree().process_frame
+	await g.get_tree().process_frame
+	if g.screen_generation != generation or not is_instance_valid(vp):
+		return null
+	var tex: ViewportTexture = vp.get_texture()
+	var img: Image = tex.get_image() if tex != null else null
+	vp.queue_free()
+	return img
+
+# The Share button's actual handler. Saves to user:// (Files app on iOS, or directly on
+# desktop) rather than a native share sheet or photo-library export, neither of which is
+# reachable from pure GDScript without a platform plugin this project doesn't otherwise use —
+# an honest scope for what's achievable standalone, matching this game's "no backend" stance.
+func _export_recap_poster(recap_data: Dictionary) -> String:
+	var img: Image = await _capture_recap_image(recap_data)
+	if img == null:
+		g._toast(g.t("ui.run_recap_save_unavailable"), g.MUTED)
+		return ""
+	var path := "user://recap_%d.png" % int(Time.get_unix_time_from_system())
+	var err := img.save_png(path)
+	if err != OK:
+		g._toast(g.t("ui.run_recap_save_unavailable"), g.MUTED)
+		return ""
+	g._toast(g.t("ui.run_recap_saved_toast"), g.GOLD)
+	return path
 
 # One line of human-readable text per recorded event kind, or "" for kinds not worth a line
 # (e.g. "turn" itself, already rendered as the section header above, and "intent" telegraphs,

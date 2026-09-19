@@ -746,7 +746,16 @@ func _build_player_stage() -> Control:
 		all_items.append(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
 
 	# 2. Stage Modifier, Equipment & Relic Badges
-	if not g.active_modifier.is_empty():
+	# Checked by "has a name," not just "isn't empty": begin_abyss_battle() unconditionally
+	# adds a "boons" key to whatever _modifier() returns, including its own no-flavor-modifier
+	# {} case (~48% of battles, seed-dependent) — turning it non-empty with no display fields
+	# at all. `.is_empty()` alone crashed here (Dictionary key access on "name"/"detail" with
+	# neither present) roughly every other real Abyss run, timing-dependent enough that no
+	# prior test happened to roll the empty-modifier seed. Same invariant this file's own
+	# _apply_difficulty()/content.daily_trial_modifier() already document at length — the fix
+	# here is making the *read* robust to a future caller repeating that mistake, not just the
+	# one write site that happened to trip it this time.
+	if not str(g.active_modifier.get("name", "")).is_empty():
 		var m_name: String = g.active_modifier.name_en if g.lang == "en" else g.active_modifier.name
 		var m_det: String = g.active_modifier.detail_en if g.lang == "en" else g.active_modifier.detail
 		var mod_badge := g._icon_badge("✥", Color("ffe2b0"), 26, 13)

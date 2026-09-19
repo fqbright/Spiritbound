@@ -306,6 +306,99 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 10: Battle Recap Share Card shipped
+Continuing the same user-directed march through Phases 6-10 — the last of the five.
+
+**Investigated before building anything, per this phase's own established habit**: an "E2"
+milestone (predating this Phases-6-10 push, already on `origin/main`) had already shipped most
+of the plan's ask — `show_run_recap()` renders hero portrait, boss defeated, and up to 3 deck
+highlight cards, entered via a `ViewRunRecapBtn` on the reward screen after a Great Boss kill
+(`pending_rewards.great_boss_kill`). Three real gaps remained against the plan's literal spec:
+1. **Turns taken** was never shown at all (only damage/cards/shield).
+2. **Abyss milestones** never triggered the recap — only Great Boss kills did.
+3. **The Share button was a pure stub** — `func(): g._toast(g.t("ui.run_recap_saved_toast"), g.GOLD)`
+   — it toasted "saved" without saving anything, and its own hint text told the player to
+   screenshot it themselves. This is the actual "Off-screen SubViewport screenshot generator"
+   the plan asks for, and it didn't exist.
+
+**What shipped**: `_build_recap_poster_control()` builds a dedicated 720x1280 9:16 poster
+(distinct from the compact on-screen `RunRecapCard`, which is laid out for a scrollable reward
+page, not a shareable image) reusing the same data. `_capture_recap_image()` renders it
+off-screen via a temporary `SubViewport` and reads back `ViewportTexture.get_image()`.
+`_export_recap_poster()` saves that to `user://recap_<epoch>.png` and toasts success/failure.
+**Confirmed empirically** (a standalone scratch script, cleaned up after) that
+`get_image()` returns null under `godot --headless`'s dummy rendering backend — logs an
+engine-level ERROR but does not raise a catchable GDScript exception — so every layer here
+treats a null image as "capture unavailable in this environment," never a crash; a real device
+with a real GPU takes the success path. **Not implemented**: the plan's QR code — this game has
+no backend and nothing for a code to point at, so it would be purely decorative; skipped as
+disproportionate scope, same call as Phase 8 skipping a full equippable-titles system.
+
+**Turns taken** added to both the on-screen card's stat row and the new poster
+(`ui.recap_turns`, read from `g.combat.state.turn`). **Abyss milestones** (`floor % 5 == 0`,
+the same threshold `pending_boon_draft` already uses) now also set
+`pending_rewards.abyss_milestone` alongside a `pending_rewards.recap_encounter` dict — boss
+name and location baked into **both languages** at grant time, in the same branch that already
+sets the flag, rather than re-derived from `g.current_stage` when the recap screen renders:
+an Abyss battle leaves `g.current_stage` at its placeholder of 0, which would otherwise resolve
+to chapter 1's campaign encounter instead of the actual floor just fought.
+
+**Two real, pre-existing bugs found and fixed while wiring the Abyss-milestone trigger** — both
+predate this phase entirely, surfaced only because reaching this exact code path
+(`begin_abyss_battle()`, called directly rather than through its own UI button) had apparently
+never been exercised by any prior test:
+1. **`begin_abyss_battle()` had no `game.gd` delegator at all.** Every other `begin_X_battle()`
+   side mode has one; this one didn't, so `game.begin_abyss_battle()` was a nonexistent-function
+   script error from any file other than `game_camp_screen.gd` itself — including every test.
+   Confirmed by reproducing it directly (a `SCRIPT ERROR: Invalid call` that aborts the calling
+   coroutine without ever reaching `quit()`, hanging the test process at ~0% CPU — the exact
+   "silent permanent hang" shape this file's own Traps section already documents, just from a
+   different root cause than the compile error that section describes). Fixed by adding the
+   missing delegator.
+2. **A real, timing-dependent crash in the battle HUD's modifier badge**, hit on roughly every
+   other real Abyss battle. `begin_abyss_battle()` does `g.active_modifier = g._modifier(seed,
+   floor_num); g.active_modifier["boons"] = [...]` — but `_modifier()` returns a plain `{}`
+   ~48% of the time (seed-dependent, seeded from `Time.get_unix_time_from_system()`), and
+   unconditionally adding a `"boons"` key afterward turns that `{}` non-empty with no
+   `name`/`name_en`/`detail`/`detail_en` fields at all. `_build_player_stage()`'s modifier
+   badge checked `if not g.active_modifier.is_empty():` — true here — then crashed on a bare
+   `.name` Dictionary-key access. This is the exact invariant `_apply_difficulty()`'s own
+   comment and `content.daily_trial_modifier()`'s own comment already document at length
+   (**"a modifier badge reads name/name_en/detail/detail_en unconditionally whenever
+   active_modifier isn't empty"**) — `begin_abyss_battle()` is simply the one call site that
+   never got the memo, and no test had ever rolled the unlucky seed. Fixed at the read site
+   rather than only the write site: changed the guard to check "has a name," not "isn't empty,"
+   so a future caller repeating this same mistake degrades gracefully instead of crashing.
+   Verified deterministically (`game.active_modifier = {"boons": []}` then calling
+   `_build_player_stage()` directly and checking it doesn't return null) rather than trusting a
+   random seed to reproduce it — confirmed the assertion actually catches the bug by reverting
+   the fix and re-running (a weaker first version of this check, `root.get_child_count() > 0`,
+   did *not* catch it — the crash's `add_child(null)` fallout is invisible at that level since
+   `show_battle()` adds plenty of other children both before and after the broken call).
+
+**A known, pre-existing flake, explicitly not this phase's to fix**: `./run_tests.sh --all`
+intermittently fails on an unrelated, already-fragile check
+("finishing-blow banner appears mid-sequence...") that races a real ~1.2s tween against a
+frame-count-bounded poll — its own comment already documents the tradeoff ("the point of this
+test is to land inside that window, not race past it"). Reproduced this same flake in the
+Phase 9 entry below too, before any of this phase's code existed, at a roughly similar rate
+(non-deterministic across repeated runs, unrelated in subject matter to recap posters) — logged
+here for visibility rather than silently ignored, but rebuilding an inherently timing-raced
+animation check is a separate, larger job than "add a share-recap feature."
+
+**Verification**: `test_runner.gd` now at 655/0 checks (the poster Control tree builds
+correctly and is sized/populated as documented). `ui_smoke.gd`: turns-taken now asserted in
+both the on-screen card and the poster; the Share button's headless "capture unavailable" path
+exercised for real (not just reasoned about, since this suite's own dummy renderer is exactly
+the null-image case); the Abyss-milestone trigger end-to-end (flag set, boon draft still
+offered alongside it, recap screen names the real floor boss, not stage 0's campaign
+encounter); the deterministic `active_modifier` crash regression above. Full `./run_tests.sh
+--all` green from a from-scratch `Godot/.godot/` state (confirmed clean on a repeat run after
+the one flaky hit described above), including the 250-stage balance probe holding at stage 192.
+
+This closes out all 5 phases (6-10) from `Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md` the user
+asked to be taken through in one continuous pass.
+
 ### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 9: Rotating World Events shipped
 Continuing the same user-directed march through Phases 6-10.
 

@@ -1372,10 +1372,22 @@ func _run() -> void:
 	var recap_boss_name: String = str(recap_boss_encounter.get("name_en", recap_boss_encounter.name)) if game.lang == "en" else str(recap_boss_encounter.name)
 	check(_find_label_text(game.root, game.tf("ui.run_recap_defeated_fmt", recap_boss_name)), "the recap card names the boss actually defeated")
 	check(game.root.find_child("RunRecapStats", true, false) != null, "the recap card shows the battle-performance stat row")
+	check(_find_label_text(game.root, game.tf("ui.recap_turns", int(game.combat.state.turn))), "the recap card's stat row shows turns taken (Phase 10)")
 	check(game.root.find_child("RunRecapDeckHighlights", true, false) != null, "the recap card shows deck highlights")
+
+	# Phase 10: the Share button now actually renders and captures a poster via an off-screen
+	# SubViewport, rather than the previous stub that just toasted "saved" without saving
+	# anything. ViewportTexture.get_image() reads back null under this suite's own
+	# `godot --headless` dummy renderer (confirmed empirically — no real framebuffer to read
+	# back from), so this is the one place the graceful-degradation path is exercised for
+	# real, not just reasoned about; a real device with a real GPU takes the success path.
 	var recap_share_btn: Button = game.root.find_child("RunRecapShareBtn", true, false) as Button
 	check(recap_share_btn != null, "RunRecapShareBtn exists to share run recap")
 	recap_share_btn.pressed.emit()
+	# _capture_recap_image() awaits exactly 2 process_frame calls internally before the toast
+	# fires; wait a couple extra to be safely past that.
+	for _wait_frame in 4: await process_frame
+	check(_find_label_containing(game.overlay, game.t("ui.run_recap_save_unavailable")), "tapping Share under headless's dummy renderer surfaces the 'capture unavailable' toast instead of silently failing or crashing")
 	var recap_done_btn: Button = game.root.find_child("RunRecapDoneBtn", true, false) as Button
 	check(recap_done_btn != null, "RunRecapDoneBtn exists to return to the reward flow")
 	recap_done_btn.pressed.emit()
@@ -1402,6 +1414,58 @@ func _run() -> void:
 	game.profile.position = saved_position
 	game.profile.claimed_stage_events = saved_claimed_events
 	game.profile.relics = saved_relics
+
+	# Phase 10: Abyss milestones (floor % 5 == 0) are recap-worthy too, per the plan's literal
+	# spec ("after Great Boss defeats and Abyss milestones") — same show_run_recap() screen,
+	# but reading recap_encounter baked into pending_rewards rather than g.current_stage, which
+	# begin_abyss_battle() leaves at its Abyss placeholder of 0 (resolving straight to
+	# g.content.encounters[0], the wrong chapter-1 stage, is exactly the bug baking the
+	# encounter into pending_rewards at grant-time avoids).
+	var saved_abyss_floor: int = int(game.profile.get("abyss_floor", 1))
+	var saved_abyss_record: int = int(game.profile.get("abyss_record", 0))
+	var saved_boon_draft: bool = game.pending_boon_draft
+	game.profile.abyss_floor = 5
+	game.begin_abyss_battle()
+	await process_frame
+
+	# Regression test for a real, pre-existing bug found while making begin_abyss_battle()
+	# callable directly (it had no game.gd delegator at all until this phase — see game.gd's
+	# own comment there): _modifier()'s ~48%-of-the-time empty {} result gets a "boons" key
+	# added unconditionally right after, turning it non-empty with no name/detail fields at
+	# all. Confirmed this crashed _build_player_stage() (a bare Dictionary "name"/"detail" key
+	# access, then a null child handed to add_child()) on roughly every other real Abyss
+	# battle — timing-dependent on the exact millisecond seed, which is exactly why no prior
+	# test had ever reproduced it. Fixed by checking "has a name" there rather than "isn't
+	# empty"; verified deterministically here instead of trusting a random seed to hit it.
+	game.active_modifier = {"boons": []}
+	# _build_player_stage() empirically returns null on this exact bug (a runtime Dictionary
+	# key-access error aborts it mid-function despite its declared "-> Control" return type,
+	# confirmed by reproducing it directly before writing this fix) — show_battle() then
+	# hands that null to add_child(), a second, louder error. Checking the direct return value
+	# catches the bug precisely; game.root.get_child_count() > 0 does not, since show_battle()
+	# adds plenty of other, unrelated children both before and after this one call.
+	check(game._build_player_stage() != null, "an active_modifier with bookkeeping keys but no name/detail (the exact shape begin_abyss_battle() can produce) does not crash _build_player_stage() into returning null")
+
+	var abyss_recap_encounter: Dictionary = game.content.abyss_encounter(5)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(bool(game.pending_rewards.get("abyss_milestone", false)), "reaching Abyss floor 5 (a multiple of 5) flags the win as recap-worthy")
+	check(game.pending_boon_draft, "floor 5 still also offers the pre-existing boon draft, unaffected by the new recap flag alongside it")
+	game.pending_boon_draft = false
+	game.show_reward_details()
+	await process_frame
+	var abyss_recap_btn: Button = game.root.find_child("ViewRunRecapBtn", true, false) as Button
+	check(abyss_recap_btn != null, "ViewRunRecapBtn also renders after an Abyss milestone win")
+	abyss_recap_btn.pressed.emit()
+	await process_frame
+	check(_find_label_text(game.root, game.tf("ui.run_recap_defeated_fmt", str(abyss_recap_encounter.name))), "the Abyss-triggered recap names the actual Abyss floor boss, not stage 0's campaign encounter")
+	check(_find_label_text(game.root, game.tf("ui.recap_turns", int(game.combat.state.turn))), "the Abyss-triggered recap also shows turns taken")
+	game.show_reward_details()
+	await process_frame
+
+	game.profile.abyss_floor = saved_abyss_floor
+	game.profile.abyss_record = saved_abyss_record
+	game.pending_boon_draft = saved_boon_draft
 
 	# All 11 relics now have painted icons (relic_<id>.png), same treatment equipment/runes
 	# already had — _relic_icon_badge() should use the real art, not its drawn-sigil fallback.

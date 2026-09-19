@@ -1,6 +1,6 @@
 # Next Phases Implementation Plan: Spiritbound Post-Launch Roadmap
 
-This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 10** or subsequent phases following the repository standards.
+This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. All 10 phases are now complete — see the Completed Phases Reference below. A successor agent picking this file up next should treat it as a template for how to structure a *new* roadmap (read `Docs/GROWTH_ROADMAP.md`'s progress log for the full history first), not as a source of further pending work.
 
 ---
 
@@ -30,14 +30,16 @@ This implementation plan lays out the next sequential phases of Spiritbound deve
   period integer (`content.world_event_for_period()`), so it's testable at any period without
   mocking the clock. Reuses every combat.gd modifier key Phases 1-8 already added — no new
   engine surface. See `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
-
----
-
-## Phase 10: Battle Recap Share Card Generator (战报画卷 / 社交分享)
-**Impact: High | Effort: Medium | Backend: None**
-
-### 1. Goal Description
-Off-screen `SubViewport` screenshot generator rendering a high-aesthetic 9:16 recap poster (Hero portrait, Boss defeated, turns taken, deck build, and QR code) after Great Boss defeats and Abyss milestones.
+- ✅ **Phase 10**: Battle Recap Share Card Generator (战报画卷) — done 2026-09-19. Most of this
+  had actually already shipped under an earlier "E2" milestone (`show_run_recap()` — hero
+  portrait, boss defeated, deck highlights); this phase added the 3 real gaps against the
+  plan's literal spec: turns taken, an Abyss-milestone trigger alongside the existing Great
+  Boss one, and — the actual "off-screen SubViewport screenshot generator" the plan names —
+  real image capture behind what had been a stub Share button that only toasted "saved"
+  without saving anything. Skipped the plan's QR code (no backend, nothing for it to point
+  at). Found and fixed 2 real pre-existing bugs while wiring the Abyss trigger: a missing
+  `game.gd` delegator for `begin_abyss_battle()`, and a ~48%-of-the-time crash in the battle
+  HUD's modifier badge. See `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
 
 ---
 
