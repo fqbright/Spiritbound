@@ -1709,6 +1709,17 @@ func _run() -> void:
 	check(found_keyword_pill, "keyword tooltip pills exist in enlarged card face")
 	big_face.queue_free()
 
+	section("== Phase 7 keyword pills: boomerang/reverb/overload ==")
+	for entry in [["emberBoomerang", "Boomerang"], ["windReverb", "Reverb"], ["fireOverload", "Overload"]]:
+		var kw_card_id: String = str(entry[0])
+		var kw_pill_text: String = str(entry[1])
+		var kw_card: Dictionary = game.content.card(kw_card_id)
+		var kw_face: Panel = game._big_card_face(kw_card, "")
+		game.root.add_child(kw_face)
+		var kw_btn := _find_button_containing(kw_face, kw_pill_text)
+		check(kw_btn != null, "%s shows a %s keyword pill in the enlarged card face" % [kw_card_id, kw_pill_text])
+		kw_face.queue_free()
+
 	# ── Phase 2 feature tests ──
 	section("== shop card purge service ==")
 	game.show_shop()

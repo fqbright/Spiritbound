@@ -942,6 +942,121 @@
       ],
       "kind": "Skill",
       "element": "poison"
+    },
+    {
+      "id": "emberBoomerang",
+      "nameKey": "card.emberBoomerang",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire",
+      "boomerang": true
+    },
+    {
+      "id": "stoneRebound",
+      "nameKey": "card.stoneRebound",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 7
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone",
+      "boomerang": true
+    },
+    {
+      "id": "windReverb",
+      "nameKey": "card.windReverb",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale",
+      "reverb": true
+    },
+    {
+      "id": "spiritReverb",
+      "nameKey": "card.spiritReverb",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "status": "focus",
+          "target": "actor",
+          "amount": 3
+        }
+      ],
+      "kind": "Power",
+      "element": "spirit",
+      "reverb": true
+    },
+    {
+      "id": "fireOverload",
+      "nameKey": "card.fireOverload",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 11
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire",
+      "overload": 2
+    },
+    {
+      "id": "poisonOverload",
+      "nameKey": "card.poisonOverload",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        },
+        {
+          "operation": "status",
+          "status": "poison",
+          "target": "opponent",
+          "amount": 4
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison",
+      "overload": 1
     }
   ],
   "statuses": [
@@ -1169,7 +1284,13 @@
       "element.poison": "POISON",
       "card.toxinDart": "Toxin Dart",
       "card.witherTouch": "Wither Touch",
-      "card.miasmaBrew": "Miasma Brew"
+      "card.miasmaBrew": "Miasma Brew",
+      "card.emberBoomerang": "Ember Boomerang",
+      "card.stoneRebound": "Rebound Wall",
+      "card.windReverb": "Lingering Gale",
+      "card.spiritReverb": "Lingering Focus",
+      "card.fireOverload": "Overload Blaze",
+      "card.poisonOverload": "Overload Venom"
     },
     "zh-Hans": {
       "card.strike": "击打",
@@ -1343,7 +1464,13 @@
       "element.poison": "毒",
       "card.toxinDart": "毒刺",
       "card.witherTouch": "凋亡之触",
-      "card.miasmaBrew": "瘴气调息"
+      "card.miasmaBrew": "瘴气调息",
+      "card.emberBoomerang": "回旋炎爪",
+      "card.stoneRebound": "回旋岩壁",
+      "card.windReverb": "余韵疾风",
+      "card.spiritReverb": "余韵凝心",
+      "card.fireOverload": "过载烈焰",
+      "card.poisonOverload": "过载蚀毒"
     }
   }
 }

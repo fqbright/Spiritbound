@@ -1,6 +1,6 @@
 # Next Phases Implementation Plan: Spiritbound Post-Launch Roadmap
 
-This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 7** or subsequent phases following the repository standards.
+This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 8** or subsequent phases following the repository standards.
 
 ---
 
@@ -11,40 +11,18 @@ This implementation plan lays out the next sequential phases of Spiritbound deve
 - ✅ **Phase 4**: Equipment Reforging & Inscription System (器灵重铸与灵纹洗练)
 - ✅ **Phase 5**: Dynamic Relic Synergies & Combo Resonance (法宝共鸣系统)
 - ✅ **Phase 6**: Career Codex & Player Statistics Dashboard (旅者典籍) — done 2026-09-19. Added
-  as a `career` tab in Compendium (8 tabs total now, not the 4 this plan originally assumed —
-  cards/gear/runes/relics/bestiary/achievements/chronicle already existed). `profile.
-  career_stats` deliberately does NOT duplicate victories/total damage/total gold/highest Abyss
-  floor, which already live in `lifetime_stats`/`abyss_record` — only tracks what nothing else
-  did: win/loss streaks, per-battle shield/cards totals, favorite hero/cards, and a 3-entry
-  Hall of Fame of Great Boss kills (most recent 3, not score-ranked — see the section below for
-  why). Tracking hooks: `game._track_career_win()` (called once from the top of
-  `_grant_stage_rewards()`, covering all 7 win paths uniformly) and `game._track_career_defeat()`/
-  `_track_career_retreat()` (called from `_leave_battle()`, which — per AGENTS.md's own trap
-  entry on this function — only ever fires for a loss or manual retreat, never a win, so there's
-  no double-counting risk between the two hook points). See `Docs/GROWTH_ROADMAP.md`'s progress
-  log for the full account, including a real test-pollution bug this phase's own testing caught
-  and fixed (simulating a Great Boss win through the real reward pipeline rolls a real random
-  relic into the profile, same as a real player would get).
-
----
-
-## Phase 7: New Combat Keywords — Retain, Echo, Overload (新战斗词条系统)
-**Impact: High | Effort: Medium | Backend: None**
-
-### 1. Goal Description
-Expand combat depth and card variety by introducing 3 core keywords that create novel deckbuilding strategies:
-1. **留存 (Retain)**: The card is not discarded at the end of turn, remaining in hand until played.
-2. **灵响 (Echo)**: When played, queues an echo of its primary effect to cast for free at the start of the next player turn.
-3. **过载 (Overload)**: Provides an immediate explosive tempo effect (e.g. 0-cost or high power) but reduces maximum energy on the subsequent turn.
-
-### 2. Combat Rules Integration (`combat.gd`)
-- `end_turn()`: Retain cards stay in hand while other cards go to discard pile.
-- `start_turn()`: Drains `state.echo_queue`, firing queued abilities before normal play.
-- Overload counter reduces turn energy formula: `max(1, base_energy - state.overload_pending)`.
-
-### 3. Content Additions (`content.gd`, `core.json`)
-- Add 6 new cards (2 for each keyword) across elemental classes.
-- Add visual keyword tooltips and glowing badge frames.
+  as a `career` Compendium tab (8 tabs total, not the 4 this plan assumed) reusing
+  `lifetime_stats`/`abyss_record` for counters that already existed elsewhere. See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
+- ✅ **Phase 7**: New Combat Keywords (新战斗词条系统) — done 2026-09-19. Shipped as **Boomerang
+  (回旋)**/**Reverb (余韵)**/**Overload (过载)** — the plan's "Retain"/"Echo" names were renamed
+  (Retain would be a no-op in a game with no end-of-turn discard; Echo collides with the
+  pre-existing "echo" rune) — plus 6 new cards, 2 per keyword. Found and fixed 2 pre-existing
+  bugs along the way (the keyword-pill tooltip never read `card.special`'s real top-level shape;
+  a stale `collect_all` achievement literal) and one live game-balance gap that adding content
+  exposed (`_card_build_score()`'s shield weighting, since a bigger card pool reshuffles every
+  downstream RNG-seeded roll in `balance_probe.gd`'s 250-stage regression check). See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
 
 ---
 

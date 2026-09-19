@@ -581,6 +581,7 @@ const KEYWORD_KEYS: Array[String] = [
 	"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
 	"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
 	"echo", "siphon", "resonance", "poison",
+	"boomerang", "reverb", "overload",
 ]
 
 # Bumps progress on every not-yet-complete quest of this type in both lists. Called from
@@ -3016,5 +3017,9 @@ func _card_description(card: Dictionary) -> String:
 				parts.append(content.ui(key, lang) % int(effect.amount))
 	var special := str(card.get("special", ""))
 	if not special.is_empty(): parts.append(content.ui("desc.special.%s" % special, lang))
+	if card.get("boomerang", false): parts.append(content.ui("desc.boomerang", lang))
+	if card.get("reverb", false): parts.append(content.ui("desc.reverb", lang))
+	var overload_amt := int(card.get("overload", 0))
+	if overload_amt > 0: parts.append(content.ui("desc.overload", lang) % overload_amt)
 	var sep := " · " if lang == "en" else "，"
 	return sep.join(parts)

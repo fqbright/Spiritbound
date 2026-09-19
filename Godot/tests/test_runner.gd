@@ -255,6 +255,47 @@ func run() -> void:
 	reso_run.play(0, 0)
 	check(hp_after_first - int(reso_run.state.enemies[0].health) == 5, "Resonance rune scales damage with previously played elements count")
 
+	# === PHASE 7: BOOMERANG / REVERB / OVERLOAD KEYWORDS ===
+	for id in ["emberBoomerang", "stoneRebound", "windReverb", "spiritReverb", "fireOverload", "poisonOverload"]:
+		check(not content.card(id).is_empty(), "%s (Phase 7 keyword card) exists in the card pool" % id)
+
+	# Boomerang (回旋): instead of going to discard/exhaust, the card returns straight to hand
+	# at the start of next turn, bypassing the draw pile entirely.
+	var boomerang_run := SpiritCombat.new(content)
+	boomerang_run.create(90, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {})
+	_force_hand(boomerang_run, "emberBoomerang")
+	boomerang_run.play(0, 0)
+	check(int(boomerang_run.state.enemies[0].health) == 100 - 6, "emberBoomerang deals its 6 damage on play")
+	check(boomerang_run.state.hand.is_empty() and boomerang_run.state.discard.is_empty() and boomerang_run.state.exhaust.is_empty(), "a played Boomerang card sits in none of hand/discard/exhaust — it's queued instead")
+	check(boomerang_run.state.boomerang_queue.size() == 1, "the played Boomerang card is queued to return next turn")
+	boomerang_run.end_turn()
+	check(boomerang_run.state.hand.any(func(i): return str(i.card_id) == "emberBoomerang"), "the Boomerang card is back in hand at the start of next turn")
+	check(boomerang_run.state.boomerang_queue.is_empty(), "the boomerang queue drains once the card returns")
+
+	# Reverb (余韵): a full-value free recast queued for the start of next turn — distinct from
+	# the pre-existing "echo" rune (immediate, same-turn, half value) so the two never collide.
+	var reverb_run := SpiritCombat.new(content)
+	reverb_run.create(91, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {})
+	_force_hand(reverb_run, "windReverb")
+	reverb_run.play(0, 0)
+	check(int(reverb_run.state.enemies[0].health) == 100 - 6, "windReverb deals its 6 damage immediately")
+	check(reverb_run.state.reverb_queue.size() == 1, "windReverb queues a free recast for next turn")
+	reverb_run.end_turn()
+	check(int(reverb_run.state.enemies[0].health) == 100 - 12, "windReverb's queued recast deals another free 6 damage at the start of next turn (12 total)")
+	check(reverb_run.state.reverb_queue.is_empty(), "the reverb queue drains once it fires")
+
+	# Overload (过载): an immediate burst with a next-turn energy debt, floored at 1 the same way
+	# titanBell's own growth-cancelling discount never goes negative.
+	var overload_run := SpiritCombat.new(content)
+	overload_run.create(92, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {})
+	_force_hand(overload_run, "fireOverload")
+	overload_run.play(0, 0)
+	check(int(overload_run.state.enemies[0].health) == 100 - 11, "fireOverload deals its full 11 damage immediately, no cost paid up front beyond its own energy")
+	check(int(overload_run.state.overload_pending) == 2, "fireOverload queues a 2-energy debt for next turn")
+	overload_run.end_turn()
+	check(int(overload_run.state.energy) == 1, "turn 2's baseline 2 energy minus fireOverload's 2-energy debt floors at 1, not 0 (got %d)" % int(overload_run.state.energy))
+	check(int(overload_run.state.overload_pending) == 0, "the overload debt clears once it's been paid")
+
 	# === 12 EQUIPMENT COMPREHENSIVE COVERAGE ===
 	var ember_run := SpiritCombat.new(content)
 	ember_run.create(80, encounter(100, 0), content.raw.startingDeck, 60, {}, ["emberBlade"])
@@ -455,7 +496,7 @@ func run() -> void:
 		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
 			invalid_cards += 1
 	var curse_cards: Array = content.cards.filter(func(c): return c.get("rarity", "") == "Curse")
-	check(invalid_cards == 0 and content.cards.size() == 47 and curse_cards.size() == 2, "all 45 collectible cards have valid costs/effects and 2 curses exist")
+	check(invalid_cards == 0 and content.cards.size() == 53 and curse_cards.size() == 2, "all 51 collectible cards have valid costs/effects and 2 curses exist")
 
 	var collect_all_ach: Dictionary = SpiritContent.ACHIEVEMENTS.filter(func(a): return a.id == "collect_all")[0]
 	check(int(collect_all_ach.target) == content.cards.size() - curse_cards.size(), "collect_all achievement target (%d) tracks the live non-Curse card count (%d), not a stale literal" % [int(collect_all_ach.target), content.cards.size() - curse_cards.size()])
@@ -508,14 +549,16 @@ func run() -> void:
 	var expected_keywords: Array[String] = [
 		"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
 		"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
-		"echo", "siphon", "resonance"
+		"echo", "siphon", "resonance", "poison",
+		"boomerang", "reverb", "overload"
 	]
 	var missing_kw := 0
 	for kw in expected_keywords:
 		var entry: Dictionary = SpiritContent.UI_TEXT.get("kw." + kw, {})
 		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
 			missing_kw += 1
-	check(missing_kw == 0, "all 17 core combat keywords have bilingual descriptions in UI_TEXT")
+	check(missing_kw == 0, "all 21 core combat keywords have bilingual descriptions in UI_TEXT")
+	check(expected_keywords == SpiritGame.KEYWORD_KEYS, "test's expected keyword list stays in sync with game.gd's KEYWORD_KEYS (pill-scanning uses the latter directly)")
 
 	# Pass / end turn mechanics check
 	var pass_combat := SpiritCombat.new(content)

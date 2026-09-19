@@ -1244,7 +1244,12 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 		for special in effect.get("special", []):
 			var sp: String = str(special)
 			if sp in g.KEYWORD_KEYS: kw_set[sp] = true
+	var card_special: String = str(card.get("special", ""))
+	if card_special in g.KEYWORD_KEYS: kw_set[card_special] = true
 	if not rune_id.is_empty() and rune_id in g.KEYWORD_KEYS: kw_set[rune_id] = true
+	if card.get("boomerang", false): kw_set["boomerang"] = true
+	if card.get("reverb", false): kw_set["reverb"] = true
+	if int(card.get("overload", 0)) > 0: kw_set["overload"] = true
 	if not kw_set.is_empty():
 		var kw_flow := HBoxContainer.new()
 		kw_flow.position = Vector2(8.0, size.y - 28.0)

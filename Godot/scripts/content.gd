@@ -977,7 +977,7 @@ const ACHIEVEMENTS = [
 	# This has drifted silently before as cards were added; test_runner.gd now asserts this
 	# target against the live count so a future addition fails loudly instead of quietly
 	# making "collect all" completable early.
-	{"id":"collect_all","kind":"card_collection","target":45,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	{"id":"collect_all","kind":"card_collection","target":51,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
@@ -1657,6 +1657,9 @@ const UI_TEXT = {
 	"desc.special.stun": {"zh-Hans":"眩晕目标一回合", "en":"Stuns target for a turn"},
 	"desc.special.recoverExhaust": {"zh-Hans":"取回一张消耗牌", "en":"Return an exhausted card"},
 	"desc.special.recycleDiscard": {"zh-Hans":"回收弃牌堆至多2张", "en":"Recycle up to 2 discards"},
+	"desc.boomerang": {"zh-Hans":"回旋，回到手牌", "en":"Boomerang: returns to hand"},
+	"desc.reverb": {"zh-Hans":"余韵，下回合免费重施", "en":"Reverb: free recast next turn"},
+	"desc.overload": {"zh-Hans":"过载%d，下回合能量减少", "en":"Overload %d: next turn's energy is reduced"},
 	"ui.speed_toggle": {"zh-Hans":"%sx", "en":"%sx"},
 	"ui.pass_turn": {"zh-Hans":"空过", "en":"Pass"},
 	"kw.damage": {"zh-Hans":"伤害：对目标造成指定数值的生命值损失。受凝神(Focus)加成。", "en":"Damage: Deal the specified amount of HP loss to the target. Boosted by Focus."},
@@ -1677,6 +1680,9 @@ const UI_TEXT = {
 	"kw.echo": {"zh-Hans":"回响：卡牌效果有50%概率触发第二次。", "en":"Echo: 50% chance to trigger the card's effect a second time."},
 	"kw.siphon": {"zh-Hans":"虹吸：将造成伤害的25%转化为护盾。", "en":"Siphon: Converts 25% of damage dealt into Shield."},
 	"kw.resonance": {"zh-Hans":"共鸣：根据之前打出的同元素卡牌数量增加伤害。", "en":"Resonance: Increases damage based on previously played same-element cards."},
+	"kw.boomerang": {"zh-Hans":"回旋：打出后不会进入弃牌堆，而是在下回合开始时飞回手牌。", "en":"Boomerang: Instead of going to the discard pile, returns to your hand at the start of next turn."},
+	"kw.reverb": {"zh-Hans":"余韵：打出时会在下回合开始时免费再施放一次完整效果。", "en":"Reverb: Queues a free full-power recast of this card's effect for the start of next turn."},
+	"kw.overload": {"zh-Hans":"过载：立即产生强力效果，但会削减下回合的能量上限(最低降至1点)。", "en":"Overload: An immediate burst effect that reduces next turn's energy cap (floored at 1)."},
 	"ui.rest_title": {"zh-Hans":"灵火营地", "en":"Spirit Campfire"},
 	"ui.rest_prompt": {"zh-Hans":"温暖的灵火在荒野中升腾。选择一项仪式以助前路：", "en":"Warm spirit embers burn in the wild. Choose a ritual to aid your path:"},
 	"ui.rest_heal_choice": {"zh-Hans":"灵火调息 · 获得 ◆35 灵石", "en":"Spirit Rest · Gain ◆35 Gold"},

@@ -87,7 +87,7 @@ func _score_card(card: Dictionary) -> float:
 	for effect in card.get("effects", []):
 		match str(effect.get("operation", "")):
 			"damage": score += float(effect.amount) * 2.2 * attack_double
-			"shield": score += float(effect.amount) * 1.6
+			"shield": score += float(effect.amount) * 2.0
 			"heal": score += float(effect.amount) * 1.0
 			"draw": score += float(effect.amount) * 3.0
 			"energy": score += float(effect.amount) * 4.0
@@ -103,6 +103,11 @@ func _score_card(card: Dictionary) -> float:
 		"pierce": score += 3.0
 		"stun": score += 5.0
 		"recoverExhaust", "recycleDiscard": score += 4.0
+	# Boomerang/Reverb/Overload (Phase 7) live as top-level card fields, not effects or
+	# `special` — mirrors game_shop_deck_screen.gd's own cases for the same fields exactly.
+	if bool(card.get("boomerang", false)): score += 3.5
+	if bool(card.get("reverb", false)): score *= 1.5
+	score -= float(int(card.get("overload", 0))) * 2.5
 	score += {"Rare": 4.0, "Uncommon": 2.0, "Common": 1.0}.get(card.get("rarity", "Common"), 0.0)
 	score += float(int(upgrades.get(card.id, 0))) * 6.0
 	score -= float(int(card.cost)) * 3.0

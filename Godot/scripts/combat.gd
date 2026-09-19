@@ -30,6 +30,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	state = {
 		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
+		"boomerang_queue":[],"reverb_queue":[],"overload_pending":0,
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
 		"relic_resonances":resonance_ids,
@@ -212,7 +213,12 @@ func play(hand_index: int, target_index := -1) -> bool:
 		state.energy += 1
 		state.gale_used = true
 	state.hand.remove_at(hand_index)
-	if rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
+	# Boomerang (回旋) takes priority over the normal discard/exhaust placement — the card isn't
+	# gone, it comes back to hand at the start of next turn (see end_turn()'s drain of
+	# boomerang_queue). No shipped card combines this with exhaust:true; a card marking both
+	# would be a content error, not something this needs to arbitrate.
+	if card.get("boomerang", false) and not card.exhaust: state.boomerang_queue.append(instance)
+	elif rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
 	elif card.exhaust: state.exhaust.append(instance)
 	else: state.discard.append(instance)
 	var bonus := int(state.upgrades.get(card.id,0))
@@ -235,6 +241,17 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
 	if rune == "echo" and state.phase == "player": dealt += _resolve_effects(card, target_index, bonus + resonance, .5)
+	# Reverb (余韵): a full free re-cast queued for the START of next turn, not this same turn —
+	# unlike the "echo" rune above (immediate, same turn, half value), so the two don't stack
+	# into one card doing the exact same thing twice under different names. Captures bonus+
+	# resonance now (this cast's own values) since the queued re-cast should hit exactly as hard
+	# as the original did, not be recomputed against next turn's (possibly different) state.
+	if card.get("reverb", false): state.reverb_queue.append({"card_id": card.id, "bonus": bonus + resonance})
+	# Overload (过载): the drawback is a next-turn energy debt, not anything paid now — see
+	# end_turn()'s drain of overload_pending, floored at 1 energy the same way titanBell's own
+	# growth-cancelling discount never goes negative.
+	var overload_amount: int = int(card.get("overload", 0))
+	if overload_amount > 0: state.overload_pending = int(state.get("overload_pending", 0)) + overload_amount
 	if rune == "chain" and harmful:
 		var other := _other_target(target_index)
 		if other >= 0: dealt += _damage_enemy(other, maxi(1, int(round(_base_damage(card, bonus + resonance) * .4))), false)
@@ -335,6 +352,10 @@ func end_turn() -> void:
 	if _has_relic("titanBell"): energy_growth = 0
 	state.energy = 2 + energy_growth
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
+	var overload_due: int = int(state.get("overload_pending", 0))
+	if overload_due > 0:
+		state.energy = maxi(1, state.energy - overload_due)
+		state.overload_pending = 0
 	var kept_shield: int = 0
 	if _has_resonance("res_sun_moon"):
 		kept_shield = state.player.shield
@@ -364,6 +385,23 @@ func end_turn() -> void:
 	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome, +1 if res_fox_wind on Turn 2)
 	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
 	_draw(turn_draw)
+	# Boomerang (回旋): cards played last turn with this tag return straight to hand now,
+	# instead of having gone to discard/exhaust when they were played (see play()'s own branch).
+	if not state.boomerang_queue.is_empty():
+		for instance in state.boomerang_queue: state.hand.append(instance)
+		state.boomerang_queue = []
+	# Reverb (余韵): a free, full-value re-cast of what was played last turn, queued in play().
+	# Re-targets fresh rather than reusing the original target_index — that enemy may already
+	# be dead by the time this actually fires, same reasoning _smart_target() exists for at all.
+	if not state.reverb_queue.is_empty():
+		for entry in state.reverb_queue:
+			var rv_card: Dictionary = content.card(str(entry.get("card_id", "")))
+			if rv_card.is_empty(): continue
+			var rv_needs_target: bool = _targets_opponent(rv_card)
+			var rv_target: int = _smart_target() if rv_needs_target else -1
+			if rv_needs_target and rv_target < 0: continue
+			_resolve_effects(rv_card, rv_target, int(entry.get("bonus", 0)), 1.0)
+		state.reverb_queue = []
 	if _has_relic("cursedTome"):
 		if _has_resonance("res_nether_pact") and int(state.get("pact_cleansed_turns", 0)) > 0:
 			state.pact_cleansed_turns = int(state.pact_cleansed_turns) - 1
@@ -744,6 +782,11 @@ func ai_best_play() -> Dictionary:
 
 		# Cost efficiency penalty
 		score -= float(card.cost) * 2.5
+		# Overload (Phase 7): the burst damage above already counted in full, so the AI needs
+		# an explicit counterweight for the next-turn energy debt it's about to take on — same
+		# per-point weight as a normal energy cost, since it's the same resource paid later.
+		var overload_cost: int = int(card.get("overload", 0))
+		if overload_cost > 0: score -= float(overload_cost) * 2.5
 
 		if score > best_score:
 			best_score = score

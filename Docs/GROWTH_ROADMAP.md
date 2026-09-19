@@ -306,6 +306,99 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 7: New Combat Keywords shipped
+Continuing the same user-directed march through Phases 6-10.
+
+**Naming deviations from the plan, both deliberate**: the plan's "留存/Retain" literally means
+"not discarded at end of turn," but this game has no end-of-turn hand-discard at all (AGENTS.md
+already documents this: an unplayed hand persists and grows every turn by design) — so a
+literal Retain would be a silent no-op. Renamed to **Boomerang (回旋)**: the card returns to
+hand at the start of next turn instead of sitting in discard/exhaust, the closest real mechanic
+to what "protect this card" could mean here. Separately, the plan's "灵响/Echo" collides head-on
+with the pre-existing "echo" **rune** (`content.gd`'s RUNES array; immediate, same-turn,
+50%-value re-trigger — see `kw.echo`). Two different "Echo" mechanics with different math in the
+same game would be a real source of player confusion, so the new keyword is **Reverb (余韵)**: a
+full-value free recast queued for the *start of next turn*, not the same turn. Kept
+**Overload (过载)** as named.
+
+**combat.gd (state additions only, no node/Control code)**: `state.boomerang_queue`/
+`reverb_queue` (arrays) and `overload_pending` (int) added to `create()`'s initial state.
+`play()`: Boomerang takes priority over the cycle-rune/exhaust/discard placement chain (a card
+can't sensibly be both boomerang and exhaust — no shipped card combines them, and this isn't
+arbitrated further); Reverb captures this cast's own `bonus+resonance` into `reverb_queue` so
+the free recast next turn hits exactly as hard as this one did, not whatever bonuses happen to
+apply next turn; Overload accumulates into `overload_pending` (additive, so two Overload cards
+in one hand really do compound). `end_turn()`: drains `overload_pending` into next turn's
+energy via `maxi(1, ...)` — same floor-at-1 pattern `titanBell`'s growth-cancelling discount
+already uses — then drains `boomerang_queue` straight into hand and `reverb_queue` through a
+fresh `_resolve_effects()` call, re-targeting via `_smart_target()` rather than reusing the
+original target (which may already be dead by then, same reasoning `_smart_target()` exists
+for at all).
+
+**Two pre-existing bugs found and fixed while wiring the keyword-pill UI**
+(`_big_card_face()` in `game_battle_screen.gd`, `KEYWORD_KEYS` in `game.gd`): the pill scanner
+only ever checked `effect.get("special", [])` (a per-effect array) — but every card in
+`core.json` puts `special` as a *top-level string* (`card.special`, e.g. `spiritLance`'s
+`"special": "pierce"`), never as a per-effect array. That means the pill row had been silently
+never showing Pierce/Cleave/Critical/Stun/etc. for any card that carries them via `special`
+since the tooltip system shipped — `_card_description()` reads `card.special` correctly (so the
+rules text was always right), only the *tappable pill* was blind to it. Fixed by also checking
+`card.get("special", "")` directly. Also added the missing `"poison"` entry to
+`test_runner.gd`'s `expected_keywords` list (the `kw.poison` UI_TEXT already existed and was
+bilingual-complete; the test list just never got updated when Poison shipped) and added a check
+that the test's list and `game.gd`'s real `KEYWORD_KEYS` stay identical, so this can't drift
+again silently.
+
+**Content**: 6 new Universal-pool cards, 2 per keyword, across 5 elements — `emberBoomerang`
+(fire, 1-cost attack), `stoneRebound` (stone, 1-cost shield), `windReverb` (gale, 2-cost
+attack), `spiritReverb` (spirit, 2-cost Focus), `fireOverload` (fire, 1-cost 11-damage attack,
+overload 2), `poisonOverload` (poison, 1-cost damage+poison, overload 1). Base numbers follow
+the existing curve for their cost/rarity (same approach `spiritLance`/`piercingBolt` already
+use for Pierce — the keyword's own value is captured in the score bonus below, not by
+underpricing the card's raw stats). `content.gd` gained `kw.boomerang`/`kw.reverb`/
+`kw.overload` glossary entries and `desc.boomerang`/`desc.reverb`/`desc.overload` rules-text
+entries (both zh-Hans/en). `_card_build_score()` (`game_shop_deck_screen.gd`) gained cases for
+all 3 new top-level fields — per AGENTS.md's own warning, an unhandled field silently scores as
+zero, which would have made these cards invisible to smart-build/smart-add. `collect_all`
+achievement target bumped 45→51 (`test_runner.gd` already asserts this target tracks
+`content.cards.size() - curse_cards.size()` live rather than a stale literal, and that assertion
+is exactly what caught this).
+
+**A real, pre-existing balance-scorer weakness found via `balance_probe.gd`'s regression floor,
+unrelated to the new cards' own design**: adding 6 cards to `content.cards` — regardless of
+their own power level — shifts every downstream RNG-indexed roll (shop stock, chest/relic/
+equipment drops) for the rest of the 250-stage simulated run, because array-size changes ripple
+through anything doing `rng.randi() % array.size()` under a fixed seed. The first `--balance`
+run after adding the cards failed at stage 149 (needs >= 170), stuck on chapter 30's Great Boss.
+Debugging with a temporary per-step trace (deck contents, hand, decision, enemy HP each step —
+removed before commit) showed **none of the 6 new cards were anywhere in the deck** that
+failed — it was 25 slots of pure-damage Rares (`blaze_tempest`/`toxic_quake`/`soul_pyre`/
+`finalFlare`) with essentially no shield, one-shot by the boss+2-adds alpha strike. Confirmed by
+reverting only `core.json` (keeping every other Phase 7 change): the probe passes cleanly at
+stage 211. So the new cards didn't cause this — they only *exposed* a pre-existing fragility in
+`_card_build_score()`'s damage/shield weighting (`shield` scored at 1.6x vs `damage`'s 2.2x, so
+`_smart_add`'s "replace the lowest scorer" logic drifts a long simulated run toward an
+all-offense deck that occasionally can't survive a big hit). Since Phases 8-10 will add more
+content and would hit the same RNG-sensitivity again, fixed at the root rather than papering
+over this one seed: bumped `shield`'s weight from 1.6 to 2.0 in both `_card_build_score()`
+(`game_shop_deck_screen.gd`, the real one) and `_score_card()` (`balance_probe.gd`'s documented
+mirror — see its own file header for why it's duplicated rather than shared). Re-ran `--balance`
+after the change: stage 192 (chapter 39) — landing almost exactly back on this file's own
+documented 192-stage baseline, not just barely over the 170 floor, which reads as this being
+closer to the right weighting than 1.6 was, rather than an overcorrection. Also applied the same
+"Overload debt" awareness to `ai_best_play()`'s in-battle heuristic (it was scoring an Overload
+card's burst damage in full with zero counterweight for the energy debt it takes on) — didn't
+move this particular regression (none of the new cards were drawn in the failing run either
+way) but would have been a real gap the moment any Overload card actually gets picked. This is
+a live-balance-affecting change beyond Phase 7's own new content, flagged here explicitly for
+visibility rather than folded in silently.
+
+**Verification**: `test_runner.gd` now at 623/0 checks (new: 6 card-existence checks, Boomerang/
+Reverb/Overload combat-rule assertions, the keyword-list/KEYWORD_KEYS sync check), `ui_smoke.gd`
+new keyword-pill section covering all 3 new keywords, full `./run_tests.sh --all` green from a
+from-scratch `Godot/.godot/` state, including the 250-stage balance probe at stage 192/chapter
+39 (comfortably above the 170 regression floor).
+
 ### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 6: Career Codex shipped
 Per user direction to work through the plan's Phases 6-10 in order. First synced this branch
 with `origin/main` (which had moved substantially since the last sync: Supabase auth/cloud
