@@ -2,6 +2,9 @@
 set -e
 
 # Spiritbound iOS One-Click Export & Wireless Deploy Script
+if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+    export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/Godot"
 BUILD_DIR="$PROJECT_DIR/build/ios"
@@ -20,6 +23,11 @@ elif [ "$1" == "--full-export" ]; then
     MODE="full"
 elif [ "$1" == "--build-only" ]; then
     MODE="build"
+fi
+
+if [ ! -d "$BUILD_DIR/Spiritbound.xcodeproj" ] && [ "$MODE" != "build" ]; then
+    echo "⚠️  Xcode project not found at $BUILD_DIR/Spiritbound.xcodeproj, switching to full export..."
+    MODE="full"
 fi
 
 # Step 1: Export from Godot

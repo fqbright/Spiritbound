@@ -41,7 +41,7 @@ Every agent working on this repository **MUST** run the automated verification s
 
 Individual suite commands:
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (350+ checks)
+godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (575 checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
 godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-stage balance trajectory bot

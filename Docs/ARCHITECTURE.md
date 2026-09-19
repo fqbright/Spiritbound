@@ -165,11 +165,15 @@ clock, which is exactly the difference from `begin_battle()`'s time-seeded `acti
 so a run is byte-reproducible (the full run prints a trajectory digest for pinning against
 regressions). The result, against current rules:
 
+(Re-measured after the Phase 4-5 merge added relic synergies, reforging and the talent tree;
+the first wall moved out from stage 92 to stage 99, which is the new systems helping rather
+than a regression. Digest `933924288`.)
+
 - **Chapters 1-4**: 12/12 won, zero losses, ~3.2 turns per win. Still "clearable on autopilot."
-- **Chapters 5-10**: 18/18 won, zero losses, ~5.0 turns per win. Still a gentle step up.
+- **Chapters 5-10**: 18/18 won, zero losses, ~4.4 turns per win. Still a gentle step up.
 - **Chapters 11-20**: the band starts biting about where it is supposed to — the bot cleared
-  chapters 11-16 cleanly, then lost and retried from around chapter 17 and walled at stage 92
-  (chapter 19) after exhausting its eight retries.
+  chapters 11-16 cleanly, then lost and retried from around chapter 17 and walled at stage 99
+  (chapter 20) after exhausting its eight retries.
 
 So the *shape* the bands describe survives the always-full-HP change: the first ten chapters stay
 lossless for a non-optimizing approach, and a deliberately built deck (runes, equipment, mixing

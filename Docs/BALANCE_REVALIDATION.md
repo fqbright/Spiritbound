@@ -53,18 +53,21 @@ does not fail CI; turn it on deliberately if you want to pin a known-good trajec
 
 ## Measured result (full mode, current rules)
 
+Re-measured after rebasing onto the Phase 4-5 merge (relic synergies, equipment reforging,
+talent tree). The new systems pushed the first wall out from stage 92 to stage 99.
+
 | Band | Battles | Wins | Losses | Avg turns/win |
 |------|---------|------|--------|---------------|
 | Chapters 1-4  | 12 | 12 | 0 | ~3.2 |
-| Chapters 5-10 | 18 | 18 | 0 | ~5.0 |
-| Chapters 11-20| 26 | 25 | 16 (across retries) | ~7.3 |
+| Chapters 5-10 | 18 | 18 | 0 | ~4.4 |
+| Chapters 11-20| 30 | 29 | 12 (across retries) | ~5.9 |
 
-First wall at **stage 92 / chapter 19**. Trajectory digest: `1806550714`, reproduced
-identically across independent full runs. In `--balance-quick` the retry cap is lower, so the
-wall arrives earlier (stage 82 / chapter 17) — that is expected, not a regression.
+First wall at **stage 99 / chapter 20**. Trajectory digest: `933924288` (the pre-merge value
+was `1806550714`; the digest moving is expected when the engine changes). In `--balance-quick`
+the retry cap is lower, so the wall arrives earlier — that is expected, not a regression.
 
 Conclusion: the four-band curve still holds against the always-full-HP rules. Chapters 1-10
-remain lossless on autopilot and the band only starts to bite around chapter 17-19, which is
+remain lossless on autopilot and the band only starts to bite around chapter 17-20, which is
 where it is supposed to. The "has not been revalidated" warning is therefore cleared, and
 `Docs/ARCHITECTURE.md` now records these measured numbers instead.
 

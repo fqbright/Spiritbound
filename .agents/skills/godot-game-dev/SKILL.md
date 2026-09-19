@@ -23,7 +23,7 @@ Run the automated verification helper:
 ```
 Or run individually:
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd    # rules (399 checks)
+godot --headless --path Godot/ --script res://tests/test_runner.gd    # rules (575 checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd       # screens + combat turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd # multi-stage campaign flow
 godot --headless --path Godot/ --script res://tests/balance_probe.gd  # 250-stage balance curve
