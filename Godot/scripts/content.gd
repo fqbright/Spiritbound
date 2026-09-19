@@ -537,6 +537,38 @@ func active_rune_sets(card_runes: Dictionary) -> Array:
 			active.append(s.id)
 	return active
 
+# Phase 8 — Curse Run: opt-in, self-selected handicaps for Ascension 2+ players chasing a
+# harder fight and a permanent per-mutator badge (profile.curse_run.cleared). Two of the plan's
+# named mutators don't map onto this game's actual systems as written — see
+# Docs/GROWTH_ROADMAP.md's progress log for the substitutions (Draft Only -> Ironclad Will) and
+# why. Every key below is either a modifier combat.gd already reads for another mode
+# (extra_enemy, damage_mult) or a small, generic new one added specifically for this phase (see
+# combat.gd's own comments at each read site) — a mutator is data, not a new engine branch,
+# same principle AGENTS.md documents for encounter mechanics and card effects. `no_relics` and
+# `haunted_deck` are handled entirely at the battle-launch call site (an empty relics array / an
+# extra decay_blight spliced into the battle-only deck copy), not in combat.gd at all.
+const MUTATORS: Array[Dictionary] = [
+	{"id":"glass_cannon","nameKey":"mutator.glass_cannon.name","descKey":"mutator.glass_cannon.desc","color":"ff6b6b","player_max_hp":30,"player_dmg_mult":1.5},
+	{"id":"energy_famine","nameKey":"mutator.energy_famine.name","descKey":"mutator.energy_famine.desc","color":"6ee3ff","energy_cap":2},
+	{"id":"mirror_world","nameKey":"mutator.mirror_world.name","descKey":"mutator.mirror_world.desc","color":"c9a6ff","mirror_hp":true},
+	{"id":"haunted_deck","nameKey":"mutator.haunted_deck.name","descKey":"mutator.haunted_deck.desc","color":"9f7bd1","haunted_deck":true},
+	{"id":"ironclad_will","nameKey":"mutator.ironclad_will.name","descKey":"mutator.ironclad_will.desc","color":"b8c4c9","no_relics":true},
+	{"id":"elite_gauntlet","nameKey":"mutator.elite_gauntlet.name","descKey":"mutator.elite_gauntlet.desc","color":"ff9a4c","extra_enemy":1},
+	{"id":"barren_harvest","nameKey":"mutator.barren_harvest.name","descKey":"mutator.barren_harvest.desc","color":"d4b26a","reward_mult":0.5},
+	{"id":"berserkers_pact","nameKey":"mutator.berserkers_pact.name","descKey":"mutator.berserkers_pact.desc","color":"e34d4d","player_dmg_mult":1.3,"damage_mult":1.3},
+	{"id":"no_mercy","nameKey":"mutator.no_mercy.name","descKey":"mutator.no_mercy.desc","color":"7a7a8c","no_heal":true},
+	{"id":"fewer_draws","nameKey":"mutator.fewer_draws.name","descKey":"mutator.fewer_draws.desc","color":"8affc2","draw_penalty":1},
+]
+# Floor at which a mutator's permanent "cleared" badge unlocks — modest and achievable (matches
+# a single chapter's length) since the badge is meant to reward trying every mutator at least
+# once, not grinding any single one deep.
+const CURSE_RUN_BADGE_FLOOR := 5
+
+func mutator(id: String) -> Dictionary:
+	for m in MUTATORS:
+		if m.id == id: return m
+	return {}
+
 func _init() -> void:
 	var file := FileAccess.open("res://data/core.json", FileAccess.READ)
 	raw = JSON.parse_string(file.get_as_text())
@@ -2111,6 +2143,36 @@ const UI_TEXT = {
 	"ui.boss_rush_stage_label_fmt": {"zh-Hans":"首领连战 · 第 %d 场", "en":"Boss Rush · Bout %d"},
 	"ui.boss_rush_progress_reward_fmt": {"zh-Hans":"连战进度 %d 场，敌人愈发强大！", "en":"Boss Rush progress: %d bouts. Enemies grow stronger!"},
 	"ui.boss_rush_no_boss": {"zh-Hans":"尚未击败任何首领", "en":"No bosses reached yet"},
+	"ui.curse_run_title": {"zh-Hans":"咒缚试炼", "en":"Curse Run"},
+	"ui.curse_run_sub": {"zh-Hans":"选择一项诅咒，作为自我施加的挑战，层数越深敌人越强", "en":"Pick one curse as a self-imposed handicap — floors escalate the deeper you go"},
+	"ui.curse_run_locked": {"zh-Hans":"达到 A2 试炼难度后解锁", "en":"Unlocks at Ascension Tier A2"},
+	"ui.curse_run_choose": {"zh-Hans":"点选下方一项诅咒开始", "en":"Tap a curse below to begin"},
+	"ui.curse_run_floor_fmt": {"zh-Hans":"第 %d 层", "en":"Floor %d"},
+	"ui.curse_run_record_fmt": {"zh-Hans":"最高纪录 第 %d 层", "en":"Best: Floor %d"},
+	"ui.curse_run_enter": {"zh-Hans":"进入试炼", "en":"Enter Trial"},
+	"ui.curse_run_cleared_fmt": {"zh-Hans":"已获得徽章 %d / 10", "en":"Badges earned: %d / 10"},
+	"ui.curse_run_stage_label_fmt": {"zh-Hans":"咒缚试炼 · 第 %d 层", "en":"Curse Run · Floor %d"},
+	"ui.curse_run_badge_toast_fmt": {"zh-Hans":"「%s」徽章已解锁！", "en":"\"%s\" badge unlocked!"},
+	"mutator.glass_cannon.name": {"zh-Hans":"脆刃", "en":"Glass Cannon"},
+	"mutator.glass_cannon.desc": {"zh-Hans":"生命上限锁定为30，造成的伤害提高50%。", "en":"Max HP locked to 30; damage dealt +50%."},
+	"mutator.energy_famine.name": {"zh-Hans":"灵力枯竭", "en":"Energy Famine"},
+	"mutator.energy_famine.desc": {"zh-Hans":"能量上限永远锁定在2点，不再随回合增长。", "en":"Energy is locked at 2 every turn and never grows."},
+	"mutator.mirror_world.name": {"zh-Hans":"颠倒乾坤", "en":"Mirror World"},
+	"mutator.mirror_world.desc": {"zh-Hans":"战斗开始时与敌方首领互换生命上限。", "en":"Swaps max HP with the boss at battle start."},
+	"mutator.haunted_deck.name": {"zh-Hans":"百鬼夜行", "en":"Haunted Deck"},
+	"mutator.haunted_deck.desc": {"zh-Hans":"本场战斗的牌组中混入额外的腐朽枯萎诅咒牌。", "en":"An extra Decay Blight curse is shuffled into this battle's deck."},
+	"mutator.ironclad_will.name": {"zh-Hans":"钢铁意志", "en":"Ironclad Will"},
+	"mutator.ironclad_will.desc": {"zh-Hans":"本场战斗不可携带任何法宝。", "en":"No relics may be carried into this battle."},
+	"mutator.elite_gauntlet.name": {"zh-Hans":"精锐试炼", "en":"Elite Gauntlet"},
+	"mutator.elite_gauntlet.desc": {"zh-Hans":"每层额外增加一名敌人。", "en":"Adds one extra enemy to every floor."},
+	"mutator.barren_harvest.name": {"zh-Hans":"贫瘠之地", "en":"Barren Harvest"},
+	"mutator.barren_harvest.desc": {"zh-Hans":"本模式获得的灵石减半。", "en":"Gold earned from this mode is halved."},
+	"mutator.berserkers_pact.name": {"zh-Hans":"嗜血之约", "en":"Berserker's Pact"},
+	"mutator.berserkers_pact.desc": {"zh-Hans":"造成的伤害和受到的伤害都提高30%。", "en":"Damage dealt and damage taken are both +30%."},
+	"mutator.no_mercy.name": {"zh-Hans":"孤注一掷", "en":"No Mercy"},
+	"mutator.no_mercy.desc": {"zh-Hans":"本场战斗中卡牌回复效果完全失效。", "en":"Card-based healing effects do nothing this battle."},
+	"mutator.fewer_draws.name": {"zh-Hans":"缩衣节食", "en":"Fewer Draws"},
+	"mutator.fewer_draws.desc": {"zh-Hans":"每回合抽牌数量减少1张。", "en":"Draw 1 fewer card every turn."},
 	"ui.awaken_btn": {"zh-Hans":"觉醒", "en":"Awaken"},
 	"ui.awakened_label": {"zh-Hans":"已觉醒", "en":"Awakened"},
 	"ui.awakened_toast_fmt": {"zh-Hans":"%s 已觉醒为 +2！", "en":"%s has Awakened to +2!"},

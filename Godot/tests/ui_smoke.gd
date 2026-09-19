@@ -2374,6 +2374,58 @@ func _run() -> void:
 	check(not game.in_boss_rush, "_leave_battle clears in_boss_rush on a loss")
 	check(int(game.profile.boss_rush_floor) == 2, "a loss keeps the current bout number instead of resetting the streak")
 
+	section("== growth roadmap: Phase 8 curse run mutator challenge ==")
+	game.profile.difficulty = 0
+	game.profile.unlocked = 5
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.curse_run_title", game.lang)), "Curse Run section renders in the challenges screen")
+	var curse_locked_btn: Button = game.root.find_child("CurseRunEnterBtn", true, false) as Button
+	check(curse_locked_btn != null and curse_locked_btn.disabled, "CurseRunEnterBtn is disabled before reaching Ascension Tier A2")
+
+	game.profile.difficulty = 2
+	game.show_camp()
+	await process_frame
+	var glass_btn: Button = game.root.find_child("CurseMutatorBtn_glass_cannon", true, false) as Button
+	check(glass_btn != null, "CurseMutatorBtn_glass_cannon exists once Curse Run unlocks")
+	glass_btn.pressed.emit()
+	await process_frame
+	check(str(game.profile.curse_run.selected) == "glass_cannon", "tapping a mutator badge selects it")
+	var curse_enter_btn: Button = game.root.find_child("CurseRunEnterBtn", true, false) as Button
+	check(curse_enter_btn != null and not curse_enter_btn.disabled, "CurseRunEnterBtn becomes enabled once a mutator is selected")
+
+	game.begin_curse_run_battle()
+	await process_frame
+	check(game.in_curse_run, "begin_curse_run_battle() enters curse run mode")
+	check(int(game.combat.state.player.max_health) == 30, "Glass Cannon's player_max_hp reaches a real battle (30)")
+	var curse_gold_before: int = int(game.profile.gold)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(int(game.profile.curse_run.floors.get("glass_cannon", 1)) == 2, "winning advances glass_cannon's own floor")
+	check(int(game.profile.curse_run.records.get("glass_cannon", 0)) == 1, "winning records the deepest floor reached for that mutator")
+	check(int(game.profile.gold) > curse_gold_before, "winning a curse run floor grants gold")
+	check(not game.in_curse_run, "_grant_stage_rewards clears in_curse_run after granting")
+
+	# Badge floor: reaching SpiritContent.CURSE_RUN_BADGE_FLOOR unlocks a permanent per-mutator
+	# badge, shown as a checkmark on that mutator's own picker badge from then on.
+	game.profile.curse_run.floors["glass_cannon"] = SpiritContent.CURSE_RUN_BADGE_FLOOR
+	game.begin_curse_run_battle()
+	await process_frame
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(game.profile.curse_run.cleared.has("glass_cannon"), "reaching the badge floor unlocks glass_cannon's permanent badge")
+
+	# The exact same stuck-flag shape AGENTS.md documents for every other side mode: a loss
+	# must clear in_curse_run without resetting that mutator's own floor.
+	game.begin_curse_run_battle()
+	await process_frame
+	var floor_before_loss: int = int(game.profile.curse_run.floors.get("glass_cannon", 1))
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_curse_run, "_leave_battle clears in_curse_run on a loss")
+	check(int(game.profile.curse_run.floors.get("glass_cannon", 1)) == floor_before_loss, "a loss keeps the current floor instead of resetting it")
+
 	section("== growth roadmap: sandbox / practice mode ==")
 	game.profile.unlocked = 20
 	game.profile.health = 10

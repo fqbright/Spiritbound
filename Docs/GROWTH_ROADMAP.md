@@ -306,6 +306,60 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 8: Curse Run Mutators shipped
+Continuing the same user-directed march through Phases 6-10.
+
+**Substitution from the plan, deliberate**: the plan named 5 of its 10 mutators explicitly and
+left 5 unnamed ("+5 more"). One of the 5 named ones, "Draft Only" (all card rewards follow the
+3-pick-1 Spirit Draft rules), doesn't fit the mode this phase actually builds: Curse Run is an
+Abyss-shaped floor gauntlet with gold-only rewards (like Boss Rush/Abyss), never card rewards at
+all, so "Draft Only" has nothing to attach to here. Replaced with **Ironclad Will (钢铁意志)**:
+no relics may be carried into the run — a purist/prestige handicap in the same spirit, and zero
+new combat.gd surface (the battle-launch call site just passes `[]` instead of
+`g.profile.relics`). The other 4 named mutators (Glass Cannon, Energy Famine, Mirror World,
+Haunted Deck) ship as specified. The 5 unnamed slots became Elite Gauntlet, Barren Harvest,
+Berserker's Pact, No Mercy, and Fewer Draws — chosen specifically to reuse existing combat.gd
+modifier keys or reward-granting logic wherever possible (see below) rather than inventing 5
+more bespoke engine hooks.
+
+**Design**: `SpiritContent.MUTATORS` (10 entries) each carry combat.gd modifier keys directly —
+`extra_enemy`/`damage_mult` reuse what the Daily Trial already added; `player_max_hp`,
+`player_dmg_mult`, `mirror_hp`, `no_heal`, `draw_penalty`, `energy_cap` are new, small, generic
+read sites (one `if` each, in `create()`/`_resolve_effects()`/`end_turn()`) — see combat.gd's
+own comments at each site for exactly why and where. `no_relics`/`haunted_deck` are deliberately
+NOT combat.gd keys: they're a deck-composition change (splice an extra `decay_blight` into a
+duplicated battle-only copy of `profile.deck`) and an equipment-list change (pass `[]` instead
+of `profile.relics`), both fully expressible at the battle-launch call site
+(`begin_curse_run_battle()` in `game_camp_screen.gd`) with no new engine branch needed at all.
+Floors reuse `content.abyss_encounter()`'s existing scaling rather than a new formula. Progress
+(`profile.curse_run.floors`/`records`) is tracked **per mutator id**, not shared — switching
+from an easy mutator to Glass Cannon at a high floor would otherwise dump a fragile 30-max-HP
+build straight into a floor scaled for a full-HP one, which is a real correctness bug, not just
+a nice-to-have. A loss costs only the attempt (floor stays put), matching the same "attempt vs.
+run" split Abyss/Boss Rush/Daily Trial/Draft Arena already use — including the same
+`_leave_battle()` stuck-flag trap this file's AGENTS.md section documents at length; verified
+directly with the same "force a loss, check the flag clears" shape `ui_smoke.gd` already uses
+for every other mode. Unlock gate is `profile.difficulty >= 2` (Ascension Tier A2+, per the
+plan's literal wording) — deliberately a *different* gating dimension than every other side
+mode here (which gate on `profile.unlocked`, campaign stage progress), since Curse Run is meant
+to be a challenge for players who've already picked a high Ascension tier, not just cleared
+some stage count.
+
+**Cosmetic badges**: reaching `SpiritContent.CURSE_RUN_BADGE_FLOOR` (5) with a given mutator at
+least once permanently unlocks that mutator's badge (`profile.curse_run.cleared`), shown as a
+✓ prefix on its own picker button forever after — deliberately not score-ranked or repeatable,
+same "did you ever do this" spirit as Career Codex's Hall of Fame (Phase 6). No new "titles"
+subsystem was built for the plan's "cosmetic badges and titles" line — the picker badge's own
+checkmark carries the whole feature; a full equippable-title system felt like scope well beyond
+what 10 opt-in handicaps warrant.
+
+**Verification**: `test_runner.gd` now at 642/0 checks (new: existence checks for all 10
+mutators, one combat-rule assertion per new modifier key — player_max_hp, player_dmg_mult,
+mirror_hp, no_heal, draw_penalty, energy_cap), `ui_smoke.gd` new Curse Run section (render,
+locked-vs-unlocked, mutator selection via a real button tap, battle entry, win rewards, badge
+unlock, and the loss/stuck-flag regression check), full `./run_tests.sh --all` green from a
+from-scratch `Godot/.godot/` state.
+
 ### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 7: New Combat Keywords shipped
 Continuing the same user-directed march through Phases 6-10.
 

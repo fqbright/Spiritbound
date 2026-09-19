@@ -1,6 +1,6 @@
 # Next Phases Implementation Plan: Spiritbound Post-Launch Roadmap
 
-This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 8** or subsequent phases following the repository standards.
+This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 9** or subsequent phases following the repository standards.
 
 ---
 
@@ -15,31 +15,17 @@ This implementation plan lays out the next sequential phases of Spiritbound deve
   `lifetime_stats`/`abyss_record` for counters that already existed elsewhere. See
   `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
 - ✅ **Phase 7**: New Combat Keywords (新战斗词条系统) — done 2026-09-19. Shipped as **Boomerang
-  (回旋)**/**Reverb (余韵)**/**Overload (过载)** — the plan's "Retain"/"Echo" names were renamed
-  (Retain would be a no-op in a game with no end-of-turn discard; Echo collides with the
-  pre-existing "echo" rune) — plus 6 new cards, 2 per keyword. Found and fixed 2 pre-existing
-  bugs along the way (the keyword-pill tooltip never read `card.special`'s real top-level shape;
-  a stale `collect_all` achievement literal) and one live game-balance gap that adding content
-  exposed (`_card_build_score()`'s shield weighting, since a bigger card pool reshuffles every
-  downstream RNG-seeded roll in `balance_probe.gd`'s 250-stage regression check). See
-  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
-
----
-
-## Phase 8: Mutator & "Curse Run" Challenge Mode (咒缚流局 / 词缀挑战)
-**Impact: Medium-High | Effort: Medium | Backend: None**
-
-### 1. Goal Description
-Provide high-level players (unlocked at Ascension 2+) with 10 opt-in run mutators that alter fundamental game rules for higher challenge and prestige badges:
-- **Glass Cannon (脆刃)**: Max HP capped at 30, all attack damage +50%.
-- **Energy Famine (灵力枯竭)**: Energy capped at 2 every turn.
-- **Mirror World (颠倒乾坤)**: Swap Player and Enemy starting HP.
-- **Haunted Deck (百鬼夜行)**: At each rest site, 1 random card turns into a spectral curse.
-- **Draft Only (灵火轮选)**: All card rewards follow 3-pick-1 Spirit Draft rules.
-
-### 2. UI & Camp Integration
-- Camp Challenges tab gets a "咒缚挑战 (Curse Modifiers)" selector.
-- Mutator run completion yields exclusive cosmetic badges and titles.
+  (回旋)**/**Reverb (余韵)**/**Overload (过载)** (plan's "Retain"/"Echo" renamed — Retain would be
+  a no-op here, Echo collides with the pre-existing rune of the same name) plus 6 new cards. See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account, including a live balance-scorer
+  gap this phase's own regression testing found and fixed.
+- ✅ **Phase 8**: Mutator & "Curse Run" Challenge Mode (咒缚流局) — done 2026-09-19. Shipped as
+  `SpiritContent.MUTATORS`, 10 opt-in handicaps fought as an Abyss-shaped floor gauntlet, gated
+  at Ascension Tier A2+. One named mutator ("Draft Only") didn't fit a gold-only-reward gauntlet
+  mode and was replaced with **Ironclad Will** (no relics allowed); the plan's 5 unnamed slots
+  became Elite Gauntlet/Barren Harvest/Berserker's Pact/No Mercy/Fewer Draws. See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account, including why per-mutator (not
+  shared) floor tracking matters.
 
 ---
 

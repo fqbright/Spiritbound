@@ -2827,6 +2827,14 @@ func _leave_battle() -> void:
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
+	if g.in_curse_run:
+		# Same split again: the selected mutator's floor isn't touched on a loss, so the next
+		# attempt re-fights the same floor instead of losing progress on that mutator.
+		g.in_curse_run = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
 	if g.in_abyss:
 		g.in_abyss = false
 		g.profile.health = 60

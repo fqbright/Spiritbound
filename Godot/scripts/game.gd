@@ -56,6 +56,7 @@ var in_daily_trial := false
 var in_weekly_challenge := false
 var in_draft_battle := false
 var in_boss_rush := false
+var in_curse_run := false
 var in_sandbox := false
 var sandbox_stage := 0
 var compendium_tab := "cards"
@@ -1516,6 +1517,7 @@ func show_challenges() -> void: _camp_screen.show_challenges()
 func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
 func begin_boss_rush_battle() -> void: _camp_screen.begin_boss_rush_battle()
+func begin_curse_run_battle() -> void: _camp_screen.begin_curse_run_battle()
 func begin_sandbox_battle(stage: int) -> void: _camp_screen.begin_sandbox_battle(stage)
 func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()

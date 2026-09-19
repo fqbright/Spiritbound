@@ -404,6 +404,24 @@ The visual presentation blends high-detail painted assets with procedural vector
     back to back, cycling through `content.boss_rush_boss_indices(unlocked)` and escalating
     enemy health/damage each full loop back through the same pool. A loss costs only the
     current bout, not the streak (`profile.boss_rush_floor`/`boss_rush_record`).
+  - **Curse Run (`begin_curse_run_battle`, `SpiritContent.MUTATORS`)**: an opt-in, self-selected
+    handicap gauntlet unlocked at Ascension Tier A2+ (`profile.difficulty >= 2`) — pick one of
+    10 mutators (Glass Cannon, Energy Famine, Mirror World, Haunted Deck, Ironclad Will, Elite
+    Gauntlet, Barren Harvest, Berserker's Pact, No Mercy, Fewer Draws) and fight an escalating
+    floor gauntlet built on `content.abyss_encounter()`'s own scaling, with that mutator's
+    combat.gd modifier keys layered on top (`player_max_hp`/`player_dmg_mult`/`energy_cap`/
+    `mirror_hp`/`no_heal`/`draw_penalty` are new, generic keys added for this; `extra_enemy`/
+    `damage_mult` reuse existing ones). Progress (`profile.curse_run.floors`/`records`) is
+    tracked per mutator rather than shared, since switching mutators mid-climb would otherwise
+    dump a fragile build (e.g. Glass Cannon's 30-HP cap) into a floor scaled for a completely
+    different handicap. Reaching floor `SpiritContent.CURSE_RUN_BADGE_FLOOR` (5) with a given
+    mutator unlocks that mutator's permanent cosmetic badge (`profile.curse_run.cleared`), shown
+    as a checkmark on its own picker button from then on. `Haunted Deck`/`Ironclad Will` are
+    handled entirely at the battle-launch call site (an extra `decay_blight` spliced into a
+    duplicated battle-only deck array; an empty relics array) rather than as combat.gd modifier
+    keys, since neither needs a new generic engine hook when the call site can just build the
+    right input directly. Same "attempt vs. run" loss handling as every other side mode here —
+    see this file's own trap entry on `_leave_battle()` needing an explicit branch per mode.
   - **Sandbox (`begin_sandbox_battle`)**: zero-stakes practice bout against any stage already
     reached, picked via a stage stepper in Camp's Challenges tab. Always a full 60 HP
     regardless of real campaign health, grants no rewards, and never writes `profile.health`

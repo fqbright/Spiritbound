@@ -729,6 +729,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_daily_trial_section())
 	list.add_child(_weekly_challenge_section())
 	list.add_child(_boss_rush_section())
+	list.add_child(_curse_run_section())
 	list.add_child(_sandbox_section())
 	list.add_child(_abyss_section())
 	list.add_child(_difficulty_tier_section())
@@ -1410,6 +1411,123 @@ func begin_boss_rush_battle() -> void:
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[idx])
+	g.pre_battle_health = 60
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+# Phase 8: Curse Run — an opt-in, self-selected handicap (SpiritContent.MUTATORS) fought as an
+# escalating floor gauntlet, reusing content.abyss_encounter()'s own scaling rather than a new
+# formula. Progress (floor/record) is tracked per mutator id, not shared, since switching from
+# an easy mutator to e.g. Glass Cannon at a high floor would otherwise dump a fragile 30-max-HP
+# build straight into a floor scaled for a full-HP one. A loss costs only the attempt, same
+# "attempt vs. run" split every other side mode here already uses (see _leave_battle()).
+func _curse_run_section() -> Control:
+	var unlocked: bool = int(g.profile.difficulty) >= 2
+	var bg_col := Color("1a1020") if unlocked else Color("181210")
+	var border_col := Color("c9a6ff") if unlocked else Color("2a3d42")
+	var frame := _split_card_frame("res://assets/banners/banner_curse_run.png", unlocked, bg_col, border_col, 196.0)
+	var panel: PanelContainer = frame.panel
+	panel.name = "CurseRunSection"
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.t("ui.curse_run_title"), 15, Color("c9a6ff") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+	if not unlocked:
+		left.add_child(g._label("🔒 " + g.t("ui.curse_run_locked"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_curse_run_battle, Color("221a2a"), Vector2(160, 36))
+		enter_btn.name = "CurseRunEnterBtn"
+		enter_btn.disabled = true
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
+		return panel
+
+	left.add_child(g._label(g.t("ui.curse_run_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var curse_run: Dictionary = g.profile.get("curse_run", {})
+	var selected_id: String = str(curse_run.get("selected", ""))
+	var cleared: Array = curse_run.get("cleared", [])
+
+	var picker := HFlowContainer.new()
+	picker.name = "CurseRunPicker"
+	picker.add_theme_constant_override("h_separation", 6)
+	picker.add_theme_constant_override("v_separation", 6)
+	for m in SpiritContent.MUTATORS:
+		var mid: String = str(m.id)
+		var is_sel: bool = mid == selected_id
+		var badge_text: String = ("✓ " if cleared.has(mid) else "") + g.content.ui(str(m.nameKey), g.lang)
+		var mbtn := g._button(badge_text, func(): _select_curse_mutator(mid), Color(str(m.color)).darkened(0.15 if is_sel else 0.7), Vector2(0, 32))
+		mbtn.name = "CurseMutatorBtn_%s" % mid
+		if is_sel: mbtn.add_theme_color_override("font_color", Color.BLACK)
+		picker.add_child(mbtn)
+	left.add_child(picker)
+
+	if selected_id.is_empty():
+		left.add_child(g._label(g.t("ui.curse_run_choose"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	else:
+		var sel: Dictionary = g.content.mutator(selected_id)
+		left.add_child(g._label(g.content.ui(str(sel.get("descKey", "")), g.lang), 9, Color("d8c8ff"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var floor_num: int = int(curse_run.get("floors", {}).get(selected_id, 1))
+		var record_num: int = int(curse_run.get("records", {}).get(selected_id, 0))
+		var stats := HBoxContainer.new()
+		stats.add_theme_constant_override("separation", 12)
+		stats.add_child(g._label(g.tf("ui.curse_run_floor_fmt", floor_num), 10, g.GOLD))
+		stats.add_child(g._label(g.tf("ui.curse_run_record_fmt", record_num), 10, g.JADE))
+		left.add_child(stats)
+
+	left.add_child(g._label(g.tf("ui.curse_run_cleared_fmt", cleared.size()), 9, Color("ff6b9d")))
+
+	var enter_btn := g._button(g.t("ui.curse_run_enter"), begin_curse_run_battle, Color("4a285d"), Vector2(160, 36))
+	enter_btn.name = "CurseRunEnterBtn"
+	enter_btn.disabled = selected_id.is_empty()
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
+
+	return panel
+
+func _select_curse_mutator(id: String) -> void:
+	var curse_run: Dictionary = g.profile.get("curse_run", {})
+	curse_run.selected = id
+	g.profile.curse_run = curse_run
+	SpiritSave.write(g.profile)
+	show_challenges()
+
+func begin_curse_run_battle() -> void:
+	var curse_run: Dictionary = g.profile.get("curse_run", {})
+	var selected: String = str(curse_run.get("selected", ""))
+	var m: Dictionary = g.content.mutator(selected)
+	if m.is_empty():
+		g._toast(g.t("ui.curse_run_choose"))
+		return
+	g.in_curse_run = true
+	var floor_num: int = int(curse_run.get("floors", {}).get(selected, 1))
+	g.current_stage = 0
+	var enc: Dictionary = g.content.abyss_encounter(floor_num)
+	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	# active_modifier doubles as the modifier dict combat.create() reads (player_max_hp,
+	# player_dmg_mult, energy_cap, mirror_hp, extra_enemy, damage_mult, no_heal, draw_penalty —
+	# whichever the selected mutator carries) and the battle screen's modifier badge, which
+	# reads name/name_en/detail/detail_en unconditionally (see content.daily_trial_modifier()'s
+	# own trap note on this exact requirement).
+	g.active_modifier = m.duplicate(true)
+	g.active_modifier["name"] = g.content.ui(str(m.get("nameKey", "")), "zh-Hans")
+	g.active_modifier["name_en"] = g.content.ui(str(m.get("nameKey", "")), "en")
+	g.active_modifier["detail"] = g.content.ui(str(m.get("descKey", "")), "zh-Hans")
+	g.active_modifier["detail_en"] = g.content.ui(str(m.get("descKey", "")), "en")
+	# Haunted Deck/Ironclad Will are deliberately handled here rather than as combat.gd modifier
+	# keys — one is a deck-composition change, the other an equipment-list change, neither of
+	# which combat.gd needs its own generic hook for when the call site can just build the right
+	# input in the first place.
+	var deck: Array = g.profile.deck.duplicate()
+	if m.get("haunted_deck", false): deck.append("decay_blight")
+	var relics_for_run: Array = [] if m.get("no_relics", false) else g.profile.relics
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	g.combat.create(seed, enc, deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, relics_for_run, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	if g._mark_discovered("bestiary", str(enc.name)):
+		g._grant_bestiary_discovery_bonus(enc)
 	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1

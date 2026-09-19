@@ -864,6 +864,50 @@ func run() -> void:
 	check(int(trial_mod.state.enemies[0].damage) == 20, "daily trial damage_mult doubles the boss's damage (10 -> 20)")
 	check(int(trial_mod.state.enemies[1].damage) == int(round((2.0 + 100 / 3) * 2.0)), "daily trial damage_mult also doubles an add's damage")
 
+	# === PHASE 8: CURSE RUN MUTATOR MODIFIER KEYS ===
+	for id in SpiritContent.MUTATORS.map(func(m): return str(m.id)):
+		check(not content.mutator(id).is_empty(), "%s (Curse Run mutator) exists in SpiritContent.MUTATORS" % id)
+	check(SpiritContent.MUTATORS.size() == 10, "Curse Run ships exactly 10 mutators")
+
+	# Glass Cannon: player_max_hp caps max HP downward regardless of the usual 60 default.
+	var glass_run := SpiritCombat.new(content)
+	glass_run.create(310, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"player_max_hp": 30})
+	check(int(glass_run.state.player.max_health) == 30 and int(glass_run.state.player.health) == 30, "Glass Cannon's player_max_hp caps both max and current HP to 30 (got max=%d hp=%d)" % [int(glass_run.state.player.max_health), int(glass_run.state.player.health)])
+
+	# Glass Cannon / Berserker's Pact: player_dmg_mult scales the player's own outgoing damage.
+	var dmgmult_run := SpiritCombat.new(content)
+	dmgmult_run.create(311, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"player_dmg_mult": 1.5})
+	_force_hand(dmgmult_run, "strike")
+	dmgmult_run.play(0, 0)
+	check(int(dmgmult_run.state.enemies[0].health) == 100 - 9, "player_dmg_mult scales the player's damage (strike's 6 * 1.5 = 9)")
+
+	# Mirror World: swaps max HP between player and boss at battle start.
+	var mirror_world_run := SpiritCombat.new(content)
+	mirror_world_run.create(312, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"mirror_hp": true})
+	check(int(mirror_world_run.state.player.max_health) == 100 and int(mirror_world_run.state.player.health) == 100, "mirror_hp gives the player the boss's 100 max HP")
+	check(int(mirror_world_run.state.enemies[0].max_health) == 60 and int(mirror_world_run.state.enemies[0].health) == 60, "mirror_hp gives the boss the player's original 60 max HP")
+
+	# No Mercy: card-based heal effects do nothing, without touching other heal sources.
+	var no_mercy_run := SpiritCombat.new(content)
+	no_mercy_run.create(313, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"no_heal": true})
+	no_mercy_run.state.player.health = 40
+	_force_hand(no_mercy_run, "renewal")
+	no_mercy_run.play(0, -1)
+	check(int(no_mercy_run.state.player.health) == 40, "no_heal nullifies renewal's card-based heal (stays at 40)")
+
+	# Fewer Draws: turn draw reduced by 1, floored at 1 so the hand can never fully stall.
+	var fewer_draws_run := SpiritCombat.new(content)
+	fewer_draws_run.create(314, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"draw_penalty": 1})
+	check(fewer_draws_run.state.hand.size() == 5, "fewer_draws does not touch the opening hand (still 5)")
+	fewer_draws_run.end_turn()
+	check(fewer_draws_run.state.hand.size() == 6, "draw_penalty reduces turn 2's draw from 2 to 1 (5+1=6, got %d)" % fewer_draws_run.state.hand.size())
+
+	# Energy Famine: a hard cap that holds even after several turns' worth of normal growth.
+	var famine_run := SpiritCombat.new(content)
+	famine_run.create(315, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"energy_cap": 2})
+	for i in 6: famine_run.end_turn()
+	check(int(famine_run.state.energy) == 2, "energy_cap holds energy at 2 even after 6 turns of normal growth (turn %d, got %d)" % [int(famine_run.state.turn), int(famine_run.state.energy)])
+
 	check(SpiritContent.DAILY_TRIAL_STAGES == 15, "the Daily Trial is 15 stages")
 	var trial_stage1 := content.daily_trial_encounter(1)
 	var trial_stage15 := content.daily_trial_encounter(15)

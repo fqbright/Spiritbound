@@ -204,6 +204,9 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 # already used before this existed).
 func _current_encounter() -> Dictionary:
 	if g.in_abyss: return g.content.abyss_encounter(int(g.profile.get("abyss_floor", 1)))
+	if g.in_curse_run:
+		var cr: Dictionary = g.profile.get("curse_run", {})
+		return g.content.abyss_encounter(int(cr.get("floors", {}).get(str(cr.get("selected", "")), 1)))
 	if g.in_daily_trial: return g.content.daily_trial_encounter(int(g.profile.daily_trial_record.get("stage", 0)) + 1)
 	if g.in_weekly_challenge: return g.content.weekly_challenge_encounter(int(g.profile.weekly_challenge_record.get("stage", 0)) + 1)
 	return g.content.encounters[g.current_stage]
@@ -211,6 +214,9 @@ func _current_encounter() -> Dictionary:
 func _current_stage_label() -> String:
 	if g.in_sandbox: return g.tf("ui.sandbox_stage_label_fmt", g.content.stage_name(g.current_stage, g.lang))
 	if g.in_boss_rush: return g.tf("ui.boss_rush_stage_label_fmt", int(g.profile.get("boss_rush_floor", 1)))
+	if g.in_curse_run:
+		var cr: Dictionary = g.profile.get("curse_run", {})
+		return g.tf("ui.curse_run_stage_label_fmt", int(cr.get("floors", {}).get(str(cr.get("selected", "")), 1)))
 	if g.in_abyss: return g.tf("ui.abyss_stage_label_fmt", int(g.profile.get("abyss_floor", 1)))
 	if g.in_daily_trial: return g.tf("ui.daily_trial_stage_label_fmt", [int(g.profile.daily_trial_record.get("stage", 0)) + 1, SpiritContent.DAILY_TRIAL_STAGES])
 	if g.in_weekly_challenge: return g.tf("ui.weekly_challenge_stage_label_fmt", [int(g.profile.weekly_challenge_record.get("stage", 0)) + 1, SpiritContent.WEEKLY_CHALLENGE_STAGES])
@@ -268,6 +274,40 @@ func _grant_stage_rewards() -> void:
 		g.profile.career_stats.bosses_slain = int(g.profile.career_stats.get("bosses_slain", 0)) + 1
 		_grant_mastery_xp(24)
 		g._add_season_xp(60)
+		return
+	if g.in_curse_run:
+		g.in_curse_run = false
+		var curse_run: Dictionary = g.profile.get("curse_run", {})
+		var selected: String = str(curse_run.get("selected", ""))
+		var m: Dictionary = g.content.mutator(selected)
+		var floors: Dictionary = curse_run.get("floors", {})
+		var records: Dictionary = curse_run.get("records", {})
+		var cleared: Array = curse_run.get("cleared", [])
+		var floor_num: int = int(floors.get(selected, 1))
+		# Barren Harvest is the one mutator that touches reward-granting rather than combat.gd.
+		var reward_mult: float = float(m.get("reward_mult", 1.0))
+		var gold_gain: int = int(round((25 + floor_num * 5) * reward_mult))
+		g.profile.gold += gold_gain
+		floors[selected] = floor_num + 1
+		records[selected] = maxi(int(records.get(selected, 0)), floor_num)
+		curse_run.floors = floors
+		curse_run.records = records
+		# Badge floor reached: a permanent, one-time cosmetic unlock per mutator (shown as a
+		# checkmark on its picker badge) — not score-ranked or repeatable, just "did you ever
+		# clear this one," same spirit as Career Codex's Hall of Fame being about the moment,
+		# not a leaderboard.
+		if floor_num >= SpiritContent.CURSE_RUN_BADGE_FLOOR and not cleared.has(selected):
+			cleared.append(selected)
+			curse_run.cleared = cleared
+			g._toast(g.tf("ui.curse_run_badge_toast_fmt", g.content.ui(str(m.get("nameKey", "")), g.lang)), Color(str(m.get("color", "ffffff"))))
+		g.profile.curse_run = curse_run
+		g.profile.health = 60
+		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": ""}
+		SpiritSave.write(g.profile)
+		g._advance_quest("win_battles", 1)
+		g._advance_quest("earn_gold", gold_gain)
+		_grant_mastery_xp(20)
+		g._add_season_xp(50)
 		return
 	if g.in_abyss:
 		g.in_abyss = false
