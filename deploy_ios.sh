@@ -105,7 +105,10 @@ if [ -z "$DEVICE_LINE" ]; then
     exit 1
 fi
 
-DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" | head -n 1)
+DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40})" | head -n 1)
+if [ -z "$DEVICE_ID" ]; then
+    DEVICE_ID=$(echo "$DEVICE_LINE" | awk -F'[(]UDID[)]' '{print $1}' | awk '{print $NF}')
+fi
 DEVICE_NAME=$(echo "$DEVICE_LINE" | awk '{print $1" "$2}')
 
 echo "🚀 Installing to $DEVICE_NAME ($DEVICE_ID)..."
