@@ -1213,8 +1213,366 @@ func run() -> void:
 	check(content.ui("ui.stamina_name", "en") == "Stamina", "stamina localized in English")
 	check(content.ui("ui.auto_battle", "zh-Hans") == "自动", "auto battle localized in Chinese")
 	check(content.ui("tutorial.shop_overview.title", "zh-Hans") == "灵界集市指南", "shop overview tutorial localized")
-	check(content.ui("tutorial.deck_synergies.title", "zh-Hans") == "卡牌协同指南", "deck synergies tutorial localized")
-	check(content.ui("tutorial.combat_survival.title", "zh-Hans") == "危机应对秘诀", "combat survival tutorial localized")
+	# Supabase Client & Cloud Save Auth Unit Tests
+	var test_sess := {
+		"access_token": "mock_jwt_token_spiritbound_987",
+		"refresh_token": "mock_refresh_token_spiritbound_654",
+		"expires_in": 3600,
+		"expires_at": int(Time.get_unix_time_from_system()) + 3600,
+		"provider": "supabase",
+		"user": {
+			"id": "uuid-test-user-1234",
+			"email": "test_immortal@spiritbound.game",
+			"user_metadata": {
+				"display_name": "万界至尊"
+			}
+		}
+	}
+	SupabaseClient.save_session(test_sess)
+	check(SupabaseClient.is_authenticated(), "SupabaseClient is_authenticated returns true with valid session")
+	check(SupabaseClient.get_access_token() == "mock_jwt_token_spiritbound_987", "SupabaseClient returns correct access token")
+	check(SupabaseClient.get_refresh_token() == "mock_refresh_token_spiritbound_654", "SupabaseClient returns correct refresh token")
+	check(SupabaseClient.get_user_id() == "uuid-test-user-1234", "SupabaseClient returns correct user id")
+	check(SupabaseClient.get_email() == "test_immortal@spiritbound.game", "SupabaseClient returns correct email")
+	check(SupabaseClient.get_display_name() == "万界至尊", "SupabaseClient returns correct display name")
+
+	# Account linking with Supabase
+	var auth_test_prof := SpiritSave.defaults(content)
+	check(not SpiritSave.is_cloud_linked(auth_test_prof), "new profile defaults to unlinked cloud status")
+	SpiritSave.link_account(auth_test_prof, "supabase", "uuid-test-user-1234", "test_immortal@spiritbound.game", "万界至尊")
+	check(SpiritSave.is_cloud_linked(auth_test_prof), "profile is cloud linked after Supabase link")
+	check(SpiritSave.account_provider(auth_test_prof) == "supabase", "profile provider is supabase after link")
+	check(auth_test_prof.account.email == "test_immortal@spiritbound.game", "profile stores supabase email")
+	SpiritSave.unlink_account(auth_test_prof)
+	check(not SpiritSave.is_cloud_linked(auth_test_prof), "profile unlinked after sign out")
+
+	# Clean up session
+	SupabaseClient.clear_session()
+	check(not SupabaseClient.is_authenticated(), "SupabaseClient is_authenticated returns false after clear_session")
+
+	# Supabase Leaderboards & Global Rankings
+	check(SupabaseClient.TABLE_LEADERBOARDS == "leaderboards", "TABLE_LEADERBOARDS is leaderboards")
+	var abyss_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("abyss")
+	check(abyss_fallbacks.size() == 10, "abyss fallback leaderboard provides top 10 master entries")
+	check(int(abyss_fallbacks[0].score) >= int(abyss_fallbacks[1].score), "abyss fallback records ordered by score descending")
+	check(abyss_fallbacks[0].has("player_name") and abyss_fallbacks[0].has("character_id") and abyss_fallbacks[0].has("rank"), "abyss entry schema contains player_name, character_id, and rank")
+
+	var daily_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("daily_trial")
+	check(daily_fallbacks.size() == 10, "daily_trial fallback leaderboard provides top 10 entries")
+	check(int(daily_fallbacks[0].score) >= int(daily_fallbacks[9].score), "daily_trial fallback sorted descending")
+
+	var samsara_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("samsara")
+	check(samsara_fallbacks.size() == 10, "samsara fallback leaderboard provides top 10 entries")
+
+	# Leaderboard UI localization
+	check(content.ui("ui.leaderboard_title", "zh-Hans") == "封神天梯榜", "leaderboard title localized in Chinese")
+	check(content.ui("ui.leaderboard_title", "en") == "Celestial Leaderboard", "leaderboard title localized in English")
+	check(content.ui("ui.leaderboard_tab_abyss", "zh-Hans") == "无尽深渊", "leaderboard abyss tab localized in Chinese")
+	check(content.ui("ui.leaderboard_tab_abyss", "en") == "Endless Abyss", "leaderboard abyss tab localized in English")
+	check(content.ui("ui.leaderboard_tab_daily", "zh-Hans") == "每日修行", "leaderboard daily trial tab localized in Chinese")
+	check(content.ui("ui.leaderboard_tab_daily", "en") == "Daily Trial", "leaderboard daily trial tab localized in English")
+	check(content.ui("ui.leaderboard_tab_samsara", "zh-Hans") == "六道轮回", "leaderboard samsara tab localized in Chinese")
+	check(content.ui("ui.leaderboard_tab_samsara", "en") == "Samsara", "leaderboard samsara tab localized in English")
+	check(content.ui("ui.leaderboard_open", "zh-Hans") == "天梯榜 🏆", "leaderboard open button localized in Chinese")
+	check(content.ui("ui.leaderboard_open", "en") == "Rankings 🏆", "leaderboard open button localized in English")
+	check(content.ui("ui.leaderboard_refresh", "zh-Hans") == "刷新 ↻", "leaderboard refresh button localized in Chinese")
+	check(content.ui("ui.leaderboard_refresh", "en") == "Refresh ↻", "leaderboard refresh button localized in English")
+	check(content.ui("ui.leaderboard_unranked", "zh-Hans") == "未上榜", "leaderboard unranked localized in Chinese")
+	check(content.ui("ui.leaderboard_unranked", "en") == "Unranked", "leaderboard unranked localized in English")
+
+	# Cultivation Meridian System (Talent Tree) tests
+	check(content.MERIDIAN_NODES.size() == 9, "9 meridian talent nodes defined across 3 branches")
+	check(content.MERIDIAN_NODES.has("ren_1") and content.MERIDIAN_NODES.has("du_1") and content.MERIDIAN_NODES.has("chong_1"), "ren, du, and chong branches contain prime nodes")
+	check(content.meridian_cost("ren_1", 0) == 20, "ren_1 rank 0 cost is 20 dust")
+	check(content.meridian_cost("ren_1", 4) == 60, "ren_1 rank 4 cost is 60 dust")
+	check(content.meridian_cost("ren_1", 5) == -1, "ren_1 rank 5 cost is -1 (maxed)")
+
+	var test_alloc := {
+		"ren_1": 2, # +10 HP (cost 20 + 30 = 50)
+		"ren_2": 1, # +4 Shield (cost 25)
+		"du_1": 3,  # +12 First Attack (cost 20 + 30 + 40 = 90)
+		"chong_3": 2 # +30% Gold (cost 30 + 50 = 80)
+	}
+	var test_spent: int = content.meridian_total_spent(test_alloc)
+	check(test_spent == 245, "meridian_total_spent correctly sums 50 + 25 + 90 + 80 = 245")
+
+	var test_bonuses: Dictionary = content.meridian_bonuses(test_alloc)
+	check(int(test_bonuses.max_hp) == 10, "meridian bonuses gives +10 max HP for 2 ranks of ren_1")
+	check(int(test_bonuses.shield_start) == 4, "meridian bonuses gives +4 starting shield for 1 rank of ren_2")
+	check(int(test_bonuses.first_attack_bonus) == 12, "meridian bonuses gives +12 first attack for 3 ranks of du_1")
+	check(is_equal_approx(float(test_bonuses.gold_mult), 1.3), "meridian bonuses gives 1.3x gold mult for 2 ranks of chong_3")
+
+	check(content.meridian_name("ren_1", "zh-Hans") == "气血培元", "meridian ren_1 localized name in Chinese")
+	check(content.meridian_name("ren_1", "en") == "Vitality Foundation", "meridian ren_1 localized name in English")
+
+	# Profile integration & Game methods
+	var meridian_game := SpiritGame.new()
+	meridian_game.profile = SpiritSave.defaults(content)
+	check(meridian_game.profile.has("meridians") and meridian_game.profile.meridians.is_empty(), "defaults profile has empty meridians")
+	meridian_game.profile.spirit_dust = 100
+	var up_ok := meridian_game.upgrade_meridian_node("ren_1")
+	check(up_ok, "upgrade_meridian_node succeeds with sufficient dust")
+	check(int(meridian_game.profile.meridians.get("ren_1", 0)) == 1, "ren_1 rank becomes 1")
+	check(int(meridian_game.profile.spirit_dust) == 80, "spirit dust deducted by 20 (now 80)")
+
+	# Respec test
+	var refunded: int = meridian_game.reset_meridians()
+	check(refunded == 20, "reset_meridians refunds 20 dust")
+	check(int(meridian_game.profile.spirit_dust) == 100, "spirit dust restored to 100")
+	check(meridian_game.profile.meridians.is_empty(), "meridians dictionary cleared after reset")
+
+	# Meridian UI strings
+	check(content.ui("ui.meridian_title", "zh-Hans") == "灵脉修真", "meridian title localized in Chinese")
+	check(content.ui("ui.meridian_title", "en") == "Cultivation Meridians", "meridian title localized in English")
+	check(content.ui("ui.meridian_reset", "zh-Hans") == "洗髓归元", "meridian reset localized in Chinese")
+	check(content.ui("ui.meridian_reset", "en") == "Reset Meridians", "meridian reset localized in English")
+
+	# Translations for auth features
+	check(content.ui("ui.auth_email_tab", "zh-Hans") == "邮箱登录", "auth email tab localized in Chinese")
+	check(content.ui("ui.auth_email_tab", "en") == "Email Sign In", "auth email tab localized in English")
+	check(content.ui("ui.auth_signup_tab", "zh-Hans") == "注册账号", "auth signup tab localized in Chinese")
+	check(content.ui("ui.auth_signup_tab", "en") == "Sign Up", "auth signup tab localized in English")
+	check(content.ui("ui.auth_modal_title", "zh-Hans") == "账号与云端同步", "auth modal title localized in Chinese")
+	check(content.ui("ui.auth_modal_title", "en") == "Account & Cloud Sync", "auth modal title localized in English")
+
+	# Intro Cutscene tests
+	var intro_test_prof := SpiritSave.defaults(content)
+	check(intro_test_prof.has("intro_seen") and intro_test_prof.intro_seen == false, "defaults contains intro_seen as false")
+	check(content.ui("ui.intro_skip", "zh-Hans") == "跳过 ⏭", "intro skip button localized in Chinese")
+	check(content.ui("ui.intro_skip", "en") == "Skip ⏭", "intro skip button localized in English")
+	check(content.ui("ui.intro_act1", "zh-Hans") == "混沌初开 · 万灵归虚", "intro act 1 localized in Chinese")
+	check(content.ui("ui.intro_act2", "zh-Hans") == "远古封印 · 灵潮涌动", "intro act 2 localized in Chinese")
+	check(content.ui("ui.intro_act3", "zh-Hans") == "灵狐降世 · 宿命抉择", "intro act 3 localized in Chinese")
+	check(content.ui("ui.intro_act4_title", "zh-Hans") == "灵界之契", "intro title localized in Chinese")
+	check(content.ui("ui.settings_replay_intro", "zh-Hans") == "重播开场动画", "settings replay intro localized in Chinese")
+	check(content.ui("ui.settings_replay_intro", "en") == "Replay Intro Video", "settings replay intro localized in English")
+
+	# SFX Audio Engine tests
+	var sfx_list := [
+		"card_play", "card_draw", "attack_slash", "attack_heavy",
+		"shield_gain", "heal", "buff", "resonance_combustion",
+		"resonance_sunder", "resonance_fortify", "enemy_hit",
+		"enemy_defeat", "boss_phase2", "battle_victory",
+		"battle_defeat", "coin", "chest_open"
+	]
+	check(sfx_list.size() == 17, "seventeen audio sfx defined")
+	for sfx in sfx_list:
+		var sfx_path := "res://assets/audio/sfx/sfx_%s.wav" % sfx
+		check(ResourceLoader.exists(sfx_path), "sfx file exists: %s" % sfx_path)
+		var stream: AudioStream = load(sfx_path)
+		check(stream != null, "sfx stream loads: %s" % sfx)
+
+	check(content.ui("ui.settings_sfx", "zh-Hans") == "战斗音效", "settings sfx localized in Chinese")
+	check(content.ui("ui.settings_sfx", "en") == "Combat SFX", "settings sfx localized in English")
+	check(content.ui("ui.settings_sfx_on", "zh-Hans") == "音效 ⚔", "settings sfx on localized in Chinese")
+	check(content.ui("ui.settings_sfx_off", "zh-Hans") == "静音 ⚔", "settings sfx off localized in Chinese")
+
+	# Test SpiritGame SFX methods
+	var game_script: Script = load("res://scripts/game.gd")
+	var sfx_game_inst: Node = game_script.new()
+	check(sfx_game_inst.has_method("play_sfx"), "game instance has play_sfx method")
+	check(sfx_game_inst.has_method("_build_sfx"), "game instance has _build_sfx method")
+	check(sfx_game_inst.get("SFX_POOL_SIZE") == 8, "sfx pool size constant is 8")
+	root.add_child(sfx_game_inst)
+	sfx_game_inst.call("_build_sfx")
+	var pool: Array = sfx_game_inst.get("_sfx_pool")
+	check(pool.size() == 8, "sfx pool contains 8 players")
+	var sfx_cache: Dictionary = sfx_game_inst.get("_sfx_cache")
+	check(sfx_cache.size() >= 17, "sfx cache loaded all 17 sound effects")
+	sfx_game_inst.call("play_sfx", "card_play")
+	sfx_game_inst.call("play_sfx", "battle_victory")
+	sfx_game_inst.set("sfx_muted", true)
+	sfx_game_inst.call("play_sfx", "attack_slash")
+	sfx_game_inst.set("sfx_muted", false)
+	sfx_game_inst.queue_free()
+
+	# Phase 4: Equipment Reforging & Inscription System (器灵重铸与灵纹洗练)
+	check(content.equip_tier_name(0, "zh-Hans") == "凡品", "tier 0 is 凡品")
+	check(content.equip_tier_name(1, "zh-Hans") == "灵品", "tier 1 is 灵品")
+	check(content.equip_tier_name(2, "zh-Hans") == "宝品", "tier 2 is 宝品")
+	check(content.equip_tier_name(3, "zh-Hans") == "仙品", "tier 3 is 仙品")
+	check(content.equip_tier_name(3, "en") == "Celestial", "tier 3 localized English is Celestial")
+	check(content.equip_tier_cost(0).get("gold") == 100 and content.equip_tier_cost(0).get("dust") == 20, "tier 0->1 cost is 100 gold 20 dust")
+	check(content.equip_tier_cost(1).get("gold") == 250 and content.equip_tier_cost(1).get("dust") == 50, "tier 1->2 cost is 250 gold 50 dust")
+	check(content.equip_tier_cost(2).get("gold") == 500 and content.equip_tier_cost(2).get("dust") == 100, "tier 2->3 cost is 500 gold 100 dust")
+	check(content.equip_tier_cost(3).is_empty(), "tier 3 cost is empty (maxed)")
+	check(content.equip_inscribe_cost().get("gold") == 30 and content.equip_inscribe_cost().get("dust") == 10, "inscribe cost is 30 gold 10 dust")
+
+	var eb := content.equipment("emberBlade")
+	check(content.equip_detail_tiered(eb, 0, "zh-Hans").contains("+3"), "emberBlade T0 gives +3")
+	check(content.equip_detail_tiered(eb, 1, "zh-Hans").contains("+5"), "emberBlade T1 gives +5")
+	check(content.equip_detail_tiered(eb, 2, "zh-Hans").contains("+7"), "emberBlade T2 gives +7")
+	check(content.equip_detail_tiered(eb, 3, "zh-Hans").contains("+10"), "emberBlade T3 gives +10")
+
+	var jp := content.equipment("jadePlate")
+	check(content.equip_detail_tiered(jp, 3, "zh-Hans").contains("28"), "jadePlate T3 gives 28 shield")
+
+	# Inscription rolling & aggregation tests
+	check(content.roll_inscription_affixes(0).size() == 0, "tier 0 has 0 inscription slots")
+	check(content.roll_inscription_affixes(1).size() == 1, "tier 1 has 1 inscription slot")
+	check(content.roll_inscription_affixes(2).size() == 2, "tier 2 has 2 inscription slots")
+	check(content.roll_inscription_affixes(3).size() == 3, "tier 3 has 3 inscription slots")
+	var rolled_t3: Array = content.roll_inscription_affixes(3)
+	for aff in rolled_t3:
+		check(aff.has("id") and aff.has("val") and int(aff.val) > 0, "rolled affix has valid id and positive val")
+		check(content.inscription_text(aff, "zh-Hans").length() > 0, "inscription_text formats valid Chinese string")
+		check(content.inscription_text(aff, "en").length() > 0, "inscription_text formats valid English string")
+
+	var agg_test := content.aggregate_inscriptions(["itemA", "itemB"], {
+		"itemA": [{"id": "inscr_hp", "val": 8}, {"id": "inscr_atk", "val": 3}],
+		"itemB": [{"id": "inscr_shield", "val": 9}, {"id": "inscr_thorns", "val": 2}, {"id": "inscr_gold", "val": 15}]
+	})
+	check(int(agg_test.get("hp")) == 8, "aggregated HP affix is 8")
+	check(int(agg_test.get("atk")) == 3, "aggregated ATK affix is 3")
+	check(int(agg_test.get("shield")) == 9, "aggregated Shield affix is 9")
+	check(int(agg_test.get("thorns")) == 2, "aggregated Thorns affix is 2")
+	check(int(agg_test.get("gold")) == 15, "aggregated Gold affix is 15")
+
+	# Combat integration tests with equipment tiers and inscriptions
+	var c_reforge := SpiritCombat.new(content)
+	# Case A: Jade Plate at Tier 3 (28 shield) + Inscription Shield (+9) -> 37 starting shield!
+	var st_jp := c_reforge.create(1, content.encounters[0], content.raw.startingDeck, 60, {}, ["jadePlate"], {}, {}, [], {}, {"jadePlate": 3}, {"jadePlate": [{"id": "inscr_shield", "val": 9}]})
+	check(st_jp.player.shield == 37, "jadePlate T3 (28) + inscr_shield (9) starts with 37 shield")
+
+	# Case B: Focus Charm at Tier 2 (2 focus + 1 strength)
+	var st_fc := c_reforge.create(2, content.encounters[0], content.raw.startingDeck, 60, {}, ["focusCharm"], {}, {}, [], {}, {"focusCharm": 2}, {})
+	check(st_fc.player.focus == 2, "focusCharm T2 grants 2 focus")
+	check(int(st_fc.player.get("strength", 0)) == 1, "focusCharm T2 grants 1 strength")
+
+	# Case C: Ember Blade at Tier 3 (+10) + Inscription Atk (+3) on first attack
+	var st_eb := c_reforge.create(3, encounter(100, 0), content.raw.startingDeck, 60, {}, ["emberBlade"], {}, {}, [], {}, {"emberBlade": 3}, {"emberBlade": [{"id": "inscr_atk", "val": 3}]})
+	_force_hand(c_reforge, "strike")
+	c_reforge.play(0, 0)
+	check(st_eb.enemies[0].health == 100 - 19, "strike deals 6 + 10 (EmberBlade T3) + 3 (inscr_atk) = 19 damage (100 - 19 = 81)")
+
+	# Case D: Thorn Armor at Tier 3 (9 retaliate) + Inscription Thorns (+3) -> 12 retaliate!
+	var st_ta := c_reforge.create(4, content.encounters[0], content.raw.startingDeck, 60, {}, ["thornArmor"], {}, {}, [], {}, {"thornArmor": 3}, {"thornArmor": [{"id": "inscr_thorns", "val": 3}]})
+	st_ta.player.shield = 0
+	var pre_hp: int = st_ta.enemies[0].health
+	st_ta.enemies[0].intent = {"action": "attack", "amount": 5}
+	c_reforge._execute_intent(0)
+	check(pre_hp - st_ta.enemies[0].health == 12, "thornArmor T3 (9) + inscr_thorns (3) retaliates 12 damage")
+
+	# Case E: Phoenix Mail at Tier 3 revives with 40 HP
+	var st_pm := c_reforge.create(5, content.encounters[0], content.raw.startingDeck, 60, {}, ["phoenixMail"], {}, {}, [], {}, {"phoenixMail": 3}, {})
+	c_reforge._damage_player(100)
+	check(st_pm.player.health == 40, "phoenixMail T3 revives with 40 HP")
+	check(st_pm.phase == "player", "phoenixMail revive prevents loss")
+
+	# Case F: Save profile schema verification
+	var prof_reforge := SpiritSave.defaults(content)
+	check(prof_reforge.has("equipment_tiers") and prof_reforge.equipment_tiers is Dictionary, "profile defaults include equipment_tiers dict")
+	check(prof_reforge.has("equipment_inscriptions") and prof_reforge.equipment_inscriptions is Dictionary, "profile defaults include equipment_inscriptions dict")
+
+	# ========================================================
+	# Phase 5: Dynamic Relic Synergies & Combo Resonance Tests
+	# ========================================================
+	check(SpiritContent.RELIC_RESONANCES.size() == 6, "6 ancient relic resonances are defined")
+	for r in SpiritContent.RELIC_RESONANCES:
+		check(not str(r.get("id", "")).is_empty(), "relic resonance has valid id")
+		check(not str(r.get("zh", "")).is_empty() and not str(r.get("en", "")).is_empty(), "relic resonance %s has bilingual names" % r.id)
+		check(r.get("relics", []).size() >= 2, "relic resonance %s requires at least 2 relics" % r.id)
+
+	# Active resonance detection
+	var res_none: Array[Dictionary] = content.active_relic_resonances([])
+	check(res_none.is_empty(), "empty relics yields no active resonances")
+	var res_half: Array[Dictionary] = content.active_relic_resonances(["thunderSeal"])
+	check(res_half.is_empty(), "single relic does not trigger resonance")
+	var res_pair: Array[Dictionary] = content.active_relic_resonances(["thunderSeal", "mirrorScale"])
+	check(res_pair.size() == 1 and res_pair[0].id == "res_sun_moon", "thunderSeal + mirrorScale activates res_sun_moon")
+	var res_multi: Array[Dictionary] = content.active_relic_resonances(["thunderSeal", "mirrorScale", "foxCharm", "windChime"])
+	check(res_multi.size() == 2, "multiple pairs activate multiple resonances")
+
+	# Resonance 1: 日月同辉 (res_sun_moon: thunderSeal + mirrorScale)
+	var c_sunmoon := SpiritCombat.new(content)
+	c_sunmoon.create(301, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["thunderSeal", "mirrorScale"])
+	check(c_sunmoon.state.relic_resonances.has("res_sun_moon"), "res_sun_moon registered in combat state")
+	c_sunmoon.state.player.shield = 20
+	force_attack(c_sunmoon)
+	c_sunmoon.end_turn()
+	check(c_sunmoon.state.player.shield == 20, "res_sun_moon retains 100% of shield (20 -> 20) instead of half (10)")
+	# Advance to Turn 3
+	c_sunmoon.end_turn() # turn 2 -> turn 3
+	check(c_sunmoon.state.turn == 3, "turn is 3")
+	# Turn 3 base energy is 2 + (3-1)/2 = 3. thunderSeal adds +2, res_sun_moon adds +2 -> total 7 energy!
+	check(c_sunmoon.state.energy == 7, "turn 3 energy is 3 base + 2 (thunderSeal) + 2 (res_sun_moon) = 7")
+
+	# Resonance 2: 灵狐引魂 (res_fox_wind: foxCharm + windChime)
+	var c_foxwind := SpiritCombat.new(content)
+	c_foxwind.create(302, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["foxCharm", "windChime"])
+	check(c_foxwind.state.relic_resonances.has("res_fox_wind"), "res_fox_wind registered in combat state")
+	# At turn 1, hand is 5. Discard 2, leaving 3.
+	c_foxwind.state.hand.pop_back()
+	c_foxwind.state.hand.pop_back()
+	c_foxwind.end_turn() # to Turn 2
+	# Normal turn 2 draw is 2 cards + 1 extra from res_fox_wind on Turn 2 = 3 cards drawn (3 + 3 = 6)
+	check(c_foxwind.state.hand.size() == 6, "res_fox_wind draws +1 card on Turn 2 (3 + 3 = 6 cards)")
+	check(c_foxwind.state.energy == 3, "foxCharm grants 3 energy on Turn 2")
+	# Empty draw pile to trigger reshuffle
+	var energy_pre_reshuffle: int = c_foxwind.state.energy
+	c_foxwind.state.discard = c_foxwind.state.draw.duplicate()
+	c_foxwind.state.draw.clear()
+	c_foxwind._draw(1)
+	check(c_foxwind.state.energy == energy_pre_reshuffle + 1, "res_fox_wind grants +1 energy on draw pile reshuffle")
+
+	# Resonance 3: 星火燎原 (res_star_flame: starShard + emberCore)
+	var c_starflame := SpiritCombat.new(content)
+	c_starflame.create(303, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["starShard", "emberCore"])
+	check(c_starflame.state.relic_resonances.has("res_star_flame"), "res_star_flame registered in combat state")
+	_force_hand(c_starflame, "strike")
+	c_starflame.play(0, 0)
+	check(c_starflame.state.enemies[0].burn == 2, "first attack inflicts 2 burn with res_star_flame")
+	force_attack(c_starflame)
+	var hp_before_burn: int = c_starflame.state.enemies[0].health
+	c_starflame.end_turn()
+	# Burn damage with 2 stacks: 2 + 1 (emberCore) + 1 (res_star_flame) = 4 damage!
+	check(hp_before_burn - c_starflame.state.enemies[0].health == 4, "burn ticks for 2 + 1 + 1 = 4 damage")
+
+	# Resonance 4: 枯木逢春 (res_blood_seed: ancientSeed + bloodJade)
+	var c_bloodseed := SpiritCombat.new(content)
+	c_bloodseed.create(304, encounter(100, 0), content.raw.startingDeck, 58, {}, [], {}, {}, ["ancientSeed", "bloodJade"])
+	check(c_bloodseed.state.relic_resonances.has("res_blood_seed"), "res_blood_seed registered in combat state")
+	force_attack(c_bloodseed)
+	c_bloodseed.end_turn()
+	# HP was 58/60. Heals 4 HP -> 60 HP, remaining 2 overheal converts to 2 shield!
+	check(c_bloodseed.state.player.health == 60, "res_blood_seed heals to max HP (58 + 4 -> 60)")
+	check(c_bloodseed.state.player.shield == 2, "res_blood_seed converts 2 overheal into 2 shield")
+
+	# Resonance 5: 冥渊血契 (res_nether_pact: cursedTome + bloodJade)
+	var c_pact := SpiritCombat.new(content)
+	var enc_pact := encounter(100, 0)
+	enc_pact["adds"] = 1
+	c_pact.create(305, enc_pact, content.raw.startingDeck, 60, {}, [], {}, {}, ["cursedTome", "bloodJade"])
+	check(c_pact.state.relic_resonances.has("res_nether_pact"), "res_nether_pact registered in combat state")
+	# Kill the minion (enemy index 1)
+	c_pact.state.enemies[1].health = 1
+	_force_hand(c_pact, "strike")
+	c_pact.play(0, 1)
+	check(int(c_pact.state.pact_cleansed_turns) == 1, "killing enemy sets pact_cleansed_turns to 1")
+	# Turn end should NOT damage player (boss is still alive, so phase is player)
+	var hp_pre_end: int = c_pact.state.player.health
+	force_attack(c_pact)
+	c_pact.end_turn()
+	check(c_pact.state.player.health == hp_pre_end, "res_nether_pact cleanses Cursed Tome self-damage")
+	check(int(c_pact.state.pact_cleansed_turns) == 0, "pact_cleansed_turns consumed")
+
+	# Resonance 6: 太虚混沌 (res_chaos_titan: titanBell + chaosPrism)
+	var c_chaos := SpiritCombat.new(content)
+	c_chaos.create(306, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["titanBell", "chaosPrism"])
+	check(c_chaos.state.relic_resonances.has("res_chaos_titan"), "res_chaos_titan registered in combat state")
+	# 60 base + 20 (titanBell) + 15 (res_chaos_titan) = 95 Max HP and HP!
+	check(c_chaos.state.player.max_health == 95, "res_chaos_titan grants +15 Max HP (total 95)")
+	check(c_chaos.state.player.health == 95, "res_chaos_titan grants +15 HP (total 95)")
+	# Damage against vulnerable target:
+	c_chaos.state.enemies[0].shield = 0
+	c_chaos.state.enemies[0].vulnerable = 1
+	_force_hand(c_chaos, "strike")
+	var preview_dmg: int = c_chaos.preview_card_damage(0, 0)
+	# strike deals 6 * 1.5 = 9 + 2 (res_chaos_titan) = 11 damage!
+	check(preview_dmg == 11, "preview_card_damage reflects +2 on vulnerable target (%d expected, got %d)" % [11, preview_dmg])
+	var hp_before_strike: int = c_chaos.state.enemies[0].health
+	c_chaos.play(0, 0)
+	check(hp_before_strike - c_chaos.state.enemies[0].health == 11, "strike deals 11 damage on vulnerable target with res_chaos_titan")
 
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)

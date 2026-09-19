@@ -159,6 +159,107 @@ const EQUIPMENT = [
 	{"id":"focusCharm","slot":"charm","icon":"◉","icon_kind":"pendant","icon_flourish":"spiral","zh":"凝神灵镜","en":"Focus Charm","detail":"战斗开始时获得 1 层凝神。","detail_en":"Start battle with 1 Focus."},
 ]
 
+const EQUIPMENT_TIER_NAMES = [
+	{"zh": "凡品", "en": "Mundane", "color": "8fa2a6"},
+	{"zh": "灵品", "en": "Spiritual", "color": "5ec880"},
+	{"zh": "宝品", "en": "Precious", "color": "58b8ff"},
+	{"zh": "仙品", "en": "Celestial", "color": "ffd246"}
+]
+
+const EQUIPMENT_TIER_COSTS = [
+	{"gold": 100, "dust": 20},
+	{"gold": 250, "dust": 50},
+	{"gold": 500, "dust": 100}
+]
+
+const EQUIPMENT_INSCRIBE_COST = {"gold": 30, "dust": 10}
+
+const EQUIPMENT_TIER_DATA = {
+	"emberBlade": [
+		{"bonus": 3, "zh": "每回合第一张攻击牌伤害 +3。", "en": "First attack each turn deals +3 damage."},
+		{"bonus": 5, "zh": "每回合第一张攻击牌伤害 +5。", "en": "First attack each turn deals +5 damage."},
+		{"bonus": 7, "zh": "每回合第一张攻击牌伤害 +7。", "en": "First attack each turn deals +7 damage."},
+		{"bonus": 10, "zh": "每回合第一张攻击牌伤害 +10。", "en": "First attack each turn deals +10 damage."}
+	],
+	"jadePlate": [
+		{"shield": 8, "zh": "战斗开始时获得 8 点护盾。", "en": "Start battle with 8 Shield."},
+		{"shield": 14, "zh": "战斗开始时获得 14 点护盾。", "en": "Start battle with 14 Shield."},
+		{"shield": 20, "zh": "战斗开始时获得 20 点护盾。", "en": "Start battle with 20 Shield."},
+		{"shield": 28, "zh": "战斗开始时获得 28 点护盾。", "en": "Start battle with 28 Shield."}
+	],
+	"soulPendant": [
+		{"heal": 2, "max_times": 3, "zh": "击败敌人回复 2 点生命，每场最多 3 次。", "en": "Heal 2 HP on kill, up to 3 times per battle."},
+		{"heal": 3, "max_times": 3, "zh": "击败敌人回复 3 点生命，每场最多 3 次。", "en": "Heal 3 HP on kill, up to 3 times per battle."},
+		{"heal": 4, "max_times": 4, "zh": "击败敌人回复 4 点生命，每场最多 4 次。", "en": "Heal 4 HP on kill, up to 4 times per battle."},
+		{"heal": 6, "max_times": 4, "zh": "击败敌人回复 6 点生命，每场最多 4 次。", "en": "Heal 6 HP on kill, up to 4 times per battle."}
+	],
+	"moonStaff": [
+		{"refund": 1, "shield": 0, "zh": "每回合第一张策略牌返还 1 点能量。", "en": "First Tactic each turn refunds 1 Energy."},
+		{"refund": 1, "shield": 2, "zh": "每回合第一张策略牌返还 1 点能量并获得 2 点护盾。", "en": "First Tactic each turn refunds 1 Energy and grants 2 Shield."},
+		{"refund": 1, "shield": 4, "zh": "每回合第一张策略牌返还 1 点能量并获得 4 点护盾。", "en": "First Tactic each turn refunds 1 Energy and grants 4 Shield."},
+		{"refund": 1, "shield": 7, "zh": "每回合第一张策略牌返还 1 点能量并获得 7 点护盾。", "en": "First Tactic each turn refunds 1 Energy and grants 7 Shield."}
+	],
+	"thornArmor": [
+		{"retaliate": 2, "zh": "受到敌方伤害后反击 2 点。", "en": "Retaliate 2 damage when hit by enemies."},
+		{"retaliate": 4, "zh": "受到敌方伤害后反击 4 点。", "en": "Retaliate 4 damage when hit by enemies."},
+		{"retaliate": 6, "zh": "受到敌方伤害后反击 6 点。", "en": "Retaliate 6 damage when hit by enemies."},
+		{"retaliate": 9, "zh": "受到敌方伤害后反击 9 点。", "en": "Retaliate 9 damage when hit by enemies."}
+	],
+	"tideCharm": [
+		{"draw": 1, "shield": 0, "zh": "每回合首次获得护盾时抽 1 张牌。", "en": "First Shield gained each turn draws 1 card."},
+		{"draw": 1, "shield": 2, "zh": "每回合首次获得护盾时抽 1 张牌并额外获得 2 点护盾。", "en": "First Shield gained each turn draws 1 card and gains 2 extra Shield."},
+		{"draw": 1, "shield": 4, "zh": "每回合首次获得护盾时抽 1 张牌并额外获得 4 点护盾。", "en": "First Shield gained each turn draws 1 card and gains 4 extra Shield."},
+		{"draw": 1, "shield": 6, "zh": "每回合首次获得护盾时抽 1 张牌并额外获得 6 点护盾。", "en": "First Shield gained each turn draws 1 card and gains 6 extra Shield."}
+	],
+	"stoneSpear": [
+		{"bonus": 0, "zh": "攻击牌无视敌方护盾。", "en": "Attacks pierce enemy Shield."},
+		{"bonus": 1, "zh": "攻击牌无视敌方护盾，攻击伤害 +1。", "en": "Attacks pierce enemy Shield, and deal +1 damage."},
+		{"bonus": 2, "zh": "攻击牌无视敌方护盾，攻击伤害 +2。", "en": "Attacks pierce enemy Shield, and deal +2 damage."},
+		{"bonus": 4, "zh": "攻击牌无视敌方护盾，攻击伤害 +4。", "en": "Attacks pierce enemy Shield, and deal +4 damage."}
+	],
+	"mistCloak": [
+		{"shield": 0, "zh": "每第三次敌方攻击伤害归零。", "en": "Every 3rd enemy attack deals 0 damage."},
+		{"shield": 3, "zh": "每第三次敌方攻击伤害归零并获得 3 点护盾。", "en": "Every 3rd enemy attack deals 0 damage and grants 3 Shield."},
+		{"shield": 6, "zh": "每第三次敌方攻击伤害归零并获得 6 点护盾。", "en": "Every 3rd enemy attack deals 0 damage and grants 6 Shield."},
+		{"shield": 10, "zh": "每第三次敌方攻击伤害归零并获得 10 点护盾。", "en": "Every 3rd enemy attack deals 0 damage and grants 10 Shield."}
+	],
+	"fortuneSeal": [
+		{"mult": 1.15, "zh": "胜利金币增加 15%。", "en": "Gold rewards increased by 15%."},
+		{"mult": 1.25, "zh": "胜利金币增加 25%。", "en": "Gold rewards increased by 25%."},
+		{"mult": 1.35, "zh": "胜利金币增加 35%。", "en": "Gold rewards increased by 35%."},
+		{"mult": 1.50, "zh": "胜利金币增加 50%。", "en": "Gold rewards increased by 50%."}
+	],
+	"stormBow": [
+		{"draw": 1, "shield": 0, "zh": "击败敌人时抽 1 张牌。", "en": "Draw 1 card on kill."},
+		{"draw": 1, "shield": 2, "zh": "击败敌人时抽 1 张牌并获得 2 点护盾。", "en": "Draw 1 card on kill and gain 2 Shield."},
+		{"draw": 1, "shield": 4, "zh": "击败敌人时抽 1 张牌并获得 4 点护盾。", "en": "Draw 1 card on kill and gain 4 Shield."},
+		{"draw": 2, "shield": 5, "zh": "击败敌人时抽 2 张牌并获得 5 点护盾。", "en": "Draw 2 cards on kill and gain 5 Shield."}
+	],
+	"phoenixMail": [
+		{"revive_hp": 15, "zh": "每场一次，以 15 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 15 HP."},
+		{"revive_hp": 22, "zh": "每场一次，以 22 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 22 HP."},
+		{"revive_hp": 30, "zh": "每场一次，以 30 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 30 HP."},
+		{"revive_hp": 40, "zh": "每场一次，以 40 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 40 HP."}
+	],
+	"focusCharm": [
+		{"focus": 1, "strength": 0, "zh": "战斗开始时获得 1 层凝神。", "en": "Start battle with 1 Focus."},
+		{"focus": 2, "strength": 0, "zh": "战斗开始时获得 2 层凝神。", "en": "Start battle with 2 Focus."},
+		{"focus": 2, "strength": 1, "zh": "战斗开始时获得 2 层凝神与 1 点力量。", "en": "Start battle with 2 Focus and 1 Strength."},
+		{"focus": 3, "strength": 1, "zh": "战斗开始时获得 3 层凝神与 1 点力量。", "en": "Start battle with 3 Focus and 1 Strength."}
+	]
+}
+
+const INSCRIPTION_AFFIXES = [
+	{"id": "inscr_hp", "name_zh": "气血", "name_en": "Vitality", "values": [3, 5, 8], "fmt_zh": "生命上限 +%d", "fmt_en": "Max HP +%d"},
+	{"id": "inscr_shield", "name_zh": "坚甲", "name_en": "Warding", "values": [3, 6, 9], "fmt_zh": "开局护盾 +%d", "fmt_en": "Start Shield +%d"},
+	{"id": "inscr_atk", "name_zh": "破煞", "name_en": "Breaker", "values": [1, 2, 3], "fmt_zh": "首击伤害 +%d", "fmt_en": "First Attack +%d Dmg"},
+	{"id": "inscr_thorns", "name_zh": "逆鳞", "name_en": "Thorns", "values": [1, 2, 3], "fmt_zh": "受击反伤 +%d", "fmt_en": "Retaliate +%d Dmg"},
+	{"id": "inscr_gold", "name_zh": "聚财", "name_en": "Wealth", "values": [5, 10, 15], "fmt_zh": "胜利金币 +%d%%", "fmt_en": "Victory Gold +%d%%"},
+	{"id": "inscr_dust", "name_zh": "凝尘", "name_en": "Stardust", "values": [1, 2, 3], "fmt_zh": "胜利灵尘 +%d", "fmt_en": "Victory Dust +%d"},
+	{"id": "inscr_heal", "name_zh": "回元", "name_en": "Recovery", "values": [1, 1, 2], "fmt_zh": "回合回复 +%d 气血", "fmt_en": "Restore +%d HP/Turn"},
+	{"id": "inscr_crit", "name_zh": "凌厉", "name_en": "Ferocity", "values": [15, 25, 40], "fmt_zh": "首击暴击率 +%d%%", "fmt_en": "First Atk Crit +%d%%"}
+]
+
 # Quest "type" values are the vocabulary game.gd's _advance_quest() understands. Each is
 # tied to a signal that already exists in the game (a card played, a chest opened, a
 # purchase made) rather than anything new the engine has to emit.
@@ -208,6 +309,69 @@ const RELICS = [
 # reward for the hardest fight in a chapter, not something that can also drop from a
 # mid-chapter boss.
 const BOSS_RELIC_IDS = ["cursedTome", "titanBell", "chaosPrism"]
+
+const RELIC_RESONANCES = [
+	{
+		"id": "res_sun_moon",
+		"icon": "☯",
+		"color": "ffe08a",
+		"relics": ["thunderSeal", "mirrorScale"],
+		"zh": "日月同辉",
+		"en": "Sun & Moon Harmony",
+		"detail": "每 3 回合额外获得 2 点能量（共+4 点），且回合结束保留 100% 护盾。",
+		"detail_en": "Gain +2 extra Energy every 3rd turn (+4 total), and retain 100% Shield at turn end."
+	},
+	{
+		"id": "res_fox_wind",
+		"icon": "✦",
+		"color": "78e9ff",
+		"relics": ["foxCharm", "windChime"],
+		"zh": "灵狐引魂",
+		"en": "Fox Spirit Guidance",
+		"detail": "抽牌堆洗牌时获得 1 点能量；第 2 回合额外多摸 1 张牌。",
+		"detail_en": "Gain 1 Energy when draw pile reshuffles; draw +1 extra card on Turn 2."
+	},
+	{
+		"id": "res_star_flame",
+		"icon": "♨",
+		"color": "ff9868",
+		"relics": ["starShard", "emberCore"],
+		"zh": "星火燎原",
+		"en": "Blazing Star Shards",
+		"detail": "首张攻击牌施加 2 层燃烧；燃烧每层结算伤害额外 +1 点（共+2 点）。",
+		"detail_en": "First attack each turn applies 2 Burn; Burn deals +1 extra damage per stack (+2 total)."
+	},
+	{
+		"id": "res_blood_seed",
+		"icon": "❦",
+		"color": "8ff5cf",
+		"relics": ["ancientSeed", "bloodJade"],
+		"zh": "枯木逢春",
+		"en": "Blood & Arbor Vitality",
+		"detail": "每回合开始回复 4 点生命（替代原 2 点）；过量回复直接转化为等量护盾！",
+		"detail_en": "Restore 4 HP at start of turn (replaces 2 HP); any overheal is converted into Shield!"
+	},
+	{
+		"id": "res_nether_pact",
+		"icon": "🕮",
+		"color": "ff5577",
+		"relics": ["cursedTome", "bloodJade"],
+		"zh": "冥渊血契",
+		"en": "Nether Blood Pact",
+		"detail": "击败敌人时立即多抽 1 张牌，并免疫下一回合死灵禁典的反噬自伤！",
+		"detail_en": "Defeating an enemy draws 1 card and negates Cursed Tome self-damage for the next turn."
+	},
+	{
+		"id": "res_chaos_titan",
+		"icon": "💎",
+		"color": "b359ff",
+		"relics": ["titanBell", "chaosPrism"],
+		"zh": "太虚混沌",
+		"en": "Chaos Horizon",
+		"detail": "战斗开始额外获得 +15 最大生命与生命；对易伤敌人造成的所有伤害 +2 点。",
+		"detail_en": "Start battle with +15 extra Max HP and HP; all attacks deal +2 damage to Vulnerable targets."
+	}
+]
 
 # combat.gd's upgrade bonus is already a raw int add with no cap of its own (see
 # state.upgrades.get(card.id, 0) in _play_card/_resolve_effects/_preview_damage) — the cap
@@ -597,6 +761,185 @@ func samsara_title(count: int, language := "zh-Hans") -> String:
 	else:
 		return ("%d转极境天仙" % count) if language == "zh-Hans" else ("%dth Samsara (Celestial Lord)" % count)
 
+# ------------------------------------------------------------------------------
+# Cultivation Meridians (Talent Tree / 灵脉修真)
+# ------------------------------------------------------------------------------
+
+const MERIDIAN_NODES: Dictionary = {
+	# 任脉·气血 (Ren Meridian - Vitality & Defense)
+	"ren_1": {
+		"id": "ren_1",
+		"branch": "ren",
+		"max_rank": 5,
+		"costs": [20, 30, 40, 50, 60],
+		"name_zh": "气血培元",
+		"name_en": "Vitality Foundation",
+		"desc_zh": "壮大体魄气血，永久提升生命上限 +%d 点",
+		"desc_en": "Strengthen physical vessel, +%d Max HP",
+		"stat": "max_hp",
+		"stat_per_rank": 5
+	},
+	"ren_2": {
+		"id": "ren_2",
+		"branch": "ren",
+		"max_rank": 5,
+		"costs": [25, 35, 45, 55, 65],
+		"name_zh": "护体罡气",
+		"name_en": "Aegis Barrier",
+		"desc_zh": "经络生罡，每场战斗开局获得 +%d 点护盾",
+		"desc_en": "Form protective barrier, +%d Starting Shield",
+		"stat": "shield_start",
+		"stat_per_rank": 4
+	},
+	"ren_3": {
+		"id": "ren_3",
+		"branch": "ren",
+		"max_rank": 3,
+		"costs": [50, 75, 100],
+		"name_zh": "生生不息",
+		"name_en": "Endless Vitality",
+		"desc_zh": "气血循环，战斗中每回合恢复 %d 点生命值",
+		"desc_en": "Perpetual regeneration, restore %d HP per turn",
+		"stat": "heal_per_turn",
+		"stat_per_rank": 1
+	},
+
+	# 督脉·罡气 (Du Meridian - Offensive Might)
+	"du_1": {
+		"id": "du_1",
+		"branch": "du",
+		"max_rank": 5,
+		"costs": [20, 30, 40, 50, 60],
+		"name_zh": "首击重创",
+		"name_en": "Decisive Strike",
+		"desc_zh": "蓄力暴击，每回合首张攻击牌伤害 +%d 点",
+		"desc_en": "Concentrated burst, +%d First Attack Damage per turn",
+		"stat": "first_attack_bonus",
+		"stat_per_rank": 4
+	},
+	"du_2": {
+		"id": "du_2",
+		"branch": "du",
+		"max_rank": 3,
+		"costs": [30, 45, 60],
+		"name_zh": "真火附灵",
+		"name_en": "Soulflame Infusion",
+		"desc_zh": "周天真火，开局向全场敌人施加 %d 层灼烧",
+		"desc_en": "Ignite the battlefield, apply %d Starting Burn to all enemies",
+		"stat": "burn_start",
+		"stat_per_rank": 2
+	},
+	"du_3": {
+		"id": "du_3",
+		"branch": "du",
+		"max_rank": 2,
+		"costs": [60, 100],
+		"name_zh": "万象通天",
+		"name_en": "Celestial Might",
+		"desc_zh": "融汇罡气，战斗开局永久获得 +%d 点力量",
+		"desc_en": "Harness boundless power, +%d Starting Strength",
+		"stat": "strength_start",
+		"stat_per_rank": 1
+	},
+
+	# 冲脉·通灵 (Chong Meridian - Flow & Economy)
+	"chong_1": {
+		"id": "chong_1",
+		"branch": "chong",
+		"max_rank": 2,
+		"costs": [50, 100],
+		"name_zh": "聚灵开悟",
+		"name_en": "Spiritual Insight",
+		"desc_zh": "灵光一闪，战斗第 1 回合额外摸 %d 张牌",
+		"desc_en": "Lightning flash of mind, draw +%d bonus card on turn 1",
+		"stat": "draw_turn1",
+		"stat_per_rank": 1
+	},
+	"chong_2": {
+		"id": "chong_2",
+		"branch": "chong",
+		"max_rank": 1,
+		"costs": [80],
+		"name_zh": "天元灌顶",
+		"name_en": "Primal Surge",
+		"desc_zh": "天地注气，战斗第 1 回合额外获得 +1 点灵力",
+		"desc_en": "Surge of pure chi, +1 Energy on turn 1",
+		"stat": "energy_turn1",
+		"stat_per_rank": 1
+	},
+	"chong_3": {
+		"id": "chong_3",
+		"branch": "chong",
+		"max_rank": 3,
+		"costs": [30, 50, 70],
+		"name_zh": "点石成金",
+		"name_en": "Midas Fortune",
+		"desc_zh": "鸿运当头，通关战役结算时获得灵石加成 +%d%%",
+		"desc_en": "Abundant harvest, +%d%% bonus Gold from battle victories",
+		"stat": "gold_mult",
+		"stat_per_rank": 15
+	}
+}
+
+func meridian_node(node_id: String) -> Dictionary:
+	return MERIDIAN_NODES.get(node_id, {})
+
+func meridian_cost(node_id: String, current_rank: int) -> int:
+	var node: Dictionary = meridian_node(node_id)
+	if node.is_empty(): return -1
+	var costs: Array = node.get("costs", [])
+	if current_rank < 0 or current_rank >= costs.size(): return -1
+	return int(costs[current_rank])
+
+func meridian_total_spent(allocated: Dictionary) -> int:
+	var total: int = 0
+	for node_id in allocated:
+		var node: Dictionary = meridian_node(str(node_id))
+		if node.is_empty(): continue
+		var rank: int = mini(int(allocated[node_id]), int(node.get("max_rank", 0)))
+		var costs: Array = node.get("costs", [])
+		for r in rank:
+			if r < costs.size(): total += int(costs[r])
+	return total
+
+func meridian_bonuses(allocated: Dictionary) -> Dictionary:
+	var bonuses := {
+		"max_hp": 0,
+		"shield_start": 0,
+		"heal_per_turn": 0,
+		"first_attack_bonus": 0,
+		"burn_start": 0,
+		"strength_start": 0,
+		"draw_turn1": 0,
+		"energy_turn1": 0,
+		"gold_mult": 1.0,
+	}
+	for node_id in allocated:
+		var node: Dictionary = meridian_node(str(node_id))
+		if node.is_empty(): continue
+		var rank: int = mini(int(allocated[node_id]), int(node.get("max_rank", 0)))
+		if rank <= 0: continue
+		var stat: String = str(node.get("stat", ""))
+		var val_per_rank: int = int(node.get("stat_per_rank", 0))
+		if stat == "gold_mult":
+			bonuses.gold_mult += float(rank * val_per_rank) / 100.0
+		elif bonuses.has(stat):
+			bonuses[stat] += rank * val_per_rank
+	return bonuses
+
+func meridian_name(node_id: String, language := "zh-Hans") -> String:
+	var node: Dictionary = meridian_node(node_id)
+	if node.is_empty(): return node_id
+	return str(node.get("name_zh" if language == "zh-Hans" else "name_en", node_id))
+
+func meridian_desc(node_id: String, rank: int, language := "zh-Hans") -> String:
+	var node: Dictionary = meridian_node(node_id)
+	if node.is_empty(): return ""
+	var tmpl: String = str(node.get("desc_zh" if language == "zh-Hans" else "desc_en", ""))
+	var preview_rank: int = maxi(1, rank)
+	var val: int = preview_rank * int(node.get("stat_per_rank", 0))
+	return tmpl % val
+
 # Hero Mastery: every battle won with a hero equipped earns that hero XP (see
 # game.gd's _grant_mastery_xp), climbing a permanent Lv1-5 track. Each level adds one
 # always-on perk to a small, reusable vocabulary of battle-start/first-attack/per-turn hooks
@@ -895,6 +1238,32 @@ func relic_detail(item: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return item.get("detail_en", item.get("detail", ""))
 	return item.get("detail", "")
 
+func relic_resonance(id: String) -> Dictionary:
+	for item in RELIC_RESONANCES:
+		if item.id == id: return item
+	return {}
+
+func active_relic_resonances(relic_ids: Array) -> Array[Dictionary]:
+	var active: Array[Dictionary] = []
+	for res in RELIC_RESONANCES:
+		var req: Array = res.get("relics", [])
+		var has_all := true
+		for r_id in req:
+			if not relic_ids.has(r_id):
+				has_all = false
+				break
+		if has_all:
+			active.append(res)
+	return active
+
+func relic_resonance_name(res: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return res.get("en", res.get("zh", ""))
+	return res.get("zh", "")
+
+func relic_resonance_detail(res: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return res.get("detail_en", res.get("detail", ""))
+	return res.get("detail", "")
+
 func store_consumable(id: String) -> Dictionary:
 	for item in STORE_CONSUMABLES:
 		if item.id == id: return item
@@ -1181,6 +1550,12 @@ const UI_TEXT = {
 	"ui.camp_sub": {"zh-Hans":"档案、遗物与挑战阶梯", "en":"Dossier, relics, and challenge tiers"},
 	"ui.camp_tier": {"zh-Hans":"挑战等级 A%d", "en":"Challenge Tier A%d"},
 	"ui.camp_relics": {"zh-Hans":"已获得遗物 %d/5", "en":"Relics collected %d/5"},
+	"ui.relic_resonance_title": {"zh-Hans":"法宝共鸣", "en":"Relic Resonance"},
+	"ui.relic_resonance_active": {"zh-Hans":"已激活共鸣", "en":"Active Resonances"},
+	"ui.relic_resonance_codex": {"zh-Hans":"法宝共鸣谱", "en":"Resonance Codex"},
+	"ui.relic_resonance_none": {"zh-Hans":"暂未激活法宝共鸣", "en":"No active resonances"},
+	"ui.relic_resonance_req": {"zh-Hans":"共鸣法宝：%s", "en":"Resonance Relics: %s"},
+	"ui.relic_resonance_activated_toast": {"zh-Hans":"⚡ 激活共鸣：%s！", "en":"⚡ Resonance Activated: %s!"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
 	"ui.camp_tier_samsara_unlocked": {"zh-Hans":"轮回已解锁至 A%d", "en":"Samsara has unlocked up to A%d"},
 	"ui.samsara_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A%d后解锁", "en":"Clear all 250 stages with Challenge Tier set to A%d to unlock"},
@@ -1549,8 +1924,11 @@ const UI_TEXT = {
 	"ui.settings_lang": {"zh-Hans":"界面语言", "en":"Language"},
 	"ui.settings_speed": {"zh-Hans":"战斗演出速度", "en":"Battle Speed"},
 	"ui.settings_audio": {"zh-Hans":"背景音乐", "en":"Music Audio"},
-	"ui.settings_audio_on": {"zh-Hans":"开启 ♫", "en":"Enabled ♫"},
+	"ui.settings_audio_on": {"zh-Hans":"音乐 ♫", "en":"Music ♫"},
 	"ui.settings_audio_off": {"zh-Hans":"静音 ♩", "en":"Muted ♩"},
+	"ui.settings_sfx": {"zh-Hans":"战斗音效", "en":"Combat SFX"},
+	"ui.settings_sfx_on": {"zh-Hans":"音效 ⚔", "en":"SFX ⚔"},
+	"ui.settings_sfx_off": {"zh-Hans":"静音 ⚔", "en":"Muted ⚔"},
 	"ui.settings_reduce_motion": {"zh-Hans":"减弱动态效果 (辅助功能)", "en":"Reduce Motion (Accessibility)"},
 	"ui.settings_reduce_motion_desc": {"zh-Hans":"关闭粒子飘散与剧烈屏幕震颤", "en":"Disable ambient particles and screen shake"},
 	"ui.settings_on": {"zh-Hans":"开启", "en":"On"},
@@ -1561,6 +1939,24 @@ const UI_TEXT = {
 	"ui.settings_text_size_large": {"zh-Hans":"大", "en":"Large"},
 	"ui.settings_text_size_xlarge": {"zh-Hans":"特大", "en":"Extra Large"},
 	"ui.settings_btn": {"zh-Hans":"设置", "en":"Settings"},
+	"ui.leaderboard_title": {"zh-Hans":"封神天梯榜", "en":"Celestial Leaderboard"},
+	"ui.leaderboard_sub": {"zh-Hans":"全服强者名录 · 万仙争锋", "en":"Global Rankings & Hall of Fame"},
+	"ui.leaderboard_tab_abyss": {"zh-Hans":"无尽深渊", "en":"Endless Abyss"},
+	"ui.leaderboard_tab_daily": {"zh-Hans":"每日修行", "en":"Daily Trial"},
+	"ui.leaderboard_tab_samsara": {"zh-Hans":"六道轮回", "en":"Samsara"},
+	"ui.leaderboard_rank": {"zh-Hans":"排名", "en":"Rank"},
+	"ui.leaderboard_player": {"zh-Hans":"驭灵道号", "en":"Cultivator"},
+	"ui.leaderboard_score": {"zh-Hans":"战绩", "en":"Score"},
+	"ui.leaderboard_my_rank": {"zh-Hans":"我的名次", "en":"My Rank"},
+	"ui.leaderboard_unranked": {"zh-Hans":"未上榜", "en":"Unranked"},
+	"ui.leaderboard_open": {"zh-Hans":"天梯榜 🏆", "en":"Rankings 🏆"},
+	"ui.leaderboard_refresh": {"zh-Hans":"刷新 ↻", "en":"Refresh ↻"},
+	"ui.leaderboard_score_floor": {"zh-Hans":"第 %d 层", "en":"Floor %d"},
+	"ui.leaderboard_score_pts": {"zh-Hans":"%d 分", "en":"%d pts"},
+	"ui.leaderboard_score_asc": {"zh-Hans":"难度 A%d · %d 关", "en":"A%d · St.%d"},
+	"ui.leaderboard_loading": {"zh-Hans":"正在同步天机名录...", "en":"Fetching celestial rankings..."},
+	"ui.leaderboard_empty": {"zh-Hans":"暂无登榜记录，虚位以待！", "en":"No entries yet, awaiting heroes!"},
+	"ui.leaderboard_submit_toast": {"zh-Hans":"🏆 新纪录已登入封神榜！", "en":"🏆 New record published to Leaderboard!"},
 	"ui.deck_filter_all": {"zh-Hans":"全部", "en":"All"},
 	"ui.deck_filter_attack": {"zh-Hans":"攻击", "en":"Attack"},
 	"ui.deck_filter_skill": {"zh-Hans":"技能", "en":"Skill"},
@@ -1596,6 +1992,32 @@ const UI_TEXT = {
 	"ui.auth_sign_out_confirm": {"zh-Hans":"已退出账号，当前保留为本地游客数据。", "en":"Signed out. Retained as local guest data."},
 	"ui.auth_quick_title": {"zh-Hans":"快捷登录", "en":"Quick Sign-In"},
 	"ui.auth_guest_start": {"zh-Hans":"以游客身份体验", "en":"Continue as Guest"},
+	"ui.auth_email_tab": {"zh-Hans":"邮箱登录", "en":"Email Sign In"},
+	"ui.auth_signup_tab": {"zh-Hans":"注册账号", "en":"Sign Up"},
+	"ui.auth_email_placeholder": {"zh-Hans":"输入邮箱地址...", "en":"Enter email address..."},
+	"ui.auth_password_placeholder": {"zh-Hans":"输入密码 (至少6位)...", "en":"Enter password (min 6 chars)..."},
+	"ui.auth_name_placeholder": {"zh-Hans":"驭灵者昵称 (选填)...", "en":"Adventurer name (optional)..."},
+	"ui.auth_btn_login": {"zh-Hans":"登录云端账号", "en":"Sign In"},
+	"ui.auth_btn_signup": {"zh-Hans":"立即注册并同步", "en":"Register & Sync"},
+	"ui.auth_btn_forgot": {"zh-Hans":"找回密码", "en":"Forgot Password"},
+	"ui.auth_btn_device": {"zh-Hans":"一键免密上云", "en":"One-Click Cloud Sync"},
+	"ui.auth_login_success": {"zh-Hans":"登录成功！云存档已同步。", "en":"Sign in successful! Cloud save synced."},
+	"ui.auth_signup_check_email": {"zh-Hans":"注册成功！请前往邮箱查收确认邮件后登录。", "en":"Registered! Please check your email to confirm, then sign in."},
+	"ui.auth_rate_limited": {"zh-Hans":"邮件发送过于频繁，请稍后再试。", "en":"Email rate limit reached, please try again later."},
+	"ui.auth_reset_sent": {"zh-Hans":"重置密码邮件已发送，请查收邮箱。", "en":"Password reset link sent to your email."},
+	"ui.auth_syncing": {"zh-Hans":"正在同步云存档...", "en":"Syncing cloud save..."},
+	"ui.auth_invalid_input": {"zh-Hans":"请输入有效的邮箱地址与至少6位密码。", "en":"Please enter a valid email and 6+ char password."},
+	"ui.auth_linked_supabase": {"zh-Hans":"已登录云账号: %s", "en":"Signed in with Cloud Account: %s"},
+	"ui.auth_modal_title": {"zh-Hans":"账号与云端同步", "en":"Account & Cloud Sync"},
+	"ui.auth_switch_to_login": {"zh-Hans":"已有账号？立即登录", "en":"Already have an account? Sign In"},
+	"ui.auth_switch_to_signup": {"zh-Hans":"没有账号？注册新账号", "en":"Don't have an account? Sign Up"},
+	"ui.intro_skip": {"zh-Hans":"跳过 ⏭", "en":"Skip ⏭"},
+	"ui.intro_act1": {"zh-Hans":"混沌初开 · 万灵归虚", "en":"From primordial chaos, spirits arose..."},
+	"ui.intro_act2": {"zh-Hans":"远古封印 · 灵潮涌动", "en":"Ancient seals shatter, mystical tides surge..."},
+	"ui.intro_act3": {"zh-Hans":"灵狐降世 · 宿命抉择", "en":"The Spirit Fox awakens to defy destiny..."},
+	"ui.intro_act4_title": {"zh-Hans":"灵界之契", "en":"SPIRITBOUND"},
+	"ui.intro_act4_sub": {"zh-Hans":"踏破轮回 · 重铸仙途", "en":"Defy the cycles. Forge your legend."},
+	"ui.settings_replay_intro": {"zh-Hans":"重播开场动画", "en":"Replay Intro Video"},
 	"ui.season_pass_title": {"zh-Hans":"灵界通行证 · 季节远征", "en":"Spirit Pass · Season Journey"},
 	"ui.season_pass_sub": {"zh-Hans":"第一赛季「灵火初醒」· 积累经验解锁秘宝", "en":"Season 1 「Awakening of Embers」 · Level up for rewards"},
 	"ui.season_pass_level_fmt": {"zh-Hans":"通行证等级: Lv.%d", "en":"Pass Level: Lv.%d"},
@@ -1812,6 +2234,40 @@ const UI_TEXT = {
 	"ui.camp_tier_a6_name": {"zh-Hans":"A6 · 万劫归一", "en":"A6 · Cataclysm"},
 	"ach.samsara1.name": {"zh-Hans":"轮回证道", "en":"Path of Samsara"},
 	"ach.samsara1.desc": {"zh-Hans":"首次经历六道轮回，散功重修登临仙境", "en":"Complete your first Samsara reincarnation"},
+	"ui.meridian_title": {"zh-Hans":"灵脉修真", "en":"Cultivation Meridians"},
+	"ui.meridian_sub": {"zh-Hans":"打通周天三大经脉 · 凝炼万古道基", "en":"Attune the Three Meridians · Forge Eternal Foundation"},
+	"ui.meridian_ren": {"zh-Hans":"任脉 · 气血守御", "en":"Ren · Vitality & Defense"},
+	"ui.meridian_du": {"zh-Hans":"督脉 · 罡气神威", "en":"Du · Offensive Might"},
+	"ui.meridian_chong": {"zh-Hans":"冲脉 · 通灵造化", "en":"Chong · Flow & Fortune"},
+	"ui.meridian_upgrade": {"zh-Hans":"冲穴提升", "en":"Attune"},
+	"ui.meridian_maxed": {"zh-Hans":"已圆满", "en":"Maxed"},
+	"ui.meridian_reset": {"zh-Hans":"洗髓归元", "en":"Reset Meridians"},
+	"ui.meridian_reset_confirm": {"zh-Hans":"确定散去所有已通经脉？将 100% 全额返还所有消耗的灵尘！", "en":"Reset all attuned meridians? 100% of spent Spirit Dust will be refunded!"},
+	"ui.meridian_reset_toast": {"zh-Hans":"洗髓完成！已归还 %d 灵尘。", "en":"Meridians reset! Refunded %d Spirit Dust."},
+	"ui.meridian_upgrade_toast": {"zh-Hans":"经脉突破！《%s》提升至第 %d 重！", "en":"Breakthrough! %s reached Rank %d!"},
+	"ui.meridian_dust_cost": {"zh-Hans":"%d 灵尘", "en":"%d Dust"},
+	"ui.meridian_rank_fmt": {"zh-Hans":"第 %d / %d 重", "en":"Rank %d / %d"},
+	"ui.meridian_summary_btn": {"zh-Hans":"灵脉修真 🎋", "en":"Meridians 🎋"},
+	"ui.meridian_summary_title": {"zh-Hans":"已通经络加护", "en":"Active Meridian Attunements"},
+	"ui.meridian_summary_none": {"zh-Hans":"尚未打通周天经络，前往修真提升战力！", "en":"No meridians attuned yet. Attune nodes to empower your hero!"},
+	"ui.reforge_title": {"zh-Hans":"器灵重铸与灵纹洗练", "en":"Equipment Reforge & Inscription"},
+	"ui.reforge_tab_title": {"zh-Hans":"器灵重铸", "en":"Equipment Reforge"},
+	"ui.reforge_btn": {"zh-Hans":"重铸", "en":"Reforge"},
+	"ui.reforge_upgrade_btn": {"zh-Hans":"进阶重铸", "en":"Ascend Tier"},
+	"ui.reforge_maxed": {"zh-Hans":"已达仙品极境", "en":"Max Tier Reached"},
+	"ui.reforge_cost_fmt": {"zh-Hans":"消耗: %d 金币 + %d 灵尘", "en":"Cost: %d Gold + %d Dust"},
+	"ui.reforge_current_tier": {"zh-Hans":"当前品阶: %s", "en":"Current Tier: %s"},
+	"ui.reforge_next_tier": {"zh-Hans":"进阶效果: %s", "en":"Next Tier: %s"},
+	"ui.reforge_toast_success": {"zh-Hans":"重铸成功！%s 进阶为【%s】！", "en":"Reforge success! %s reached [%s]!"},
+	"ui.reforge_insufficient": {"zh-Hans":"金币或灵尘不足！", "en":"Insufficient Gold or Spirit Dust!"},
+	"ui.inscribe_title": {"zh-Hans":"灵纹洗练", "en":"Inscription Affixes"},
+	"ui.inscribe_btn": {"zh-Hans":"洗练灵纹", "en":"Roll Inscriptions"},
+	"ui.inscribe_cost_fmt": {"zh-Hans":"洗练消耗: %d 金币 + %d 灵尘", "en":"Roll Cost: %d Gold + %d Dust"},
+	"ui.inscribe_slot_locked": {"zh-Hans":"🔒 升至【%s】解锁此灵纹槽", "en":"🔒 Reach [%s] to unlock slot"},
+	"ui.inscribe_empty": {"zh-Hans":"尚未洗练灵纹，点击下方洗练！", "en":"No inscriptions yet. Tap below to roll!"},
+	"ui.inscribe_toast_success": {"zh-Hans":"洗练完成！已为装备淬炼出新灵纹！", "en":"Inscriptions rolled successfully!"},
+	"ui.inscribe_no_slots": {"zh-Hans":"当前品阶暂无可用灵纹槽，请先升阶！", "en":"No affix slots unlocked. Ascend tier first!"},
+	"ui.inscribe_affix_prefix": {"zh-Hans":"✦ 灵纹: ", "en":"✦ Inscription: "},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
@@ -1826,6 +2282,86 @@ func equip_name(item: Dictionary, language := "zh-Hans") -> String:
 func equip_detail(item: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return item.get("detail_en", item.get("detail", ""))
 	return item.get("detail", "")
+
+func equip_tier_name(tier: int, language := "zh-Hans") -> String:
+	var idx := clampi(tier, 0, EQUIPMENT_TIER_NAMES.size() - 1)
+	var entry: Dictionary = EQUIPMENT_TIER_NAMES[idx]
+	return str(entry.get("en" if language == "en" else "zh", ""))
+
+func equip_tier_color(tier: int) -> Color:
+	var idx := clampi(tier, 0, EQUIPMENT_TIER_NAMES.size() - 1)
+	var entry: Dictionary = EQUIPMENT_TIER_NAMES[idx]
+	return Color(str(entry.get("color", "8fa2a6")))
+
+func equip_tier_cost(current_tier: int) -> Dictionary:
+	if current_tier < 0 or current_tier >= EQUIPMENT_TIER_COSTS.size(): return {}
+	return EQUIPMENT_TIER_COSTS[current_tier]
+
+func equip_inscribe_cost() -> Dictionary:
+	return EQUIPMENT_INSCRIBE_COST
+
+func equip_detail_tiered(item: Dictionary, tier: int, language := "zh-Hans") -> String:
+	var id: String = str(item.get("id", ""))
+	if EQUIPMENT_TIER_DATA.has(id):
+		var tiers: Array = EQUIPMENT_TIER_DATA[id]
+		var t := clampi(tier, 0, tiers.size() - 1)
+		var entry: Dictionary = tiers[t]
+		return str(entry.get("en" if language == "en" else "zh", ""))
+	return equip_detail(item, language)
+
+func roll_inscription_affixes(tier: int, rng: RandomNumberGenerator = null) -> Array:
+	var slots: int = clampi(tier, 0, 3)
+	if slots <= 0: return []
+	var r: RandomNumberGenerator = rng if rng != null else RandomNumberGenerator.new()
+	if rng == null: r.randomize()
+	var res: Array = []
+	var pool: Array = INSCRIPTION_AFFIXES.duplicate()
+	pool.shuffle()
+	for i in range(slots):
+		var aff: Dictionary = pool[i % pool.size()]
+		var vals: Array = aff.get("values", [1, 2, 3])
+		var max_idx: int = clampi(tier - 1, 0, vals.size() - 1)
+		var val_idx: int = r.randi_range(0, max_idx)
+		var val: int = int(vals[val_idx])
+		res.append({"id": aff.id, "val": val})
+	return res
+
+func inscription_text(affix: Dictionary, language := "zh-Hans") -> String:
+	var aid: String = str(affix.get("id", ""))
+	var val: int = int(affix.get("val", 0))
+	for aff in INSCRIPTION_AFFIXES:
+		if aff.id == aid:
+			var fmt: String = str(aff.get("fmt_en" if language == "en" else "fmt_zh", ""))
+			return fmt % val
+	return ""
+
+func aggregate_inscriptions(equipped_ids: Array, equipment_inscriptions: Dictionary) -> Dictionary:
+	var res := {
+		"hp": 0,
+		"shield": 0,
+		"atk": 0,
+		"thorns": 0,
+		"gold": 0,
+		"dust": 0,
+		"heal": 0,
+		"crit": 0
+	}
+	for id in equipped_ids:
+		var affixes: Array = equipment_inscriptions.get(id, [])
+		for aff in affixes:
+			if not aff is Dictionary: continue
+			var aid: String = str(aff.get("id", ""))
+			var val: int = int(aff.get("val", 0))
+			match aid:
+				"inscr_hp": res.hp += val
+				"inscr_shield": res.shield += val
+				"inscr_atk": res.atk += val
+				"inscr_thorns": res.thorns += val
+				"inscr_gold": res.gold += val
+				"inscr_dust": res.dust += val
+				"inscr_heal": res.heal += val
+				"inscr_crit": res.crit += val
+	return res
 
 func rune_name(rune: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return rune.get("en", rune.get("zh", ""))

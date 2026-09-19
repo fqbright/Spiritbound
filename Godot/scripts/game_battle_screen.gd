@@ -5,6 +5,7 @@ class_name BattleScreen
 # why. `g` is the live SpiritGame instance; every reference to shared state or another
 # screen's function goes through it.
 var g: SpiritGame
+var auto_stepping: bool = false
 
 func _init(game: SpiritGame) -> void:
 	g = game
@@ -50,6 +51,9 @@ func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
 	return merged
 
 func begin_battle(index: int) -> void:
+	g.resolving = false
+	auto_stepping = false
+
 	# Keep the map's browsed chapter in sync with whatever stage is actually being fought, so
 	# a map shown before this call (the header hides during battle, but the state persists)
 	# or after _leave_battle() returns to it (see its final else-branch) already lands on the
@@ -69,7 +73,7 @@ func begin_battle(index: int) -> void:
 	var battle_deck: Array = g.profile.deck
 	if g.in_draft_battle and g.profile.get("draft_arena", {}).get("deck", []).size() >= 15:
 		battle_deck = g.profile.draft_arena.deck
-	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
+	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses(),g.profile.equipment_tiers,g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(_combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[index].name)):
@@ -106,17 +110,30 @@ func show_battle() -> void:
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(speed_btn)
 	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
-	var auto_btn := g._button(auto_label, func():
+	var auto_btn: Button
+	var on_toggle_auto = func():
 		g.toggle_auto_battle()
-		show_battle()
-		if g.auto_battle_active: _maybe_step_auto_battle()
-	, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(56, 28))
+		if auto_btn != null and is_instance_valid(auto_btn):
+			auto_btn.text = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
+			var btn_color := Color("205944") if g.auto_battle_active else Color("1a3a42")
+			auto_btn.add_theme_stylebox_override("normal", g._panel(btn_color, 10, g.GOLD))
+			auto_btn.add_theme_stylebox_override("hover", g._panel(btn_color.lightened(0.1), 10, g.JADE))
+			auto_btn.add_theme_stylebox_override("pressed", g._panel(btn_color.darkened(0.12), 10, g.EMBER))
+		if g.auto_battle_active and not g.resolving and g.combat != null and g.combat.state.phase == "player":
+			_maybe_step_auto_battle()
+	auto_btn = g._button(auto_label, on_toggle_auto, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(56, 28))
 	auto_btn.name = "AutoBattleToggle"
 	auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(auto_btn)
 	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(36,34))
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(leave_btn); page.add_child(top)
+	if g.combat != null and g.combat.state.turn == 1 and not g.combat.state.get("relic_resonances", []).is_empty() and not bool(g.combat.state.get("resonance_toast_shown", false)):
+		g.combat.state["resonance_toast_shown"] = true
+		var first_res_id: String = str(g.combat.state.relic_resonances[0])
+		var first_res: Dictionary = g.content.relic_resonance(first_res_id)
+		if not first_res.is_empty():
+			g._toast(g.tf("ui.relic_resonance_activated_toast", g._relic_resonance_name(first_res)))
 
 	var enemy_area := Control.new()
 	enemy_area.custom_minimum_size = Vector2(366.0, 205.0)
@@ -173,6 +190,7 @@ func show_battle() -> void:
 			# that led to a screen with another button labelled "open chest".
 			_advance_to_reward()
 		else:
+			g.play_sfx("battle_defeat")
 			var diag: Dictionary = g.diagnose_battle_defeat()
 			var diag_card := PanelContainer.new()
 			diag_card.name = "DefeatDiagnosisCard"
@@ -742,7 +760,7 @@ func _build_player_stage() -> Control:
 		var e_badge := g._equip_icon_badge(item, g.GOLD, 26)
 		all_items.append(_tap_wrap(e_badge, func(): _show_info_popup(g._equip_icon_badge(item, g.GOLD, 60), e_name, e_det, g.GOLD)))
 
-	for id in g.profile.relics:
+	for id in g.combat.state.get("relics", g.profile.relics):
 		var relic := g.content.relic(id)
 		if relic.is_empty(): continue
 		var r_color := Color(relic.color)
@@ -750,6 +768,15 @@ func _build_player_stage() -> Control:
 		var r_det: String = g._relic_detail(relic)
 		var r_badge := g._relic_icon_badge(relic, r_color, 26)
 		all_items.append(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
+
+	for res_id in g.combat.state.get("relic_resonances", []):
+		var res := g.content.relic_resonance(str(res_id))
+		if res.is_empty(): continue
+		var res_color := Color(res.color)
+		var res_name: String = g._relic_resonance_name(res)
+		var res_det: String = g._relic_resonance_detail(res)
+		var res_badge := g._relic_resonance_badge(res, res_color, 26)
+		all_items.append(_tap_wrap(res_badge, func(): _show_info_popup(g._relic_resonance_badge(res, res_color, 60), res_name, res_det, res_color)))
 
 	# Lay out items vertically in columns of up to 4 items each
 	var cur_col: VBoxContainer = null
@@ -1360,6 +1387,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var desc_lbl := g._label(g._card_description(card), 8, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
 	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc_lbl.clip_text = true
 	info_stack.add_child(desc_lbl)
 
 	# 5. Top badges (cost & rune)
@@ -1416,6 +1444,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 # among just the newly-drawn ones (0-based), so a 2-card turn draw deals them one after another
 # instead of both popping in at once.
 func _animate_card_draw_in(tile: HandCard, stagger_index: int) -> void:
+	g.play_sfx("card_draw", 0.08, -3.0)
 	var final_pos: Vector2 = tile.position
 	var final_rot: float = tile.rotation
 	tile.position = final_pos + Vector2(-26.0, -92.0)
@@ -1762,6 +1791,7 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	if not g.combat.play(hand_index, target):
 		g._toast(g.t("ui.target_invalid"))
 		return false
+	g.play_sfx("card_play")
 	g.selected_card = -1
 	g.resolving = true
 	_resolve_play(hand_index, before, player_shield_before, player_health_before, player_focus_before, player_strength_before, card)
@@ -1833,8 +1863,12 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	# played the one card kicked off from begin_battle()'s initial call (made before resolving
 	# is ever set true). This line is the fix: only once resolving is actually false again —
 	# meaning the previous card's animation and any resulting turn-end/enemy-turn have fully
-	# settled — do we check whether to play the next card.
-	if g.auto_battle_active: _maybe_step_auto_battle()
+	# settled — do we check whether to play the next card. The combat/phase checks are
+	# redundant with _maybe_step_auto_battle()'s own guard clause but cheap and explicit about
+	# why this call site in particular needs them: this fires after a battle-ending animation,
+	# so combat may already be null or past the player's turn by the time this line runs.
+	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
+		_maybe_step_auto_battle()
 
 func _animate_player_action(card: Dictionary) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -1950,6 +1984,7 @@ func _animate_player_action(card: Dictionary) -> void:
 	player_sprite.modulate = Color.WHITE
 
 func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
+	g.play_sfx("attack_slash")
 	if g.overlay == null or g.get_tree() == null: return
 	var box: Control = null
 	for candidate in g.enemy_boxes:
@@ -2005,6 +2040,7 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 	slash.queue_free()
 
 func _animate_player_heal(amount: int) -> void:
+	g.play_sfx("heal")
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node == null or not is_instance_valid(player_node): return
@@ -2055,6 +2091,7 @@ func _animate_player_heal(amount: int) -> void:
 	await g.get_tree().create_timer(g._battle_delay(0.50)).timeout
 
 func _animate_player_buff(text: String) -> void:
+	g.play_sfx("buff")
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node == null or not is_instance_valid(player_node): return
@@ -2141,6 +2178,7 @@ func _animate_player_curse() -> void:
 	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 
 func _animate_player_shield_gain(amount: int) -> void:
+	g.play_sfx("shield_gain")
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node == null or not is_instance_valid(player_node): return
@@ -2253,20 +2291,34 @@ func _maybe_end_turn() -> void:
 		await _enemy_turn()
 
 func _maybe_step_auto_battle() -> void:
-	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
+	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving or auto_stepping:
 		return
+	auto_stepping = true
 	await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
+	auto_stepping = false
 	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
 		return
 	var decision: Dictionary = g.combat.ai_best_play()
 	var hand_idx: int = int(decision.get("hand_index", -1))
 	var target_idx: int = int(decision.get("target_index", -1))
 	if hand_idx >= 0:
-		_attempt_play_card(hand_idx, target_idx)
+		var played: bool = _attempt_play_card(hand_idx, target_idx)
+		if not played:
+			await _maybe_end_turn()
+			if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player" and not g.resolving:
+				_maybe_step_auto_battle()
 	else:
-		_maybe_end_turn()
+		await _maybe_end_turn()
+		if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player" and not g.resolving:
+			_maybe_step_auto_battle()
 
 func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
+	if defeated:
+		g.play_sfx("enemy_defeat")
+	elif amount >= 15:
+		g.play_sfx("attack_heavy")
+	else:
+		g.play_sfx("enemy_hit")
 	var box: Control = null
 	for candidate in g.enemy_boxes:
 		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index")) == enemy_index:
@@ -2421,6 +2473,7 @@ func _advance_to_reward() -> void:
 	# show_battle can run several times while the win is on screen; only one hand-off.
 	if g.advancing_to_reward: return
 	g.advancing_to_reward = true
+	g.play_sfx("battle_victory")
 	await g.get_tree().create_timer(g._battle_delay(0.8)).timeout
 	g.advancing_to_reward = false
 	if g.combat == null or g.combat.state.phase != "won": return
@@ -2432,6 +2485,7 @@ func _advance_to_reward() -> void:
 	g.show_reward()
 
 func _enemy_turn() -> void:
+	g.resolving = true
 	g.selected_card = -1
 	# Snapshot the telegraphed intents before end_turn consumes them, so each enemy can play
 	# the animation for what it actually promised.
@@ -2458,6 +2512,10 @@ func _enemy_turn() -> void:
 	# Give a brief pause after all enemy actions and damage resolve before player can act
 	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
 	show_battle()
+	g.resolving = false
+	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
+		_maybe_step_auto_battle()
+
 
 # The tint a sprite should rest at once its action animation finishes — plain white unless
 # a persistent status (currently just Weak) is dulling it, in which case resetting to pure
@@ -2607,6 +2665,7 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 	sprite.modulate = rest_tint
 
 func _animate_player_hit(amount: int) -> void:
+	g.play_sfx("attack_heavy", 0.08, 1.0)
 	var popup := g._label("−%d" % amount, 42, Color("ff5242"), HORIZONTAL_ALIGNMENT_CENTER)
 	popup.position = Vector2(145, 475)
 	popup.size = Vector2(100, 48)
@@ -2681,7 +2740,13 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	elif kind == "boss_phase":
 		var p_name: String = payload.get("name_en", "") if g.lang == "en" else payload.get("name", "")
 		var p_desc: String = payload.get("desc_en", "") if g.lang == "en" else payload.get("desc", "")
+		g.play_sfx("boss_phase2")
 		_show_boss_phase_banner(p_name, p_desc)
+	elif kind == "resonance":
+		var r_type: String = str(payload.get("type", ""))
+		if r_type == "combustion": g.play_sfx("resonance_combustion")
+		elif r_type == "sunder": g.play_sfx("resonance_sunder")
+		elif r_type == "fortify": g.play_sfx("resonance_fortify")
 
 func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	if g.overlay == null: return
@@ -2732,6 +2797,8 @@ func _leave_battle() -> void:
 	g.resolving = false
 	if g.auto_battle_active: g.stop_auto_battle("manual")
 	g.selected_card = -1
+	g.resolving = false
+	auto_stepping = false
 	if g.in_sandbox:
 		# Zero-stakes: profile.health was never touched on the way in, so there is nothing to
 		# restore and nothing worth writing to disk on the way out either.

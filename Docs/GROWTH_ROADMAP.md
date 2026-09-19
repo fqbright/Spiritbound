@@ -289,12 +289,12 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   Stun (✸ Burst), Strength (★ Star), Focus (◉ Bullseye). Colorblind and grayscale friendly.
   *Builds on:* `_status_chip()`, unit status rows.
 
-## Blocked — needs a backend decision, not implementable in this local-only architecture
+## Unblocked via Supabase — Cloud Save & Auth Live
 
-- `[ ]` **E3 — 云存档 + 好友排行榜**
-  `save_store.gd` already carries an `account.id` UUID "for a future cloud sync" per its own
-  comment, but there is no backend today. This is the natural first feature once one exists —
-  do not attempt a local stand-in that would need throwing away.
+- `[x]` **E3 (Part 1) — Supabase 云端多方式登录与双向云存档**
+  - 集成 Supabase REST API & Auth: 邮箱密码登录/注册、一键免密设备登录、Apple / Google 第三方 ID Token 认证。
+  - 双向云存档同步 (`public.player_saves`): 时间戳自动比对与冲突消解、Token 自动刷新重试、离线沙盒安全回退。
+- `[ ]` **E3 (Part 2) — 好友排行榜** (待后续增加 `public.leaderboards` 表)
 - `[ ]` **E4 — 异步"幽灵对战"**
   Recorded-run AI opponents need a backend to store and serve run recordings. Same blocker as
   E3; sequence after it, not before.
@@ -713,6 +713,57 @@ E2E playthrough unaffected. This session also installed Godot 4.7.2 itself into 
 (none of the prior sessions' claimed verification numbers could actually be re-run before this,
 since no `godot` binary existed here) — see this repo's own commit history around
 `e79d689`/this session's chat log if a future agent needs to redo that setup.
+
+### 2026-09-18 — Auto-play battle speed continuity and resolving state reset fix
+Resolved critical issue where toggling or cycling battle speed (1x/1.5x/2x) halted auto-battle and locked combat resolving state:
+- **In-Place Speed and Auto-Toggle Updates (`Godot/scripts/game.gd` & `game_battle_screen.gd`)**:
+  - `_cycle_speed()` and `_change_battle_speed()` now update `SpeedToggle` label and button text in-place rather than calling `show_battle()`. Calling `show_battle()` previously cleared the scene tree mid-combat (`_clear()`), killing active tween coroutines awaiting completion and permanently stranding `resolving = true`.
+  - `AutoBattleToggle` button now toggles and updates styling in-place without triggering destructive screen redraws.
+- **Auto-Battle Turn Stepping Pipeline**:
+  - After card resolution finishes in `_resolve_play()` and `g.resolving = false`, `_maybe_step_auto_battle()` is automatically invoked if `auto_battle_active` is true and phase is "player". This allows multi-card plays within a turn to proceed without stalling.
+  - Added `_auto_battle_stepping` concurrency guard in `_maybe_step_auto_battle()` with automated fallback to `_maybe_end_turn()` if an AI card decision cannot be played.
+  - Wrapped `_enemy_turn()` with `g.resolving = true` during enemy attack animations, resetting to `false` and stepping auto-battle when next player turn begins.
+- **Combat Restart Clean State Guarantee**:
+  - Explicitly reset `g.resolving = false` and `_auto_battle_stepping = false` in `begin_battle()` and `_leave_battle()`, preventing any stale resolving lock from bleeding across encounters.
+- **Verification**:
+  - Added dedicated UI smoke tests in `Godot/tests/ui_smoke.gd` cycling speed (1.0x -> 1.5x -> 2.0x -> 1.0x) during active auto-play, asserting `auto_battle_active == true`, `resolving == false`, `SpeedToggle` label updating in-place, and restarting combat cleanly without lockups.
+  - All test suites passing cleanly (399 unit checks, UI smoke passing, E2E bot 0 softlocks).
+
+### 2026-09-17 — 10-Second Cinematic Opening Intro with Skip Functionality
+Designed and implemented an epic, real-time procedural 10-second opening cinematic cutscene:
+- **Real-Time Cinematic Cutscene (`Godot/scripts/game_intro_cutscene.gd`)**:
+  - Zero-bloat, retina 60/120fps procedural presentation tailored for 390x844 mobile viewport.
+  - Four distinct cinematic movements:
+    - Act I (0-2.5s): Primordial chaos with swirling spirit embers (`CPUParticles2D`).
+    - Act II (2.5-5.5s): Dual-layered rotating ancient runic circle with exploding shockwave seal burst.
+    - Act III (5.5-8.0s): Fox Spirit avatar emergence with orbiting spirit orbs and breathing luminescence.
+    - Act IV (8.0-10.0s): Majestic golden "SPIRITBOUND / 灵界之契" title card slam and subtitle.
+  - Elegant top-right Skip button (`IntroSkipBtn`) with live countdown (`跳过 10s ⏭`, `跳过 9s ⏭` ... `跳过 ⏭`).
+  - Smooth fade-to-black transition with audio crossfade.
+- **Game Lifecycle & Settings Integration (`Godot/scripts/game.gd`)**:
+  - Plays automatically on first launch (`profile.intro_seen = false`) for real players, then smoothly transitions to map or account creation.
+  - Replay button (`ReplayIntroBtn`) added in Settings menu ("重播开场动画 / Replay Intro Video").
+- **Verification & Test Coverage**:
+  - Unit tests in `Godot/tests/test_runner.gd` verifying `intro_seen` defaults and bilingual strings.
+  - UI smoke tests in `Godot/tests/ui_smoke.gd` verifying `play_intro_cutscene()`, `IntroSkipBtn` presence, click execution, and clean disposal.
+  - All 6 test suites passed cleanly with 0 failures.
+
+### 2026-09-17 — Supabase Multi-Provider Auth & Two-Way Cloud Save Sync
+Integrated Supabase backend for multi-method authentication and cloud save synchronization:
+- **Supabase REST & Auth Client (`Godot/scripts/supabase_client.gd`)**:
+  - Direct integration with Supabase Auth (`/auth/v1/signup`, `/auth/v1/token?grant_type=password`, `/auth/v1/token?grant_type=id_token`, `/auth/v1/token?grant_type=refresh_token`, `/auth/v1/recover`, `/auth/v1/logout`).
+  - Persistent session management (`user://spiritbound_session.json`) with auto-refresh on HTTP 401 token expiry.
+  - PostgREST database client for `public.player_saves` with upsert (`Prefer: resolution=merge-duplicates`) and timestamp-based conflict resolution.
+- **Unified Authentication Service (`Godot/scripts/auth_service.gd`)**:
+  - `sign_in_with_supabase()`, `sign_up_with_supabase()`, `reset_password()`, `sign_in_with_apple()`, `sign_in_with_google()`, and `sync_cloud_save()`.
+  - Automatic two-way cloud sync: pulls remote save, compares `updated_at`, merges/downloads if newer, or uploads local progress if newer.
+- **In-Game Auth UI & Modals (`Godot/scripts/game.gd`)**:
+  - `show_auth_modal()`: Tabbed interface for Email Login and Registration, LineEdit inputs with password masking, error/hint notifications, rate limit awareness, quick Apple & Google OAuth buttons, password recovery prompt.
+  - Start Screen & Settings Modal enhancements: "邮箱登录" button on initial account setup, "账号与云端同步" modal trigger in Settings, linked account badge, "立即同步到云端", and "退出账号".
+- **Comprehensive Automated Test Coverage**:
+  - Unit tests in `Godot/tests/test_runner.gd` for session storage, token helpers, account link/unlink, and Supabase provider states.
+  - UI smoke tests in `Godot/tests/ui_smoke.gd` for modal opening, tab toggling, field visibility, and clean dismissal.
+  - All 6 test suites passed cleanly with 0 failures.
 
 ### 2026-09-17 — C2 Samsara Reincarnation Prestige System & Roadmap Sync
 Implemented C2 from the Growth Roadmap and synchronized roadmap tracking for previously built items (E1, E2):

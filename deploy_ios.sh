@@ -85,14 +85,14 @@ if [ -z "$DERIVED_APP" ]; then
     exit 1
 fi
 
-# Wait up to 10 seconds for device to be connected/unlocked
+# Wait up to 60 seconds for device to be connected/available
 DEVICE_LINE=""
-for i in {1..5}; do
-    DEVICE_LINE=$(xcrun devicectl list devices 2>/dev/null | grep -E "[[:space:]]connected[[:space:]]" | head -n 1 || true)
+for i in {1..30}; do
+    DEVICE_LINE=$(xcrun devicectl list devices 2>/dev/null | grep -E "[[:space:]](connected|available)" | head -n 1 || true)
     if [ -n "$DEVICE_LINE" ]; then
         break
     fi
-    echo "   Waiting for device tunnel (please ensure iPhone screen is unlocked)... ($i/5)"
+    echo "   Waiting for device tunnel (please ensure iPhone screen is unlocked)... ($i/30)"
     sleep 2
 done
 
@@ -105,11 +105,29 @@ if [ -z "$DEVICE_LINE" ]; then
     exit 1
 fi
 
-DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" | head -n 1)
+DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40})" | head -n 1)
+if [ -z "$DEVICE_ID" ]; then
+    DEVICE_ID=$(echo "$DEVICE_LINE" | awk -F'[(]UDID[)]' '{print $1}' | awk '{print $NF}')
+fi
 DEVICE_NAME=$(echo "$DEVICE_LINE" | awk '{print $1" "$2}')
 
 echo "🚀 Installing to $DEVICE_NAME ($DEVICE_ID)..."
-xcrun devicectl device install app --device "$DEVICE_ID" "$DERIVED_APP"
+INSTALLED=0
+for attempt in {1..5}; do
+    if xcrun devicectl device install app --device "$DEVICE_ID" "$DERIVED_APP"; then
+        INSTALLED=1
+        break
+    else
+        echo "⚠️  Install attempt $attempt failed (DDI or wireless tunnel settling), retrying in 3s..."
+        sleep 3
+    fi
+done
+
+if [ $INSTALLED -eq 0 ]; then
+    echo "❌ Failed to install app after 5 attempts."
+    exit 1
+fi
+
 echo "✨ Launching Spiritbound on $DEVICE_NAME..."
 xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$BUNDLE_ID"
 echo "🎉 Game successfully launched on your iPhone!"

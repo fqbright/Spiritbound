@@ -170,6 +170,22 @@ func _build_compendium_relics(list: VBoxContainer) -> void:
 		var badge: Control = _compendium_locked_badge()
 		if discovered: badge = g._relic_icon_badge(relic, Color(relic.color), 46)
 		list.add_child(_compendium_row(badge, g._relic_name(relic), g._relic_detail(relic), discovered, Color(relic.color)))
+	list.add_child(g._spacer(8))
+	list.add_child(g._label(g.t("ui.relic_resonance_codex"), 13, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	for res in SpiritContent.RELIC_RESONANCES:
+		var res_color := Color(res.color)
+		var badge: Panel = g._relic_resonance_badge(res, res_color, 46)
+		var req_names: Array[String] = []
+		var all_discovered := true
+		for req_id in res.relics:
+			var r := g.content.relic(req_id)
+			var r_name: String = g._relic_name(r) if not r.is_empty() else req_id
+			var is_disc := g._relic_discovered(req_id)
+			if not is_disc: all_discovered = false
+			req_names.append(r_name if is_disc else "???")
+		var req_str: String = " · ".join(req_names)
+		var desc: String = g._relic_resonance_detail(res) + "\n" + (g.tf("ui.relic_resonance_req", req_str))
+		list.add_child(_compendium_row(badge, g._relic_resonance_name(res), desc, all_discovered, res_color))
 
 func _build_compendium_bestiary(list: VBoxContainer) -> void:
 	for enemy in SpiritContent.ENEMIES:
@@ -617,12 +633,14 @@ func show_challenges() -> void:
 # past the point of being scannable in one screen.
 func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
+	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
 
 # "Modes you enter": the two challenge tracks (Daily Trial, Endless Abyss) plus the campaign's
 # own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
+	list.add_child(_leaderboard_entry_section())
 	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
@@ -726,13 +744,19 @@ func _samsara_section() -> Control:
 	else:
 		vbox.add_child(g._label(g.t("ui.samsara_none"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
 	if can_samsara:
-		var enter_btn := g._button(g.t("ui.samsara_enter_btn"), func(): g.show_samsara_modal(), Color("225046"), Vector2(180, 36))
+		var enter_btn := g._button(g.t("ui.samsara_enter_btn"), func(): g.show_samsara_modal(), Color("225046"), Vector2(140, 36))
 		enter_btn.name = "SamsaraEnterBtn"
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		vbox.add_child(enter_btn)
+		btn_row.add_child(enter_btn)
 	else:
 		vbox.add_child(g._label(g.tf("ui.samsara_locked_desc", required_tier), 9, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("samsara"), Color("1a3c48"), Vector2(100, 36))
+	lb_btn.name = "SamsaraLeaderboardBtn"
+	btn_row.add_child(lb_btn)
+	vbox.add_child(btn_row)
 
 	return panel
 
@@ -769,6 +793,42 @@ func _relics_section() -> Control:
 		relic_row.add_child(texts)
 		texts.add_child(g._label(g._relic_name(relic), 12, g.TEXT))
 		texts.add_child(g._label(g._relic_detail(relic), 9, color, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var active_resonances: Array[Dictionary] = g.content.active_relic_resonances(g.profile.relics)
+	if not active_resonances.is_empty():
+		section.add_child(g._spacer(4))
+		section.add_child(g._label(g.t("ui.relic_resonance_active"), 13, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+		for res in active_resonances:
+			var res_color := Color(res.color)
+			var res_panel := Panel.new()
+			res_panel.name = "ResonanceRow_%s" % str(res.get("id", ""))
+			res_panel.custom_minimum_size.y = 56
+			res_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var res_style := g._panel(Color("162024"), 12, res_color)
+			res_style.border_width_left = 2; res_style.border_width_right = 2; res_style.border_width_top = 2; res_style.border_width_bottom = 2
+			res_panel.add_theme_stylebox_override("panel", res_style)
+			section.add_child(res_panel)
+
+			var res_pad := MarginContainer.new()
+			res_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			for side in ["left", "right"]: res_pad.add_theme_constant_override("margin_%s" % side, 10)
+			res_panel.add_child(res_pad)
+
+			var res_row := HBoxContainer.new()
+			res_row.add_theme_constant_override("separation", 10)
+			res_pad.add_child(res_row)
+
+			var res_holder := CenterContainer.new()
+			res_holder.add_child(g._relic_resonance_badge(res, res_color, 38))
+			res_row.add_child(res_holder)
+
+			var res_texts := VBoxContainer.new()
+			res_texts.alignment = BoxContainer.ALIGNMENT_CENTER
+			res_texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			res_texts.add_theme_constant_override("separation", 1)
+			res_row.add_child(res_texts)
+
+			res_texts.add_child(g._label(g._relic_resonance_name(res) + "  ✦", 12, g.GOLD))
+			res_texts.add_child(g._label(g._relic_resonance_detail(res), 9, res_color, HORIZONTAL_ALIGNMENT_LEFT, true))
 	return section
 
 func _compendium_section() -> Control:
@@ -959,11 +1019,20 @@ func _daily_trial_section() -> Control:
 
 	if stage_num >= SpiritContent.DAILY_TRIAL_STAGES:
 		left.add_child(g._label(g.t("ui.daily_trial_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("daily_trial"), Color("3d4b2e"), Vector2(160, 36))
+		lb_btn.name = "DailyTrialLeaderboardBtn"
+		lb_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(lb_btn)
 	else:
-		var enter_btn := g._button(g.t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(160, 36))
+		var btn_row := HBoxContainer.new()
+		btn_row.add_theme_constant_override("separation", 8)
+		var enter_btn := g._button(g.t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(130, 36))
 		enter_btn.name = "DailyTrialEnterBtn"
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		left.add_child(enter_btn)
+		btn_row.add_child(enter_btn)
+		var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("daily_trial"), Color("3d4b2e"), Vector2(100, 36))
+		lb_btn.name = "DailyTrialLeaderboardBtn"
+		btn_row.add_child(lb_btn)
+		left.add_child(btn_row)
 
 	return panel
 
@@ -1179,10 +1248,15 @@ func _abyss_section() -> Control:
 	stats.add_child(g._label(g.tf("ui.abyss_record_fmt", record_num), 10, g.JADE))
 	left.add_child(stats)
 
-	var enter_btn := g._button(g.t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(160, 36))
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+	var enter_btn := g._button(g.t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(130, 36))
 	enter_btn.name = "AbyssEnterBtn"
-	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	left.add_child(enter_btn)
+	btn_row.add_child(enter_btn)
+	var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("abyss"), Color("38294a"), Vector2(100, 36))
+	lb_btn.name = "AbyssLeaderboardBtn"
+	btn_row.add_child(lb_btn)
+	left.add_child(btn_row)
 
 	return panel
 
@@ -1248,7 +1322,7 @@ func begin_boss_rush_battle() -> void:
 	}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
@@ -1312,7 +1386,7 @@ func begin_sandbox_battle(stage: int) -> void:
 	# Always a fresh 60 HP (SpiritCombat.create's own baseline before relic/mastery bonuses),
 	# never the player's real current health — a practice bout should never be handicapped by
 	# whatever state the live campaign run happens to be in.
-	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	g.advancing_to_reward = false
@@ -1331,7 +1405,7 @@ func begin_abyss_battle() -> void:
 	g.active_modifier["boons"] = g.profile.get("abyss_boons", []).duplicate()
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1352,7 +1426,7 @@ func begin_phantom_arena() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var seed_val := int(Time.get_unix_time_from_system())
-	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1378,7 +1452,7 @@ func begin_daily_trial() -> void:
 	g.active_modifier = g.content.daily_trial_modifier(day)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1402,7 +1476,7 @@ func begin_weekly_challenge() -> void:
 	g.active_modifier = g.content.weekly_challenge_modifier(week)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1901,5 +1975,550 @@ func _start_draft_battle() -> void:
 func _abandon_draft() -> void:
 	g._reset_draft_run()
 	show_challenges()
+
+func _leaderboard_entry_section() -> Control:
+	var bg_col := Color("101d25")
+	var border_col := g.GOLD
+	var frame := _split_card_frame("res://assets/banners/banner_phantom_arena.png", true, bg_col, border_col, 110.0)
+	var panel: PanelContainer = frame.panel
+	panel.name = "LeaderboardSection"
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.t("ui.leaderboard_title") + " 🏆", 15, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	left.add_child(g._label(g.t("ui.leaderboard_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var open_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("abyss"), Color("225046"), Vector2(140, 36))
+	open_btn.name = "LeaderboardOpenBtn"
+	open_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(open_btn)
+
+	return panel
+
+func _close_leaderboard_modal() -> void:
+	if g.overlay == null: return
+	var existing: Node = g.overlay.get_node_or_null("LeaderboardModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_leaderboard(default_category: String = "abyss") -> void:
+	_close_leaderboard_modal()
+
+	var modal := g._modal_dialog("LeaderboardModal", func(): _close_leaderboard_modal())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "LeaderboardModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(350, vp_w - 24), 520)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0a1419"), 14, g.GOLD))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	# Header row
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.leaderboard_title") + " 🏆", 15, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.leaderboard_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	header_row.add_child(title_box)
+
+	var close_btn := g._button("✕", func(): _close_leaderboard_modal(), Color("223640"), Vector2(32, 32))
+	close_btn.name = "LeaderboardCloseBtn"
+	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	# Category Tabs
+	var tab_row := HBoxContainer.new()
+	tab_row.name = "LeaderboardTabRow"
+	tab_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(tab_row)
+
+	var categories := ["abyss", "daily_trial", "samsara"]
+	var tab_buttons: Dictionary = {}
+	var current_category: Array = [default_category]
+
+	# Table Column Subheader & Refresh
+	var col_header := HBoxContainer.new()
+	col_header.add_theme_constant_override("separation", 8)
+	var rank_title := g._label(g.t("ui.leaderboard_rank"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	rank_title.custom_minimum_size.x = 42
+	col_header.add_child(rank_title)
+	var player_title := g._label(g.t("ui.leaderboard_player"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT)
+	player_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col_header.add_child(player_title)
+	var score_title := g._label(g.t("ui.leaderboard_score"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	score_title.custom_minimum_size.x = 75
+	col_header.add_child(score_title)
+	var refresh_btn := g._button(g.t("ui.leaderboard_refresh"), Callable(), Color("17363e"), Vector2(64, 24))
+	refresh_btn.name = "LeaderboardRefreshBtn"
+	col_header.add_child(refresh_btn)
+	vbox.add_child(col_header)
+
+	# Scroll Container for Rankings
+	var scroll := TouchScrollContainer.new()
+	scroll.name = "LeaderboardScroll"
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 250
+	vbox.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.name = "LeaderboardList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+
+	# My Standing Panel
+	var my_panel := PanelContainer.new()
+	my_panel.name = "MyStandingPanel"
+	my_panel.add_theme_stylebox_override("panel", g._panel(Color("0f222b"), 8, g.JADE))
+	var my_pad := MarginContainer.new()
+	for s in ["left", "right"]: my_pad.add_theme_constant_override("margin_%s" % s, 8)
+	for s in ["top", "bottom"]: my_pad.add_theme_constant_override("margin_%s" % s, 6)
+	my_panel.add_child(my_pad)
+	vbox.add_child(my_panel)
+
+	# Update function
+	var update_view = func(cat: String) -> void:
+		current_category[0] = cat
+		for c in categories:
+			var b: Button = tab_buttons.get(c)
+			if b != null:
+				b.add_theme_stylebox_override("normal", g._panel(Color("225046") if c == cat else Color("122228"), 6, g.GOLD if c == cat else Color("2a434d")))
+		for ch in list.get_children():
+			list.remove_child(ch)
+			ch.queue_free()
+		var loading_lbl := g._label(g.t("ui.leaderboard_loading"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		list.add_child(loading_lbl)
+
+		for ch in my_pad.get_children():
+			my_pad.remove_child(ch)
+			ch.queue_free()
+
+		var res: Dictionary = await SupabaseClient.fetch_leaderboard(cat, 50, g)
+		if not is_instance_valid(list) or not list.is_inside_tree(): return
+
+		for ch in list.get_children():
+			list.remove_child(ch)
+			ch.queue_free()
+
+		var entries: Array = res.get("entries", [])
+		if entries.is_empty():
+			list.add_child(g._label(g.t("ui.leaderboard_empty"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		else:
+			for i in entries.size():
+				var entry: Dictionary = entries[i]
+				var rank: int = int(entry.get("rank", i + 1))
+				var name_str: String = str(entry.get("player_name", "无名修士"))
+				var char_id: String = str(entry.get("character_id", "fox"))
+				var score_num: int = int(entry.get("score", 0))
+
+				var row := PanelContainer.new()
+				var bg_col: Color = Color("14242e") if i % 2 == 0 else Color("0f1c24")
+				var bdr_col: Color = Color("ffd700") if rank == 1 else (Color("d8e2ec") if rank == 2 else (Color("cd7f32") if rank == 3 else Color("1a3543")))
+				row.add_theme_stylebox_override("panel", g._panel(bg_col, 6, bdr_col))
+				row.custom_minimum_size.y = 34
+
+				var row_h := HBoxContainer.new()
+				row_h.add_theme_constant_override("separation", 6)
+
+				var rank_str := "🥇 1" if rank == 1 else ("🥈 2" if rank == 2 else ("🥉 3" if rank == 3 else "#%d" % rank))
+				var rank_col := Color("ffd700") if rank == 1 else (Color("d8e2ec") if rank == 2 else (Color("cd7f32") if rank == 3 else Color("859ba6")))
+				var r_lbl := g._label(rank_str, 11, rank_col, HORIZONTAL_ALIGNMENT_CENTER)
+				r_lbl.custom_minimum_size.x = 42
+				row_h.add_child(r_lbl)
+
+				var icon := TextureRect.new()
+				icon.custom_minimum_size = Vector2(24, 24)
+				icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				icon.texture = g._get_character_texture(char_id)
+				icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				row_h.add_child(icon)
+
+				var n_lbl := g._label(name_str, 11, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+				n_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				n_lbl.clip_text = true
+				row_h.add_child(n_lbl)
+
+				var score_str := ""
+				if cat == "abyss":
+					score_str = g.tf("ui.leaderboard_score_floor", score_num)
+				elif cat == "daily_trial":
+					score_str = g.tf("ui.leaderboard_score_pts", score_num)
+				elif cat == "samsara":
+					if score_num >= 10:
+						score_str = g.tf("ui.leaderboard_score_asc", [int(score_num / 10), int(score_num % 10)])
+					else:
+						score_str = g.tf("ui.leaderboard_score_pts", score_num)
+				var s_lbl := g._label(score_str, 11, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+				s_lbl.custom_minimum_size.x = 90
+				row_h.add_child(s_lbl)
+
+				row.add_child(row_h)
+				list.add_child(row)
+
+		# Build My Standing
+		var my_h := HBoxContainer.new()
+		my_h.add_theme_constant_override("separation", 6)
+
+		var my_p_name: String = str(g.profile.get("name", ""))
+		if my_p_name.is_empty(): my_p_name = str(g.profile.get("account", {}).get("username", ""))
+		if my_p_name.is_empty(): my_p_name = "驭灵者"
+
+		var my_hero_class: String = str(g.profile.get("hero_class", "fox_spirit"))
+		var my_char_id := "fox"
+		if my_hero_class.begins_with("sentinel"): my_char_id = "sentinel"
+		elif my_hero_class.begins_with("ironclad"): my_char_id = "ironclad"
+		elif my_hero_class.begins_with("miasma"): my_char_id = "miasma_witch"
+		elif my_hero_class.begins_with("crane"): my_char_id = "crane"
+		elif my_hero_class.begins_with("phoenix"): my_char_id = "phoenix"
+
+		var my_score: int = 0
+		if cat == "abyss":
+			my_score = int(g.profile.get("abyss_record", 0))
+		elif cat == "daily_trial":
+			var best_s: int = int(g.profile.daily_trial_record.get("best_stage", 0))
+			var streak: int = int(g.profile.daily_trial_record.get("streak", 0))
+			my_score = best_s * 1000 + streak * 100
+		elif cat == "samsara":
+			my_score = int(g.profile.get("samsara_count", 0)) * 10 + int(g.profile.get("difficulty", 0))
+
+		var my_rank_str := g.t("ui.leaderboard_unranked")
+		for i in entries.size():
+			var entry: Dictionary = entries[i]
+			if str(entry.get("player_name", "")) == my_p_name:
+				my_rank_str = "#%d" % int(entry.get("rank", i + 1))
+				break
+
+		var my_rank_lbl := g._label(g.t("ui.leaderboard_my_rank") + ": " + my_rank_str, 10, g.JADE, HORIZONTAL_ALIGNMENT_LEFT)
+		my_rank_lbl.custom_minimum_size.x = 90
+		my_h.add_child(my_rank_lbl)
+
+		var my_icon := TextureRect.new()
+		my_icon.custom_minimum_size = Vector2(20, 20)
+		my_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		my_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		my_icon.texture = g._get_character_texture(my_char_id)
+		my_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		my_h.add_child(my_icon)
+
+		var my_name_lbl := g._label(my_p_name, 10, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+		my_name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		my_name_lbl.clip_text = true
+		my_h.add_child(my_name_lbl)
+
+		var my_score_str := ""
+		if cat == "abyss":
+			my_score_str = g.tf("ui.leaderboard_score_floor", my_score)
+		elif cat == "daily_trial":
+			my_score_str = g.tf("ui.leaderboard_score_pts", my_score)
+		elif cat == "samsara":
+			if my_score >= 10:
+				my_score_str = g.tf("ui.leaderboard_score_asc", [int(my_score / 10), int(my_score % 10)])
+			else:
+				my_score_str = g.tf("ui.leaderboard_score_pts", my_score)
+		var my_s_lbl := g._label(my_score_str, 10, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+		my_s_lbl.custom_minimum_size.x = 80
+		my_h.add_child(my_s_lbl)
+
+		my_pad.add_child(my_h)
+
+	var tab_names := {
+		"abyss": g.t("ui.leaderboard_tab_abyss"),
+		"daily_trial": g.t("ui.leaderboard_tab_daily"),
+		"samsara": g.t("ui.leaderboard_tab_samsara")
+	}
+	for cat_id in categories:
+		var btn := g._button(tab_names[cat_id], Callable(), Color("122228"), Vector2(0, 32))
+		btn.name = "LeaderboardTab_" + cat_id
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.pressed.connect(update_view.bind(cat_id))
+		tab_buttons[cat_id] = btn
+		tab_row.add_child(btn)
+
+	refresh_btn.pressed.connect(func(): update_view.call(current_category[0]))
+
+	update_view.call(default_category)
+
+func _meridian_cultivation_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "MeridianSection"
+	panel.custom_minimum_size = Vector2(0, 96)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0d1d1f"), 12, g.JADE))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 8)
+
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.meridian_title") + " 🎋", 14, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.meridian_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	top_row.add_child(title_box)
+
+	var open_btn := g._button(g.t("ui.meridian_summary_btn"), func(): show_meridian_modal(), Color("225046"), Vector2(100, 34))
+	open_btn.name = "MeridianOpenBtn"
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_row.add_child(open_btn)
+	vbox.add_child(top_row)
+
+	# Stat highlights / summary
+	var cur_allocated: Dictionary = g.profile.get("meridians", {})
+	var m_bonuses: Dictionary = g.content.meridian_bonuses(cur_allocated)
+	var summary_row := HBoxContainer.new()
+	summary_row.add_theme_constant_override("separation", 10)
+
+	var stat_parts: Array = []
+	if int(m_bonuses.max_hp) > 0: stat_parts.append("+%d HP" % int(m_bonuses.max_hp))
+	if int(m_bonuses.shield_start) > 0: stat_parts.append("+%d 盾" % int(m_bonuses.shield_start) if g.lang == "zh-Hans" else "+%d Shield" % int(m_bonuses.shield_start))
+	if int(m_bonuses.first_attack_bonus) > 0: stat_parts.append("+%d 攻" % int(m_bonuses.first_attack_bonus) if g.lang == "zh-Hans" else "+%d Atk" % int(m_bonuses.first_attack_bonus))
+	if int(m_bonuses.strength_start) > 0: stat_parts.append("+%d 力" % int(m_bonuses.strength_start) if g.lang == "zh-Hans" else "+%d Str" % int(m_bonuses.strength_start))
+	if int(m_bonuses.draw_turn1) > 0: stat_parts.append("+%d 抽" % int(m_bonuses.draw_turn1) if g.lang == "zh-Hans" else "+%d Draw" % int(m_bonuses.draw_turn1))
+	if int(m_bonuses.energy_turn1) > 0: stat_parts.append("+%d 灵" % int(m_bonuses.energy_turn1) if g.lang == "zh-Hans" else "+%d Energy" % int(m_bonuses.energy_turn1))
+
+	var summary_text := ""
+	if stat_parts.is_empty():
+		summary_text = g.t("ui.meridian_summary_none")
+	else:
+		var sep_sym: String = " · "
+		var parts_str: Array[String] = []
+		for p in stat_parts: parts_str.append(str(p))
+		summary_text = "✦ " + sep_sym.join(parts_str)
+
+	var sum_lbl := g._label(summary_text, 10, g.JADE if not stat_parts.is_empty() else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT)
+	sum_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sum_lbl.clip_text = true
+	summary_row.add_child(sum_lbl)
+
+	var dust_count: int = int(g.profile.get("spirit_dust", 0))
+	var dust_lbl := g._label(g.tf("ui.meridian_dust_cost", dust_count), 10, Color("d4aeff"), HORIZONTAL_ALIGNMENT_RIGHT)
+	summary_row.add_child(dust_lbl)
+
+	vbox.add_child(summary_row)
+	return panel
+
+func _close_meridian_modal() -> void:
+	if g.overlay == null: return
+	var existing: Node = g.overlay.get_node_or_null("MeridianModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_meridian_modal() -> void:
+	_close_meridian_modal()
+
+	var modal := g._modal_dialog("MeridianModal", func(): _close_meridian_modal())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "MeridianModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(360, vp_w - 20), 540)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("091316"), 14, g.JADE))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	# Header row
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.meridian_title") + " 🎋", 16, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.meridian_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	header_row.add_child(title_box)
+
+	var close_btn := g._button("✕", func(): _close_meridian_modal(), Color("223640"), Vector2(32, 32))
+	close_btn.name = "MeridianCloseBtn"
+	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	# Dust & Respec status bar
+	var status_row := HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 8)
+
+	var dust_icon := TextureRect.new()
+	dust_icon.custom_minimum_size = Vector2(20, 20)
+	dust_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	dust_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	dust_icon.texture = load("res://assets/icons/hud_dust.png")
+	dust_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_row.add_child(dust_icon)
+
+	var cur_dust_lbl := g._label(g.tf("ui.meridian_dust_cost", int(g.profile.get("spirit_dust", 0))), 11, Color("d4aeff"), HORIZONTAL_ALIGNMENT_LEFT)
+	cur_dust_lbl.name = "MeridianDustLabel"
+	cur_dust_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_row.add_child(cur_dust_lbl)
+
+	var reset_btn := g._button(g.t("ui.meridian_reset"), Callable(), Color("3a1c22"), Vector2(80, 26))
+	reset_btn.name = "MeridianResetBtn"
+	status_row.add_child(reset_btn)
+	vbox.add_child(status_row)
+
+	# Branch Tabs: 任脉 / 督脉 / 冲脉
+	var tab_row := HBoxContainer.new()
+	tab_row.name = "MeridianTabRow"
+	tab_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(tab_row)
+
+	var branches := ["ren", "du", "chong"]
+	var tab_names := {
+		"ren": g.t("ui.meridian_ren"),
+		"du": g.t("ui.meridian_du"),
+		"chong": g.t("ui.meridian_chong")
+	}
+	var current_branch: Array = ["ren"]
+	var tab_buttons: Dictionary = {}
+
+	# Scrollable Node Container
+	var scroll := TouchScrollContainer.new()
+	scroll.name = "MeridianScroll"
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 260
+	vbox.add_child(scroll)
+
+	var nodes_list := VBoxContainer.new()
+	nodes_list.name = "MeridianNodesList"
+	nodes_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nodes_list.add_theme_constant_override("separation", 8)
+	scroll.add_child(nodes_list)
+
+	# Refresh function for node tree and labels
+	var refresh_meridian_ui: Array = [Callable()]
+	refresh_meridian_ui[0] = func(branch: String) -> void:
+		current_branch[0] = branch
+		cur_dust_lbl.text = g.tf("ui.meridian_dust_cost", int(g.profile.get("spirit_dust", 0)))
+		for b in branches:
+			var btn_obj: Button = tab_buttons.get(b)
+			if btn_obj != null:
+				var active: bool = (b == branch)
+				var b_col: Color = g.JADE if b == "ren" else (g.EMBER if b == "du" else g.GOLD)
+				btn_obj.add_theme_stylebox_override("normal", g._panel(Color("162a2d") if active else Color("0f191b"), 6, b_col if active else Color("233c42")))
+
+		for ch in nodes_list.get_children():
+			nodes_list.remove_child(ch)
+			ch.queue_free()
+
+		var allocated: Dictionary = g.profile.get("meridians", {})
+		var branch_nodes: Array[String] = []
+		if branch == "ren": branch_nodes = ["ren_1", "ren_2", "ren_3"]
+		elif branch == "du": branch_nodes = ["du_1", "du_2", "du_3"]
+		elif branch == "chong": branch_nodes = ["chong_1", "chong_2", "chong_3"]
+
+		for node_id in branch_nodes:
+			var node_data: Dictionary = g.content.meridian_node(node_id)
+			if node_data.is_empty(): continue
+			var max_rank: int = int(node_data.get("max_rank", 5))
+			var cur_rank: int = int(allocated.get(node_id, 0))
+			var is_max: bool = (cur_rank >= max_rank)
+			var cost: int = g.content.meridian_cost(node_id, cur_rank)
+			var cur_dust: int = int(g.profile.get("spirit_dust", 0))
+
+			var card := PanelContainer.new()
+			card.name = "MeridianCard_" + node_id
+			var branch_col: Color = g.JADE if branch == "ren" else (g.EMBER if branch == "du" else g.GOLD)
+			card.add_theme_stylebox_override("panel", g._panel(Color("0f1d22"), 8, branch_col if cur_rank > 0 else Color("1a353c")))
+
+			var card_pad := MarginContainer.new()
+			for s in ["left", "right"]: card_pad.add_theme_constant_override("margin_%s" % s, 10)
+			for s in ["top", "bottom"]: card_pad.add_theme_constant_override("margin_%s" % s, 8)
+			card.add_child(card_pad)
+
+			var card_v := VBoxContainer.new()
+			card_v.add_theme_constant_override("separation", 6)
+			card_pad.add_child(card_v)
+
+			# Title row
+			var c_top := HBoxContainer.new()
+			c_top.add_theme_constant_override("separation", 6)
+			var name_lbl := g._label(g.content.meridian_name(node_id, g.lang), 12, g.GOLD if cur_rank > 0 else Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+			name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			c_top.add_child(name_lbl)
+
+			var rank_lbl := g._label(g.tf("ui.meridian_rank_fmt", [cur_rank, max_rank]), 10, branch_col if cur_rank > 0 else g.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+			c_top.add_child(rank_lbl)
+			card_v.add_child(c_top)
+
+			# Desc & Action row
+			var c_bot := HBoxContainer.new()
+			c_bot.add_theme_constant_override("separation", 8)
+
+			var desc_text := g.content.meridian_desc(node_id, cur_rank if cur_rank > 0 else 1, g.lang)
+			var desc_lbl := g._label(desc_text, 9, g.TEXT if cur_rank > 0 else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+			desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			c_bot.add_child(desc_lbl)
+
+			var btn_text := g.t("ui.meridian_maxed") if is_max else (g.t("ui.meridian_upgrade") + (" (%d)" % cost))
+			var up_btn := g._button(btn_text, Callable(), Color("225046") if not is_max else Color("1c2b2e"), Vector2(95, 32))
+			up_btn.name = "MeridianUpgradeBtn_" + node_id
+			up_btn.disabled = is_max or (cur_dust < cost)
+			var target_id: String = node_id
+			up_btn.pressed.connect(func():
+				var ok: bool = g.upgrade_meridian_node(target_id)
+				if ok:
+					refresh_meridian_ui[0].call(current_branch[0])
+			)
+			c_bot.add_child(up_btn)
+			card_v.add_child(c_bot)
+
+			nodes_list.add_child(card)
+
+	reset_btn.pressed.connect(func():
+		var total_refunded: int = g.reset_meridians()
+		refresh_meridian_ui[0].call(current_branch[0])
+	)
+
+	for b in branches:
+		var branch_key: String = b
+		var tab_b := g._button(tab_names[branch_key], Callable(), Color("0f191b"), Vector2(0, 32))
+		tab_b.name = "MeridianTab_" + branch_key
+		tab_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab_b.pressed.connect(func(): refresh_meridian_ui[0].call(branch_key))
+		tab_buttons[branch_key] = tab_b
+		tab_row.add_child(tab_b)
+
+	refresh_meridian_ui[0].call("ren")
+
+
 
 

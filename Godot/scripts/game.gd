@@ -81,6 +81,11 @@ var _swipe_tracking := false
 var map_music: AudioStreamPlayer
 var battle_music: AudioStreamPlayer
 var battle_music_streams: Array[AudioStream] = []
+var sfx_muted := false
+var _sfx_pool: Array[AudioStreamPlayer] = []
+var _sfx_pool_index: int = 0
+var _sfx_cache: Dictionary = {}
+const SFX_POOL_SIZE := 8
 static func _load_game_font() -> Font:
 	var en_font: FontFile = load("res://assets/fonts/Cinzel-SemiBold.ttf")
 	var cjk_font: FontFile = load("res://assets/fonts/LXGWWenKai-Medium.ttf")
@@ -384,6 +389,12 @@ func _relic_name(item: Dictionary) -> String:
 func _relic_detail(item: Dictionary) -> String:
 	return content.relic_detail(item, lang)
 
+func _relic_resonance_name(res: Dictionary) -> String:
+	return content.relic_resonance_name(res, lang)
+
+func _relic_resonance_detail(res: Dictionary) -> String:
+	return content.relic_resonance_detail(res, lang)
+
 
 
 # Composition objects are constructed here, not in _ready(), because test_runner.gd
@@ -402,13 +413,24 @@ func _ready() -> void:
 	profile = SpiritSave.load_profile(content)
 	lang = str(profile.get("language", "zh-Hans"))
 	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 2.0)
+	muted = bool(profile.get("music_muted", false))
+	sfx_muted = bool(profile.get("sfx_muted", false))
 	_build_audio()
 	_ensure_quests_current()
 	_ensure_daily_trial_current()
 	_ensure_weekly_challenge_current()
 	_ensure_login_reward_current()
-	if SpiritSave.has_account_name(profile): show_map()
-	else: show_account_setup()
+	var should_play_intro := not bool(profile.get("intro_seen", false)) and DisplayServer.get_name() != "headless"
+	if should_play_intro:
+		play_intro_cutscene(func():
+			profile.intro_seen = true
+			SpiritSave.write(profile)
+			if SpiritSave.has_account_name(profile): show_map()
+			else: show_account_setup()
+		)
+	else:
+		if SpiritSave.has_account_name(profile): show_map()
+		else: show_account_setup()
 
 const DAY_SECONDS := 86400
 const WEEK_SECONDS := 604800
@@ -537,7 +559,15 @@ func _cycle_speed() -> void:
 	battle_speed = BATTLE_SPEED_OPTIONS[idx]
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
-	show_battle()
+	var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+	var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button if root != null and is_instance_valid(root) else null
+	if speed_btn != null and is_instance_valid(speed_btn):
+		speed_btn.text = speed_label
+	else:
+		show_battle()
+	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
+		_battle_screen._maybe_step_auto_battle()
+
 
 func _pass_turn() -> void:
 	if combat == null or combat.state.phase != "player" or resolving: return
@@ -735,6 +765,15 @@ func show_account_setup() -> void:
 
 	page.add_child(auth_row)
 
+	var email_btn := _button(t("ui.auth_email_tab"), func():
+		var chosen_name := field.text.strip_edges()
+		if not chosen_name.is_empty():
+			profile.account.name = chosen_name
+		show_auth_modal(func(): show_map())
+	, Color("17363e"), Vector2(0, 38))
+	email_btn.name = "SignInWithEmailBtn"
+	page.add_child(email_btn)
+
 	var lang_btn := _button(t("ui.lang_toggle"), func(): lang = "en" if lang == "zh-Hans" else "zh-Hans"; profile.language = lang; show_account_setup(), Color("17363e"), Vector2(0, 38))
 	page.add_child(lang_btn)
 	field.grab_focus()
@@ -772,7 +811,8 @@ func _safe_bottom() -> int:
 func _clear() -> void:
 	screen_generation += 1
 	for child in get_children():
-		if child != map_music and child != battle_music: child.queue_free()
+		if child is AudioStreamPlayer: continue
+		child.queue_free()
 	_back_action = Callable()
 	_swipe_tracking = false
 	root = Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
@@ -948,6 +988,32 @@ func _relic_icon_badge(relic: Dictionary, color: Color, diameter := 44) -> Panel
 		return badge
 	return _sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, diameter)
 
+func _relic_resonance_badge(res: Dictionary, color: Color, diameter := 44) -> Panel:
+	var badge := Panel.new()
+	badge.custom_minimum_size = Vector2(diameter, diameter)
+	badge.size = badge.custom_minimum_size
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _panel(Color(color.r, color.g, color.b, 0.22), int(diameter / 2.0), color)
+	style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+	badge.add_theme_stylebox_override("panel", style)
+	var lbl := Label.new()
+	lbl.text = str(res.get("icon", "☯"))
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if font_cjk: lbl.add_theme_font_override("font", font_cjk)
+	lbl.add_theme_font_size_override("font_size", int(diameter * 0.52))
+	lbl.add_theme_color_override("font_color", color)
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(lbl)
+	return badge
+
+func _spacer(h: float = 8.0) -> Control:
+	var sp := Control.new()
+	sp.custom_minimum_size.y = h
+	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return sp
+
 func _create_page(separation := 6) -> VBoxContainer:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -977,6 +1043,52 @@ func _build_audio() -> void:
 	]
 	map_music.finished.connect(func(): if not muted: map_music.play())
 	battle_music.finished.connect(func(): if not muted: battle_music.play())
+	_build_sfx()
+
+func _build_sfx() -> void:
+	_sfx_pool.clear()
+	for i in range(SFX_POOL_SIZE):
+		var player := AudioStreamPlayer.new()
+		player.name = "SFXPlayer_%d" % i
+		add_child(player)
+		_sfx_pool.append(player)
+	
+	var sfx_files := [
+		"card_play", "card_draw", "attack_slash", "attack_heavy",
+		"shield_gain", "heal", "buff", "resonance_combustion",
+		"resonance_sunder", "resonance_fortify", "enemy_hit",
+		"enemy_defeat", "boss_phase2", "battle_victory",
+		"battle_defeat", "coin", "chest_open"
+	]
+	for sfx_name in sfx_files:
+		var path := "res://assets/audio/sfx/sfx_%s.wav" % sfx_name
+		if ResourceLoader.exists(path):
+			_sfx_cache[sfx_name] = load(path)
+
+func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.0) -> void:
+	if muted or sfx_muted: return
+	var stream: AudioStream = _sfx_cache.get(sfx_name, null)
+	if stream == null:
+		var path := "res://assets/audio/sfx/sfx_%s.wav" % sfx_name
+		if ResourceLoader.exists(path):
+			stream = load(path)
+			_sfx_cache[sfx_name] = stream
+		else:
+			return
+	if _sfx_pool.is_empty():
+		return
+	var player: AudioStreamPlayer = _sfx_pool[_sfx_pool_index]
+	_sfx_pool_index = (_sfx_pool_index + 1) % _sfx_pool.size()
+	if not is_instance_valid(player) or not player.is_inside_tree():
+		return
+	player.stop()
+	player.stream = stream
+	player.volume_db = volume_db
+	if pitch_range > 0.0:
+		player.pitch_scale = randf_range(1.0 - pitch_range, 1.0 + pitch_range)
+	else:
+		player.pitch_scale = 1.0
+	player.play()
 
 func _play_music(battle := false, stage_level: int = 0) -> void:
 	if muted: return
@@ -1334,6 +1446,7 @@ func _card_build_score(card: Dictionary) -> float: return _shop_deck_screen._car
 func _auto_build_deck() -> void: _shop_deck_screen._auto_build_deck()
 func _tab_bar(tabs: Array, active: String, on_pick: Callable) -> Control: return _shop_deck_screen._tab_bar(tabs, active, on_pick)
 func show_loadout() -> void: _shop_deck_screen.show_loadout()
+func show_reforge_modal(item_id: String) -> void: _shop_deck_screen.show_reforge_modal(item_id)
 var SHOP_STOCK_COUNT: int:
 	get: return _shop_deck_screen.SHOP_STOCK_COUNT
 
@@ -1361,6 +1474,80 @@ func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
 func begin_phantom_arena() -> void: _camp_screen.begin_phantom_arena()
+func show_leaderboard(category: String = "abyss") -> void: _camp_screen.show_leaderboard(category)
+
+func _submit_abyss_record(floor_num: int) -> void:
+	if floor_num <= 0: return
+	var p_name: String = str(profile.get("name", ""))
+	if p_name.is_empty(): p_name = str(profile.get("account", {}).get("username", ""))
+	var char_id: String = str(profile.get("hero_class", "fox_spirit"))
+	if char_id.begins_with("fox"): char_id = "fox"
+	elif char_id.begins_with("sentinel"): char_id = "sentinel"
+	elif char_id.begins_with("ironclad"): char_id = "ironclad"
+	elif char_id.begins_with("miasma"): char_id = "miasma_witch"
+	elif char_id.begins_with("crane"): char_id = "crane"
+	elif char_id.begins_with("phoenix"): char_id = "phoenix"
+	SupabaseClient.submit_score("abyss", floor_num, p_name, char_id, {"boons": profile.get("abyss_boons", [])}, self)
+
+func _submit_daily_trial_record(stage_num: int) -> void:
+	if stage_num <= 0: return
+	var p_name: String = str(profile.get("name", ""))
+	if p_name.is_empty(): p_name = str(profile.get("account", {}).get("username", ""))
+	var char_id: String = str(profile.get("hero_class", "fox_spirit"))
+	if char_id.begins_with("fox"): char_id = "fox"
+	elif char_id.begins_with("sentinel"): char_id = "sentinel"
+	elif char_id.begins_with("ironclad"): char_id = "ironclad"
+	elif char_id.begins_with("miasma"): char_id = "miasma_witch"
+	elif char_id.begins_with("crane"): char_id = "crane"
+	elif char_id.begins_with("phoenix"): char_id = "phoenix"
+	var streak: int = int(profile.daily_trial_record.get("streak", 0))
+	var score: int = stage_num * 1000 + streak * 100
+	SupabaseClient.submit_score("daily_trial", score, p_name, char_id, {"stage": stage_num, "streak": streak}, self)
+
+func _submit_samsara_record(samsara_count: int) -> void:
+	if samsara_count <= 0: return
+	var p_name: String = str(profile.get("name", ""))
+	if p_name.is_empty(): p_name = str(profile.get("account", {}).get("username", ""))
+	var char_id: String = str(profile.get("hero_class", "fox_spirit"))
+	if char_id.begins_with("fox"): char_id = "fox"
+	elif char_id.begins_with("sentinel"): char_id = "sentinel"
+	elif char_id.begins_with("ironclad"): char_id = "ironclad"
+	elif char_id.begins_with("miasma"): char_id = "miasma_witch"
+	elif char_id.begins_with("crane"): char_id = "crane"
+	elif char_id.begins_with("phoenix"): char_id = "phoenix"
+	var score: int = samsara_count * 10 + int(profile.get("difficulty", 0))
+	SupabaseClient.submit_score("samsara", score, p_name, char_id, {"cycles": samsara_count, "unlocked": int(profile.get("unlocked", 0))}, self)
+
+func show_meridian_modal() -> void: _camp_screen.show_meridian_modal()
+
+func upgrade_meridian_node(node_id: String) -> bool:
+	var cur_allocated: Dictionary = profile.get("meridians", {}).duplicate()
+	var cur_rank: int = int(cur_allocated.get(node_id, 0))
+	var cost: int = content.meridian_cost(node_id, cur_rank)
+	if cost < 0:
+		return false
+	var cur_dust: int = int(profile.get("spirit_dust", 0))
+	if cur_dust < cost:
+		_toast(t("ui.insufficient_dust"), Color("ff7070"))
+		return false
+	profile.spirit_dust = cur_dust - cost
+	cur_allocated[node_id] = cur_rank + 1
+	profile.meridians = cur_allocated
+	SpiritSave.write(profile)
+	var node_name := content.meridian_name(node_id, lang)
+	_toast(tf("ui.meridian_upgrade_toast", [node_name, cur_rank + 1]), GOLD)
+	return true
+
+func reset_meridians() -> int:
+	var cur_allocated: Dictionary = profile.get("meridians", {}).duplicate()
+	var total_refund: int = content.meridian_total_spent(cur_allocated)
+	if total_refund <= 0 and cur_allocated.is_empty():
+		return 0
+	profile.meridians = {}
+	profile.spirit_dust = int(profile.get("spirit_dust", 0)) + total_refund
+	SpiritSave.write(profile)
+	_toast(tf("ui.meridian_reset_toast", total_refund), JADE)
+	return total_refund
 
 func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Control:
 	# z_index only ever affects render order in Godot — never GUI input dispatch order, which
@@ -1658,6 +1845,7 @@ func enter_samsara() -> void:
 	SpiritSave.write(profile)
 	_advance_quest("samsara", 1)
 	_refresh_achievements()
+	_submit_samsara_record(new_count)
 	var realm_title := content.samsara_title(new_count, lang)
 	_toast(tf("ui.samsara_toast_success", realm_title), GOLD)
 	show_camp()
@@ -1848,6 +2036,9 @@ func show_settings() -> void:
 	var music_btn := _button(t("ui.settings_audio_on") if not muted else t("ui.settings_audio_off"), func(): _toggle_music_settings(), JADE if not muted else Color("2c333a"), Vector2(0, 36))
 	music_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	audio_row.add_child(music_btn)
+	var sfx_btn := _button(t("ui.settings_sfx_on") if not sfx_muted else t("ui.settings_sfx_off"), func(): _toggle_sfx_settings(), JADE if not sfx_muted else Color("2c333a"), Vector2(0, 36))
+	sfx_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	audio_row.add_child(sfx_btn)
 	audio_box.add_child(audio_row)
 	list.add_child(audio_box)
 
@@ -1892,6 +2083,13 @@ func show_settings() -> void:
 	if not is_linked:
 		var status_lbl := _label(t("ui.auth_status_guest"), 10, Color("e09c48"))
 		account_box.add_child(status_lbl)
+
+		var open_auth_btn := _button(t("ui.auth_modal_title"), func():
+			_close_settings()
+			show_auth_modal(func(): show_settings())
+		, JADE, Vector2(0, 42))
+		open_auth_btn.name = "OpenAuthModalBtn"
+		account_box.add_child(open_auth_btn)
 
 		# Apple Login Button (Authentic iOS dark style with Apple logo)
 		var apple_btn := _button(t("ui.auth_apple"), func():
@@ -1939,8 +2137,10 @@ func show_settings() -> void:
 		var linked_text: String = ""
 		if provider == "apple":
 			linked_text = tf("ui.auth_linked_apple", display_id)
-		else:
+		elif provider == "google":
 			linked_text = tf("ui.auth_linked_google", display_id)
+		else:
+			linked_text = tf("ui.auth_linked_supabase", display_id)
 
 		var linked_lbl := _label(linked_text, 10, JADE)
 		account_box.add_child(linked_lbl)
@@ -1967,12 +2167,256 @@ func show_settings() -> void:
 
 		account_box.add_child(sync_row)
 
+	# 4c. Cinematic Intro Video Replay
+	var intro_box := VBoxContainer.new()
+	intro_box.add_theme_constant_override("separation", 6)
+	intro_box.add_child(_label(t("ui.settings_replay_intro"), 12, TEXT))
+	var replay_intro_btn := _button(t("ui.settings_replay_intro"), func():
+		_close_settings()
+		play_intro_cutscene(func():
+			show_settings()
+		)
+	, Color("17363e"), Vector2(0, 36))
+	replay_intro_btn.name = "ReplayIntroBtn"
+	replay_intro_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	intro_box.add_child(replay_intro_btn)
+	list.add_child(intro_box)
+
 	list.add_child(account_box)
+
+func play_intro_cutscene(on_done: Callable = Callable()) -> IntroCutscene:
+	var old_intro: Node = get_node_or_null("IntroCutscene")
+	if old_intro != null:
+		old_intro.queue_free()
+
+	if map_music != null and map_music.playing:
+		map_music.stop()
+
+	var cutscene := IntroCutscene.new()
+	cutscene.name = "IntroCutscene"
+	cutscene.setup(lang, func():
+		if on_done.is_valid():
+			on_done.call()
+	)
+	add_child(cutscene)
+	return cutscene
 
 func _close_settings() -> void:
 	if overlay == null: return
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
 	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_auth_modal(on_success: Callable = Callable()) -> void:
+	if overlay == null: return
+	var existing: Node = overlay.get_node_or_null("AuthModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := _modal_dialog("AuthModal", func(): _close_auth_modal())
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	var vp_w: int = int(get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(340, vp_w - 24), 0)
+	var panel_style := _panel(Color("0c1a1e"), 14, GOLD)
+	panel_style.content_margin_left = 18
+	panel_style.content_margin_right = 18
+	panel_style.content_margin_top = 18
+	panel_style.content_margin_bottom = 18
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+
+	# Header
+	var head := HBoxContainer.new()
+	var title_lbl := _label(t("ui.auth_modal_title"), 16, GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title_lbl)
+	var close_btn := _button("✕", func(): _close_auth_modal(), Color("1c333a"), Vector2(34, 34))
+	close_btn.name = "AuthCloseBtn"
+	head.add_child(close_btn)
+	vbox.add_child(head)
+
+	# Mode state: false = login, true = signup
+	var is_signup_mode := {"value": false}
+
+	# Tab switch row
+	var tab_row := HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 8)
+	var tab_login := _button(t("ui.auth_email_tab"), Callable(), JADE, Vector2(0, 36))
+	tab_login.name = "AuthTabLogin"
+	tab_login.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var tab_signup := _button(t("ui.auth_signup_tab"), Callable(), Color("17363e"), Vector2(0, 36))
+	tab_signup.name = "AuthTabSignup"
+	tab_signup.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tab_row.add_child(tab_login)
+	tab_row.add_child(tab_signup)
+	vbox.add_child(tab_row)
+
+	# Input fields
+	var email_input := LineEdit.new()
+	email_input.name = "AuthEmailInput"
+	email_input.placeholder_text = t("ui.auth_email_placeholder")
+	email_input.custom_minimum_size = Vector2(0, 44)
+	if font_cjk: email_input.add_theme_font_override("font", font_cjk)
+	email_input.add_theme_font_size_override("font_size", 14)
+	email_input.add_theme_color_override("font_color", TEXT)
+	email_input.add_theme_stylebox_override("normal", _panel(Color("10242b"), 10, Color("2a4d55")))
+	email_input.add_theme_stylebox_override("focus", _panel(Color("14303a"), 10, JADE))
+	vbox.add_child(email_input)
+
+	var pass_input := LineEdit.new()
+	pass_input.name = "AuthPasswordInput"
+	pass_input.placeholder_text = t("ui.auth_password_placeholder")
+	pass_input.secret = true
+	pass_input.custom_minimum_size = Vector2(0, 44)
+	if font_cjk: pass_input.add_theme_font_override("font", font_cjk)
+	pass_input.add_theme_font_size_override("font_size", 14)
+	pass_input.add_theme_color_override("font_color", TEXT)
+	pass_input.add_theme_stylebox_override("normal", _panel(Color("10242b"), 10, Color("2a4d55")))
+	pass_input.add_theme_stylebox_override("focus", _panel(Color("14303a"), 10, JADE))
+	vbox.add_child(pass_input)
+
+	var name_input := LineEdit.new()
+	name_input.name = "AuthNameInput"
+	name_input.placeholder_text = t("ui.auth_name_placeholder")
+	name_input.custom_minimum_size = Vector2(0, 44)
+	if font_cjk: name_input.add_theme_font_override("font", font_cjk)
+	name_input.add_theme_font_size_override("font_size", 14)
+	name_input.add_theme_color_override("font_color", TEXT)
+	name_input.add_theme_stylebox_override("normal", _panel(Color("10242b"), 10, Color("2a4d55")))
+	name_input.add_theme_stylebox_override("focus", _panel(Color("14303a"), 10, JADE))
+	name_input.visible = false
+	name_input.text = str(profile.get("account", {}).get("name", ""))
+	vbox.add_child(name_input)
+
+	var hint_lbl := _label("", 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER, true)
+	hint_lbl.name = "AuthHintLabel"
+	vbox.add_child(hint_lbl)
+
+	# Submit button
+	var submit_btn := _button(t("ui.auth_btn_login"), Callable(), EMBER, Vector2(0, 46))
+	submit_btn.name = "AuthSubmitBtn"
+	vbox.add_child(submit_btn)
+
+	var update_mode = func(signup: bool):
+		is_signup_mode["value"] = signup
+		name_input.visible = signup
+		tab_login.add_theme_stylebox_override("normal", _panel(JADE if not signup else Color("17363e"), 8))
+		tab_signup.add_theme_stylebox_override("normal", _panel(JADE if signup else Color("17363e"), 8))
+		submit_btn.text = t("ui.auth_btn_signup") if signup else t("ui.auth_btn_login")
+		hint_lbl.text = ""
+
+	tab_login.pressed.connect(func(): update_mode.call(false))
+	tab_signup.pressed.connect(func(): update_mode.call(true))
+
+	submit_btn.pressed.connect(func():
+		var email_val := email_input.text.strip_edges()
+		var pass_val := pass_input.text
+		if email_val.is_empty() or not email_val.contains("@") or pass_val.length() < 6:
+			hint_lbl.text = t("ui.auth_invalid_input")
+			return
+		hint_lbl.text = t("ui.auth_syncing")
+		if is_signup_mode["value"]:
+			var name_val := name_input.text.strip_edges()
+			if name_val.is_empty(): name_val = "驭灵者"
+			SpiritAuth.sign_up_with_supabase(self, email_val, pass_val, name_val, func(ok: bool, res_code: String):
+				if ok:
+					if res_code == "supabase":
+						_close_auth_modal()
+						if on_success.is_valid(): on_success.call()
+					else:
+						hint_lbl.text = t("ui.auth_signup_check_email")
+				else:
+					hint_lbl.text = t("ui.auth_rate_limited")
+			)
+		else:
+			SpiritAuth.sign_in_with_supabase(self, email_val, pass_val, func(ok: bool, _prov: String):
+				if ok:
+					_close_auth_modal()
+					if on_success.is_valid(): on_success.call()
+				else:
+					hint_lbl.text = t("ui.auth_invalid_input")
+			)
+	)
+
+	# Quick OAuth divider
+	vbox.add_child(_label(t("ui.auth_or_continue"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var oauth_row := HBoxContainer.new()
+	oauth_row.add_theme_constant_override("separation", 8)
+
+	var apple_btn := _button("Apple", func():
+		SpiritAuth.sign_in_with_apple(self, func(ok, _p):
+			if ok:
+				_close_auth_modal()
+				if on_success.is_valid(): on_success.call()
+		)
+	, Color("080808"), Vector2(0, 40))
+	apple_btn.name = "AuthAppleBtn"
+	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var apple_icon := TextureRect.new()
+	apple_icon.texture = load("res://assets/icons/icon_apple.png")
+	apple_icon.custom_minimum_size = Vector2(16, 16)
+	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	apple_icon.position = Vector2(8, 12)
+	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	apple_btn.add_child(apple_icon)
+	oauth_row.add_child(apple_btn)
+
+	var google_btn := _button("Google", func():
+		SpiritAuth.sign_in_with_google(self, func(ok, _p):
+			if ok:
+				_close_auth_modal()
+				if on_success.is_valid(): on_success.call()
+		)
+	, Color("f0f2f5"), Vector2(0, 40))
+	google_btn.name = "AuthGoogleBtn"
+	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
+	google_btn.add_theme_color_override("font_hover_color", Color("111111"))
+	google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
+	var google_icon := TextureRect.new()
+	google_icon.texture = load("res://assets/icons/icon_google.png")
+	google_icon.custom_minimum_size = Vector2(16, 16)
+	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	google_icon.position = Vector2(8, 12)
+	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	google_btn.add_child(google_icon)
+	oauth_row.add_child(google_btn)
+
+	vbox.add_child(oauth_row)
+
+	# Forgot password helper
+	var forgot_btn := _button(t("ui.auth_btn_forgot"), func():
+		var email_val := email_input.text.strip_edges()
+		if email_val.is_empty() or not email_val.contains("@"):
+			hint_lbl.text = t("ui.auth_email_placeholder")
+			return
+		SpiritAuth.reset_password(self, email_val, func(_ok):
+			hint_lbl.text = t("ui.auth_reset_sent")
+		)
+	, Color("142226"), Vector2(0, 32))
+	forgot_btn.name = "AuthForgotBtn"
+	vbox.add_child(forgot_btn)
+
+func _close_auth_modal() -> void:
+	if overlay == null: return
+	var existing: Node = overlay.get_node_or_null("AuthModal")
+	if existing != null:
 		if existing.get_parent(): existing.get_parent().remove_child(existing)
 		existing.queue_free()
 
@@ -1994,13 +2438,30 @@ func _change_battle_speed(new_speed: float) -> void:
 	battle_speed = new_speed
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
+	if root != null and is_instance_valid(root):
+		var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button
+		if speed_btn != null and is_instance_valid(speed_btn):
+			var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+			speed_btn.text = speed_label
+	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
+		_battle_screen._maybe_step_auto_battle()
 	_close_settings()
 	show_settings()
 
+
 func _toggle_music_settings() -> void:
 	muted = not muted
+	profile.music_muted = muted
+	SpiritSave.write(profile)
 	if muted: map_music.stop(); battle_music.stop()
 	else: _play_music(false)
+	_close_settings()
+	show_settings()
+
+func _toggle_sfx_settings() -> void:
+	sfx_muted = not sfx_muted
+	profile.sfx_muted = sfx_muted
+	SpiritSave.write(profile)
 	_close_settings()
 	show_settings()
 

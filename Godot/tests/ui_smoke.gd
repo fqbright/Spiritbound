@@ -649,6 +649,32 @@ func _run() -> void:
 	game.show_loadout()
 	await process_frame
 	check(game.root.get_child_count() > 0, "equipment tab built")
+
+	var prev_equips: Array = game.profile.equipment_owned.duplicate()
+	if not game.profile.equipment_owned.has("emberBlade"):
+		game.profile.equipment_owned.append("emberBlade")
+	game.show_loadout()
+	await process_frame
+	var reforge_btn := game.root.find_child("ReforgeBtn_emberBlade", true, false) as Button
+	check(reforge_btn != null, "reforge button for emberBlade exists in loadout")
+
+	# Test opening Reforge Modal
+	game.show_reforge_modal("emberBlade")
+	await process_frame
+	var reforge_modal: Node = game.overlay.get_node_or_null("ReforgeModal")
+	check(reforge_modal != null, "ReforgeModal opened in overlay")
+	var reforge_up_btn := reforge_modal.find_child("ReforgeUpgradeBtn", true, false) as Button
+	check(reforge_up_btn != null, "ReforgeUpgradeBtn exists in modal")
+	var reforge_insc_btn := reforge_modal.find_child("InscribeRollBtn", true, false) as Button
+	check(reforge_insc_btn != null, "InscribeRollBtn exists in modal")
+	var reforge_close_btn := reforge_modal.find_child("ReforgeCloseBtn", true, false) as Button
+	check(reforge_close_btn != null, "ReforgeCloseBtn exists in modal")
+
+	# Dismiss modal
+	reforge_close_btn.pressed.emit()
+	await process_frame
+	check(game.overlay.get_node_or_null("ReforgeModal") == null, "ReforgeModal dismissed cleanly")
+	game.profile.equipment_owned = prev_equips
 	game.loadout_tab = "runes"
 	game.show_loadout()
 	await process_frame
@@ -1383,6 +1409,32 @@ func _run() -> void:
 		check(ResourceLoader.exists("res://assets/icons/relic_%s.png" % relic_id), "%s has a painted relic icon asset" % relic_id)
 	var fox_charm_badge: Panel = game._relic_icon_badge(game.content.relic("foxCharm"), Color.WHITE)
 	check(_find_texture_rect_ending_with(fox_charm_badge, "relic_foxCharm.png"), "_relic_icon_badge renders the painted icon for a relic that has one")
+
+	# Relic Resonance UI testing
+	var res_badge: Panel = game._relic_resonance_badge(SpiritContent.RELIC_RESONANCES[0], Color.GOLD, 40)
+	check(res_badge != null, "_relic_resonance_badge builds successfully")
+
+	# Camp screen active resonance rendering
+	var pre_camp_tab: String = game.camp_tab
+	var pre_camp_relics: Array = game.profile.relics.duplicate()
+	game.profile.relics = ["thunderSeal", "mirrorScale"]
+	game.camp_tab = "collection"
+	game.show_camp()
+	await process_frame
+	var res_row: Node = game.root.find_child("ResonanceRow_res_sun_moon", true, false)
+	check(res_row != null, "active resonance row rendered in Camp screen for thunderSeal + mirrorScale")
+	game.profile.relics = pre_camp_relics
+	game.camp_tab = pre_camp_tab
+
+	# Battle screen active resonance HUD test
+	var saved_combat: SpiritCombat = game.combat
+	game.combat = SpiritCombat.new(game.content)
+	game.combat.create(777, game.content.encounters[0], game.profile.deck, 60, {}, [], {}, {}, ["thunderSeal", "mirrorScale"])
+	game.show_battle()
+	await process_frame
+	check(game.root.get_child_count() > 0, "battle screen renders with active relic resonance")
+	check(game.combat.state.relic_resonances.has("res_sun_moon"), "combat state tracks active resonance in battle screen")
+	game.combat = saved_combat
 
 	var target_card: Dictionary = game.content.card("moonfang")
 	game.profile.deck = []
@@ -2504,9 +2556,68 @@ func _run() -> void:
 
 	var settings_close := settings_modal.find_child("SettingsCloseBtn", true, false) as Button
 	check(settings_close != null, "SettingsCloseBtn exists")
+	var open_auth_btn := settings_modal.find_child("OpenAuthModalBtn", true, false) as Button
+	check(open_auth_btn != null, "OpenAuthModalBtn exists in settings for unlinked account")
+	var replay_intro_setting_btn := settings_modal.find_child("ReplayIntroBtn", true, false) as Button
+	check(replay_intro_setting_btn != null, "ReplayIntroBtn exists in settings")
 	settings_close.emit_signal("pressed")
 	await process_frame
 	check(game.overlay.get_node_or_null("SettingsModal") == null, "closing SettingsModal frees it")
+
+	# Auth Modal Interaction & Tab Switching Smoke Tests
+	game.show_auth_modal()
+	await process_frame
+	var auth_modal: Node = game.overlay.get_node_or_null("AuthModal")
+	check(auth_modal != null, "show_auth_modal opens AuthModal on overlay")
+	var auth_close := auth_modal.find_child("AuthCloseBtn", true, false) as Button
+	check(auth_close != null, "AuthCloseBtn exists in AuthModal")
+	var auth_tab_login := auth_modal.find_child("AuthTabLogin", true, false) as Button
+	check(auth_tab_login != null, "AuthTabLogin exists in AuthModal")
+	var auth_tab_signup := auth_modal.find_child("AuthTabSignup", true, false) as Button
+	check(auth_tab_signup != null, "AuthTabSignup exists in AuthModal")
+	var auth_email := auth_modal.find_child("AuthEmailInput", true, false) as LineEdit
+	check(auth_email != null, "AuthEmailInput exists in AuthModal")
+	var auth_pass := auth_modal.find_child("AuthPasswordInput", true, false) as LineEdit
+	check(auth_pass != null, "AuthPasswordInput exists in AuthModal")
+	var auth_name := auth_modal.find_child("AuthNameInput", true, false) as LineEdit
+	check(auth_name != null, "AuthNameInput exists in AuthModal")
+	check(not auth_name.visible, "AuthNameInput is hidden initially in login tab")
+	var auth_submit := auth_modal.find_child("AuthSubmitBtn", true, false) as Button
+	check(auth_submit != null, "AuthSubmitBtn exists in AuthModal")
+	check(auth_modal.find_child("AuthAppleBtn", true, false) != null, "AuthAppleBtn exists in AuthModal")
+	check(auth_modal.find_child("AuthGoogleBtn", true, false) != null, "AuthGoogleBtn exists in AuthModal")
+	check(auth_modal.find_child("AuthForgotBtn", true, false) != null, "AuthForgotBtn exists in AuthModal")
+
+	# Switch to signup tab
+	auth_tab_signup.emit_signal("pressed")
+	await process_frame
+	check(auth_name.visible, "AuthNameInput becomes visible in signup mode")
+
+	# Switch back to login tab
+	auth_tab_login.emit_signal("pressed")
+	await process_frame
+	check(not auth_name.visible, "AuthNameInput hides when switched back to login mode")
+
+	# Close auth modal
+	auth_close.emit_signal("pressed")
+	await process_frame
+	check(game.overlay.get_node_or_null("AuthModal") == null, "AuthCloseBtn closes and frees AuthModal")
+
+	# Intro Cutscene & Skip Button Smoke Tests
+	var intro_done := [false]
+	var cutscene: IntroCutscene = game.play_intro_cutscene(func(): intro_done[0] = true)
+	await process_frame
+	check(cutscene != null and game.get_node_or_null("IntroCutscene") != null, "play_intro_cutscene adds IntroCutscene to scene")
+	var intro_skip_btn := cutscene.find_child("IntroSkipBtn", true, false) as Button
+	check(intro_skip_btn != null, "IntroSkipBtn exists on IntroCutscene")
+	intro_skip_btn.emit_signal("pressed")
+	var wait_steps := 0
+	while wait_steps < 35 and not intro_done[0]:
+		await process_frame
+		wait_steps += 1
+	await process_frame
+	check(intro_done[0], "pressing IntroSkipBtn completes intro and triggers callback")
+	check(game.get_node_or_null("IntroCutscene") == null, "IntroCutscene is freed after completion")
 
 	# F3: Deck builder filter chips and search
 	game.show_deck()
@@ -3082,6 +3193,72 @@ func _run() -> void:
 			await process_frame
 			check(game.overlay.find_child("TreasuryInspectorModal", true, false) == null, "Treasury modal closed on close tap")
 
+	# 1c. Celestial Leaderboard Modal
+	game.show_challenges()
+	await process_frame
+	var lb_sec: Node = game.root.find_child("LeaderboardSection", true, false)
+	check(lb_sec != null, "LeaderboardSection exists in challenges list")
+	var lb_open_btn: Control = game.root.find_child("LeaderboardOpenBtn", true, false) as Control
+	check(lb_open_btn != null, "LeaderboardOpenBtn exists in LeaderboardSection")
+	if lb_open_btn != null:
+		tap_button(lb_open_btn, "LeaderboardOpenBtn")
+		await process_frame
+		var lb_modal: Node = game.overlay.find_child("LeaderboardModal", true, false)
+		check(lb_modal != null, "LeaderboardModal opened on tap")
+		if lb_modal != null:
+			var tab_daily: Control = lb_modal.find_child("LeaderboardTab_daily_trial", true, false) as Control
+			var tab_samsara: Control = lb_modal.find_child("LeaderboardTab_samsara", true, false) as Control
+			var tab_abyss: Control = lb_modal.find_child("LeaderboardTab_abyss", true, false) as Control
+			var refresh_btn: Control = lb_modal.find_child("LeaderboardRefreshBtn", true, false) as Control
+			var lb_close: Control = lb_modal.find_child("LeaderboardCloseBtn", true, false) as Control
+			check(tab_daily != null, "LeaderboardTab_daily_trial exists")
+			check(tab_samsara != null, "LeaderboardTab_samsara exists")
+			check(tab_abyss != null, "LeaderboardTab_abyss exists")
+			check(refresh_btn != null, "LeaderboardRefreshBtn exists")
+			check(lb_close != null, "LeaderboardCloseBtn exists")
+			if tab_daily != null:
+				tap_button(tab_daily, "LeaderboardTab_daily_trial")
+				await process_frame
+			if lb_close != null:
+				tap_button(lb_close, "LeaderboardCloseBtn")
+				await process_frame
+				check(game.overlay.find_child("LeaderboardModal", true, false) == null, "LeaderboardModal closed on close tap")
+		game.show_map()
+		await process_frame
+
+	# 1d. Cultivation Meridian Modal
+	game.show_camp()
+	await process_frame
+	var m_sec: Node = game.root.find_child("MeridianSection", true, false)
+	check(m_sec != null, "MeridianSection renders in camp character tab")
+	var m_open: Control = game.root.find_child("MeridianOpenBtn", true, false) as Control
+	check(m_open != null, "MeridianOpenBtn exists in MeridianSection")
+	if m_open != null:
+		tap_button(m_open, "MeridianOpenBtn")
+		await process_frame
+		var m_modal: Node = game.overlay.find_child("MeridianModal", true, false)
+		check(m_modal != null, "MeridianModal opened on tap")
+		if m_modal != null:
+			var m_tab_ren: Control = m_modal.find_child("MeridianTab_ren", true, false) as Control
+			var m_tab_du: Control = m_modal.find_child("MeridianTab_du", true, false) as Control
+			var m_tab_chong: Control = m_modal.find_child("MeridianTab_chong", true, false) as Control
+			var m_reset: Control = m_modal.find_child("MeridianResetBtn", true, false) as Control
+			var m_close: Control = m_modal.find_child("MeridianCloseBtn", true, false) as Control
+			check(m_tab_ren != null, "MeridianTab_ren exists")
+			check(m_tab_du != null, "MeridianTab_du exists")
+			check(m_tab_chong != null, "MeridianTab_chong exists")
+			check(m_reset != null, "MeridianResetBtn exists")
+			check(m_close != null, "MeridianCloseBtn exists")
+			if m_tab_du != null:
+				tap_button(m_tab_du, "MeridianTab_du")
+				await process_frame
+			if m_close != null:
+				tap_button(m_close, "MeridianCloseBtn")
+				await process_frame
+				check(game.overlay.find_child("MeridianModal", true, false) == null, "MeridianModal closed on close tap")
+		game.show_map()
+		await process_frame
+
 	# 2. Lowered Chapter Plaque
 	var plaque: Control = game.root.find_child("ChapterPlaque", true, false) as Control
 	check(plaque != null, "ChapterPlaque exists on map")
@@ -3153,7 +3330,8 @@ func _run() -> void:
 		stam_modal.queue_free()
 		await process_frame
 
-	# 2. Battle Auto Toggle Button
+	# 2. Battle Auto Toggle Button and Multi-Card Chaining
+	game.battle_speed = 10.0
 	game.begin_battle(0)
 	await process_frame
 	var auto_btn: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
@@ -3163,9 +3341,16 @@ func _run() -> void:
 		tap_button(auto_btn, "AutoBattleToggle")
 		await process_frame
 		check(game.auto_battle_active == true, "AutoBattleToggle enables auto-battle")
+		var starting_hand: int = game.combat.state.hand.size()
+		for _step in 30:
+			await create_timer(0.08).timeout
+			if game.combat == null or game.combat.state.hand.size() < starting_hand:
+				break
+		check(game.combat != null and game.combat.state.hand.size() < starting_hand, "auto-battle played cards in combat")
 		game.stop_auto_battle("manual")
 		check(game.auto_battle_active == false, "stop_auto_battle disables auto-battle")
 	game._leave_battle()
+	game.battle_speed = 1.0
 	await process_frame
 
 	# 2b. Auto-Battle actually plays more than one card (user-reported bug: auto-battle only
@@ -3301,6 +3486,76 @@ func _run() -> void:
 	check(game.root.find_child("MapAutoPushBtn", true, false) != null, "the stale _resolve_play() tail does not redraw the battle screen over the map once it finishes")
 	check(game.root.find_child("PlayerSprite", true, false) == null, "no battle-only PlayerSprite reappears on the map from the stale coroutine's tail")
 	check(not game.resolving, "g.resolving stays false through the stale coroutine's whole remaining tail")
+
+	# 2d. Event Auto-Selection
+	game.battle_speed = 10.0
+	game.toggle_auto_battle(true)
+	game.show_event(3, "rest")
+	await process_frame
+	var event_auto_btn := game.root.find_child("EventAutoBattleToggle", true, false) as Button
+	check(event_auto_btn != null, "EventAutoBattleToggle present on event screen")
+	for _wait in 10:
+		await create_timer(0.08).timeout
+		if game.combat != null:
+			break
+	check(game.combat != null, "auto-battle automatically selected event choice and started battle")
+	game.stop_auto_battle("manual")
+	game._leave_battle()
+	game.battle_speed = 1.0
+	await process_frame
+
+	# 2e. Auto battle speed cycling continuity and restart verification
+	game.begin_battle(0)
+	await process_frame
+	var auto_btn2: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
+	var speed_btn2: Button = game.root.find_child("SpeedToggle", true, false) as Button
+	check(auto_btn2 != null, "AutoBattleToggle present for speed cycle test")
+	check(speed_btn2 != null, "SpeedToggle present for speed cycle test")
+	if auto_btn2 != null and speed_btn2 != null:
+		tap_button(auto_btn2, "AutoBattleToggle")
+		await process_frame
+		check(game.auto_battle_active == true, "auto battle active before speed change")
+		# Change speed to 1.5x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 1.5, "speed changed to 1.5x")
+		check(game.auto_battle_active == true, "auto battle remains active after changing to 1.5x")
+		check(speed_btn2.text == "1.5x", "speed toggle button text updated to 1.5x in-place")
+		# Change speed to 2.0x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 2.0, "speed changed to 2.0x")
+		check(game.auto_battle_active == true, "auto battle remains active after changing to 2.0x")
+		check(speed_btn2.text == "2x", "speed toggle button text updated to 2x in-place")
+		# Change speed to 1.0x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 1.0, "speed cycled back to 1.0x")
+		check(game.auto_battle_active == true, "auto battle remains active after cycling to 1.0x")
+		check(speed_btn2.text == "1x", "speed toggle button text updated to 1x in-place")
+		var wait_res := 0.0
+		while game.resolving and wait_res < 4.0:
+			await create_timer(0.08).timeout
+			wait_res += 0.08
+		check(not game.resolving, "resolving is false after speed cycles")
+		game.stop_auto_battle("manual")
+	game._leave_battle()
+	await process_frame
+	check(not game.resolving, "resolving is cleanly reset to false after leaving battle")
+
+	# Restart combat and verify auto-play can start without being blocked
+	game.begin_battle(0)
+	await process_frame
+	check(not game.resolving, "resolving is false at start of restarted combat")
+	var auto_btn_restart: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
+	check(auto_btn_restart != null, "AutoBattleToggle present on restarted combat")
+	if auto_btn_restart != null:
+		tap_button(auto_btn_restart, "AutoBattleToggle")
+		await process_frame
+		check(game.auto_battle_active == true, "auto-battle can successfully start on restarted combat")
+		game.stop_auto_battle("manual")
+	game._leave_battle()
+	await process_frame
 
 	# 3. Map Auto Push Button
 	game.show_map()

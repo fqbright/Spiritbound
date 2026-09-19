@@ -51,6 +51,8 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 	atlas.region.position.x = atlas.atlas.get_width() / 2.0
 	chest.texture = atlas
 	g._shake_screen(6.0)
+	g.play_sfx("chest_open")
+	g.play_sfx("coin")
 	var pop := chest.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), 0.16)
 	pop.tween_property(chest, "scale", Vector2.ONE, 0.12)
@@ -185,6 +187,15 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 		bonuses.max_hp = int(bonuses.get("max_hp", 0)) + int(s_bonuses.get("max_hp", 0))
 		bonuses.shield_start = int(bonuses.get("shield_start", 0)) + int(s_bonuses.get("starting_shield", 0))
 		bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(s_bonuses.get("turn1_draw", 0))
+	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
+	bonuses.max_hp = int(bonuses.get("max_hp", 0)) + int(m_bonuses.get("max_hp", 0))
+	bonuses.shield_start = int(bonuses.get("shield_start", 0)) + int(m_bonuses.get("shield_start", 0))
+	bonuses.heal_per_turn = int(bonuses.get("heal_per_turn", 0)) + int(m_bonuses.get("heal_per_turn", 0))
+	bonuses.first_attack_bonus = int(bonuses.get("first_attack_bonus", 0)) + int(m_bonuses.get("first_attack_bonus", 0))
+	bonuses.burn_start = int(bonuses.get("burn_start", 0)) + int(m_bonuses.get("burn_start", 0))
+	bonuses.strength_start = int(bonuses.get("strength_start", 0)) + int(m_bonuses.get("strength_start", 0))
+	bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(m_bonuses.get("draw_turn1", 0))
+	bonuses.energy_turn1 = int(bonuses.get("energy_turn1", 0)) + int(m_bonuses.get("energy_turn1", 0))
 	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into
@@ -264,6 +275,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g.profile.abyss_floor = floor_num + 1
 		g.profile.abyss_record = maxi(int(g.profile.get("abyss_record", 0)), floor_num)
+		g._submit_abyss_record(g.profile.abyss_record)
 		g.profile.health = 60
 		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": ""}
 		SpiritSave.write(g.profile)
@@ -281,6 +293,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g.profile.daily_trial_record.stage = stage_num
 		g.profile.daily_trial_record.best_stage = maxi(int(g.profile.daily_trial_record.get("best_stage", 0)), stage_num)
+		g._submit_daily_trial_record(stage_num)
 		g.profile.health = 60
 		var completed: bool = stage_num >= SpiritContent.DAILY_TRIAL_STAGES
 		if completed:
@@ -323,7 +336,17 @@ func _grant_stage_rewards() -> void:
 		return
 	var encounter: Dictionary = g.content.encounters[g.current_stage]
 	var multiplier: float = g.active_modifier.get("reward_scale", 1.0)
-	if g.profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
+	if g.profile.equipment_slots.values().has("fortuneSeal"):
+		var fs_tier: int = int(g.profile.get("equipment_tiers", {}).get("fortuneSeal", 0))
+		var fs_mult: float = [1.15, 1.25, 1.35, 1.50][clampi(fs_tier, 0, 3)]
+		multiplier *= fs_mult
+	var inscr_rewards: Dictionary = g.content.aggregate_inscriptions(g.profile.equipment_slots.values(), g.profile.get("equipment_inscriptions", {}))
+	if int(inscr_rewards.get("gold", 0)) > 0:
+		multiplier *= (1.0 + float(inscr_rewards.gold) / 100.0)
+	if int(inscr_rewards.get("dust", 0)) > 0:
+		g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + int(inscr_rewards.dust)
+	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
+	if float(m_bonuses.get("gold_mult", 1.0)) > 1.0: multiplier *= float(m_bonuses.gold_mult)
 	# A cleared stage can no longer be re-entered at all (see _show_replay_mode_prompt), so
 	# every campaign win reaching here is a genuine first clear — no more halved "replay"
 	# rewards to compute.
@@ -590,17 +613,7 @@ func _finish_reward() -> void:
 		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
 		var kind := g.content.node_kind(next_idx)
 		if kind in ["event","merchant","rest"] and not _is_stage_event_claimed(next_idx) and not _is_replay(next_idx):
-			if kind == "rest":
-				g.profile.gold += 35
-				_mark_stage_event_claimed(next_idx)
-				g.begin_battle(next_idx)
-			elif kind == "event":
-				g.profile.gold += 50
-				_mark_stage_event_claimed(next_idx)
-				g.begin_battle(next_idx)
-			else:
-				_mark_stage_event_claimed(next_idx)
-				g.begin_battle(next_idx)
+			show_event(next_idx, kind)
 		else:
 			g.begin_battle(next_idx)
 		return
@@ -683,7 +696,50 @@ func show_event(index: int, kind: String) -> void:
 		, Color("3d2154"), Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.event_opt_direct"), func(): g.begin_battle(index), Color("21594e"), Vector2(300, 48)))
 
-	page.add_child(g._button(g.t("ui.return_map"), g.show_map, Color("17363e"), Vector2(170, 42)))
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 10)
+	var ret_btn := g._button(g.t("ui.return_map"), g.show_map, Color("17363e"), Vector2(170, 42))
+	btn_row.add_child(ret_btn)
+	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
+	var auto_btn := g._button(auto_label, func():
+		g.toggle_auto_battle()
+		show_event(index, kind)
+	, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(90, 42))
+	auto_btn.name = "EventAutoBattleToggle"
+	btn_row.add_child(auto_btn)
+	page.add_child(btn_row)
+
+	if g.auto_battle_active:
+		_auto_handle_stage_event(index, kind)
+
+func _auto_handle_stage_event(index: int, kind: String) -> void:
+	await g.get_tree().create_timer(g._battle_delay(0.55)).timeout
+	if not g.auto_battle_active or _is_stage_event_claimed(index): return
+	if kind == "event":
+		g.profile.gold += 50
+		g._advance_quest("earn_gold", 50)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("heavy")
+		g._toast(g.t("ui.event_blood_pact") + " +50", g.GOLD)
+		g.begin_battle(index)
+	elif kind == "rest":
+		g.profile.gold += 35
+		g._advance_quest("earn_gold", 35)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("tap")
+		g._toast(g.t("ui.rest_heal_choice") + " +35", g.GOLD)
+		g.begin_battle(index)
+	else:
+		g.profile.gold += 25
+		g._advance_quest("earn_gold", 25)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("tap")
+		g._toast(g.t("ui.event_opt_potion") + " +25", g.GOLD)
+		g.begin_battle(index)
 
 # A turn-by-turn readout of everything combat.gd's `event` signal fired during the just-
 # finished fight (BattleLog just records kind/payload/turn as they happen — see battle_log.gd —
