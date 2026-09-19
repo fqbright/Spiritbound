@@ -1354,8 +1354,9 @@ func roll_shop_stock(day_seed: int, count: int) -> Dictionary:
 #   5-10  (stages  21- 50): card sequencing starts to matter.
 #   11-20 (stages  51-100): needs a deliberately built deck.
 #   21-50 (stages 101-250): needs runes/equipment/relics from earlier farming, not skill alone.
-# Tuned against tests/balance_probe.gd — see Docs/ARCHITECTURE.md for the win-rate curve
-# that came out of it and why these constants ended up where they did.
+# Tuned against tests/balance_probe.gd (run: ./run_tests.sh --balance) — see
+# Docs/ARCHITECTURE.md for the win-rate curve that came out of it and why these constants
+# ended up where they did.
 const BAND_1_END = 4
 const BAND_2_END = 10
 const BAND_3_END = 20
