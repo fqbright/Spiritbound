@@ -267,6 +267,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g.profile.abyss_floor = floor_num + 1
 		g.profile.abyss_record = maxi(int(g.profile.get("abyss_record", 0)), floor_num)
+		g._submit_abyss_record(g.profile.abyss_record)
 		g.profile.health = 60
 		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": ""}
 		SpiritSave.write(g.profile)
@@ -284,6 +285,7 @@ func _grant_stage_rewards() -> void:
 		g.profile.gold += gold_gain
 		g.profile.daily_trial_record.stage = stage_num
 		g.profile.daily_trial_record.best_stage = maxi(int(g.profile.daily_trial_record.get("best_stage", 0)), stage_num)
+		g._submit_daily_trial_record(stage_num)
 		g.profile.health = 60
 		var completed: bool = stage_num >= SpiritContent.DAILY_TRIAL_STAGES
 		if completed:

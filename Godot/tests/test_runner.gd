@@ -1214,6 +1214,36 @@ func run() -> void:
 	SupabaseClient.clear_session()
 	check(not SupabaseClient.is_authenticated(), "SupabaseClient is_authenticated returns false after clear_session")
 
+	# Supabase Leaderboards & Global Rankings
+	check(SupabaseClient.TABLE_LEADERBOARDS == "leaderboards", "TABLE_LEADERBOARDS is leaderboards")
+	var abyss_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("abyss")
+	check(abyss_fallbacks.size() == 10, "abyss fallback leaderboard provides top 10 master entries")
+	check(int(abyss_fallbacks[0].score) >= int(abyss_fallbacks[1].score), "abyss fallback records ordered by score descending")
+	check(abyss_fallbacks[0].has("player_name") and abyss_fallbacks[0].has("character_id") and abyss_fallbacks[0].has("rank"), "abyss entry schema contains player_name, character_id, and rank")
+
+	var daily_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("daily_trial")
+	check(daily_fallbacks.size() == 10, "daily_trial fallback leaderboard provides top 10 entries")
+	check(int(daily_fallbacks[0].score) >= int(daily_fallbacks[9].score), "daily_trial fallback sorted descending")
+
+	var samsara_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("samsara")
+	check(samsara_fallbacks.size() == 10, "samsara fallback leaderboard provides top 10 entries")
+
+	# Leaderboard UI localization
+	check(content.ui("ui.leaderboard_title", "zh-Hans") == "封神天梯榜", "leaderboard title localized in Chinese")
+	check(content.ui("ui.leaderboard_title", "en") == "Celestial Leaderboard", "leaderboard title localized in English")
+	check(content.ui("ui.leaderboard_tab_abyss", "zh-Hans") == "无尽深渊", "leaderboard abyss tab localized in Chinese")
+	check(content.ui("ui.leaderboard_tab_abyss", "en") == "Endless Abyss", "leaderboard abyss tab localized in English")
+	check(content.ui("ui.leaderboard_tab_daily", "zh-Hans") == "每日修行", "leaderboard daily trial tab localized in Chinese")
+	check(content.ui("ui.leaderboard_tab_daily", "en") == "Daily Trial", "leaderboard daily trial tab localized in English")
+	check(content.ui("ui.leaderboard_tab_samsara", "zh-Hans") == "六道轮回", "leaderboard samsara tab localized in Chinese")
+	check(content.ui("ui.leaderboard_tab_samsara", "en") == "Samsara", "leaderboard samsara tab localized in English")
+	check(content.ui("ui.leaderboard_open", "zh-Hans") == "天梯榜 🏆", "leaderboard open button localized in Chinese")
+	check(content.ui("ui.leaderboard_open", "en") == "Rankings 🏆", "leaderboard open button localized in English")
+	check(content.ui("ui.leaderboard_refresh", "zh-Hans") == "刷新 ↻", "leaderboard refresh button localized in Chinese")
+	check(content.ui("ui.leaderboard_refresh", "en") == "Refresh ↻", "leaderboard refresh button localized in English")
+	check(content.ui("ui.leaderboard_unranked", "zh-Hans") == "未上榜", "leaderboard unranked localized in Chinese")
+	check(content.ui("ui.leaderboard_unranked", "en") == "Unranked", "leaderboard unranked localized in English")
+
 	# Translations for auth features
 	check(content.ui("ui.auth_email_tab", "zh-Hans") == "邮箱登录", "auth email tab localized in Chinese")
 	check(content.ui("ui.auth_email_tab", "en") == "Email Sign In", "auth email tab localized in English")

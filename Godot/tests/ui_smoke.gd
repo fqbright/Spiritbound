@@ -2812,6 +2812,39 @@ func _run() -> void:
 			await process_frame
 			check(game.overlay.find_child("TreasuryInspectorModal", true, false) == null, "Treasury modal closed on close tap")
 
+	# 1c. Celestial Leaderboard Modal
+	game.show_challenges()
+	await process_frame
+	var lb_sec: Node = game.root.find_child("LeaderboardSection", true, false)
+	check(lb_sec != null, "LeaderboardSection exists in challenges list")
+	var lb_open_btn: Control = game.root.find_child("LeaderboardOpenBtn", true, false) as Control
+	check(lb_open_btn != null, "LeaderboardOpenBtn exists in LeaderboardSection")
+	if lb_open_btn != null:
+		tap_button(lb_open_btn, "LeaderboardOpenBtn")
+		await process_frame
+		var lb_modal: Node = game.overlay.find_child("LeaderboardModal", true, false)
+		check(lb_modal != null, "LeaderboardModal opened on tap")
+		if lb_modal != null:
+			var tab_daily: Control = lb_modal.find_child("LeaderboardTab_daily_trial", true, false) as Control
+			var tab_samsara: Control = lb_modal.find_child("LeaderboardTab_samsara", true, false) as Control
+			var tab_abyss: Control = lb_modal.find_child("LeaderboardTab_abyss", true, false) as Control
+			var refresh_btn: Control = lb_modal.find_child("LeaderboardRefreshBtn", true, false) as Control
+			var lb_close: Control = lb_modal.find_child("LeaderboardCloseBtn", true, false) as Control
+			check(tab_daily != null, "LeaderboardTab_daily_trial exists")
+			check(tab_samsara != null, "LeaderboardTab_samsara exists")
+			check(tab_abyss != null, "LeaderboardTab_abyss exists")
+			check(refresh_btn != null, "LeaderboardRefreshBtn exists")
+			check(lb_close != null, "LeaderboardCloseBtn exists")
+			if tab_daily != null:
+				tap_button(tab_daily, "LeaderboardTab_daily_trial")
+				await process_frame
+			if lb_close != null:
+				tap_button(lb_close, "LeaderboardCloseBtn")
+				await process_frame
+				check(game.overlay.find_child("LeaderboardModal", true, false) == null, "LeaderboardModal closed on close tap")
+		game.show_map()
+		await process_frame
+
 	# 2. Lowered Chapter Plaque
 	var plaque: Control = game.root.find_child("ChapterPlaque", true, false) as Control
 	check(plaque != null, "ChapterPlaque exists on map")

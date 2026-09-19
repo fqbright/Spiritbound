@@ -623,6 +623,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 # own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
+	list.add_child(_leaderboard_entry_section())
 	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
@@ -700,13 +701,19 @@ func _samsara_section() -> Control:
 	else:
 		vbox.add_child(g._label(g.t("ui.samsara_none"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
 
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
 	if can_samsara:
-		var enter_btn := g._button(g.t("ui.samsara_enter_btn"), func(): g.show_samsara_modal(), Color("225046"), Vector2(180, 36))
+		var enter_btn := g._button(g.t("ui.samsara_enter_btn"), func(): g.show_samsara_modal(), Color("225046"), Vector2(140, 36))
 		enter_btn.name = "SamsaraEnterBtn"
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		vbox.add_child(enter_btn)
+		btn_row.add_child(enter_btn)
 	else:
 		vbox.add_child(g._label(g.t("ui.samsara_lock_hint"), 9, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("samsara"), Color("1a3c48"), Vector2(100, 36))
+	lb_btn.name = "SamsaraLeaderboardBtn"
+	btn_row.add_child(lb_btn)
+	vbox.add_child(btn_row)
 
 	return panel
 
@@ -933,11 +940,20 @@ func _daily_trial_section() -> Control:
 
 	if stage_num >= SpiritContent.DAILY_TRIAL_STAGES:
 		left.add_child(g._label(g.t("ui.daily_trial_done"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("daily_trial"), Color("3d4b2e"), Vector2(160, 36))
+		lb_btn.name = "DailyTrialLeaderboardBtn"
+		lb_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(lb_btn)
 	else:
-		var enter_btn := g._button(g.t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(160, 36))
+		var btn_row := HBoxContainer.new()
+		btn_row.add_theme_constant_override("separation", 8)
+		var enter_btn := g._button(g.t("ui.daily_trial_enter"), begin_daily_trial, Color("6b4420"), Vector2(130, 36))
 		enter_btn.name = "DailyTrialEnterBtn"
-		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		left.add_child(enter_btn)
+		btn_row.add_child(enter_btn)
+		var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("daily_trial"), Color("3d4b2e"), Vector2(100, 36))
+		lb_btn.name = "DailyTrialLeaderboardBtn"
+		btn_row.add_child(lb_btn)
+		left.add_child(btn_row)
 
 	return panel
 
@@ -1153,10 +1169,15 @@ func _abyss_section() -> Control:
 	stats.add_child(g._label(g.tf("ui.abyss_record_fmt", record_num), 10, g.JADE))
 	left.add_child(stats)
 
-	var enter_btn := g._button(g.t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(160, 36))
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+	var enter_btn := g._button(g.t("ui.abyss_enter"), begin_abyss_battle, Color("4a285d"), Vector2(130, 36))
 	enter_btn.name = "AbyssEnterBtn"
-	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	left.add_child(enter_btn)
+	btn_row.add_child(enter_btn)
+	var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("abyss"), Color("38294a"), Vector2(100, 36))
+	lb_btn.name = "AbyssLeaderboardBtn"
+	btn_row.add_child(lb_btn)
+	left.add_child(btn_row)
 
 	return panel
 
@@ -1882,5 +1903,287 @@ func _abandon_draft() -> void:
 	draft.losses = 0
 	SpiritSave.write(g.profile)
 	show_challenges()
+
+func _leaderboard_entry_section() -> Control:
+	var bg_col := Color("101d25")
+	var border_col := g.GOLD
+	var frame := _split_card_frame("res://assets/banners/banner_phantom_arena.png", true, bg_col, border_col, 110.0)
+	var panel: PanelContainer = frame.panel
+	panel.name = "LeaderboardSection"
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.t("ui.leaderboard_title") + " 🏆", 15, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	left.add_child(g._label(g.t("ui.leaderboard_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var open_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("abyss"), Color("225046"), Vector2(140, 36))
+	open_btn.name = "LeaderboardOpenBtn"
+	open_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(open_btn)
+
+	return panel
+
+func _close_leaderboard_modal() -> void:
+	if g.overlay == null: return
+	var existing: Node = g.overlay.get_node_or_null("LeaderboardModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_leaderboard(default_category: String = "abyss") -> void:
+	_close_leaderboard_modal()
+
+	var modal := g._modal_dialog("LeaderboardModal", func(): _close_leaderboard_modal())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "LeaderboardModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(350, vp_w - 24), 520)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0a1419"), 14, g.GOLD))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	# Header row
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.leaderboard_title") + " 🏆", 15, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.leaderboard_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	header_row.add_child(title_box)
+
+	var close_btn := g._button("✕", func(): _close_leaderboard_modal(), Color("223640"), Vector2(32, 32))
+	close_btn.name = "LeaderboardCloseBtn"
+	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	# Category Tabs
+	var tab_row := HBoxContainer.new()
+	tab_row.name = "LeaderboardTabRow"
+	tab_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(tab_row)
+
+	var categories := ["abyss", "daily_trial", "samsara"]
+	var tab_buttons: Dictionary = {}
+	var current_category: Array = [default_category]
+
+	# Table Column Subheader & Refresh
+	var col_header := HBoxContainer.new()
+	col_header.add_theme_constant_override("separation", 8)
+	var rank_title := g._label(g.t("ui.leaderboard_rank"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	rank_title.custom_minimum_size.x = 42
+	col_header.add_child(rank_title)
+	var player_title := g._label(g.t("ui.leaderboard_player"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT)
+	player_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col_header.add_child(player_title)
+	var score_title := g._label(g.t("ui.leaderboard_score"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	score_title.custom_minimum_size.x = 75
+	col_header.add_child(score_title)
+	var refresh_btn := g._button(g.t("ui.leaderboard_refresh"), Callable(), Color("17363e"), Vector2(64, 24))
+	refresh_btn.name = "LeaderboardRefreshBtn"
+	col_header.add_child(refresh_btn)
+	vbox.add_child(col_header)
+
+	# Scroll Container for Rankings
+	var scroll := TouchScrollContainer.new()
+	scroll.name = "LeaderboardScroll"
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 250
+	vbox.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.name = "LeaderboardList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+
+	# My Standing Panel
+	var my_panel := PanelContainer.new()
+	my_panel.name = "MyStandingPanel"
+	my_panel.add_theme_stylebox_override("panel", g._panel(Color("0f222b"), 8, g.JADE))
+	var my_pad := MarginContainer.new()
+	for s in ["left", "right"]: my_pad.add_theme_constant_override("margin_%s" % s, 8)
+	for s in ["top", "bottom"]: my_pad.add_theme_constant_override("margin_%s" % s, 6)
+	my_panel.add_child(my_pad)
+	vbox.add_child(my_panel)
+
+	# Update function
+	var update_view = func(cat: String) -> void:
+		current_category[0] = cat
+		for c in categories:
+			var b: Button = tab_buttons.get(c)
+			if b != null:
+				b.add_theme_stylebox_override("normal", g._panel(Color("225046") if c == cat else Color("122228"), 6, g.GOLD if c == cat else Color("2a434d")))
+		for ch in list.get_children():
+			list.remove_child(ch)
+			ch.queue_free()
+		var loading_lbl := g._label(g.t("ui.leaderboard_loading"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		list.add_child(loading_lbl)
+
+		for ch in my_pad.get_children():
+			my_pad.remove_child(ch)
+			ch.queue_free()
+
+		var res: Dictionary = await SupabaseClient.fetch_leaderboard(cat, 50, g)
+		if not is_instance_valid(list) or not list.is_inside_tree(): return
+
+		for ch in list.get_children():
+			list.remove_child(ch)
+			ch.queue_free()
+
+		var entries: Array = res.get("entries", [])
+		if entries.is_empty():
+			list.add_child(g._label(g.t("ui.leaderboard_empty"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		else:
+			for i in entries.size():
+				var entry: Dictionary = entries[i]
+				var rank: int = int(entry.get("rank", i + 1))
+				var name_str: String = str(entry.get("player_name", "无名修士"))
+				var char_id: String = str(entry.get("character_id", "fox"))
+				var score_num: int = int(entry.get("score", 0))
+
+				var row := PanelContainer.new()
+				var bg_col: Color = Color("14242e") if i % 2 == 0 else Color("0f1c24")
+				var bdr_col: Color = Color("ffd700") if rank == 1 else (Color("d8e2ec") if rank == 2 else (Color("cd7f32") if rank == 3 else Color("1a3543")))
+				row.add_theme_stylebox_override("panel", g._panel(bg_col, 6, bdr_col))
+				row.custom_minimum_size.y = 34
+
+				var row_h := HBoxContainer.new()
+				row_h.add_theme_constant_override("separation", 6)
+
+				var rank_str := "🥇 1" if rank == 1 else ("🥈 2" if rank == 2 else ("🥉 3" if rank == 3 else "#%d" % rank))
+				var rank_col := Color("ffd700") if rank == 1 else (Color("d8e2ec") if rank == 2 else (Color("cd7f32") if rank == 3 else Color("859ba6")))
+				var r_lbl := g._label(rank_str, 11, rank_col, HORIZONTAL_ALIGNMENT_CENTER)
+				r_lbl.custom_minimum_size.x = 42
+				row_h.add_child(r_lbl)
+
+				var icon := TextureRect.new()
+				icon.custom_minimum_size = Vector2(24, 24)
+				icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				icon.texture = g._get_character_texture(char_id)
+				icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				row_h.add_child(icon)
+
+				var n_lbl := g._label(name_str, 11, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+				n_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				n_lbl.clip_text = true
+				row_h.add_child(n_lbl)
+
+				var score_str := ""
+				if cat == "abyss":
+					score_str = g.tf("ui.leaderboard_score_floor", score_num)
+				elif cat == "daily_trial":
+					score_str = g.tf("ui.leaderboard_score_pts", score_num)
+				elif cat == "samsara":
+					if score_num >= 10:
+						score_str = g.tf("ui.leaderboard_score_asc", [int(score_num / 10), int(score_num % 10)])
+					else:
+						score_str = g.tf("ui.leaderboard_score_pts", score_num)
+				var s_lbl := g._label(score_str, 11, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+				s_lbl.custom_minimum_size.x = 90
+				row_h.add_child(s_lbl)
+
+				row.add_child(row_h)
+				list.add_child(row)
+
+		# Build My Standing
+		var my_h := HBoxContainer.new()
+		my_h.add_theme_constant_override("separation", 6)
+
+		var my_p_name: String = str(g.profile.get("name", ""))
+		if my_p_name.is_empty(): my_p_name = str(g.profile.get("account", {}).get("username", ""))
+		if my_p_name.is_empty(): my_p_name = "驭灵者"
+
+		var my_hero_class: String = str(g.profile.get("hero_class", "fox_spirit"))
+		var my_char_id := "fox"
+		if my_hero_class.begins_with("sentinel"): my_char_id = "sentinel"
+		elif my_hero_class.begins_with("ironclad"): my_char_id = "ironclad"
+		elif my_hero_class.begins_with("miasma"): my_char_id = "miasma_witch"
+		elif my_hero_class.begins_with("crane"): my_char_id = "crane"
+		elif my_hero_class.begins_with("phoenix"): my_char_id = "phoenix"
+
+		var my_score: int = 0
+		if cat == "abyss":
+			my_score = int(g.profile.get("abyss_record", 0))
+		elif cat == "daily_trial":
+			var best_s: int = int(g.profile.daily_trial_record.get("best_stage", 0))
+			var streak: int = int(g.profile.daily_trial_record.get("streak", 0))
+			my_score = best_s * 1000 + streak * 100
+		elif cat == "samsara":
+			my_score = int(g.profile.get("samsara_count", 0)) * 10 + int(g.profile.get("difficulty", 0))
+
+		var my_rank_str := g.t("ui.leaderboard_unranked")
+		for i in entries.size():
+			var entry: Dictionary = entries[i]
+			if str(entry.get("player_name", "")) == my_p_name:
+				my_rank_str = "#%d" % int(entry.get("rank", i + 1))
+				break
+
+		var my_rank_lbl := g._label(g.t("ui.leaderboard_my_rank") + ": " + my_rank_str, 10, g.JADE, HORIZONTAL_ALIGNMENT_LEFT)
+		my_rank_lbl.custom_minimum_size.x = 90
+		my_h.add_child(my_rank_lbl)
+
+		var my_icon := TextureRect.new()
+		my_icon.custom_minimum_size = Vector2(20, 20)
+		my_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		my_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		my_icon.texture = g._get_character_texture(my_char_id)
+		my_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		my_h.add_child(my_icon)
+
+		var my_name_lbl := g._label(my_p_name, 10, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+		my_name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		my_name_lbl.clip_text = true
+		my_h.add_child(my_name_lbl)
+
+		var my_score_str := ""
+		if cat == "abyss":
+			my_score_str = g.tf("ui.leaderboard_score_floor", my_score)
+		elif cat == "daily_trial":
+			my_score_str = g.tf("ui.leaderboard_score_pts", my_score)
+		elif cat == "samsara":
+			if my_score >= 10:
+				my_score_str = g.tf("ui.leaderboard_score_asc", [int(my_score / 10), int(my_score % 10)])
+			else:
+				my_score_str = g.tf("ui.leaderboard_score_pts", my_score)
+		var my_s_lbl := g._label(my_score_str, 10, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+		my_s_lbl.custom_minimum_size.x = 80
+		my_h.add_child(my_s_lbl)
+
+		my_pad.add_child(my_h)
+
+	var tab_names := {
+		"abyss": g.t("ui.leaderboard_tab_abyss"),
+		"daily_trial": g.t("ui.leaderboard_tab_daily"),
+		"samsara": g.t("ui.leaderboard_tab_samsara")
+	}
+	for cat_id in categories:
+		var btn := g._button(tab_names[cat_id], Callable(), Color("122228"), Vector2(0, 32))
+		btn.name = "LeaderboardTab_" + cat_id
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.pressed.connect(update_view.bind(cat_id))
+		tab_buttons[cat_id] = btn
+		tab_row.add_child(btn)
+
+	refresh_btn.pressed.connect(func(): update_view.call(current_category[0]))
+
+	update_view.call(default_category)
+
 
 

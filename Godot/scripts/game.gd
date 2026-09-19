@@ -1404,6 +1404,49 @@ func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
 func begin_phantom_arena() -> void: _camp_screen.begin_phantom_arena()
+func show_leaderboard(category: String = "abyss") -> void: _camp_screen.show_leaderboard(category)
+
+func _submit_abyss_record(floor_num: int) -> void:
+	if floor_num <= 0: return
+	var p_name: String = str(profile.get("name", ""))
+	if p_name.is_empty(): p_name = str(profile.get("account", {}).get("username", ""))
+	var char_id: String = str(profile.get("hero_class", "fox_spirit"))
+	if char_id.begins_with("fox"): char_id = "fox"
+	elif char_id.begins_with("sentinel"): char_id = "sentinel"
+	elif char_id.begins_with("ironclad"): char_id = "ironclad"
+	elif char_id.begins_with("miasma"): char_id = "miasma_witch"
+	elif char_id.begins_with("crane"): char_id = "crane"
+	elif char_id.begins_with("phoenix"): char_id = "phoenix"
+	SupabaseClient.submit_score("abyss", floor_num, p_name, char_id, {"boons": profile.get("abyss_boons", [])}, self)
+
+func _submit_daily_trial_record(stage_num: int) -> void:
+	if stage_num <= 0: return
+	var p_name: String = str(profile.get("name", ""))
+	if p_name.is_empty(): p_name = str(profile.get("account", {}).get("username", ""))
+	var char_id: String = str(profile.get("hero_class", "fox_spirit"))
+	if char_id.begins_with("fox"): char_id = "fox"
+	elif char_id.begins_with("sentinel"): char_id = "sentinel"
+	elif char_id.begins_with("ironclad"): char_id = "ironclad"
+	elif char_id.begins_with("miasma"): char_id = "miasma_witch"
+	elif char_id.begins_with("crane"): char_id = "crane"
+	elif char_id.begins_with("phoenix"): char_id = "phoenix"
+	var streak: int = int(profile.daily_trial_record.get("streak", 0))
+	var score: int = stage_num * 1000 + streak * 100
+	SupabaseClient.submit_score("daily_trial", score, p_name, char_id, {"stage": stage_num, "streak": streak}, self)
+
+func _submit_samsara_record(samsara_count: int) -> void:
+	if samsara_count <= 0: return
+	var p_name: String = str(profile.get("name", ""))
+	if p_name.is_empty(): p_name = str(profile.get("account", {}).get("username", ""))
+	var char_id: String = str(profile.get("hero_class", "fox_spirit"))
+	if char_id.begins_with("fox"): char_id = "fox"
+	elif char_id.begins_with("sentinel"): char_id = "sentinel"
+	elif char_id.begins_with("ironclad"): char_id = "ironclad"
+	elif char_id.begins_with("miasma"): char_id = "miasma_witch"
+	elif char_id.begins_with("crane"): char_id = "crane"
+	elif char_id.begins_with("phoenix"): char_id = "phoenix"
+	var score: int = samsara_count * 10 + int(profile.get("difficulty", 0))
+	SupabaseClient.submit_score("samsara", score, p_name, char_id, {"cycles": samsara_count, "unlocked": int(profile.get("unlocked", 0))}, self)
 
 func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Control:
 	# z_index only ever affects render order in Godot — never GUI input dispatch order, which
@@ -1690,6 +1733,7 @@ func enter_samsara() -> void:
 	SpiritSave.write(profile)
 	_advance_quest("samsara", 1)
 	_refresh_achievements()
+	_submit_samsara_record(new_count)
 	var realm_title := content.samsara_title(new_count, lang)
 	_toast(tf("ui.samsara_toast_success", realm_title), GOLD)
 	show_camp()

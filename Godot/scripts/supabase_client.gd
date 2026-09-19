@@ -10,6 +10,7 @@ const SUPABASE_URL: String = "https://jjfchkdbxwrjvxxiypen.supabase.co"
 const SUPABASE_ANON_KEY: String = "sb_publishable_ntvm_D4g8ayE3G5TpY6JFw_IF-2ht2I"
 const SESSION_PATH: String = "user://spiritbound_session.json"
 const TABLE_PLAYER_SAVES: String = "player_saves"
+const TABLE_LEADERBOARDS: String = "leaderboards"
 
 static var _current_session: Dictionary = {}
 static var _session_loaded: bool = false
@@ -350,3 +351,113 @@ static func sync_save_two_way(local_profile: Dictionary, node: Node = null) -> D
 			return {"ok": true, "action": "uploaded", "profile": local_profile, "error": ""}
 		else:
 			return {"ok": false, "action": "none", "profile": local_profile, "error": str(up_res2.get("error", "Upload failed"))}
+
+# ------------------------------------------------------------------------------
+# Leaderboard Endpoints (PostgREST /leaderboards)
+# ------------------------------------------------------------------------------
+
+static func fetch_leaderboard(category: String, limit: int = 50, node: Node = null) -> Dictionary:
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_LEADERBOARDS + "?category=eq." + category + "&order=score.desc,created_at.asc&limit=" + str(limit)
+	var token := get_access_token()
+	var headers := PackedStringArray()
+	if not token.is_empty():
+		headers.append("Authorization: Bearer " + token)
+	var res = await _http_request(url, HTTPClient.METHOD_GET, headers, null, node)
+
+	if res.get("ok", false):
+		var data = res.get("data")
+		if data is Array and not data.is_empty():
+			return {"ok": true, "entries": data, "error": "", "offline": false}
+
+	# Fallback to predefined seed master records if network error or table is empty
+	return {"ok": true, "entries": _get_fallback_leaderboard(category), "error": str(res.get("error", "")), "offline": true}
+
+static func submit_score(category: String, score: int, player_name: String, character_id: String, extra: Dictionary = {}, node: Node = null) -> Dictionary:
+	var uid := get_user_id()
+	if uid.is_empty(): uid = "local_" + str(Time.get_unix_time_from_system())
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_LEADERBOARDS
+	var token := get_access_token()
+	var headers := PackedStringArray([
+		"Prefer: return=representation"
+	])
+	if not token.is_empty():
+		headers.append("Authorization: Bearer " + token)
+
+	var body := {
+		"category": category,
+		"score": score,
+		"player_name": player_name if not player_name.is_empty() else "驭灵者",
+		"character_id": character_id if not character_id.is_empty() else "fox",
+		"user_id": uid,
+		"extra": extra,
+		"created_at": Time.get_datetime_string_from_system(true, true)
+	}
+	var res = await _http_request(url, HTTPClient.METHOD_POST, headers, body, node)
+	return {"ok": res.get("ok", false), "data": res.get("data"), "error": str(res.get("error", ""))}
+
+static func _get_fallback_leaderboard(category: String) -> Array:
+	var list: Array = []
+	if category == "daily_trial":
+		var seeds := [
+			["无极剑仙", "sentinel", 3280],
+			["幻月灵狐", "fox", 3050],
+			["碧落丹圣", "miasma_witch", 2840],
+			["扶摇子", "crane", 2690],
+			["金乌天尊", "phoenix", 2510],
+			["霸刀狂生", "ironclad", 2380],
+			["玄都道长", "sentinel", 2220],
+			["落霞仙子", "fox", 2090],
+			["万劫毒尊", "miasma_witch", 1930],
+			["弈秋居士", "crane", 1780],
+		]
+		for i in seeds.size():
+			list.append({
+				"player_name": seeds[i][0],
+				"character_id": seeds[i][1],
+				"score": int(seeds[i][2]),
+				"rank": i + 1,
+				"category": category
+			})
+	elif category == "samsara":
+		var seeds := [
+			["通天教主", "sentinel", 55],
+			["九灵元圣", "fox", 54],
+			["玄冥鬼母", "miasma_witch", 45],
+			["广成子", "crane", 43],
+			["哪吒三太子", "phoenix", 41],
+			["巨灵神将", "ironclad", 38],
+			["赤松子", "sentinel", 35],
+			["涂山红红", "fox", 32],
+			["千手罗汉", "ironclad", 28],
+			["浮屠游仙", "crane", 25],
+		]
+		for i in seeds.size():
+			list.append({
+				"player_name": seeds[i][0],
+				"character_id": seeds[i][1],
+				"score": int(seeds[i][2]),
+				"rank": i + 1,
+				"category": category
+			})
+	else: # abyss default
+		var seeds := [
+			["清虚道尊", "sentinel", 58],
+			["九尾天狐", "fox", 52],
+			["幽冥蛊仙", "miasma_witch", 47],
+			["白鹤真人", "crane", 43],
+			["断魂魔尊", "ironclad", 39],
+			["紫微星君", "phoenix", 36],
+			["太乙剑仙", "sentinel", 32],
+			["青丘夜月", "fox", 29],
+			["寒渊灵主", "miasma_witch", 25],
+			["凌云散人", "crane", 21],
+		]
+		for i in seeds.size():
+			list.append({
+				"player_name": seeds[i][0],
+				"character_id": seeds[i][1],
+				"score": int(seeds[i][2]),
+				"rank": i + 1,
+				"category": category
+			})
+	return list
