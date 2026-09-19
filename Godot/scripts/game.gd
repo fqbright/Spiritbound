@@ -74,6 +74,7 @@ var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
 var in_phantom_arena: bool = false
+var in_world_event: bool = false
 var current_screen_name: String = "map"
 var clipboard_cache: String = ""
 var _back_action := Callable()
@@ -420,6 +421,7 @@ func _ready() -> void:
 	_ensure_quests_current()
 	_ensure_daily_trial_current()
 	_ensure_weekly_challenge_current()
+	_ensure_world_event_current()
 	_ensure_login_reward_current()
 	var should_play_intro := not bool(profile.get("intro_seen", false)) and DisplayServer.get_name() != "headless"
 	if should_play_intro:
@@ -435,6 +437,10 @@ func _ready() -> void:
 
 const DAY_SECONDS := 86400
 const WEEK_SECONDS := 604800
+# Phase 9 — World Events: a 4-week rotation per the plan's own "Local Deterministic Calendar"
+# spec, one period longer than WEEK_SECONDS for exactly the reason DAY_SECONDS/WEEK_SECONDS
+# already exist separately — each mode's own natural cadence gets its own named constant.
+const MONTH_SECONDS := 28 * DAY_SECONDS
 
 # Rerolls whichever list has aged past its period. period_seed is the period index itself
 # (today's day number, this week's week number) so every reroll for the same period is
@@ -500,6 +506,21 @@ func _ensure_weekly_challenge_current() -> void:
 			"stage": 0,
 			"badges": int(previous.get("badges", 0)),
 			"best_stage": int(previous.get("best_stage", 0)),
+		}
+		SpiritSave.write(profile)
+
+# Phase 9: unlike Daily Trial/Weekly Challenge, a World Event has nothing to "roll" — which
+# event is active is a pure function of the period index (content.world_event_for_period()), so
+# the only state this resets is "has this period's one-time badge bonus been claimed yet."
+# Historical badges (profile.world_event_record.badges) always carry over across periods.
+func _ensure_world_event_current() -> void:
+	var period: int = int(Time.get_unix_time_from_system()) / MONTH_SECONDS
+	var previous: Dictionary = profile.get("world_event_record", {})
+	if int(previous.get("period", -1)) != period:
+		profile.world_event_record = {
+			"period": period,
+			"claimed": false,
+			"badges": previous.get("badges", []).duplicate(),
 		}
 		SpiritSave.write(profile)
 
@@ -1518,6 +1539,7 @@ func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
 func begin_boss_rush_battle() -> void: _camp_screen.begin_boss_rush_battle()
 func begin_curse_run_battle() -> void: _camp_screen.begin_curse_run_battle()
+func begin_world_event_battle() -> void: _camp_screen.begin_world_event_battle()
 func begin_sandbox_battle(stage: int) -> void: _camp_screen.begin_sandbox_battle(stage)
 func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()

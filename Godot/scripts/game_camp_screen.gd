@@ -724,6 +724,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_leaderboard_entry_section())
+	list.add_child(_world_event_section())
 	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
@@ -1065,6 +1066,58 @@ func _phantom_arena_section() -> Control:
 
 	left.add_child(btn_row)
 	return panel
+
+# Phase 9 — World Events: unlike every other side mode's `enter → win/lose → gold` shape, which
+# is active is a pure function of a rotating 4-week period (content.world_event_for_period()),
+# not a choice or a daily/weekly reset roll. Repeatable at any time, like Phantom Arena/Sandbox,
+# with a permanent per-event cosmetic badge (profile.world_event_record.badges) auto-granted on
+# the first win of each period, mirroring Curse Run's own badge shape (Phase 8) rather than
+# Phantom Arena's separate manual chest-claim button — one fewer button, and this file already
+# has that exact "auto-grant on win" pattern proven out.
+func _world_event_section() -> Control:
+	g._ensure_world_event_current()
+	var period: int = int(g.profile.world_event_record.get("period", 0))
+	var ev: Dictionary = g.content.world_event_for_period(period)
+	var badges: Array = g.profile.world_event_record.get("badges", [])
+	var ev_color: Color = Color(str(ev.get("color", "ffffff")))
+	var bg_col := Color("1a1420")
+	var frame := _split_card_frame("res://assets/banners/banner_world_event.png", true, bg_col, ev_color, 132.0)
+	var panel: PanelContainer = frame.panel
+	panel.name = "WorldEventSection"
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.content.ui(str(ev.get("nameKey", "")), g.lang), 15, ev_color, HORIZONTAL_ALIGNMENT_LEFT))
+	left.add_child(g._label(g.t("ui.world_event_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	left.add_child(g._label(g.content.ui(str(ev.get("descKey", "")), g.lang), 9, Color("d8c8ff"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	left.add_child(g._label(g.tf("ui.world_event_badges_fmt", badges.size()), 9, Color("ff6b9d")))
+
+	var enter_btn := g._button(g.t("ui.world_event_enter"), begin_world_event_battle, ev_color.darkened(0.5), Vector2(140, 36))
+	enter_btn.name = "WorldEventEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
+
+	return panel
+
+func begin_world_event_battle() -> void:
+	g._ensure_world_event_current()
+	var period: int = int(g.profile.world_event_record.get("period", 0))
+	g.in_world_event = true
+	var enc: Dictionary = g.content.world_event_encounter(period, int(g.profile.unlocked))
+	g.current_stage = 0
+	g.active_modifier = g.content.world_event_modifier(period)
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	var seed_val := int(Time.get_unix_time_from_system())
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	if g._mark_discovered("bestiary", str(enc.name)):
+		g._grant_bestiary_discovery_bonus(enc)
+	g.pre_battle_health = 60
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
 
 func _daily_trial_section() -> Control:
 	g._ensure_daily_trial_current()

@@ -2513,6 +2513,43 @@ func _run() -> void:
 	var phantom_claim_btn_after: Button = game.root.find_child("PhantomArenaClaimBtn", true, false) as Button
 	check(phantom_claim_btn_after != null and phantom_claim_btn_after.disabled, "the chest button is disabled once already claimed today")
 
+	section("== growth roadmap: Phase 9 rotating world event ==")
+	game.profile.world_event_record = {"period": -1, "claimed": false, "badges": []}
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("WorldEventSection", true, false) != null, "World Event section renders in the challenges tab")
+	var we_enter_btn: Button = game.root.find_child("WorldEventEnterBtn", true, false) as Button
+	check(we_enter_btn != null, "WorldEventEnterBtn exists in the challenges tab")
+	var current_ev: Dictionary = game.content.world_event_for_period(int(game.profile.world_event_record.period))
+	check(_find_label_containing(game.root, game.content.ui(str(current_ev.nameKey), game.lang)), "the currently active event's own theme name renders in its section")
+
+	var we_gold_before: int = int(game.profile.gold)
+	we_enter_btn.pressed.emit()
+	await process_frame
+	check(game.in_world_event, "WorldEventEnterBtn's begin_world_event_battle() starts a world event battle")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_world_event, "_grant_stage_rewards clears in_world_event after granting")
+	check(int(game.profile.gold) > we_gold_before, "winning a world event battle grants gold")
+	check(bool(game.profile.world_event_record.claimed), "the first win of this period marks its bonus as claimed")
+	check(game.profile.world_event_record.badges.has(str(current_ev.id)), "the first win of this period unlocks that event's permanent badge")
+
+	# A second win the same period must not re-toast or double-append the same badge id.
+	game.begin_world_event_battle()
+	await process_frame
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(game.profile.world_event_record.badges.count(str(current_ev.id)) == 1, "winning again the same period does not duplicate the already-earned badge")
+
+	# World Event has no floor/streak state at all, so a loss just needs to clear the flag —
+	# same stuck-flag shape AGENTS.md documents for every other side mode.
+	game.begin_world_event_battle()
+	await process_frame
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_world_event, "_leave_battle clears in_world_event on a loss")
+
 	section("== defeat diagnosis: recommended action is visually distinguished ==")
 	# diagnose_battle_defeat()'s "action" field used to be computed and never read by the
 	# screen that displays its tip — both buttons rendered in the same color regardless of

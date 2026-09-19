@@ -1,6 +1,6 @@
 # Next Phases Implementation Plan: Spiritbound Post-Launch Roadmap
 
-This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 9** or subsequent phases following the repository standards.
+This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 10** or subsequent phases following the repository standards.
 
 ---
 
@@ -22,18 +22,14 @@ This implementation plan lays out the next sequential phases of Spiritbound deve
 - ✅ **Phase 8**: Mutator & "Curse Run" Challenge Mode (咒缚流局) — done 2026-09-19. Shipped as
   `SpiritContent.MUTATORS`, 10 opt-in handicaps fought as an Abyss-shaped floor gauntlet, gated
   at Ascension Tier A2+. One named mutator ("Draft Only") didn't fit a gold-only-reward gauntlet
-  mode and was replaced with **Ironclad Will** (no relics allowed); the plan's 5 unnamed slots
-  became Elite Gauntlet/Barren Harvest/Berserker's Pact/No Mercy/Fewer Draws. See
-  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account, including why per-mutator (not
-  shared) floor tracking matters.
-
----
-
-## Phase 9: Seasonal World Events & Rotating Modifiers (限时世界活动)
-**Impact: High | Effort: Medium-High | Backend: None (Local Deterministic Calendar)**
-
-### 1. Goal Description
-Rotating 4-week thematic world events (e.g. "Season of the Ember Lord") with unique stage route modifiers, limited challenge nodes, and cosmetic seasonal rewards.
+  mode and was replaced with **Ironclad Will** (no relics allowed). See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
+- ✅ **Phase 9**: Seasonal World Events & Rotating Modifiers (世界活动) — done 2026-09-19.
+  Shipped as `SpiritContent.WORLD_EVENTS`, 4 themes rotating on a 4-week period computed from
+  wall-clock time (`game._ensure_world_event_current()`) but resolved by a pure function of that
+  period integer (`content.world_event_for_period()`), so it's testable at any period without
+  mocking the clock. Reuses every combat.gd modifier key Phases 1-8 already added — no new
+  engine surface. See `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
 
 ---
 

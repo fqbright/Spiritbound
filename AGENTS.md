@@ -445,6 +445,19 @@ The visual presentation blends high-detail painted assets with procedural vector
     chest unlocks after your first win of the day. A loss is inert — full HP restored, no
     streak or floor tracked, closer to Sandbox's "repeatable side activity" than Abyss's
     escalating gauntlet.
+  - **World Events / "世界活动" (`begin_world_event_battle`, `content.WORLD_EVENTS`)**: a
+    themed duel that rotates every 4 weeks — which of the 4 events (Ember Lord/Frost Widow/
+    Withered King/Storm Judge) is active is a pure function of a period index
+    (`content.world_event_for_period(period)`), computed from wall-clock time only at the one
+    call site that needs to (`game._ensure_world_event_current()`), the same seed-in/
+    pure-function-out split `daily_trial_tags()` already uses so this is testable at any period
+    without mocking the clock. Each event's combat.gd modifier is built entirely from keys
+    other modes already added (`damage_bonus`/`extra_enemy`/`damage_mult`/`no_heal`/
+    `health_scale`) — no new engine surface for this feature. Freely repeatable like Phantom
+    Arena/Sandbox (no floor or streak), with a permanent per-event cosmetic badge
+    (`profile.world_event_record.badges`) auto-granted on the first win of each 4-week period,
+    mirroring Curse Run's badge shape (Phase 8) rather than Phantom Arena's separate
+    manual-claim chest button.
   - **Spirit Draft Arena / "灵界轮抽竞技场" (`show_spirit_draft`, `profile.draft_arena`)**: a
     7-round 3-pick-1 card draft — each round offers 3 random cards excluding Starter and Curse
     rarities — building a 15-card deck on top of a fixed 8-card seed (4 `strike` + 4 `ward`).

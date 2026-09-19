@@ -1218,6 +1218,48 @@ func phantom_arena_encounter(unlocked: int, seed_idx: int = 0) -> Dictionary:
 		"background": 2
 	}
 
+# Phase 9 — World Events: a rotating 4-week thematic event, computed purely from a `period`
+# integer (game.gd's _ensure_world_event_current() is the one place that turns wall-clock time
+# into that integer — see its own comment for why, mirroring daily_trial_tags()'s own
+# seed-in/pure-function-out shape so this can be tested at any period without mocking the
+# clock). Each event's `modifier` dict is built entirely from combat.gd keys already wired and
+# tested by Daily Trial/Boss Rush/Curse Run — no new engine surface for this phase at all.
+const WORLD_EVENTS: Array[Dictionary] = [
+	{"id":"ember_lord","nameKey":"event.ember_lord.name","descKey":"event.ember_lord.desc","color":"ff6b3d","art":"embercliff","modifier":{"damage_bonus":4}},
+	{"id":"frost_widow","nameKey":"event.frost_widow.name","descKey":"event.frost_widow.desc","color":"6ee3ff","art":"runebound","modifier":{"extra_enemy":1}},
+	{"id":"withered_king","nameKey":"event.withered_king.name","descKey":"event.withered_king.desc","color":"8a7a5a","art":"sentinel","modifier":{"no_heal":true,"health_scale":1.3}},
+	{"id":"storm_judge","nameKey":"event.storm_judge.name","descKey":"event.storm_judge.desc","color":"c9a6ff","art":"fox","modifier":{"damage_mult":1.4}},
+]
+
+func world_event_for_period(period: int) -> Dictionary:
+	var idx: int = ((period % WORLD_EVENTS.size()) + WORLD_EVENTS.size()) % WORLD_EVENTS.size()
+	return WORLD_EVENTS[idx]
+
+func world_event_encounter(period: int, unlocked: int) -> Dictionary:
+	var ev: Dictionary = world_event_for_period(period)
+	var effective_stage := clampi(unlocked, 1, 250)
+	return {
+		"chapter": 103, "level": effective_stage,
+		"health": 40 + effective_stage * 13,
+		"damage": 7 + int(effective_stage * 1.6),
+		"reward": 45 + effective_stage * 5,
+		"name": ui(str(ev.nameKey), "zh-Hans"), "name_en": ui(str(ev.nameKey), "en"), "art": str(ev.art),
+		"mechanics": {},
+		"adds": 0,
+		"background": 3
+	}
+
+# Battle screen's modifier badge reads name/name_en/detail/detail_en unconditionally — same
+# requirement content.daily_trial_modifier() already documents at its own definition.
+func world_event_modifier(period: int) -> Dictionary:
+	var ev: Dictionary = world_event_for_period(period)
+	var mod: Dictionary = ev.get("modifier", {}).duplicate(true)
+	mod["name"] = ui(str(ev.nameKey), "zh-Hans")
+	mod["name_en"] = ui(str(ev.nameKey), "en")
+	mod["detail"] = ui(str(ev.descKey), "zh-Hans")
+	mod["detail_en"] = ui(str(ev.descKey), "en")
+	return mod
+
 func hero_class(id: String) -> Dictionary:
 	for h in HERO_CLASSES:
 		if h.id == id: return h
@@ -2173,6 +2215,20 @@ const UI_TEXT = {
 	"mutator.no_mercy.desc": {"zh-Hans":"本场战斗中卡牌回复效果完全失效。", "en":"Card-based healing effects do nothing this battle."},
 	"mutator.fewer_draws.name": {"zh-Hans":"缩衣节食", "en":"Fewer Draws"},
 	"mutator.fewer_draws.desc": {"zh-Hans":"每回合抽牌数量减少1张。", "en":"Draw 1 fewer card every turn."},
+	"event.ember_lord.name": {"zh-Hans":"烬王之季", "en":"Season of the Ember Lord"},
+	"event.ember_lord.desc": {"zh-Hans":"烈焰吞噬四野，敌人的攻击愈发凶猛。", "en":"Flames consume the land — enemies strike harder than ever."},
+	"event.frost_widow.name": {"zh-Hans":"寒霜之季", "en":"Season of the Frost Widow"},
+	"event.frost_widow.desc": {"zh-Hans":"刺骨寒霜召来额外的追随者。", "en":"Bitter frost summons an extra attendant."},
+	"event.withered_king.name": {"zh-Hans":"荒芜之季", "en":"Season of the Withered King"},
+	"event.withered_king.desc": {"zh-Hans":"荒芜的诅咒滋养着敌人，且封锁一切治愈。", "en":"A withering curse swells the foe's ranks and seals away all healing."},
+	"event.storm_judge.name": {"zh-Hans":"雷罚之季", "en":"Season of the Storm Judge"},
+	"event.storm_judge.desc": {"zh-Hans":"雷霆审判降临，敌方的每一次打击都更为致命。", "en":"Thunderous judgment falls — every enemy strike lands harder."},
+	"ui.world_event_title": {"zh-Hans":"世界活动", "en":"World Event"},
+	"ui.world_event_sub": {"zh-Hans":"每4周轮换一次的限时主题试炼，可反复挑战，每期首胜额外获得徽章", "en":"A themed trial rotating every 4 weeks — fight it as often as you like, first win each period earns a badge"},
+	"ui.world_event_enter": {"zh-Hans":"进入试炼", "en":"Enter Trial"},
+	"ui.world_event_stage_label_fmt": {"zh-Hans":"世界活动 · %s", "en":"World Event · %s"},
+	"ui.world_event_badges_fmt": {"zh-Hans":"已收集徽章 %d / 4", "en":"Badges collected: %d / 4"},
+	"ui.world_event_badge_toast_fmt": {"zh-Hans":"「%s」徽章已解锁！", "en":"\"%s\" badge unlocked!"},
 	"ui.awaken_btn": {"zh-Hans":"觉醒", "en":"Awaken"},
 	"ui.awakened_label": {"zh-Hans":"已觉醒", "en":"Awakened"},
 	"ui.awakened_toast_fmt": {"zh-Hans":"%s 已觉醒为 +2！", "en":"%s has Awakened to +2!"},

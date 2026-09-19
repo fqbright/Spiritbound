@@ -306,6 +306,46 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 9: Rotating World Events shipped
+Continuing the same user-directed march through Phases 6-10.
+
+**Design**: the plan's own framing ("Local Deterministic Calendar") is the same
+seed-in/pure-function-out shape `daily_trial_tags(day_seed)`/`weekly_challenge_encounter()`
+already use, just at a 4-week cadence — `content.world_event_for_period(period)` takes the
+period as a plain integer and does no wall-clock reads itself, so it's testable at any period
+value without mocking `Time`. The one place that turns real time into that integer is
+`game._ensure_world_event_current()` (`MONTH_SECONDS := 28 * DAY_SECONDS`, mirroring
+`_ensure_weekly_challenge_current()`'s exact shape). Unlike Daily/Weekly Trial there's nothing
+to "roll" — which of the 4 events is active is fully determined by the period, so the only
+persisted state is "has this period's one-time badge already been claimed"
+(`profile.world_event_record = {period, claimed, badges}`); historical badges always carry over
+across periods, same as Curse Run's `cleared` array.
+
+**Reused rather than invented**: every event's combat.gd modifier (`damage_bonus`,
+`extra_enemy`, `damage_mult`, `no_heal`, `health_scale`) is a key some earlier mode already
+added and this session already tested — Phase 9 adds zero new combat.gd surface. The mode
+itself (`begin_world_event_battle`) is Phantom Arena's shape almost exactly (a repeatable
+single-boss duel, no floor/streak state), except the once-per-period cosmetic badge is
+auto-granted on the first win rather than needing a separate manual chest-claim button — Curse
+Run's badge shape (Phase 8) applied here instead, since it needed one fewer moving part and
+this file already had that exact pattern proven out two phases ago.
+
+**The 4 events** (`SpiritContent.WORLD_EVENTS`): Ember Lord (fire/`damage_bonus`), Frost Widow
+(water/`extra_enemy`), Withered King (poison/`no_heal`+`health_scale`), Storm Judge
+(gale/`damage_mult`) — themed names invented in the plan's own example's spirit ("Season of the
+Ember Lord" was the plan's literal sample name, kept verbatim as event 1), not tied to the 4
+hero classes specifically since this is a world-level event, not a hero-specific one.
+
+**Verification**: `test_runner.gd` now at 651/0 checks (event rotation determinism and
+wraparound at arbitrary period values, encounter/modifier shape checks, a real battle
+confirming storm_judge's damage_mult reaches combat state), `ui_smoke.gd` new World Event
+section (render, battle entry, win badge-grant, a second win not double-granting the same
+badge, and the loss/stuck-flag regression check). Full `./run_tests.sh --all` green from a
+from-scratch `Godot/.godot/` state — one run hit an unrelated, pre-existing flaky timing check
+("finishing-blow banner appears mid-sequence") that passed cleanly on two immediate re-runs
+with zero code changes in between, confirming it as pre-existing animation-timing flakiness
+rather than anything this phase touched.
+
 ### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 8: Curse Run Mutators shipped
 Continuing the same user-directed march through Phases 6-10.
 

@@ -908,6 +908,36 @@ func run() -> void:
 	for i in 6: famine_run.end_turn()
 	check(int(famine_run.state.energy) == 2, "energy_cap holds energy at 2 even after 6 turns of normal growth (turn %d, got %d)" % [int(famine_run.state.turn), int(famine_run.state.energy)])
 
+	# === PHASE 9: WORLD EVENTS (ROTATING 4-WEEK THEMED TRIAL) ===
+	check(SpiritContent.WORLD_EVENTS.size() == 4, "World Events ships exactly 4 rotating themes")
+	# world_event_for_period() is a pure function of the period integer alone (no wall-clock
+	# reads inside it — see content.gd's own comment on why), so it's testable at any period,
+	# including ones that don't correspond to "now", without mocking the clock at all.
+	check(content.world_event_for_period(0).id == content.world_event_for_period(0).id, "the same period always resolves to the same event")
+	var ev_a := content.world_event_for_period(5)
+	var ev_b := content.world_event_for_period(5 + SpiritContent.WORLD_EVENTS.size())
+	check(str(ev_a.id) == str(ev_b.id), "the rotation wraps around cleanly after a full cycle through all 4 events (period 5 == period 5+4)")
+	var ev_neg := content.world_event_for_period(-1)
+	check(not str(ev_neg.get("id", "")).is_empty(), "a negative period index still resolves to a valid event, no crash or empty result")
+
+	var we_enc := content.world_event_encounter(2, 10)
+	var we_ev := content.world_event_for_period(2)
+	check(str(we_enc.art) == str(we_ev.art), "world_event_encounter's art matches period 2's actual themed event")
+	check(int(we_enc.chapter) == 103, "world event encounters use their own sentinel chapter 103, distinct from campaign/daily-trial/phantom-arena")
+
+	var we_mod := content.world_event_modifier(2)
+	check(not str(we_mod.get("name", "")).is_empty() and not str(we_mod.get("detail", "")).is_empty(), "world_event_modifier carries display text so show_battle()'s modifier badge doesn't read a missing property")
+
+	# Confirm a specific event's modifier actually reaches a real battle, same shape as the
+	# daily trial's damage_mult check above.
+	var storm_period := -1
+	for p in SpiritContent.WORLD_EVENTS.size():
+		if str(content.world_event_for_period(p).id) == "storm_judge": storm_period = p
+	check(storm_period >= 0, "storm_judge is reachable at some period index")
+	var we_combat := SpiritCombat.new(content)
+	we_combat.create(316, content.world_event_encounter(storm_period, 20), content.raw.startingDeck, 60, {}, [], {}, content.world_event_modifier(storm_period))
+	check(int(we_combat.state.enemies[0].damage) == int(round(int(content.world_event_encounter(storm_period, 20).damage) * 1.4)), "storm_judge's damage_mult (1.4x) reaches a real world event battle")
+
 	check(SpiritContent.DAILY_TRIAL_STAGES == 15, "the Daily Trial is 15 stages")
 	var trial_stage1 := content.daily_trial_encounter(1)
 	var trial_stage15 := content.daily_trial_encounter(15)

@@ -207,6 +207,7 @@ func _current_encounter() -> Dictionary:
 	if g.in_curse_run:
 		var cr: Dictionary = g.profile.get("curse_run", {})
 		return g.content.abyss_encounter(int(cr.get("floors", {}).get(str(cr.get("selected", "")), 1)))
+	if g.in_world_event: return g.content.world_event_encounter(int(g.profile.world_event_record.get("period", 0)), int(g.profile.unlocked))
 	if g.in_daily_trial: return g.content.daily_trial_encounter(int(g.profile.daily_trial_record.get("stage", 0)) + 1)
 	if g.in_weekly_challenge: return g.content.weekly_challenge_encounter(int(g.profile.weekly_challenge_record.get("stage", 0)) + 1)
 	return g.content.encounters[g.current_stage]
@@ -217,6 +218,9 @@ func _current_stage_label() -> String:
 	if g.in_curse_run:
 		var cr: Dictionary = g.profile.get("curse_run", {})
 		return g.tf("ui.curse_run_stage_label_fmt", int(cr.get("floors", {}).get(str(cr.get("selected", "")), 1)))
+	if g.in_world_event:
+		var ev: Dictionary = g.content.world_event_for_period(int(g.profile.world_event_record.get("period", 0)))
+		return g.tf("ui.world_event_stage_label_fmt", g.content.ui(str(ev.get("nameKey", "")), g.lang))
 	if g.in_abyss: return g.tf("ui.abyss_stage_label_fmt", int(g.profile.get("abyss_floor", 1)))
 	if g.in_daily_trial: return g.tf("ui.daily_trial_stage_label_fmt", [int(g.profile.daily_trial_record.get("stage", 0)) + 1, SpiritContent.DAILY_TRIAL_STAGES])
 	if g.in_weekly_challenge: return g.tf("ui.weekly_challenge_stage_label_fmt", [int(g.profile.weekly_challenge_record.get("stage", 0)) + 1, SpiritContent.WEEKLY_CHALLENGE_STAGES])
@@ -308,6 +312,30 @@ func _grant_stage_rewards() -> void:
 		g._advance_quest("earn_gold", gold_gain)
 		_grant_mastery_xp(20)
 		g._add_season_xp(50)
+		return
+	if g.in_world_event:
+		g.in_world_event = false
+		g._ensure_world_event_current()
+		var period: int = int(g.profile.world_event_record.get("period", 0))
+		var ev: Dictionary = g.content.world_event_for_period(period)
+		var we_gold: int = 40 + int(g.profile.unlocked) * 5
+		g.profile.gold += we_gold
+		# First win of this 4-week period grants a permanent cosmetic badge for that event —
+		# same "did you ever do this" spirit as Curse Run's badge (Phase 8), not score-ranked.
+		if not bool(g.profile.world_event_record.get("claimed", false)):
+			g.profile.world_event_record.claimed = true
+			var badges: Array = g.profile.world_event_record.get("badges", [])
+			if not badges.has(str(ev.id)):
+				badges.append(str(ev.id))
+				g.profile.world_event_record.badges = badges
+				g._toast(g.tf("ui.world_event_badge_toast_fmt", g.content.ui(str(ev.get("nameKey", "")), g.lang)), Color(str(ev.get("color", "ffffff"))))
+		g.profile.health = 60
+		g.pending_rewards = {"gold": we_gold, "equipment": "", "rune": "", "relic": ""}
+		SpiritSave.write(g.profile)
+		g._advance_quest("win_battles", 1)
+		g._advance_quest("earn_gold", we_gold)
+		_grant_mastery_xp(18)
+		g._add_season_xp(40)
 		return
 	if g.in_abyss:
 		g.in_abyss = false
