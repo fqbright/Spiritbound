@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Run Automated Tests & E2E Playthrough
+    name: Run Full Automated Test Suite
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +21,24 @@ jobs:
           version: 4.7.2
           use-dotnet: false
 
-      - name: Run All Test Suites
+      # CRITICAL: every headless test script references global class_name types (SpiritContent,
+      # SpiritCombat, SpiritGame, SpiritSave, GutTest, ...), and Godot only resolves those from
+      # its own generated cache (Godot/.godot/, gitignored — never committed, so a fresh checkout
+      # never has one). Without an import pass first, `godot --headless -s tests/test_runner.gd`
+      # fails immediately with "Identifier ... not declared in the current scope" parse errors,
+      # before a single test runs. This was previously missing here entirely — every CI run on
+      # this repo's history failed this way, in ~10 seconds, without ever actually running the
+      # test suite (verified against this repo's own past Actions runs). AGENTS.md's existing
+      # "run --editor --quit after adding images" note happens to also fix this for the same
+      # reason, but --import is the purpose-built headless equivalent and doesn't need a display.
+      - name: Import project (populate class_name cache)
+        run: godot --headless --path Godot/ --import
+
+      # --all also runs the chaos monkey, memory/leak profiler, and pixel-diff suites, not just
+      # the 3 fast ones. Measured cost of the extra 3 suites is negligible (well under a minute
+      # combined), so there's no reason for a human/agent to have to remember `--all` locally —
+      # every push and PR gets the full signal for free.
+      - name: Run All Test Suites (--all)
         run: |
           chmod +x run_tests.sh
-          ./run_tests.sh
+          ./run_tests.sh --all

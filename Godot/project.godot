@@ -32,3 +32,9 @@ pointing/emulate_mouse_from_touch=true
 [gui]
 theme/custom_font="res://assets/fonts/LXGWWenKai-Medium.ttf"
 
+[debug]
+gdscript/warnings/exclude_addons=true
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+

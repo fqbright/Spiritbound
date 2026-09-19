@@ -47,6 +47,16 @@ const SHOP_STOCK_COUNT := 6
 # for why it's still a useful signal. Toggle off for the "how far does a straight run actually
 # get" report.
 const CONTINUE_PAST_WALLS := false
+# Regression floor for CI (added when this probe was wired into run_tests.sh/CI — previously it
+# was a manual-only diagnostic that always exited 0, so a card/encounter/curve change could
+# silently break the difficulty curve until someone thought to re-run this by hand). Every RNG
+# here is seeded, so a fresh run with unchanged balance data reliably reaches stage index 192
+# (chapter 39) before hitting Band 4's documented, expected wall — see Docs/ARCHITECTURE.md's
+# "250-stage difficulty curve" section. Stage index 170 (chapter 35) gives ~4 chapters of slack
+# below that so ordinary balance tuning doesn't make this flaky, while still catching a real
+# regression (e.g. a reintroduced version of the chapter-19/20 wall this same file's history
+# once found and fixed).
+const MIN_REGRESSION_FLOOR_STAGE := 170
 
 var deck: Array = []
 var collection: Dictionary = {}
@@ -362,4 +372,15 @@ func run() -> void:
 	else:
 		print("Cleared all %d stages." % content.encounters.size())
 	print("--------------------------------------------------------\n")
-	quit(0)
+
+	# This report becomes a real regression gate here: a diligent build must still reach at
+	# least MIN_REGRESSION_FLOOR_STAGE before hitting a wall (or clear everything). See that
+	# constant's own comment for why this is a floor, not an exact pin.
+	var reached_stage: int = stuck_at if stuck_at >= 0 else content.encounters.size()
+	if reached_stage >= MIN_REGRESSION_FLOOR_STAGE:
+		print("✅ ok: balance curve regression floor held (reached stage %d, required >= %d)\n" % [reached_stage, MIN_REGRESSION_FLOOR_STAGE])
+		quit(0)
+	else:
+		printerr("❌ FAIL: balance curve regressed — reached only stage %d, required >= %d (chapter %d, required >= chapter %d)" % [reached_stage, MIN_REGRESSION_FLOOR_STAGE, reached_stage / 5 + 1, MIN_REGRESSION_FLOOR_STAGE / 5 + 1])
+		print("❌ FAIL: balance curve regressed — reached only stage %d, required >= %d (chapter %d, required >= chapter %d)\n" % [reached_stage, MIN_REGRESSION_FLOOR_STAGE, reached_stage / 5 + 1, MIN_REGRESSION_FLOOR_STAGE / 5 + 1])
+		quit(1)

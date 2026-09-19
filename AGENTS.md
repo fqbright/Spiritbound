@@ -19,6 +19,9 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Godot/data/core.json` | Card definitions and balance numbers. |
 | `Godot/tests/test_runner.gd` | Rules-engine regression suite. |
 | `Godot/tests/ui_smoke.gd` | Headless walk over every screen and a full combat turn. |
+| `Godot/tests/balance_probe.gd` | 250-stage difficulty-curve simulation. Part of the default `./run_tests.sh` run — asserts a diligent build reaches at least stage 170 (chapter 35) before the documented Band 4 wall, so a card/encounter/curve change that breaks the balance curve fails CI instead of waiting for a manual re-run. |
+| `Godot/addons/gut/` | Vendored [GUT](https://github.com/bitwes/Gut) (Godot Unit Test) framework, v9.4.0. Third-party code — don't hand-edit; re-vendor from upstream instead. |
+| `Godot/tests/gut/test_*.gd` | GUT-based tests (`extends GutTest`, `assert_*` methods) — the newer, framework-backed alternative to this repo's older hand-rolled `check()`-style suites above. New test files here are auto-discovered by filename (`test_*.gd`), no registration needed. |
 | `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them. |
 | `Docs/ARCHITECTURE.md` | Why the code is shaped this way. Read it before a structural change. |
 | `Docs/GROWTH_ROADMAP.md` | Retention/growth feature backlog, ordered by impact. Check this for what's in progress before starting new feature work. |
@@ -28,11 +31,13 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 Every agent working on this repository **MUST** run the automated verification suite before submitting any commit:
 
 ```bash
-./run_tests.sh                 # Core suites: test_runner + ui_smoke + e2e_playthrough
-./run_tests.sh --all           # All 6 suites: core + chaos monkey + leak profiler + pixel-diff
+./run_tests.sh                 # Core suites: test_runner + ui_smoke + e2e_playthrough + balance_probe + gut
+./run_tests.sh --all           # All 8 suites: core + chaos monkey + leak profiler + pixel-diff
 ./run_tests.sh --monkey        # Chaos Monkey stress tests (500+ random taps & invalid plays)
 ./run_tests.sh --leaks         # Memory & ObjectDB leak profiler (zero unbounded leaks)
 ./run_tests.sh --diff          # Visual Pixel-Diff baseline comparison (sub-pixel regression)
+./run_tests.sh --balance       # 250-stage balance-curve regression probe alone
+./run_tests.sh --gut           # GUT suite alone (tests/gut/test_*.gd)
 ./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots
 ```
 
@@ -41,13 +46,21 @@ Individual suite commands:
 godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (350+ checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
+godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-stage balance-curve regression probe
+godot --headless --path Godot/ -s addons/gut/gut_cmdln.gd -- -gdir=res://tests/gut -gexit  # GUT suite
 godot --headless --path Godot/ --script res://tests/chaos_monkey.gd     # chaos monkey stress test
 godot --headless --path Godot/ --script res://tests/leak_checker.gd     # memory and object leak profiler
 godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # visual pixel-diff test
 godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # mobile visual snapshot generator
 ```
 
-All suites must pass with **0 failures**.
+**Adding a new GUT test**: create `Godot/tests/gut/test_<name>.gd` with `extends GutTest`, one
+`func test_<description>():` per case, using GUT's `assert_eq`/`assert_true`/`assert_not_null`/etc.
+No registration step needed — `-gdir=res://tests/gut` auto-discovers every `test_*.gd` file there.
+After adding the file, run `godot --headless --path Godot/ --import` once so Godot's class cache
+picks up the new script before running it (see the CI trap above for why this matters).
+
+All suites must pass with **0 failures**. GitHub CI (`.github/workflows/ci.yml`) runs `./run_tests.sh --all` (all 8 suites) on every push/PR to `main`, after an explicit `godot --headless --path Godot/ --import` step (see the CI trap above — skip that step and every suite fails before running a single check) — the extra 3 suites beyond core cost well under a minute combined, so there's no reason CI should run less than everything.
 
 **Visual Verification Without Physical iPhone**:
 Run `./run_tests.sh --snapshots` to generate pixel-accurate 390x844 mobile frames in `Godot/tests/snapshots/` (`01_map_screen.png`, `02_battle_screen.png`, `03_rewards_screen.png`, `04_shop_screen.png`, `05_deck_screen.png`, `06_camp_screen.png`, `07_treasury_inspector.png`). Inspect these images to verify mobile UI layout, text truncation, and layer alignment without needing a physical phone attached.
@@ -206,6 +219,30 @@ Every one of these produced a wrong screen with no error in the log. They are th
   unguarded by `screen_generation` for exactly this reason; it already has its own equivalent
   protection (`is_instance_valid()` checks on its own transition nodes), which doesn't have this
   problem because it's inside the same function as the `_clear()` call, not outside it.
+- **CI had been failing on every single push for this project's entire history, and nobody had
+  looked.** Every headless test script references global `class_name` types (`SpiritContent`,
+  `SpiritCombat`, `SpiritGame`, `SpiritSave`, and — once GUT was added — `GutTest`). Godot only
+  resolves those from a generated cache under `Godot/.godot/`, which is gitignored and so never
+  exists on a fresh checkout. `.github/workflows/ci.yml` checked out the repo, installed Godot,
+  and went straight to `./run_tests.sh` with no import step in between — so `godot --headless -s
+  tests/test_runner.gd` failed immediately with a wall of "Identifier ... not declared in the
+  current scope" parse errors, before a single `check()` call ever ran, on every run, for the
+  life of the project (confirmed against this repo's own Actions history — every run failed in
+  ~10 seconds, far too fast to have reached the test suite at all). This is exactly why AGENTS.md
+  already told agents to run `godot --headless --path Godot/ --editor --quit` after adding
+  images: that command also happens to populate this same cache, so any agent who ran the full
+  verification loop locally first (as instructed) never saw the failure — only a from-scratch CI
+  checkout, which no one was actually reading the logs of, ever hit it. Fixed with a dedicated
+  `godot --headless --path Godot/ --import` step (the purpose-built headless equivalent — "starts
+  the editor, waits for any resources to be imported, then quits," no display needed) added to
+  `ci.yml` before the test-suite step. Verified by reproducing the exact failure locally first
+  (delete `Godot/.godot/` entirely, confirm the same parse errors appear character-for-character),
+  then confirming the fix resolves it before pushing — the same revert-and-reconfirm discipline
+  this file already asks for elsewhere, applied to CI infrastructure instead of game code. If you
+  ever see this exact error shape in a fresh environment (a new sandbox, a new CI runner, a
+  teammate's first clone), this is almost certainly why — run the import step, not `--editor`
+  interactively, and don't assume "it works on my machine" means CI will agree, since your
+  machine already has a warm cache from every previous run you've done.
 
 ## Game rules worth knowing before touching balance
 
@@ -502,12 +539,10 @@ The visual presentation blends high-detail painted assets with procedural vector
 
 ## Handoff & verification notes for future agents
 
-- **Verifying changes**:
-  ```bash
-  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (189 checks)
-  godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
-  ```
-  Both must pass without failures before committing.
+- **Verifying changes**: see "Verifying a change" near the top of this file for the full
+  `./run_tests.sh` command set. Don't duplicate suite names/check counts here — they drift out
+  of sync with reality otherwise, which is exactly how this note ended up pointing at only 2 of
+  what are now 7 suites with a check count 188 checks stale.
 - **Deploying to iOS**:
   Run `./deploy_ios.sh --full-export` with the iPhone unlocked and connected. If the screen is locked, `devicectl` reports `unavailable`.
 - **Importing newly added images**:
