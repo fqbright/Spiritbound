@@ -88,6 +88,25 @@ func _run() -> void:
 	print("2/7 Rendering Battle Screen...")
 	game.begin_battle(0)
 	await process_frame
+	# begin_battle()'s per-battle modifier and draw shuffle are both seeded from wall-clock time
+	# (see game_battle_screen.gd's own comment on begin_battle()'s seed line), so this screen
+	# would otherwise show a different hand on every capture, and roughly one capture in ten an
+	# extra "swarm" enemy — measured to eat most of this screen's diff-tolerance budget on its
+	# own when comparing two back-to-back captures of an otherwise-unchanged pipeline. Force both
+	# back to a fixed, representative state and re-render — the same "poke combat state
+	# directly, then rebuild the screen" pattern ui_smoke.gd's finishing-blow test uses for the
+	# same reason.
+	if game.combat.state.enemies.size() > 1:
+		game.combat.state.enemies.resize(1)
+	game.combat.state.hand = [
+		{"uid": 90001, "card_id": "strike"},
+		{"uid": 90002, "card_id": "ward"},
+		{"uid": 90003, "card_id": "strike"},
+		{"uid": 90004, "card_id": "ward"},
+		{"uid": 90005, "card_id": "strike"},
+	]
+	game.show_battle()
+	await process_frame
 	for _i in 10:
 		await process_frame
 	await _capture_screen(game, "02_battle_screen.png")

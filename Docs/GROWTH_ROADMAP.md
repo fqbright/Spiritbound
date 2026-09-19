@@ -306,6 +306,46 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Pixel-Diff visual regression wired into CI as a real, hard-gated check
+
+User asked for a broader pass on reducing manual verification. Found that the Pixel-Diff suite
+(`tests/pixel_diff_test.gd`) — real perceptual diffing logic, real committed baselines — had
+never actually compared anything in this project's history: its screen-capture step
+(`visual_snapshots.gd`) needs a real rendering driver (`get_image()` returns null under
+`--headless`'s dummy renderer, the same empirically-confirmed fact Phase 10's recap capture
+below hit independently), `--snapshots` was never part of `--all`, and CI only ever ran `--all`
+— so Test 3 silently skipped all 7 screens on every run, forever, leaving visual regressions
+catchable only by a human running `--snapshots` and eyeballing images by hand.
+
+**Fixed**: `run_tests.sh`'s Pixel-Diff suite (step 8) now captures fresh current screenshots
+immediately before diffing them, and CI (`ci.yml`) installs Xvfb and wraps `./run_tests.sh --all`
+in `xvfb-run` so that capture has a display to render into — Mesa's software rasterizer
+(llvmpipe) handles it fine, no GPU needed. Added `./run_tests.sh --refresh-baselines` so
+intentionally changing a screen's layout has a one-command path to update the committed
+baseline, rather than the manual copy/import dance this would otherwise require.
+
+**Two real traps found and fixed before trusting this as a hard gate** (both now documented in
+AGENTS.md's Traps section, since either would cost a future agent real time otherwise):
+1. An undersized Xvfb virtual screen (640x480 — shorter than the game's 390x844 viewport)
+   misplaced bottom-anchored UI in a way that looked exactly like a real layout bug. It wasn't;
+   the same element renders correctly and stably under `--headless`. Fixed by using a screen at
+   least as tall as the viewport (400x900).
+2. Validated determinism first, since a hard gate that's itself flaky is worse than no gate (see
+   the `ui_smoke.gd` finishing-blow fix elsewhere today for exactly how much a flaky check
+   erodes trust in the suite) — captured two independent back-to-back runs of all 7 screens and
+   diffed them against each other with zero code changes in between, to measure the real
+   run-to-run noise floor before picking anything final. Six screens landed under 0.1%; the
+   battle screen landed at 2.25% against a 2.5% threshold, because `begin_battle()`'s draw
+   shuffle (and occasionally its flavor modifier) is wall-clock-seeded, so the captured hand
+   (and sometimes enemy count) genuinely differed every run. Fixed in `visual_snapshots.gd` by
+   forcing a fixed hand/enemy-count right after `begin_battle(0)`, dropping the noise floor to
+   0.11% — not by loosening the threshold, which would have shipped a gate one unlucky roll from
+   flaking on an unrelated PR.
+
+All 7 baselines regenerated using this exact pipeline (so future CI captures are compared
+apples-to-apples, not against whatever rendering setup produced the old ones) and committed.
+Verified with two consecutive full `xvfb-run ... ./run_tests.sh --all` runs, both clean.
+
 ### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 10: Battle Recap Share Card shipped
 Continuing the same user-directed march through Phases 6-10 — the last of the five.
 

@@ -36,12 +36,20 @@ Every agent working on this repository **MUST** run the automated verification s
 ./run_tests.sh --all           # All 8 suites: core + chaos monkey + leak profiler + pixel-diff
 ./run_tests.sh --monkey        # Chaos Monkey stress tests (500+ random taps & invalid plays)
 ./run_tests.sh --leaks         # Memory & ObjectDB leak profiler (zero unbounded leaks)
-./run_tests.sh --diff          # Visual Pixel-Diff baseline comparison (sub-pixel regression)
+./run_tests.sh --diff          # Recaptures the 7 screens and diffs them against baseline
 ./run_tests.sh --balance       # 250-stage balance trajectory bot (full, byte-reproducible)
 ./run_tests.sh --balance-quick # Same bot, retry-capped (~1s) — the CI-friendly form
 ./run_tests.sh --gut           # GUT suite alone (tests/gut/test_*.gd)
-./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots
+./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots (no diff/gate)
+./run_tests.sh --refresh-baselines  # Recaptures and promotes to Pixel-Diff's committed baselines
 ```
+`--diff` and `--refresh-baselines` need a real rendering driver (`get_image()` returns null
+under `--headless`'s dummy renderer), so unlike every other suite here they run without
+`--headless`, against whatever `DISPLAY` is already set — a real desktop session locally, or
+Xvfb's virtual one in CI (see `.github/workflows/ci.yml`). Locally without a display: `xvfb-run
+-a --server-args="-screen 0 400x900x24" ./run_tests.sh --diff`. **The Xvfb screen must be at
+least as tall as the game's 390x844 portrait viewport** — see the Traps section below for what
+a shorter one does.
 
 Individual suite commands:
 ```bash
@@ -52,8 +60,8 @@ godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-st
 godot --headless --path Godot/ -s addons/gut/gut_cmdln.gd -- -gdir=res://tests/gut -gexit  # GUT suite
 godot --headless --path Godot/ --script res://tests/chaos_monkey.gd     # chaos monkey stress test
 godot --headless --path Godot/ --script res://tests/leak_checker.gd     # memory and object leak profiler
-godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # visual pixel-diff test
-godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # mobile visual snapshot generator
+godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # capture the 7 current screens (needs a real/Xvfb display)
+godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # diff those against Godot/tests/snapshots/baselines/
 ```
 
 **Adding a new GUT test**: create `Godot/tests/gut/test_<name>.gd` with `extends GutTest`, one
@@ -62,10 +70,32 @@ No registration step needed — `-gdir=res://tests/gut` auto-discovers every `te
 After adding the file, run `godot --headless --path Godot/ --import` once so Godot's class cache
 picks up the new script before running it (see the CI trap above for why this matters).
 
-All suites must pass with **0 failures**. GitHub CI (`.github/workflows/ci.yml`) runs `./run_tests.sh --all` (all 8 suites) on every push/PR to `main`, after an explicit `godot --headless --path Godot/ --import` step (see the CI trap above — skip that step and every suite fails before running a single check) — the extra 3 suites beyond core cost well under a minute combined, so there's no reason CI should run less than everything.
+All suites must pass with **0 failures**. GitHub CI (`.github/workflows/ci.yml`) runs `./run_tests.sh --all` (all 8 suites) on every push/PR to `main`, wrapped in `xvfb-run` (installed as its own CI step) so the Pixel-Diff suite's screen capture has a display to render into, after an explicit `godot --headless --path Godot/ --import` step (see the CI trap above — skip that step and every suite fails before running a single check) — the extra suites beyond core cost well under two minutes combined, so there's no reason CI should run less than everything.
+
+**Visual regression is a real, automated gate, not just manual inspection.** The Pixel-Diff
+suite (step 8 of `--all`) recaptures all 7 core screens and diffs each against a committed
+baseline in `Godot/tests/snapshots/baselines/`, using perceptual color-tolerance + morphological
+clustering (ignores anti-aliasing/font-hinting jitter, catches real layout/content changes) —
+see `Godot/tests/pixel_diff_test.gd`. This used to be dead weight: the suite's own diffing logic
+and the committed baselines were both real, but nothing ever generated a *current* snapshot in
+CI (`--snapshots` wasn't part of `--all`, and needs a real rendering driver `--headless` can't
+provide), so every screen silently skipped on every run, forever. Fixed by folding capture into
+the diff suite itself and running the whole thing under Xvfb in CI — see git history around
+2026-09-19 for the measured per-screen noise floor (run-to-run variance with zero real changes)
+that the per-screen thresholds in `pixel_diff_test.gd` are set against; if a threshold ever looks
+suspiciously tight against a fresh noise-floor measurement, loosen it rather than let the gate
+flake, the same lesson `balance_probe.gd`'s CI-vs-full retry split and this file's own flaky-test
+traps below already teach for other suites.
+
+**If a UI change is intentional, refresh the baselines it affects**: `./run_tests.sh
+--refresh-baselines`, then `godot --headless --path Godot/ --import`, then confirm `--diff`
+passes, then review and commit the changed `Godot/tests/snapshots/baselines/*.png` yourself —
+this step trusts that today's capture is correct, it does not check that for you. If `--diff`
+fails and you *didn't* mean to change that screen, don't refresh — read the saved diff image
+under `Godot/tests/snapshots/diffs/` first; that's the whole point of the gate.
 
 **Visual Verification Without Physical iPhone**:
-Run `./run_tests.sh --snapshots` to generate pixel-accurate 390x844 mobile frames in `Godot/tests/snapshots/` (`01_map_screen.png`, `02_battle_screen.png`, `03_rewards_screen.png`, `04_shop_screen.png`, `05_deck_screen.png`, `06_camp_screen.png`, `07_treasury_inspector.png`). Inspect these images to verify mobile UI layout, text truncation, and layer alignment without needing a physical phone attached.
+Run `./run_tests.sh --snapshots` to generate pixel-accurate 390x844 mobile frames in `Godot/tests/snapshots/` (`01_map_screen.png`, `02_battle_screen.png`, `03_rewards_screen.png`, `04_shop_screen.png`, `05_deck_screen.png`, `06_camp_screen.png`, `07_treasury_inspector.png`) for eyeballing without gating on baseline diff. Inspect these images to verify mobile UI layout, text truncation, and layer alignment without needing a physical phone attached.
 
 **The iOS Simulator cannot run this project.** The official Godot 4.7.2 iOS export
 templates ship a simulator library containing only an x86_64 slice, so there is nothing
@@ -85,7 +115,12 @@ attached, use `./run_tests.sh --snapshots` to inspect the rendered mobile frames
    the headless suites possible. Keep game rules out of `game.gd` too where you can.
 3. **Every user-facing string goes in `UI_TEXT` in `content.gd` with both `zh-Hans` and
    `en`.** Never hardcode text in `game.gd`.
-4. **Do not commit `Godot/.godot/` or `Godot/tests/snapshots/*.png`** — snapshots are generated locally for inspection.
+4. **Do not commit `Godot/.godot/` or the loose current screenshots directly under
+   `Godot/tests/snapshots/*.png`** — those are regenerated by every `--diff`/`--snapshots`/
+   `--refresh-baselines` run and gitignored. **Do** commit `Godot/tests/snapshots/baselines/*.png`
+   when you deliberately refresh them (see "Visual regression is a real, automated gate" above) —
+   those are the committed reference the Pixel-Diff suite gates every CI run against, not
+   scratch output.
 5. **Always run `./run_tests.sh` before committing.** A commit with failing checks will be rejected by git hooks and GitHub CI.
 6. **Always consult and leverage the workspace skills in `.agents/skills/`**:
    - Modifying UI, GDScript, or screen layouts: Consult `.agents/skills/godot-game-dev/SKILL.md`.
@@ -246,6 +281,38 @@ Every one of these produced a wrong screen with no error in the log. They are th
   teammate's first clone), this is almost certainly why — run the import step, not `--editor`
   interactively, and don't assume "it works on my machine" means CI will agree, since your
   machine already has a warm cache from every previous run you've done.
+- **An undersized Xvfb virtual screen produces a real-looking layout bug that isn't one.**
+  While wiring the Pixel-Diff suite's screen capture into CI, an early attempt used `xvfb-run
+  --server-args="-screen 0 640x480x24"` — wider than the game's 390x844 portrait viewport, but
+  shorter. The resulting map-screen capture showed the bottom nav dock floating in the vertical
+  middle of the screen instead of docked at the bottom, which looked exactly like the kind of
+  anchor bug this file's own "Anchor presets resolve against the minimum size at call time" trap
+  describes — except the dock's anchoring code was already correct (verified by finding it
+  renders at the right position, stably, across 80 frames under `--headless`'s dummy driver).
+  The actual cause: the dock's `anchor_top`/`anchor_bottom` math resolves against whatever height
+  the real window *is*, not the game's configured resolution, and an X11 window capped at 480px
+  tall is not 844px tall no matter what the project settings say. Re-running with a screen at
+  least as tall as the viewport (400x900 was used) fixed it immediately, no code changes needed.
+  If a snapshot/screenshot capture under a fresh Xvfb setup ever shows a bottom- or edge-anchored
+  element in the wrong place, check the virtual screen's dimensions before touching any layout
+  code — the same way the CI-cache trap above says to suspect the cache before suspecting new
+  test logic.
+- **A screen that's non-deterministic in content, not just in a few noisy pixels, can eat an
+  entire visual-diff threshold on its own.** Validating the Pixel-Diff suite's new Xvfb capture
+  pipeline meant comparing two independent back-to-back captures of the same 7 screens with
+  nothing else changed — the run-to-run noise floor a real threshold has to sit above. Six
+  screens landed under 0.1%; the battle screen landed at 2.25%, against a 2.5% threshold, because
+  `begin_battle()`'s draw shuffle (and occasionally its flavor modifier) is seeded from wall-clock
+  time — see this file's own note on that seed elsewhere — so the captured hand (and sometimes
+  the enemy count) genuinely differed every single capture, not just by a few anti-aliased
+  pixels. `pixel_diff_test.gd`'s color-tolerance-plus-clustering de-noiser is built to absorb
+  rendering jitter; it has no way to absorb "this is a legitimately different screen." Fixed in
+  `visual_snapshots.gd` by forcing a fixed hand and enemy count right after `begin_battle(0)` and
+  re-rendering, the same "poke combat state directly for determinism" pattern already used
+  elsewhere (see `ui_smoke.gd`'s finishing-blow banner test) — not by loosening the threshold,
+  which would have shipped a gate one unlucky roll away from flaking on an unrelated PR. If a new
+  screen is ever added to this suite and its capture touches anything `begin_battle()` seeds from
+  the clock, give it the same treatment before trusting its threshold.
 
 ## Game rules worth knowing before touching balance
 

@@ -34,11 +34,29 @@ jobs:
       - name: Import project (populate class_name cache)
         run: godot --headless --path Godot/ --import
 
+      # The pixel-diff suite (step 8 of --all) regenerates 7 mobile screenshots to compare
+      # against committed baselines, and that capture needs a real rendering driver — Godot's
+      # --headless dummy driver returns a null image from get_image(), so it can't produce
+      # pixels to diff at all. Xvfb gives it a virtual display to render into; Godot then falls
+      # back to Mesa's software rasterizer (llvmpipe) with no GPU needed, which is plenty for a
+      # handful of one-off captures. ubuntu-latest doesn't ship Xvfb by default.
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       # --all also runs the chaos monkey, memory/leak profiler, and pixel-diff suites, not just
       # the 3 fast ones. Measured cost of the extra 3 suites is negligible (well under a minute
       # combined), so there's no reason for a human/agent to have to remember `--all` locally —
       # every push and PR gets the full signal for free.
+      #
+      # The whole script runs under xvfb-run rather than only the pixel-diff step, since it's
+      # the simplest way to guarantee DISPLAY is already set by the time that step runs partway
+      # through — every other suite runs with --headless regardless and ignores it. The virtual
+      # screen must be at least as tall as the game's 390x844 portrait viewport: a shorter one
+      # (640x480 was tried while building this) silently misplaces bottom-anchored UI, because
+      # anchor math resolves against whatever height the window actually is, not the game's
+      # configured resolution — it looked exactly like a real layout bug before that was traced
+      # back to the undersized virtual screen instead.
       - name: Run All Test Suites (--all)
         run: |
           chmod +x run_tests.sh
-          ./run_tests.sh --all
+          xvfb-run -a --server-args="-screen 0 400x900x24" ./run_tests.sh --all
