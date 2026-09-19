@@ -10,7 +10,7 @@ var rng := RandomNumberGenerator.new()
 func _init(game_content: SpiritContent) -> void:
 	content = game_content
 
-func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, upgrades := {}, equipment := [], card_runes := {}, modifier := {}, relics := [], hero_bonuses := {}) -> Dictionary:
+func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, upgrades := {}, equipment := [], card_runes := {}, modifier := {}, relics := [], hero_bonuses := {}, equipment_tiers := {}, equipment_inscriptions := {}) -> Dictionary:
 	rng.seed = seed
 	var health_scale: float = modifier.get("health_scale", 1.0)
 	var damage_bonus: int = modifier.get("damage_bonus", 0)
@@ -34,6 +34,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
 		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier,
 		"hero_bonuses":hero_bonuses.duplicate(true),
+		"equipment_tiers":equipment_tiers.duplicate(true),
+		"equipment_inscriptions":equipment_inscriptions.duplicate(true),
+		"inscr_bonuses":content.aggregate_inscriptions(equipment, equipment_inscriptions),
 		"encounter":encounter.duplicate(true),
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
 		"chapter":int(encounter.get("chapter", 1)),
@@ -44,8 +47,20 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		enemies[0]["is_great_boss"] = state.is_great_boss
 		enemies[0]["phase"] = 1
 		enemies[0]["phase_triggered"] = false
-	if equipment.has("jadePlate"): state.player.shield += 8
-	if equipment.has("focusCharm"): state.player.focus += 1
+	if equipment.has("jadePlate"):
+		var jp_shield: int = [8, 14, 20, 28][clampi(_equip_tier("jadePlate"), 0, 3)]
+		state.player.shield += jp_shield
+	if equipment.has("focusCharm"):
+		var fc_tier: int = clampi(_equip_tier("focusCharm"), 0, 3)
+		state.player.focus += [1, 2, 2, 3][fc_tier]
+		state.player.strength = int(state.player.get("strength", 0)) + [0, 0, 1, 1][fc_tier]
+	var inscr_hp: int = int(state.inscr_bonuses.get("hp", 0))
+	if inscr_hp > 0:
+		state.player.max_health += inscr_hp
+		state.player.health += inscr_hp
+	var inscr_shield: int = int(state.inscr_bonuses.get("shield", 0))
+	if inscr_shield > 0:
+		state.player.shield += inscr_shield
 	if _has_relic("titanBell"):
 		state.player.max_health += 20
 		state.player.health += 20
@@ -84,6 +99,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 
 func _has_relic(id: String) -> bool:
 	return state.get("relics", []).has(id)
+
+func _equip_tier(id: String) -> int:
+	return int(state.get("equipment_tiers", {}).get(id, 0))
 
 # Intents are planned a turn ahead and executed exactly as telegraphed, so the icon the
 # player reacts to always matches what actually lands.
@@ -144,12 +162,18 @@ func _execute_intent(enemy_index: int) -> void:
 			state.mist_hits += 1
 			if state.equipment.has("mistCloak") and state.mist_hits % 3 == 0:
 				amount = 0
+				var mc_shield: int = [0, 3, 6, 10][clampi(_equip_tier("mistCloak"), 0, 3)]
+				if mc_shield > 0: state.player.shield += mc_shield
 				emit_signal("event","equipment",{"id":"mistCloak"})
 			var taken := _damage_player(amount)
 			enemy.attacks += 1
 			if taken > 0 and state.equipment.has("thornArmor"):
-				_damage_enemy(enemy_index, 2, false)
+				var ta_dmg: int = [2, 4, 6, 9][clampi(_equip_tier("thornArmor"), 0, 3)]
+				ta_dmg += int(state.inscr_bonuses.get("thorns", 0))
+				_damage_enemy(enemy_index, ta_dmg, false)
 				emit_signal("event","equipment",{"id":"thornArmor"})
+			elif taken > 0 and int(state.inscr_bonuses.get("thorns", 0)) > 0:
+				_damage_enemy(enemy_index, int(state.inscr_bonuses.get("thorns", 0)), false)
 
 func play(hand_index: int, target_index := -1) -> bool:
 	if state.phase != "player" or hand_index < 0 or hand_index >= state.hand.size(): return false
@@ -169,7 +193,11 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true
-	if card.get("kind","") == "Tactic" and state.equipment.has("moonStaff") and not state.moon_used: state.energy += 1; state.moon_used = true
+	if card.get("kind","") == "Tactic" and state.equipment.has("moonStaff") and not state.moon_used:
+		state.energy += 1
+		state.moon_used = true
+		var ms_shield: int = [0, 2, 4, 7][clampi(_equip_tier("moonStaff"), 0, 3)]
+		if ms_shield > 0: state.player.shield += ms_shield
 	if state.get("rune_sets", []).has("set_gale") and not state.gale_used and (rune == "cycle" or _has_draw_effect(card)):
 		state.energy += 1
 		state.gale_used = true
@@ -183,10 +211,14 @@ func play(hand_index: int, target_index := -1) -> bool:
 	if harmful: bonus += int(state.player.get("strength", 0))
 	if harmful and state.player.focus > 0: bonus += 3 * state.player.focus; state.player.focus = 0
 	if harmful and not state.first_attack:
-		if state.equipment.has("emberBlade"): bonus += 3
+		if state.equipment.has("emberBlade"):
+			bonus += [3, 5, 7, 10][clampi(_equip_tier("emberBlade"), 0, 3)]
 		if _has_relic("starShard"): bonus += 2
 		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
 		bonus += int(state.get("hero_bonuses", {}).get("first_attack_bonus", 0))
+		bonus += int(state.inscr_bonuses.get("atk", 0))
+	if harmful and state.equipment.has("stoneSpear"):
+		bonus += [0, 1, 2, 4][clampi(_equip_tier("stoneSpear"), 0, 3)]
 	if harmful: state.first_attack = true
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
@@ -296,6 +328,9 @@ func end_turn() -> void:
 	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
 	var mastery_heal: int = int(state.get("hero_bonuses", {}).get("heal_per_turn", 0))
 	if mastery_heal > 0: state.player.health = mini(state.player.max_health, state.player.health + mastery_heal)
+	var inscr_heal: int = int(state.inscr_bonuses.get("heal", 0))
+	if inscr_heal > 0 and state.player.health > 0:
+		state.player.health = mini(state.player.max_health, state.player.health + inscr_heal)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""
 	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome —
@@ -317,7 +352,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 				for index in targets:
 					if state.enemies[index].health <= 0: continue
 					var execute := 1.5 if state.runes.get(card.id,"") == "execute" and state.enemies[index].health <= state.enemies[index].max_health * .25 else 1.0
-					var critical := 2 if card.get("special","") == "critical" else 1
+					var has_inscr_crit: bool = not state.first_attack and int(state.inscr_bonuses.get("crit", 0)) > 0 and rng.randi_range(1, 100) <= int(state.inscr_bonuses.get("crit", 0))
+					var critical := 2 if (card.get("special","") == "critical" or has_inscr_crit) else 1
 					# Flame Resonance rewards hitting a target that is already burning, rather
 					# than boosting burn's own damage tick — it only applies to a card actually
 					# landing a hit, checked per target since cleave can hit a mix of burning
@@ -340,6 +376,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 				if state.equipment.has("tideCharm") and not state.tide_used:
 					state.tide_used = true
 					_draw(1)
+					var tc_shield: int = [0, 2, 4, 6][clampi(_equip_tier("tideCharm"), 0, 3)]
+					if tc_shield > 0: state.player.shield += tc_shield
 			"heal": state.player.health = mini(state.player.max_health,state.player.health + amount)
 			"draw": _draw(amount)
 			"energy": state.energy += amount
@@ -381,8 +419,17 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 			enemy.health = maxi(1,int(ceil(enemy.max_health * .35))); enemy.revived = true; state.revives -= 1
 			emit_signal("event","revive",{"enemy":index,"amount":enemy.health}); return dealt
 		emit_signal("event","death",{"enemy":index})
-		if state.equipment.has("soulPendant") and state.soul_heals < 3: state.player.health = mini(state.player.max_health,state.player.health + 2); state.soul_heals += 1
-		if state.equipment.has("stormBow"): _draw(1)
+		if state.equipment.has("soulPendant"):
+			var sp_max_heals: int = [3, 3, 4, 4][clampi(_equip_tier("soulPendant"), 0, 3)]
+			var sp_heal_amt: int = [2, 3, 4, 6][clampi(_equip_tier("soulPendant"), 0, 3)]
+			if state.soul_heals < sp_max_heals:
+				state.player.health = mini(state.player.max_health, state.player.health + sp_heal_amt)
+				state.soul_heals += 1
+		if state.equipment.has("stormBow"):
+			var sb_draw: int = [1, 1, 1, 2][clampi(_equip_tier("stormBow"), 0, 3)]
+			var sb_shield: int = [0, 2, 4, 5][clampi(_equip_tier("stormBow"), 0, 3)]
+			_draw(sb_draw)
+			if sb_shield > 0: state.player.shield += sb_shield
 		if _has_relic("bloodJade"): state.player.health = mini(state.player.max_health, state.player.health + 3)
 		if state.get("boons", []).has("boon_blood_lust"): state.player.health = mini(state.player.max_health, state.player.health + 8)
 		if _living_count() == 0: state.phase = "won"
@@ -434,7 +481,11 @@ func _damage_player(amount: int) -> int:
 	var dealt := mini(state.player.health,amount - absorbed)
 	state.player.health -= dealt
 	if state.player.health <= 0:
-		if state.equipment.has("phoenixMail") and not state.phoenix_used: state.player.health = 15; state.phoenix_used = true; emit_signal("event","equipment",{"id":"phoenixMail"})
+		if state.equipment.has("phoenixMail") and not state.phoenix_used:
+			var pm_hp: int = [15, 22, 30, 40][clampi(_equip_tier("phoenixMail"), 0, 3)]
+			state.player.health = pm_hp
+			state.phoenix_used = true
+			emit_signal("event","equipment",{"id":"phoenixMail"})
 		else: state.phase = "lost"
 	emit_signal("event","player_hit",{"amount":dealt})
 	return dealt
@@ -524,10 +575,14 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 	bonus += int(state.player.get("strength", 0))
 	if state.player.focus > 0: bonus += 3 * state.player.focus
 	if not state.first_attack:
-		if state.equipment.has("emberBlade"): bonus += 3
+		if state.equipment.has("emberBlade"):
+			bonus += [3, 5, 7, 10][clampi(_equip_tier("emberBlade"), 0, 3)]
 		if _has_relic("starShard"): bonus += 2
 		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
 		bonus += int(state.get("hero_bonuses", {}).get("first_attack_bonus", 0))
+		bonus += int(state.inscr_bonuses.get("atk", 0))
+	if state.equipment.has("stoneSpear"):
+		bonus += [0, 1, 2, 4][clampi(_equip_tier("stoneSpear"), 0, 3)]
 	var resonance := int(state.elements.get(card.get("element", ""), 0)) if rune == "resonance" else 0
 	var total_dealt := 0
 	var temp_shield: int = enemy.shield

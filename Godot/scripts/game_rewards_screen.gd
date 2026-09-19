@@ -337,7 +337,15 @@ func _grant_stage_rewards() -> void:
 		return
 	var encounter: Dictionary = g.content.encounters[g.current_stage]
 	var multiplier: float = g.active_modifier.get("reward_scale", 1.0)
-	if g.profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
+	if g.profile.equipment_slots.values().has("fortuneSeal"):
+		var fs_tier: int = int(g.profile.get("equipment_tiers", {}).get("fortuneSeal", 0))
+		var fs_mult: float = [1.15, 1.25, 1.35, 1.50][clampi(fs_tier, 0, 3)]
+		multiplier *= fs_mult
+	var inscr_rewards: Dictionary = g.content.aggregate_inscriptions(g.profile.equipment_slots.values(), g.profile.get("equipment_inscriptions", {}))
+	if int(inscr_rewards.get("gold", 0)) > 0:
+		multiplier *= (1.0 + float(inscr_rewards.gold) / 100.0)
+	if int(inscr_rewards.get("dust", 0)) > 0:
+		g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + int(inscr_rewards.dust)
 	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
 	if float(m_bonuses.get("gold_mult", 1.0)) > 1.0: multiplier *= float(m_bonuses.gold_mult)
 	# A cleared stage can no longer be re-entered at all (see _show_replay_mode_prompt), so

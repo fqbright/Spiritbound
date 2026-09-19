@@ -1244,7 +1244,7 @@ func begin_boss_rush_battle() -> void:
 	}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
@@ -1308,7 +1308,7 @@ func begin_sandbox_battle(stage: int) -> void:
 	# Always a fresh 60 HP (SpiritCombat.create's own baseline before relic/mastery bonuses),
 	# never the player's real current health — a practice bout should never be handicapped by
 	# whatever state the live campaign run happens to be in.
-	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	g.advancing_to_reward = false
@@ -1327,7 +1327,7 @@ func begin_abyss_battle() -> void:
 	g.active_modifier["boons"] = g.profile.get("abyss_boons", []).duplicate()
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1348,7 +1348,7 @@ func begin_phantom_arena() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var seed_val := int(Time.get_unix_time_from_system())
-	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1374,7 +1374,7 @@ func begin_daily_trial() -> void:
 	g.active_modifier = g.content.daily_trial_modifier(day)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1398,7 +1398,7 @@ func begin_weekly_challenge() -> void:
 	g.active_modifier = g.content.weekly_challenge_modifier(week)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses())
+	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):

@@ -1395,12 +1395,15 @@ func _build_equipment_tab(list: VBoxContainer) -> void:
 	slots.add_theme_constant_override("separation", 8)
 	list.add_child(slots)
 	for slot in ["weapon", "armor", "charm"]:
-		var item := g.content.equipment(g.profile.equipment_slots.get(slot, ""))
+		var item_id: String = str(g.profile.equipment_slots.get(slot, ""))
+		var item := g.content.equipment(item_id)
 		var filled: bool = not item.is_empty()
+		var tier: int = int(g.profile.get("equipment_tiers", {}).get(item_id, 0)) if filled else 0
+		var tier_col: Color = g.content.equip_tier_color(tier) if filled else Color("2a3d42")
 		var card := Panel.new()
 		card.custom_minimum_size = Vector2(0, 96)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.add_theme_stylebox_override("panel", g._panel(Color("16333a") if filled else Color("101f24"), 12, g.GOLD if filled else Color("2a3d42")))
+		card.add_theme_stylebox_override("panel", g._panel(Color("16333a") if filled else Color("101f24"), 12, tier_col if filled else Color("2a3d42")))
 		var stack := VBoxContainer.new()
 		stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		stack.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1409,40 +1412,34 @@ func _build_equipment_tab(list: VBoxContainer) -> void:
 		var badge_row := HBoxContainer.new()
 		badge_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		stack.add_child(badge_row)
-		badge_row.add_child(g._equip_icon_badge(item, g.GOLD, 38) if filled else g._icon_badge("＋", Color("3c5057"), 38, 18))
+		badge_row.add_child(g._equip_icon_badge(item, tier_col, 38) if filled else g._icon_badge("＋", Color("3c5057"), 38, 18))
 		stack.add_child(g._label(g.t("ui.slot_%s" % slot), 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-		stack.add_child(g._label(g._equip_name(item) if filled else g.t("ui.loadout_empty"), 11, g.TEXT if filled else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		var name_str: String = ("【%s】" % g.content.equip_tier_name(tier, g.lang) + g._equip_name(item)) if filled else g.t("ui.loadout_empty")
+		stack.add_child(g._label(name_str, 10, g.TEXT if filled else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		slots.add_child(card)
 
 	list.add_child(g._label(g.t("ui.loadout_collection"), 13, g.JADE))
 	for item in SpiritContent.EQUIPMENT:
 		var owned: bool = g.profile.equipment_owned.has(item.id)
 		var equipped: bool = g.profile.equipment_slots.get(item.slot, "") == item.id
-		var status_text := g.t("ui.loadout_unequip") if equipped else (g.t("ui.loadout_equip") if owned else g.t("ui.loadout_unobtained"))
-		var accent: Color = g.JADE if equipped else (g.GOLD if owned else Color("3c5057"))
+		var tier: int = int(g.profile.get("equipment_tiers", {}).get(item.id, 0)) if owned else 0
+		var tier_col: Color = g.content.equip_tier_color(tier) if owned else Color("3c5057")
+		var accent: Color = g.JADE if equipped else (tier_col if owned else Color("3c5057"))
 
-		var btn := Button.new()
-		btn.custom_minimum_size.y = 72
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.add_theme_stylebox_override("normal", g._panel(Color("15383a") if equipped else Color("13282e"), 12, accent))
-		btn.add_theme_stylebox_override("hover", g._panel(Color("1b4544") if equipped else Color("17333a"), 12, accent))
-		btn.add_theme_stylebox_override("pressed", g._panel(Color("102c2e"), 12, accent))
-		btn.add_theme_stylebox_override("disabled", g._panel(Color("0e191d"), 12, Color("243135")))
-		btn.disabled = not owned
-		g._bind_touch_guard(btn, func(): g._equip(item))
-		list.add_child(btn)
+		var item_card := PanelContainer.new()
+		item_card.custom_minimum_size.y = 74
+		item_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		item_card.add_theme_stylebox_override("panel", g._panel(Color("15383a") if equipped else Color("13282e"), 12, accent))
+		list.add_child(item_card)
 
 		var pad := MarginContainer.new()
-		pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		for side in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % side, 10)
-		pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		btn.add_child(pad)
+		for side in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 6)
+		item_card.add_child(pad)
 
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
+		row.add_theme_constant_override("separation", 10)
 		row.alignment = BoxContainer.ALIGNMENT_BEGIN
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		pad.add_child(row)
 
 		var badge_holder := CenterContainer.new()
@@ -1454,23 +1451,50 @@ func _build_equipment_tab(list: VBoxContainer) -> void:
 		texts.alignment = BoxContainer.ALIGNMENT_CENTER
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.add_theme_constant_override("separation", 2)
-		texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(texts)
+
 		var title_row := HBoxContainer.new()
 		title_row.add_theme_constant_override("separation", 6)
-		title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		texts.add_child(title_row)
 		title_row.add_child(g._label(g._equip_name(item), 13, g.TEXT if owned else g.MUTED))
+		if owned:
+			title_row.add_child(g._label("【%s】" % g.content.equip_tier_name(tier, g.lang), 10, tier_col))
 		title_row.add_child(g._label("· %s" % g.t("ui.slot_%s" % item.slot), 9, g.MUTED))
-		var detail := g._label(g._equip_detail(item), 9, g.JADE if owned else Color("445559"), HORIZONTAL_ALIGNMENT_LEFT, true)
+
+		var detail := g._label(g.content.equip_detail_tiered(item, tier, g.lang), 9, g.JADE if owned else Color("445559"), HORIZONTAL_ALIGNMENT_LEFT, true)
 		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.add_child(detail)
 
-		var status := g._label(status_text, 10, accent, HORIZONTAL_ALIGNMENT_RIGHT)
-		status.custom_minimum_size.x = 48
-		status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		status.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(status)
+		if owned:
+			var affixes: Array = g.profile.get("equipment_inscriptions", {}).get(item.id, [])
+			if not affixes.is_empty():
+				var aff_texts: Array[String] = []
+				for aff in affixes:
+					if aff is Dictionary:
+						var txt: String = g.content.inscription_text(aff, g.lang)
+						if not txt.is_empty(): aff_texts.append("✦ " + txt)
+				if not aff_texts.is_empty():
+					texts.add_child(g._label(" ".join(aff_texts), 8, Color("78e9ff"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var btn_col := HBoxContainer.new()
+		btn_col.add_theme_constant_override("separation", 6)
+		btn_col.alignment = BoxContainer.ALIGNMENT_END
+		btn_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(btn_col)
+
+		if owned:
+			var reforge_btn := g._button(g.t("ui.reforge_btn"), func(): show_reforge_modal(item.id), Color("173e44"), Vector2(48, 30))
+			reforge_btn.name = "ReforgeBtn_" + item.id
+			btn_col.add_child(reforge_btn)
+
+			var equip_btn_text := g.t("ui.loadout_unequip") if equipped else g.t("ui.loadout_equip")
+			var equip_btn := g._button(equip_btn_text, func(): g._equip(item), Color("144c45") if equipped else Color("1b3238"), Vector2(48, 30))
+			equip_btn.name = "EquipBtn_" + item.id
+			btn_col.add_child(equip_btn)
+		else:
+			var status := g._label(g.t("ui.loadout_unobtained"), 10, Color("3c5057"), HORIZONTAL_ALIGNMENT_RIGHT)
+			status.custom_minimum_size.x = 48
+			btn_col.add_child(status)
 
 func _build_rune_tab(list: VBoxContainer) -> void:
 	list.add_child(g._label(g.t("ui.loadout_runes_bag"), 13, g.JADE))
@@ -1591,4 +1615,213 @@ func _build_rune_tab(list: VBoxContainer) -> void:
 			var socket_btn := g._button(g.t("ui.loadout_socket"), func(): g._socket(id), Color("245247"), Vector2(52, 36))
 			socket_btn.disabled = g.selected_rune.is_empty()
 			actions.add_child(socket_btn)
+
+func _close_reforge_modal() -> void:
+	if g.overlay.has_node("ReforgeModal"):
+		var existing: Node = g.overlay.get_node("ReforgeModal")
+		existing.queue_free()
+
+func show_reforge_modal(item_id: String) -> void:
+	_close_reforge_modal()
+	var item: Dictionary = g.content.equipment(item_id)
+	if item.is_empty(): return
+
+	var modal := g._modal_dialog("ReforgeModal", func(): _close_reforge_modal(); show_loadout())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "ReforgeModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(360, vp_w - 20), 520)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("091316"), 14, g.GOLD))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	pad.add_child(vbox)
+
+	var refresh_modal_ui: Array = [Callable()]
+	refresh_modal_ui[0] = func():
+		for ch in vbox.get_children():
+			ch.queue_free()
+
+		var tier: int = int(g.profile.get("equipment_tiers", {}).get(item.id, 0))
+		var tier_col: Color = g.content.equip_tier_color(tier)
+		var tier_str: String = g.content.equip_tier_name(tier, g.lang)
+
+		# 1. Header row
+		var header_row := HBoxContainer.new()
+		header_row.add_theme_constant_override("separation", 6)
+		var title_box := VBoxContainer.new()
+		title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		title_box.add_theme_constant_override("separation", 2)
+		title_box.add_child(g._label(g.t("ui.reforge_title"), 15, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+		title_box.add_child(g._label(g._equip_name(item) + " · " + g.t("ui.slot_%s" % item.slot), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+		header_row.add_child(title_box)
+
+		var close_btn := g._button("✕", func(): _close_reforge_modal(); show_loadout(), Color("223640"), Vector2(32, 32))
+		close_btn.name = "ReforgeCloseBtn"
+		close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		header_row.add_child(close_btn)
+		vbox.add_child(header_row)
+
+		# 2. Currency bar (Gold & Spirit Dust)
+		var currency_row := HBoxContainer.new()
+		currency_row.add_theme_constant_override("separation", 12)
+		currency_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+		currency_row.add_child(g._icon_badge("◈", g.GOLD, 24, 12))
+		currency_row.add_child(g._label("%d" % int(g.profile.gold), 12, g.GOLD))
+		currency_row.add_child(g._icon_badge("✧", Color("80d6ff"), 24, 12))
+		currency_row.add_child(g._label("%d" % int(g.profile.spirit_dust), 12, Color("80d6ff")))
+		vbox.add_child(currency_row)
+
+		# 3. Item Card Showcase
+		var item_box := PanelContainer.new()
+		item_box.add_theme_stylebox_override("panel", g._panel(Color("12242a"), 10, tier_col))
+		var item_pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: item_pad.add_theme_constant_override("margin_%s" % s, 10)
+		item_box.add_child(item_pad)
+		var item_row := HBoxContainer.new()
+		item_row.add_theme_constant_override("separation", 10)
+		item_pad.add_child(item_row)
+
+		item_row.add_child(g._equip_icon_badge(item, tier_col, 50))
+		var item_info := VBoxContainer.new()
+		item_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		item_info.add_theme_constant_override("separation", 3)
+		item_row.add_child(item_info)
+
+		var name_line := HBoxContainer.new()
+		name_line.add_theme_constant_override("separation", 6)
+		item_info.add_child(name_line)
+		name_line.add_child(g._label(g._equip_name(item), 14, g.TEXT))
+		name_line.add_child(g._label("【%s】" % tier_str, 12, tier_col))
+
+		var cur_desc: String = g.content.equip_detail_tiered(item, tier, g.lang)
+		item_info.add_child(g._label(cur_desc, 10, g.JADE, HORIZONTAL_ALIGNMENT_LEFT, true))
+		vbox.add_child(item_box)
+
+		# 4. Reforge Section (进阶重铸)
+		var reforge_box := PanelContainer.new()
+		reforge_box.add_theme_stylebox_override("panel", g._panel(Color("101d22"), 10, Color("2a444d")))
+		var reforge_pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: reforge_pad.add_theme_constant_override("margin_%s" % s, 8)
+		reforge_box.add_child(reforge_pad)
+		var reforge_col := VBoxContainer.new()
+		reforge_col.add_theme_constant_override("separation", 6)
+		reforge_pad.add_child(reforge_col)
+
+		reforge_col.add_child(g._label(g.t("ui.reforge_tab_title"), 12, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+
+		if tier < 3:
+			var cost: Dictionary = g.content.equip_tier_cost(tier)
+			var gold_cost: int = int(cost.get("gold", 100))
+			var dust_cost: int = int(cost.get("dust", 20))
+			var next_tier_str: String = g.content.equip_tier_name(tier + 1, g.lang)
+			var next_desc: String = g.content.equip_detail_tiered(item, tier + 1, g.lang)
+
+			reforge_col.add_child(g._label(g.tf("ui.reforge_next_tier", "【%s】" % next_tier_str), 10, g.content.equip_tier_color(tier + 1), HORIZONTAL_ALIGNMENT_LEFT))
+			reforge_col.add_child(g._label(next_desc, 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+			var cost_lbl := g._label(g.tf("ui.reforge_cost_fmt", [gold_cost, dust_cost]), 10, g.GOLD if (g.profile.gold >= gold_cost and g.profile.spirit_dust >= dust_cost) else Color("ff7373"), HORIZONTAL_ALIGNMENT_LEFT)
+			reforge_col.add_child(cost_lbl)
+
+			var can_upgrade: bool = g.profile.gold >= gold_cost and g.profile.spirit_dust >= dust_cost
+			var up_btn := g._button(g.t("ui.reforge_upgrade_btn"), func():
+				if not (g.profile.gold >= gold_cost and g.profile.spirit_dust >= dust_cost):
+					g._toast(g.t("ui.reforge_insufficient"), Color("ff7373"))
+					return
+				g.profile.gold -= gold_cost
+				g.profile.spirit_dust -= dust_cost
+				g.profile.equipment_tiers[item.id] = tier + 1
+				SpiritSave.write(g.profile)
+				g._toast(g.tf("ui.reforge_toast_success", [g._equip_name(item), next_tier_str]), g.GOLD)
+				if g.sfx != null: g.sfx.play("victory")
+				refresh_modal_ui[0].call()
+			, Color("1d4f40") if can_upgrade else Color("223035"), Vector2(0, 34))
+			up_btn.name = "ReforgeUpgradeBtn"
+			up_btn.disabled = not can_upgrade
+			reforge_col.add_child(up_btn)
+		else:
+			reforge_col.add_child(g._label(g.t("ui.reforge_maxed"), 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+		vbox.add_child(reforge_box)
+
+		# 5. Inscriptions Section (灵纹洗练)
+		var inscribe_box := PanelContainer.new()
+		inscribe_box.add_theme_stylebox_override("panel", g._panel(Color("101d22"), 10, Color("2a444d")))
+		var inscribe_pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: inscribe_pad.add_theme_constant_override("margin_%s" % s, 8)
+		inscribe_box.add_child(inscribe_pad)
+		var inscribe_col := VBoxContainer.new()
+		inscribe_col.add_theme_constant_override("separation", 6)
+		inscribe_pad.add_child(inscribe_col)
+
+		inscribe_col.add_child(g._label(g.t("ui.inscribe_title"), 12, Color("78e9ff"), HORIZONTAL_ALIGNMENT_LEFT))
+
+		var current_inscriptions: Array = g.profile.get("equipment_inscriptions", {}).get(item.id, [])
+		var max_slots: int = 3
+		var unlocked_slots: int = clampi(tier, 0, 3)
+
+		for slot_idx in range(max_slots):
+			var slot_box := PanelContainer.new()
+			slot_box.add_theme_stylebox_override("panel", g._panel(Color("0d181c"), 6, Color("1c2f35")))
+			var slot_pad := MarginContainer.new()
+			for s in ["left", "right", "top", "bottom"]: slot_pad.add_theme_constant_override("margin_%s" % s, 4)
+			slot_box.add_child(slot_pad)
+
+			if slot_idx < unlocked_slots:
+				if slot_idx < current_inscriptions.size():
+					var aff: Dictionary = current_inscriptions[slot_idx]
+					var aff_txt: String = g.content.inscription_text(aff, g.lang)
+					var aff_lbl := g._label(g.t("ui.inscribe_affix_prefix") + aff_txt, 10, Color("78e9ff"), HORIZONTAL_ALIGNMENT_LEFT)
+					slot_pad.add_child(aff_lbl)
+				else:
+					var empty_lbl := g._label(g.t("ui.inscribe_empty"), 9, Color("4a6870"), HORIZONTAL_ALIGNMENT_LEFT)
+					slot_pad.add_child(empty_lbl)
+			else:
+				var lock_tier_str: String = g.content.equip_tier_name(slot_idx + 1, g.lang)
+				var lock_lbl := g._label(g.tf("ui.inscribe_slot_locked", lock_tier_str), 9, Color("35454a"), HORIZONTAL_ALIGNMENT_LEFT)
+				slot_pad.add_child(lock_lbl)
+			inscribe_col.add_child(slot_box)
+
+		var inscribe_cost: Dictionary = g.content.equip_inscribe_cost()
+		var insc_gold: int = int(inscribe_cost.get("gold", 30))
+		var insc_dust: int = int(inscribe_cost.get("dust", 10))
+
+		var insc_cost_lbl := g._label(g.tf("ui.inscribe_cost_fmt", [insc_gold, insc_dust]), 9, g.GOLD if (g.profile.gold >= insc_gold and g.profile.spirit_dust >= insc_dust) else Color("ff7373"), HORIZONTAL_ALIGNMENT_LEFT)
+		inscribe_col.add_child(insc_cost_lbl)
+
+		var can_inscribe: bool = unlocked_slots > 0 and g.profile.gold >= insc_gold and g.profile.spirit_dust >= insc_dust
+		var inscribe_btn := g._button(g.t("ui.inscribe_btn"), func():
+			if unlocked_slots <= 0:
+				g._toast(g.t("ui.inscribe_no_slots"), Color("ff7373"))
+				return
+			if not (g.profile.gold >= insc_gold and g.profile.spirit_dust >= insc_dust):
+				g._toast(g.t("ui.reforge_insufficient"), Color("ff7373"))
+				return
+			g.profile.gold -= insc_gold
+			g.profile.spirit_dust -= insc_dust
+			var rolled: Array = g.content.roll_inscription_affixes(tier)
+			g.profile.equipment_inscriptions[item.id] = rolled
+			SpiritSave.write(g.profile)
+			g._toast(g.t("ui.inscribe_toast_success"), Color("78e9ff"))
+			if g.sfx != null: g.sfx.play("rune")
+			refresh_modal_ui[0].call()
+		, Color("1a404a") if can_inscribe else Color("223035"), Vector2(0, 34))
+		inscribe_btn.name = "InscribeRollBtn"
+		inscribe_btn.disabled = not can_inscribe
+		inscribe_col.add_child(inscribe_btn)
+
+		vbox.add_child(inscribe_box)
+
+	refresh_modal_ui[0].call()
 

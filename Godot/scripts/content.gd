@@ -159,6 +159,107 @@ const EQUIPMENT = [
 	{"id":"focusCharm","slot":"charm","icon":"◉","icon_kind":"pendant","icon_flourish":"spiral","zh":"凝神灵镜","en":"Focus Charm","detail":"战斗开始时获得 1 层凝神。","detail_en":"Start battle with 1 Focus."},
 ]
 
+const EQUIPMENT_TIER_NAMES = [
+	{"zh": "凡品", "en": "Mundane", "color": "8fa2a6"},
+	{"zh": "灵品", "en": "Spiritual", "color": "5ec880"},
+	{"zh": "宝品", "en": "Precious", "color": "58b8ff"},
+	{"zh": "仙品", "en": "Celestial", "color": "ffd246"}
+]
+
+const EQUIPMENT_TIER_COSTS = [
+	{"gold": 100, "dust": 20},
+	{"gold": 250, "dust": 50},
+	{"gold": 500, "dust": 100}
+]
+
+const EQUIPMENT_INSCRIBE_COST = {"gold": 30, "dust": 10}
+
+const EQUIPMENT_TIER_DATA = {
+	"emberBlade": [
+		{"bonus": 3, "zh": "每回合第一张攻击牌伤害 +3。", "en": "First attack each turn deals +3 damage."},
+		{"bonus": 5, "zh": "每回合第一张攻击牌伤害 +5。", "en": "First attack each turn deals +5 damage."},
+		{"bonus": 7, "zh": "每回合第一张攻击牌伤害 +7。", "en": "First attack each turn deals +7 damage."},
+		{"bonus": 10, "zh": "每回合第一张攻击牌伤害 +10。", "en": "First attack each turn deals +10 damage."}
+	],
+	"jadePlate": [
+		{"shield": 8, "zh": "战斗开始时获得 8 点护盾。", "en": "Start battle with 8 Shield."},
+		{"shield": 14, "zh": "战斗开始时获得 14 点护盾。", "en": "Start battle with 14 Shield."},
+		{"shield": 20, "zh": "战斗开始时获得 20 点护盾。", "en": "Start battle with 20 Shield."},
+		{"shield": 28, "zh": "战斗开始时获得 28 点护盾。", "en": "Start battle with 28 Shield."}
+	],
+	"soulPendant": [
+		{"heal": 2, "max_times": 3, "zh": "击败敌人回复 2 点生命，每场最多 3 次。", "en": "Heal 2 HP on kill, up to 3 times per battle."},
+		{"heal": 3, "max_times": 3, "zh": "击败敌人回复 3 点生命，每场最多 3 次。", "en": "Heal 3 HP on kill, up to 3 times per battle."},
+		{"heal": 4, "max_times": 4, "zh": "击败敌人回复 4 点生命，每场最多 4 次。", "en": "Heal 4 HP on kill, up to 4 times per battle."},
+		{"heal": 6, "max_times": 4, "zh": "击败敌人回复 6 点生命，每场最多 4 次。", "en": "Heal 6 HP on kill, up to 4 times per battle."}
+	],
+	"moonStaff": [
+		{"refund": 1, "shield": 0, "zh": "每回合第一张策略牌返还 1 点能量。", "en": "First Tactic each turn refunds 1 Energy."},
+		{"refund": 1, "shield": 2, "zh": "每回合第一张策略牌返还 1 点能量并获得 2 点护盾。", "en": "First Tactic each turn refunds 1 Energy and grants 2 Shield."},
+		{"refund": 1, "shield": 4, "zh": "每回合第一张策略牌返还 1 点能量并获得 4 点护盾。", "en": "First Tactic each turn refunds 1 Energy and grants 4 Shield."},
+		{"refund": 1, "shield": 7, "zh": "每回合第一张策略牌返还 1 点能量并获得 7 点护盾。", "en": "First Tactic each turn refunds 1 Energy and grants 7 Shield."}
+	],
+	"thornArmor": [
+		{"retaliate": 2, "zh": "受到敌方伤害后反击 2 点。", "en": "Retaliate 2 damage when hit by enemies."},
+		{"retaliate": 4, "zh": "受到敌方伤害后反击 4 点。", "en": "Retaliate 4 damage when hit by enemies."},
+		{"retaliate": 6, "zh": "受到敌方伤害后反击 6 点。", "en": "Retaliate 6 damage when hit by enemies."},
+		{"retaliate": 9, "zh": "受到敌方伤害后反击 9 点。", "en": "Retaliate 9 damage when hit by enemies."}
+	],
+	"tideCharm": [
+		{"draw": 1, "shield": 0, "zh": "每回合首次获得护盾时抽 1 张牌。", "en": "First Shield gained each turn draws 1 card."},
+		{"draw": 1, "shield": 2, "zh": "每回合首次获得护盾时抽 1 张牌并额外获得 2 点护盾。", "en": "First Shield gained each turn draws 1 card and gains 2 extra Shield."},
+		{"draw": 1, "shield": 4, "zh": "每回合首次获得护盾时抽 1 张牌并额外获得 4 点护盾。", "en": "First Shield gained each turn draws 1 card and gains 4 extra Shield."},
+		{"draw": 1, "shield": 6, "zh": "每回合首次获得护盾时抽 1 张牌并额外获得 6 点护盾。", "en": "First Shield gained each turn draws 1 card and gains 6 extra Shield."}
+	],
+	"stoneSpear": [
+		{"bonus": 0, "zh": "攻击牌无视敌方护盾。", "en": "Attacks pierce enemy Shield."},
+		{"bonus": 1, "zh": "攻击牌无视敌方护盾，攻击伤害 +1。", "en": "Attacks pierce enemy Shield, and deal +1 damage."},
+		{"bonus": 2, "zh": "攻击牌无视敌方护盾，攻击伤害 +2。", "en": "Attacks pierce enemy Shield, and deal +2 damage."},
+		{"bonus": 4, "zh": "攻击牌无视敌方护盾，攻击伤害 +4。", "en": "Attacks pierce enemy Shield, and deal +4 damage."}
+	],
+	"mistCloak": [
+		{"shield": 0, "zh": "每第三次敌方攻击伤害归零。", "en": "Every 3rd enemy attack deals 0 damage."},
+		{"shield": 3, "zh": "每第三次敌方攻击伤害归零并获得 3 点护盾。", "en": "Every 3rd enemy attack deals 0 damage and grants 3 Shield."},
+		{"shield": 6, "zh": "每第三次敌方攻击伤害归零并获得 6 点护盾。", "en": "Every 3rd enemy attack deals 0 damage and grants 6 Shield."},
+		{"shield": 10, "zh": "每第三次敌方攻击伤害归零并获得 10 点护盾。", "en": "Every 3rd enemy attack deals 0 damage and grants 10 Shield."}
+	],
+	"fortuneSeal": [
+		{"mult": 1.15, "zh": "胜利金币增加 15%。", "en": "Gold rewards increased by 15%."},
+		{"mult": 1.25, "zh": "胜利金币增加 25%。", "en": "Gold rewards increased by 25%."},
+		{"mult": 1.35, "zh": "胜利金币增加 35%。", "en": "Gold rewards increased by 35%."},
+		{"mult": 1.50, "zh": "胜利金币增加 50%。", "en": "Gold rewards increased by 50%."}
+	],
+	"stormBow": [
+		{"draw": 1, "shield": 0, "zh": "击败敌人时抽 1 张牌。", "en": "Draw 1 card on kill."},
+		{"draw": 1, "shield": 2, "zh": "击败敌人时抽 1 张牌并获得 2 点护盾。", "en": "Draw 1 card on kill and gain 2 Shield."},
+		{"draw": 1, "shield": 4, "zh": "击败敌人时抽 1 张牌并获得 4 点护盾。", "en": "Draw 1 card on kill and gain 4 Shield."},
+		{"draw": 2, "shield": 5, "zh": "击败敌人时抽 2 张牌并获得 5 点护盾。", "en": "Draw 2 cards on kill and gain 5 Shield."}
+	],
+	"phoenixMail": [
+		{"revive_hp": 15, "zh": "每场一次，以 15 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 15 HP."},
+		{"revive_hp": 22, "zh": "每场一次，以 22 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 22 HP."},
+		{"revive_hp": 30, "zh": "每场一次，以 30 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 30 HP."},
+		{"revive_hp": 40, "zh": "每场一次，以 40 点生命抵挡致命伤害。", "en": "Survive lethal damage once with 40 HP."}
+	],
+	"focusCharm": [
+		{"focus": 1, "strength": 0, "zh": "战斗开始时获得 1 层凝神。", "en": "Start battle with 1 Focus."},
+		{"focus": 2, "strength": 0, "zh": "战斗开始时获得 2 层凝神。", "en": "Start battle with 2 Focus."},
+		{"focus": 2, "strength": 1, "zh": "战斗开始时获得 2 层凝神与 1 点力量。", "en": "Start battle with 2 Focus and 1 Strength."},
+		{"focus": 3, "strength": 1, "zh": "战斗开始时获得 3 层凝神与 1 点力量。", "en": "Start battle with 3 Focus and 1 Strength."}
+	]
+}
+
+const INSCRIPTION_AFFIXES = [
+	{"id": "inscr_hp", "name_zh": "气血", "name_en": "Vitality", "values": [3, 5, 8], "fmt_zh": "生命上限 +%d", "fmt_en": "Max HP +%d"},
+	{"id": "inscr_shield", "name_zh": "坚甲", "name_en": "Warding", "values": [3, 6, 9], "fmt_zh": "开局护盾 +%d", "fmt_en": "Start Shield +%d"},
+	{"id": "inscr_atk", "name_zh": "破煞", "name_en": "Breaker", "values": [1, 2, 3], "fmt_zh": "首击伤害 +%d", "fmt_en": "First Attack +%d Dmg"},
+	{"id": "inscr_thorns", "name_zh": "逆鳞", "name_en": "Thorns", "values": [1, 2, 3], "fmt_zh": "受击反伤 +%d", "fmt_en": "Retaliate +%d Dmg"},
+	{"id": "inscr_gold", "name_zh": "聚财", "name_en": "Wealth", "values": [5, 10, 15], "fmt_zh": "胜利金币 +%d%%", "fmt_en": "Victory Gold +%d%%"},
+	{"id": "inscr_dust", "name_zh": "凝尘", "name_en": "Stardust", "values": [1, 2, 3], "fmt_zh": "胜利灵尘 +%d", "fmt_en": "Victory Dust +%d"},
+	{"id": "inscr_heal", "name_zh": "回元", "name_en": "Recovery", "values": [1, 1, 2], "fmt_zh": "回合回复 +%d 气血", "fmt_en": "Restore +%d HP/Turn"},
+	{"id": "inscr_crit", "name_zh": "凌厉", "name_en": "Ferocity", "values": [15, 25, 40], "fmt_zh": "首击暴击率 +%d%%", "fmt_en": "First Atk Crit +%d%%"}
+]
+
 # Quest "type" values are the vocabulary game.gd's _advance_quest() understands. Each is
 # tied to a signal that already exists in the game (a card played, a chest opened, a
 # purchase made) rather than anything new the engine has to emit.
@@ -2008,6 +2109,24 @@ const UI_TEXT = {
 	"ui.meridian_summary_btn": {"zh-Hans":"灵脉修真 🎋", "en":"Meridians 🎋"},
 	"ui.meridian_summary_title": {"zh-Hans":"已通经络加护", "en":"Active Meridian Attunements"},
 	"ui.meridian_summary_none": {"zh-Hans":"尚未打通周天经络，前往修真提升战力！", "en":"No meridians attuned yet. Attune nodes to empower your hero!"},
+	"ui.reforge_title": {"zh-Hans":"器灵重铸与灵纹洗练", "en":"Equipment Reforge & Inscription"},
+	"ui.reforge_tab_title": {"zh-Hans":"器灵重铸", "en":"Equipment Reforge"},
+	"ui.reforge_btn": {"zh-Hans":"重铸", "en":"Reforge"},
+	"ui.reforge_upgrade_btn": {"zh-Hans":"进阶重铸", "en":"Ascend Tier"},
+	"ui.reforge_maxed": {"zh-Hans":"已达仙品极境", "en":"Max Tier Reached"},
+	"ui.reforge_cost_fmt": {"zh-Hans":"消耗: %d 金币 + %d 灵尘", "en":"Cost: %d Gold + %d Dust"},
+	"ui.reforge_current_tier": {"zh-Hans":"当前品阶: %s", "en":"Current Tier: %s"},
+	"ui.reforge_next_tier": {"zh-Hans":"进阶效果: %s", "en":"Next Tier: %s"},
+	"ui.reforge_toast_success": {"zh-Hans":"重铸成功！%s 进阶为【%s】！", "en":"Reforge success! %s reached [%s]!"},
+	"ui.reforge_insufficient": {"zh-Hans":"金币或灵尘不足！", "en":"Insufficient Gold or Spirit Dust!"},
+	"ui.inscribe_title": {"zh-Hans":"灵纹洗练", "en":"Inscription Affixes"},
+	"ui.inscribe_btn": {"zh-Hans":"洗练灵纹", "en":"Roll Inscriptions"},
+	"ui.inscribe_cost_fmt": {"zh-Hans":"洗练消耗: %d 金币 + %d 灵尘", "en":"Roll Cost: %d Gold + %d Dust"},
+	"ui.inscribe_slot_locked": {"zh-Hans":"🔒 升至【%s】解锁此灵纹槽", "en":"🔒 Reach [%s] to unlock slot"},
+	"ui.inscribe_empty": {"zh-Hans":"尚未洗练灵纹，点击下方洗练！", "en":"No inscriptions yet. Tap below to roll!"},
+	"ui.inscribe_toast_success": {"zh-Hans":"洗练完成！已为装备淬炼出新灵纹！", "en":"Inscriptions rolled successfully!"},
+	"ui.inscribe_no_slots": {"zh-Hans":"当前品阶暂无可用灵纹槽，请先升阶！", "en":"No affix slots unlocked. Ascend tier first!"},
+	"ui.inscribe_affix_prefix": {"zh-Hans":"✦ 灵纹: ", "en":"✦ Inscription: "},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
@@ -2022,6 +2141,86 @@ func equip_name(item: Dictionary, language := "zh-Hans") -> String:
 func equip_detail(item: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return item.get("detail_en", item.get("detail", ""))
 	return item.get("detail", "")
+
+func equip_tier_name(tier: int, language := "zh-Hans") -> String:
+	var idx := clampi(tier, 0, EQUIPMENT_TIER_NAMES.size() - 1)
+	var entry: Dictionary = EQUIPMENT_TIER_NAMES[idx]
+	return str(entry.get("en" if language == "en" else "zh", ""))
+
+func equip_tier_color(tier: int) -> Color:
+	var idx := clampi(tier, 0, EQUIPMENT_TIER_NAMES.size() - 1)
+	var entry: Dictionary = EQUIPMENT_TIER_NAMES[idx]
+	return Color(str(entry.get("color", "8fa2a6")))
+
+func equip_tier_cost(current_tier: int) -> Dictionary:
+	if current_tier < 0 or current_tier >= EQUIPMENT_TIER_COSTS.size(): return {}
+	return EQUIPMENT_TIER_COSTS[current_tier]
+
+func equip_inscribe_cost() -> Dictionary:
+	return EQUIPMENT_INSCRIBE_COST
+
+func equip_detail_tiered(item: Dictionary, tier: int, language := "zh-Hans") -> String:
+	var id: String = str(item.get("id", ""))
+	if EQUIPMENT_TIER_DATA.has(id):
+		var tiers: Array = EQUIPMENT_TIER_DATA[id]
+		var t := clampi(tier, 0, tiers.size() - 1)
+		var entry: Dictionary = tiers[t]
+		return str(entry.get("en" if language == "en" else "zh", ""))
+	return equip_detail(item, language)
+
+func roll_inscription_affixes(tier: int, rng: RandomNumberGenerator = null) -> Array:
+	var slots: int = clampi(tier, 0, 3)
+	if slots <= 0: return []
+	var r: RandomNumberGenerator = rng if rng != null else RandomNumberGenerator.new()
+	if rng == null: r.randomize()
+	var res: Array = []
+	var pool: Array = INSCRIPTION_AFFIXES.duplicate()
+	pool.shuffle()
+	for i in range(slots):
+		var aff: Dictionary = pool[i % pool.size()]
+		var vals: Array = aff.get("values", [1, 2, 3])
+		var max_idx: int = clampi(tier - 1, 0, vals.size() - 1)
+		var val_idx: int = r.randi_range(0, max_idx)
+		var val: int = int(vals[val_idx])
+		res.append({"id": aff.id, "val": val})
+	return res
+
+func inscription_text(affix: Dictionary, language := "zh-Hans") -> String:
+	var aid: String = str(affix.get("id", ""))
+	var val: int = int(affix.get("val", 0))
+	for aff in INSCRIPTION_AFFIXES:
+		if aff.id == aid:
+			var fmt: String = str(aff.get("fmt_en" if language == "en" else "fmt_zh", ""))
+			return fmt % val
+	return ""
+
+func aggregate_inscriptions(equipped_ids: Array, equipment_inscriptions: Dictionary) -> Dictionary:
+	var res := {
+		"hp": 0,
+		"shield": 0,
+		"atk": 0,
+		"thorns": 0,
+		"gold": 0,
+		"dust": 0,
+		"heal": 0,
+		"crit": 0
+	}
+	for id in equipped_ids:
+		var affixes: Array = equipment_inscriptions.get(id, [])
+		for aff in affixes:
+			if not aff is Dictionary: continue
+			var aid: String = str(aff.get("id", ""))
+			var val: int = int(aff.get("val", 0))
+			match aid:
+				"inscr_hp": res.hp += val
+				"inscr_shield": res.shield += val
+				"inscr_atk": res.atk += val
+				"inscr_thorns": res.thorns += val
+				"inscr_gold": res.gold += val
+				"inscr_dust": res.dust += val
+				"inscr_heal": res.heal += val
+				"inscr_crit": res.crit += val
+	return res
 
 func rune_name(rune: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return rune.get("en", rune.get("zh", ""))

@@ -38,7 +38,7 @@ func begin_battle(index: int) -> void:
 	var battle_deck: Array = g.profile.deck
 	if g.in_draft_battle and g.profile.get("draft_arena", {}).get("deck", []).size() >= 15:
 		battle_deck = g.profile.draft_arena.deck
-	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses())
+	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses(),g.profile.equipment_tiers,g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(_combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[index].name)):

@@ -1350,6 +1350,84 @@ func run() -> void:
 	sfx_game_inst.set("sfx_muted", false)
 	sfx_game_inst.queue_free()
 
+	# Phase 4: Equipment Reforging & Inscription System (器灵重铸与灵纹洗练)
+	check(content.equip_tier_name(0, "zh-Hans") == "凡品", "tier 0 is 凡品")
+	check(content.equip_tier_name(1, "zh-Hans") == "灵品", "tier 1 is 灵品")
+	check(content.equip_tier_name(2, "zh-Hans") == "宝品", "tier 2 is 宝品")
+	check(content.equip_tier_name(3, "zh-Hans") == "仙品", "tier 3 is 仙品")
+	check(content.equip_tier_name(3, "en") == "Celestial", "tier 3 localized English is Celestial")
+	check(content.equip_tier_cost(0).get("gold") == 100 and content.equip_tier_cost(0).get("dust") == 20, "tier 0->1 cost is 100 gold 20 dust")
+	check(content.equip_tier_cost(1).get("gold") == 250 and content.equip_tier_cost(1).get("dust") == 50, "tier 1->2 cost is 250 gold 50 dust")
+	check(content.equip_tier_cost(2).get("gold") == 500 and content.equip_tier_cost(2).get("dust") == 100, "tier 2->3 cost is 500 gold 100 dust")
+	check(content.equip_tier_cost(3).is_empty(), "tier 3 cost is empty (maxed)")
+	check(content.equip_inscribe_cost().get("gold") == 30 and content.equip_inscribe_cost().get("dust") == 10, "inscribe cost is 30 gold 10 dust")
+
+	var eb := content.equipment("emberBlade")
+	check(content.equip_detail_tiered(eb, 0, "zh-Hans").contains("+3"), "emberBlade T0 gives +3")
+	check(content.equip_detail_tiered(eb, 1, "zh-Hans").contains("+5"), "emberBlade T1 gives +5")
+	check(content.equip_detail_tiered(eb, 2, "zh-Hans").contains("+7"), "emberBlade T2 gives +7")
+	check(content.equip_detail_tiered(eb, 3, "zh-Hans").contains("+10"), "emberBlade T3 gives +10")
+
+	var jp := content.equipment("jadePlate")
+	check(content.equip_detail_tiered(jp, 3, "zh-Hans").contains("28"), "jadePlate T3 gives 28 shield")
+
+	# Inscription rolling & aggregation tests
+	check(content.roll_inscription_affixes(0).size() == 0, "tier 0 has 0 inscription slots")
+	check(content.roll_inscription_affixes(1).size() == 1, "tier 1 has 1 inscription slot")
+	check(content.roll_inscription_affixes(2).size() == 2, "tier 2 has 2 inscription slots")
+	check(content.roll_inscription_affixes(3).size() == 3, "tier 3 has 3 inscription slots")
+	var rolled_t3: Array = content.roll_inscription_affixes(3)
+	for aff in rolled_t3:
+		check(aff.has("id") and aff.has("val") and int(aff.val) > 0, "rolled affix has valid id and positive val")
+		check(content.inscription_text(aff, "zh-Hans").length() > 0, "inscription_text formats valid Chinese string")
+		check(content.inscription_text(aff, "en").length() > 0, "inscription_text formats valid English string")
+
+	var agg_test := content.aggregate_inscriptions(["itemA", "itemB"], {
+		"itemA": [{"id": "inscr_hp", "val": 8}, {"id": "inscr_atk", "val": 3}],
+		"itemB": [{"id": "inscr_shield", "val": 9}, {"id": "inscr_thorns", "val": 2}, {"id": "inscr_gold", "val": 15}]
+	})
+	check(int(agg_test.get("hp")) == 8, "aggregated HP affix is 8")
+	check(int(agg_test.get("atk")) == 3, "aggregated ATK affix is 3")
+	check(int(agg_test.get("shield")) == 9, "aggregated Shield affix is 9")
+	check(int(agg_test.get("thorns")) == 2, "aggregated Thorns affix is 2")
+	check(int(agg_test.get("gold")) == 15, "aggregated Gold affix is 15")
+
+	# Combat integration tests with equipment tiers and inscriptions
+	var c_reforge := SpiritCombat.new(content)
+	# Case A: Jade Plate at Tier 3 (28 shield) + Inscription Shield (+9) -> 37 starting shield!
+	var st_jp := c_reforge.create(1, content.encounters[0], content.raw.startingDeck, 60, {}, ["jadePlate"], {}, {}, [], {}, {"jadePlate": 3}, {"jadePlate": [{"id": "inscr_shield", "val": 9}]})
+	check(st_jp.player.shield == 37, "jadePlate T3 (28) + inscr_shield (9) starts with 37 shield")
+
+	# Case B: Focus Charm at Tier 2 (2 focus + 1 strength)
+	var st_fc := c_reforge.create(2, content.encounters[0], content.raw.startingDeck, 60, {}, ["focusCharm"], {}, {}, [], {}, {"focusCharm": 2}, {})
+	check(st_fc.player.focus == 2, "focusCharm T2 grants 2 focus")
+	check(int(st_fc.player.get("strength", 0)) == 1, "focusCharm T2 grants 1 strength")
+
+	# Case C: Ember Blade at Tier 3 (+10) + Inscription Atk (+3) on first attack
+	var st_eb := c_reforge.create(3, encounter(100, 0), content.raw.startingDeck, 60, {}, ["emberBlade"], {}, {}, [], {}, {"emberBlade": 3}, {"emberBlade": [{"id": "inscr_atk", "val": 3}]})
+	_force_hand(c_reforge, "strike")
+	c_reforge.play(0, 0)
+	check(st_eb.enemies[0].health == 100 - 19, "strike deals 6 + 10 (EmberBlade T3) + 3 (inscr_atk) = 19 damage (100 - 19 = 81)")
+
+	# Case D: Thorn Armor at Tier 3 (9 retaliate) + Inscription Thorns (+3) -> 12 retaliate!
+	var st_ta := c_reforge.create(4, content.encounters[0], content.raw.startingDeck, 60, {}, ["thornArmor"], {}, {}, [], {}, {"thornArmor": 3}, {"thornArmor": [{"id": "inscr_thorns", "val": 3}]})
+	st_ta.player.shield = 0
+	var pre_hp: int = st_ta.enemies[0].health
+	st_ta.enemies[0].intent = {"action": "attack", "amount": 5}
+	c_reforge._execute_intent(0)
+	check(pre_hp - st_ta.enemies[0].health == 12, "thornArmor T3 (9) + inscr_thorns (3) retaliates 12 damage")
+
+	# Case E: Phoenix Mail at Tier 3 revives with 40 HP
+	var st_pm := c_reforge.create(5, content.encounters[0], content.raw.startingDeck, 60, {}, ["phoenixMail"], {}, {}, [], {}, {"phoenixMail": 3}, {})
+	c_reforge._damage_player(100)
+	check(st_pm.player.health == 40, "phoenixMail T3 revives with 40 HP")
+	check(st_pm.phase == "player", "phoenixMail revive prevents loss")
+
+	# Case F: Save profile schema verification
+	var prof_reforge := SpiritSave.defaults(content)
+	check(prof_reforge.has("equipment_tiers") and prof_reforge.equipment_tiers is Dictionary, "profile defaults include equipment_tiers dict")
+	check(prof_reforge.has("equipment_inscriptions") and prof_reforge.equipment_inscriptions is Dictionary, "profile defaults include equipment_inscriptions dict")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

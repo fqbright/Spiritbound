@@ -617,6 +617,32 @@ func _run() -> void:
 	game.show_loadout()
 	await process_frame
 	check(game.root.get_child_count() > 0, "equipment tab built")
+
+	var prev_equips: Array = game.profile.equipment_owned.duplicate()
+	if not game.profile.equipment_owned.has("emberBlade"):
+		game.profile.equipment_owned.append("emberBlade")
+	game.show_loadout()
+	await process_frame
+	var reforge_btn := game.root.find_child("ReforgeBtn_emberBlade", true, false) as Button
+	check(reforge_btn != null, "reforge button for emberBlade exists in loadout")
+
+	# Test opening Reforge Modal
+	game.show_reforge_modal("emberBlade")
+	await process_frame
+	var reforge_modal: Node = game.overlay.get_node_or_null("ReforgeModal")
+	check(reforge_modal != null, "ReforgeModal opened in overlay")
+	var reforge_up_btn := reforge_modal.find_child("ReforgeUpgradeBtn", true, false) as Button
+	check(reforge_up_btn != null, "ReforgeUpgradeBtn exists in modal")
+	var reforge_insc_btn := reforge_modal.find_child("InscribeRollBtn", true, false) as Button
+	check(reforge_insc_btn != null, "InscribeRollBtn exists in modal")
+	var reforge_close_btn := reforge_modal.find_child("ReforgeCloseBtn", true, false) as Button
+	check(reforge_close_btn != null, "ReforgeCloseBtn exists in modal")
+
+	# Dismiss modal
+	reforge_close_btn.pressed.emit()
+	await process_frame
+	check(game.overlay.get_node_or_null("ReforgeModal") == null, "ReforgeModal dismissed cleanly")
+	game.profile.equipment_owned = prev_equips
 	game.loadout_tab = "runes"
 	game.show_loadout()
 	await process_frame
