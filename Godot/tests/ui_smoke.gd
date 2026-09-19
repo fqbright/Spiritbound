@@ -3658,7 +3658,25 @@ func _run() -> void:
 	# time in begin_battle(), so it isn't deterministic run to run) — "strike" is a plain
 	# 1-cost, 6-damage hit to the opponent (core.json), always affordable on turn 1.
 	game.combat.state.hand[0] = {"uid": 90001, "card_id": "strike"}
-	game.combat.state.enemies[0].health = 1
+	# begin_battle()'s per-battle flavor modifier is seeded from wall-clock time (see its own
+	# comment in game_battle_screen.gd), so every single call — this one included — has a real,
+	# non-deterministic chance of rolling one of two options that stop a single lethal hit from
+	# ending the battle: "swarm" (+1 enemy — killing only enemies[0] leaves a second one alive)
+	# and "rebirth" (each defeated enemy has a 45% chance to revive at 35% health instead of
+	# actually dying — see combat.gd's `if not enemy.revived and state.revives > 0 and
+	# rng.randf() < state.revive_chance` branch). Either way _living_count() never reaches 0,
+	# combat.state.phase never reaches "won", and _animate_enemy_hit() correctly (by its own
+	# documented condition) never calls _animate_finishing_blow() at all — so the banner this
+	# test is waiting for simply never gets created. That is not a bug in the animation code; it
+	# was this test's own unstated assumption that a single hit always ends the battle, which
+	# these rolls violate often enough in combination to matter (~9.6% swarm + ~4.3% rebirth
+	# revive, confirmed by instrumenting and reproducing each independently). Neutralize both:
+	# force every other enemy already dead so the one hit this test lands is always the last
+	# living one, and zero out the revive mechanic so that hit's death always sticks.
+	for i in game.combat.state.enemies.size():
+		game.combat.state.enemies[i].health = 1 if i == 0 else 0
+	game.combat.state.revive_chance = 0.0
+	game.combat.state.revives = 0
 	game._attempt_play_card(0, 0)
 	# Wait for _animate_finishing_blow() to actually be mid-sequence (its banner node exists)
 	# rather than guessing a delay — the banner is created right at the top of that function,
