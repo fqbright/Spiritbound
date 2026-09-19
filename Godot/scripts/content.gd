@@ -590,6 +590,185 @@ func samsara_title(count: int, language := "zh-Hans") -> String:
 	else:
 		return ("%d转极境天仙" % count) if language == "zh-Hans" else ("%dth Samsara (Celestial Lord)" % count)
 
+# ------------------------------------------------------------------------------
+# Cultivation Meridians (Talent Tree / 灵脉修真)
+# ------------------------------------------------------------------------------
+
+const MERIDIAN_NODES: Dictionary = {
+	# 任脉·气血 (Ren Meridian - Vitality & Defense)
+	"ren_1": {
+		"id": "ren_1",
+		"branch": "ren",
+		"max_rank": 5,
+		"costs": [20, 30, 40, 50, 60],
+		"name_zh": "气血培元",
+		"name_en": "Vitality Foundation",
+		"desc_zh": "壮大体魄气血，永久提升生命上限 +%d 点",
+		"desc_en": "Strengthen physical vessel, +%d Max HP",
+		"stat": "max_hp",
+		"stat_per_rank": 5
+	},
+	"ren_2": {
+		"id": "ren_2",
+		"branch": "ren",
+		"max_rank": 5,
+		"costs": [25, 35, 45, 55, 65],
+		"name_zh": "护体罡气",
+		"name_en": "Aegis Barrier",
+		"desc_zh": "经络生罡，每场战斗开局获得 +%d 点护盾",
+		"desc_en": "Form protective barrier, +%d Starting Shield",
+		"stat": "shield_start",
+		"stat_per_rank": 4
+	},
+	"ren_3": {
+		"id": "ren_3",
+		"branch": "ren",
+		"max_rank": 3,
+		"costs": [50, 75, 100],
+		"name_zh": "生生不息",
+		"name_en": "Endless Vitality",
+		"desc_zh": "气血循环，战斗中每回合恢复 %d 点生命值",
+		"desc_en": "Perpetual regeneration, restore %d HP per turn",
+		"stat": "heal_per_turn",
+		"stat_per_rank": 1
+	},
+
+	# 督脉·罡气 (Du Meridian - Offensive Might)
+	"du_1": {
+		"id": "du_1",
+		"branch": "du",
+		"max_rank": 5,
+		"costs": [20, 30, 40, 50, 60],
+		"name_zh": "首击重创",
+		"name_en": "Decisive Strike",
+		"desc_zh": "蓄力暴击，每回合首张攻击牌伤害 +%d 点",
+		"desc_en": "Concentrated burst, +%d First Attack Damage per turn",
+		"stat": "first_attack_bonus",
+		"stat_per_rank": 4
+	},
+	"du_2": {
+		"id": "du_2",
+		"branch": "du",
+		"max_rank": 3,
+		"costs": [30, 45, 60],
+		"name_zh": "真火附灵",
+		"name_en": "Soulflame Infusion",
+		"desc_zh": "周天真火，开局向全场敌人施加 %d 层灼烧",
+		"desc_en": "Ignite the battlefield, apply %d Starting Burn to all enemies",
+		"stat": "burn_start",
+		"stat_per_rank": 2
+	},
+	"du_3": {
+		"id": "du_3",
+		"branch": "du",
+		"max_rank": 2,
+		"costs": [60, 100],
+		"name_zh": "万象通天",
+		"name_en": "Celestial Might",
+		"desc_zh": "融汇罡气，战斗开局永久获得 +%d 点力量",
+		"desc_en": "Harness boundless power, +%d Starting Strength",
+		"stat": "strength_start",
+		"stat_per_rank": 1
+	},
+
+	# 冲脉·通灵 (Chong Meridian - Flow & Economy)
+	"chong_1": {
+		"id": "chong_1",
+		"branch": "chong",
+		"max_rank": 2,
+		"costs": [50, 100],
+		"name_zh": "聚灵开悟",
+		"name_en": "Spiritual Insight",
+		"desc_zh": "灵光一闪，战斗第 1 回合额外摸 %d 张牌",
+		"desc_en": "Lightning flash of mind, draw +%d bonus card on turn 1",
+		"stat": "draw_turn1",
+		"stat_per_rank": 1
+	},
+	"chong_2": {
+		"id": "chong_2",
+		"branch": "chong",
+		"max_rank": 1,
+		"costs": [80],
+		"name_zh": "天元灌顶",
+		"name_en": "Primal Surge",
+		"desc_zh": "天地注气，战斗第 1 回合额外获得 +1 点灵力",
+		"desc_en": "Surge of pure chi, +1 Energy on turn 1",
+		"stat": "energy_turn1",
+		"stat_per_rank": 1
+	},
+	"chong_3": {
+		"id": "chong_3",
+		"branch": "chong",
+		"max_rank": 3,
+		"costs": [30, 50, 70],
+		"name_zh": "点石成金",
+		"name_en": "Midas Fortune",
+		"desc_zh": "鸿运当头，通关战役结算时获得灵石加成 +%d%%",
+		"desc_en": "Abundant harvest, +%d%% bonus Gold from battle victories",
+		"stat": "gold_mult",
+		"stat_per_rank": 15
+	}
+}
+
+func meridian_node(node_id: String) -> Dictionary:
+	return MERIDIAN_NODES.get(node_id, {})
+
+func meridian_cost(node_id: String, current_rank: int) -> int:
+	var node: Dictionary = meridian_node(node_id)
+	if node.is_empty(): return -1
+	var costs: Array = node.get("costs", [])
+	if current_rank < 0 or current_rank >= costs.size(): return -1
+	return int(costs[current_rank])
+
+func meridian_total_spent(allocated: Dictionary) -> int:
+	var total: int = 0
+	for node_id in allocated:
+		var node: Dictionary = meridian_node(str(node_id))
+		if node.is_empty(): continue
+		var rank: int = mini(int(allocated[node_id]), int(node.get("max_rank", 0)))
+		var costs: Array = node.get("costs", [])
+		for r in rank:
+			if r < costs.size(): total += int(costs[r])
+	return total
+
+func meridian_bonuses(allocated: Dictionary) -> Dictionary:
+	var bonuses := {
+		"max_hp": 0,
+		"shield_start": 0,
+		"heal_per_turn": 0,
+		"first_attack_bonus": 0,
+		"burn_start": 0,
+		"strength_start": 0,
+		"draw_turn1": 0,
+		"energy_turn1": 0,
+		"gold_mult": 1.0,
+	}
+	for node_id in allocated:
+		var node: Dictionary = meridian_node(str(node_id))
+		if node.is_empty(): continue
+		var rank: int = mini(int(allocated[node_id]), int(node.get("max_rank", 0)))
+		if rank <= 0: continue
+		var stat: String = str(node.get("stat", ""))
+		var val_per_rank: int = int(node.get("stat_per_rank", 0))
+		if stat == "gold_mult":
+			bonuses.gold_mult += float(rank * val_per_rank) / 100.0
+		elif bonuses.has(stat):
+			bonuses[stat] += rank * val_per_rank
+	return bonuses
+
+func meridian_name(node_id: String, language := "zh-Hans") -> String:
+	var node: Dictionary = meridian_node(node_id)
+	if node.is_empty(): return node_id
+	return str(node.get("name_zh" if language == "zh-Hans" else "name_en", node_id))
+
+func meridian_desc(node_id: String, rank: int, language := "zh-Hans") -> String:
+	var node: Dictionary = meridian_node(node_id)
+	if node.is_empty(): return ""
+	var tmpl: String = str(node.get("desc_zh" if language == "zh-Hans" else "desc_en", ""))
+	var preview_rank: int = maxi(1, rank)
+	var val: int = preview_rank * int(node.get("stat_per_rank", 0))
+	return tmpl % val
+
 # Hero Mastery: every battle won with a hero equipped earns that hero XP (see
 # game.gd's _grant_mastery_xp), climbing a permanent Lv1-5 track. Each level adds one
 # always-on perk to a small, reusable vocabulary of battle-start/first-attack/per-turn hooks
@@ -1813,6 +1992,22 @@ const UI_TEXT = {
 	"ui.camp_tier_a6_desc": {"zh-Hans":"万劫降临：敌人生命提升25%，开局获得2点力量", "en":"Cataclysm: Enemies have +25% HP and start with 2 Strength"},
 	"ach.samsara1.name": {"zh-Hans":"轮回证道", "en":"Path of Samsara"},
 	"ach.samsara1.desc": {"zh-Hans":"首次经历六道轮回，散功重修登临仙境", "en":"Complete your first Samsara reincarnation"},
+	"ui.meridian_title": {"zh-Hans":"灵脉修真", "en":"Cultivation Meridians"},
+	"ui.meridian_sub": {"zh-Hans":"打通周天三大经脉 · 凝炼万古道基", "en":"Attune the Three Meridians · Forge Eternal Foundation"},
+	"ui.meridian_ren": {"zh-Hans":"任脉 · 气血守御", "en":"Ren · Vitality & Defense"},
+	"ui.meridian_du": {"zh-Hans":"督脉 · 罡气神威", "en":"Du · Offensive Might"},
+	"ui.meridian_chong": {"zh-Hans":"冲脉 · 通灵造化", "en":"Chong · Flow & Fortune"},
+	"ui.meridian_upgrade": {"zh-Hans":"冲穴提升", "en":"Attune"},
+	"ui.meridian_maxed": {"zh-Hans":"已圆满", "en":"Maxed"},
+	"ui.meridian_reset": {"zh-Hans":"洗髓归元", "en":"Reset Meridians"},
+	"ui.meridian_reset_confirm": {"zh-Hans":"确定散去所有已通经脉？将 100% 全额返还所有消耗的灵尘！", "en":"Reset all attuned meridians? 100% of spent Spirit Dust will be refunded!"},
+	"ui.meridian_reset_toast": {"zh-Hans":"洗髓完成！已归还 %d 灵尘。", "en":"Meridians reset! Refunded %d Spirit Dust."},
+	"ui.meridian_upgrade_toast": {"zh-Hans":"经脉突破！《%s》提升至第 %d 重！", "en":"Breakthrough! %s reached Rank %d!"},
+	"ui.meridian_dust_cost": {"zh-Hans":"%d 灵尘", "en":"%d Dust"},
+	"ui.meridian_rank_fmt": {"zh-Hans":"第 %d / %d 重", "en":"Rank %d / %d"},
+	"ui.meridian_summary_btn": {"zh-Hans":"灵脉修真 🎋", "en":"Meridians 🎋"},
+	"ui.meridian_summary_title": {"zh-Hans":"已通经络加护", "en":"Active Meridian Attunements"},
+	"ui.meridian_summary_none": {"zh-Hans":"尚未打通周天经络，前往修真提升战力！", "en":"No meridians attuned yet. Attune nodes to empower your hero!"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

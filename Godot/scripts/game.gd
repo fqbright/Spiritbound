@@ -1448,6 +1448,37 @@ func _submit_samsara_record(samsara_count: int) -> void:
 	var score: int = samsara_count * 10 + int(profile.get("difficulty", 0))
 	SupabaseClient.submit_score("samsara", score, p_name, char_id, {"cycles": samsara_count, "unlocked": int(profile.get("unlocked", 0))}, self)
 
+func show_meridian_modal() -> void: _camp_screen.show_meridian_modal()
+
+func upgrade_meridian_node(node_id: String) -> bool:
+	var cur_allocated: Dictionary = profile.get("meridians", {}).duplicate()
+	var cur_rank: int = int(cur_allocated.get(node_id, 0))
+	var cost: int = content.meridian_cost(node_id, cur_rank)
+	if cost < 0:
+		return false
+	var cur_dust: int = int(profile.get("spirit_dust", 0))
+	if cur_dust < cost:
+		_toast(t("ui.insufficient_dust"), Color("ff7070"))
+		return false
+	profile.spirit_dust = cur_dust - cost
+	cur_allocated[node_id] = cur_rank + 1
+	profile.meridians = cur_allocated
+	SpiritSave.write(profile)
+	var node_name := content.meridian_name(node_id, lang)
+	_toast(tf("ui.meridian_upgrade_toast", [node_name, cur_rank + 1]), GOLD)
+	return true
+
+func reset_meridians() -> int:
+	var cur_allocated: Dictionary = profile.get("meridians", {}).duplicate()
+	var total_refund: int = content.meridian_total_spent(cur_allocated)
+	if total_refund <= 0 and cur_allocated.is_empty():
+		return 0
+	profile.meridians = {}
+	profile.spirit_dust = int(profile.get("spirit_dust", 0)) + total_refund
+	SpiritSave.write(profile)
+	_toast(tf("ui.meridian_reset_toast", total_refund), JADE)
+	return total_refund
+
 func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Control:
 	# z_index only ever affects render order in Godot — never GUI input dispatch order, which
 	# follows scene-tree sibling order alone. `overlay` is added to `self.root` once, up front,

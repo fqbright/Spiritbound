@@ -1244,6 +1244,53 @@ func run() -> void:
 	check(content.ui("ui.leaderboard_unranked", "zh-Hans") == "未上榜", "leaderboard unranked localized in Chinese")
 	check(content.ui("ui.leaderboard_unranked", "en") == "Unranked", "leaderboard unranked localized in English")
 
+	# Cultivation Meridian System (Talent Tree) tests
+	check(content.MERIDIAN_NODES.size() == 9, "9 meridian talent nodes defined across 3 branches")
+	check(content.MERIDIAN_NODES.has("ren_1") and content.MERIDIAN_NODES.has("du_1") and content.MERIDIAN_NODES.has("chong_1"), "ren, du, and chong branches contain prime nodes")
+	check(content.meridian_cost("ren_1", 0) == 20, "ren_1 rank 0 cost is 20 dust")
+	check(content.meridian_cost("ren_1", 4) == 60, "ren_1 rank 4 cost is 60 dust")
+	check(content.meridian_cost("ren_1", 5) == -1, "ren_1 rank 5 cost is -1 (maxed)")
+
+	var test_alloc := {
+		"ren_1": 2, # +10 HP (cost 20 + 30 = 50)
+		"ren_2": 1, # +4 Shield (cost 25)
+		"du_1": 3,  # +12 First Attack (cost 20 + 30 + 40 = 90)
+		"chong_3": 2 # +30% Gold (cost 30 + 50 = 80)
+	}
+	var test_spent: int = content.meridian_total_spent(test_alloc)
+	check(test_spent == 245, "meridian_total_spent correctly sums 50 + 25 + 90 + 80 = 245")
+
+	var test_bonuses: Dictionary = content.meridian_bonuses(test_alloc)
+	check(int(test_bonuses.max_hp) == 10, "meridian bonuses gives +10 max HP for 2 ranks of ren_1")
+	check(int(test_bonuses.shield_start) == 4, "meridian bonuses gives +4 starting shield for 1 rank of ren_2")
+	check(int(test_bonuses.first_attack_bonus) == 12, "meridian bonuses gives +12 first attack for 3 ranks of du_1")
+	check(is_equal_approx(float(test_bonuses.gold_mult), 1.3), "meridian bonuses gives 1.3x gold mult for 2 ranks of chong_3")
+
+	check(content.meridian_name("ren_1", "zh-Hans") == "气血培元", "meridian ren_1 localized name in Chinese")
+	check(content.meridian_name("ren_1", "en") == "Vitality Foundation", "meridian ren_1 localized name in English")
+
+	# Profile integration & Game methods
+	var meridian_game := SpiritGame.new()
+	meridian_game.profile = SpiritSave.defaults(content)
+	check(meridian_game.profile.has("meridians") and meridian_game.profile.meridians.is_empty(), "defaults profile has empty meridians")
+	meridian_game.profile.spirit_dust = 100
+	var up_ok := meridian_game.upgrade_meridian_node("ren_1")
+	check(up_ok, "upgrade_meridian_node succeeds with sufficient dust")
+	check(int(meridian_game.profile.meridians.get("ren_1", 0)) == 1, "ren_1 rank becomes 1")
+	check(int(meridian_game.profile.spirit_dust) == 80, "spirit dust deducted by 20 (now 80)")
+
+	# Respec test
+	var refunded: int = meridian_game.reset_meridians()
+	check(refunded == 20, "reset_meridians refunds 20 dust")
+	check(int(meridian_game.profile.spirit_dust) == 100, "spirit dust restored to 100")
+	check(meridian_game.profile.meridians.is_empty(), "meridians dictionary cleared after reset")
+
+	# Meridian UI strings
+	check(content.ui("ui.meridian_title", "zh-Hans") == "灵脉修真", "meridian title localized in Chinese")
+	check(content.ui("ui.meridian_title", "en") == "Cultivation Meridians", "meridian title localized in English")
+	check(content.ui("ui.meridian_reset", "zh-Hans") == "洗髓归元", "meridian reset localized in Chinese")
+	check(content.ui("ui.meridian_reset", "en") == "Reset Meridians", "meridian reset localized in English")
+
 	# Translations for auth features
 	check(content.ui("ui.auth_email_tab", "zh-Hans") == "邮箱登录", "auth email tab localized in Chinese")
 	check(content.ui("ui.auth_email_tab", "en") == "Email Sign In", "auth email tab localized in English")

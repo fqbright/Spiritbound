@@ -187,6 +187,15 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 		bonuses.max_hp = int(bonuses.get("max_hp", 0)) + int(s_bonuses.get("max_hp", 0))
 		bonuses.shield_start = int(bonuses.get("shield_start", 0)) + int(s_bonuses.get("starting_shield", 0))
 		bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(s_bonuses.get("turn1_draw", 0))
+	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
+	bonuses.max_hp = int(bonuses.get("max_hp", 0)) + int(m_bonuses.get("max_hp", 0))
+	bonuses.shield_start = int(bonuses.get("shield_start", 0)) + int(m_bonuses.get("shield_start", 0))
+	bonuses.heal_per_turn = int(bonuses.get("heal_per_turn", 0)) + int(m_bonuses.get("heal_per_turn", 0))
+	bonuses.first_attack_bonus = int(bonuses.get("first_attack_bonus", 0)) + int(m_bonuses.get("first_attack_bonus", 0))
+	bonuses.burn_start = int(bonuses.get("burn_start", 0)) + int(m_bonuses.get("burn_start", 0))
+	bonuses.strength_start = int(bonuses.get("strength_start", 0)) + int(m_bonuses.get("strength_start", 0))
+	bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(m_bonuses.get("draw_turn1", 0))
+	bonuses.energy_turn1 = int(bonuses.get("energy_turn1", 0)) + int(m_bonuses.get("energy_turn1", 0))
 	bonuses.difficulty = int(g.profile.get("difficulty", 0))
 	return bonuses
 
@@ -329,6 +338,8 @@ func _grant_stage_rewards() -> void:
 	var encounter: Dictionary = g.content.encounters[g.current_stage]
 	var multiplier: float = g.active_modifier.get("reward_scale", 1.0)
 	if g.profile.equipment_slots.values().has("fortuneSeal"): multiplier *= 1.15
+	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
+	if float(m_bonuses.get("gold_mult", 1.0)) > 1.0: multiplier *= float(m_bonuses.gold_mult)
 	# A cleared stage can no longer be re-entered at all (see _show_replay_mode_prompt), so
 	# every campaign win reaching here is a genuine first clear — no more halved "replay"
 	# rewards to compute.

@@ -2845,6 +2845,39 @@ func _run() -> void:
 		game.show_map()
 		await process_frame
 
+	# 1d. Cultivation Meridian Modal
+	game.show_camp()
+	await process_frame
+	var m_sec: Node = game.root.find_child("MeridianSection", true, false)
+	check(m_sec != null, "MeridianSection renders in camp character tab")
+	var m_open: Control = game.root.find_child("MeridianOpenBtn", true, false) as Control
+	check(m_open != null, "MeridianOpenBtn exists in MeridianSection")
+	if m_open != null:
+		tap_button(m_open, "MeridianOpenBtn")
+		await process_frame
+		var m_modal: Node = game.overlay.find_child("MeridianModal", true, false)
+		check(m_modal != null, "MeridianModal opened on tap")
+		if m_modal != null:
+			var m_tab_ren: Control = m_modal.find_child("MeridianTab_ren", true, false) as Control
+			var m_tab_du: Control = m_modal.find_child("MeridianTab_du", true, false) as Control
+			var m_tab_chong: Control = m_modal.find_child("MeridianTab_chong", true, false) as Control
+			var m_reset: Control = m_modal.find_child("MeridianResetBtn", true, false) as Control
+			var m_close: Control = m_modal.find_child("MeridianCloseBtn", true, false) as Control
+			check(m_tab_ren != null, "MeridianTab_ren exists")
+			check(m_tab_du != null, "MeridianTab_du exists")
+			check(m_tab_chong != null, "MeridianTab_chong exists")
+			check(m_reset != null, "MeridianResetBtn exists")
+			check(m_close != null, "MeridianCloseBtn exists")
+			if m_tab_du != null:
+				tap_button(m_tab_du, "MeridianTab_du")
+				await process_frame
+			if m_close != null:
+				tap_button(m_close, "MeridianCloseBtn")
+				await process_frame
+				check(game.overlay.find_child("MeridianModal", true, false) == null, "MeridianModal closed on close tap")
+		game.show_map()
+		await process_frame
+
 	# 2. Lowered Chapter Plaque
 	var plaque: Control = game.root.find_child("ChapterPlaque", true, false) as Control
 	check(plaque != null, "ChapterPlaque exists on map")

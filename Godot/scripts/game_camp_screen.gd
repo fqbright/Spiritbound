@@ -617,6 +617,7 @@ func show_challenges() -> void:
 # past the point of being scannable in one screen.
 func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
+	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
 
 # "Modes you enter": the two challenge tracks (Daily Trial, Endless Abyss) plus the campaign's
@@ -2184,6 +2185,269 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 	refresh_btn.pressed.connect(func(): update_view.call(current_category[0]))
 
 	update_view.call(default_category)
+
+func _meridian_cultivation_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "MeridianSection"
+	panel.custom_minimum_size = Vector2(0, 96)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0d1d1f"), 12, g.JADE))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 8)
+
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.meridian_title") + " 🎋", 14, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.meridian_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	top_row.add_child(title_box)
+
+	var open_btn := g._button(g.t("ui.meridian_summary_btn"), func(): show_meridian_modal(), Color("225046"), Vector2(100, 34))
+	open_btn.name = "MeridianOpenBtn"
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_row.add_child(open_btn)
+	vbox.add_child(top_row)
+
+	# Stat highlights / summary
+	var cur_allocated: Dictionary = g.profile.get("meridians", {})
+	var m_bonuses: Dictionary = g.content.meridian_bonuses(cur_allocated)
+	var summary_row := HBoxContainer.new()
+	summary_row.add_theme_constant_override("separation", 10)
+
+	var stat_parts: Array = []
+	if int(m_bonuses.max_hp) > 0: stat_parts.append("+%d HP" % int(m_bonuses.max_hp))
+	if int(m_bonuses.shield_start) > 0: stat_parts.append("+%d 盾" % int(m_bonuses.shield_start) if g.lang == "zh-Hans" else "+%d Shield" % int(m_bonuses.shield_start))
+	if int(m_bonuses.first_attack_bonus) > 0: stat_parts.append("+%d 攻" % int(m_bonuses.first_attack_bonus) if g.lang == "zh-Hans" else "+%d Atk" % int(m_bonuses.first_attack_bonus))
+	if int(m_bonuses.strength_start) > 0: stat_parts.append("+%d 力" % int(m_bonuses.strength_start) if g.lang == "zh-Hans" else "+%d Str" % int(m_bonuses.strength_start))
+	if int(m_bonuses.draw_turn1) > 0: stat_parts.append("+%d 抽" % int(m_bonuses.draw_turn1) if g.lang == "zh-Hans" else "+%d Draw" % int(m_bonuses.draw_turn1))
+	if int(m_bonuses.energy_turn1) > 0: stat_parts.append("+%d 灵" % int(m_bonuses.energy_turn1) if g.lang == "zh-Hans" else "+%d Energy" % int(m_bonuses.energy_turn1))
+
+	var summary_text := ""
+	if stat_parts.is_empty():
+		summary_text = g.t("ui.meridian_summary_none")
+	else:
+		var sep_sym: String = " · "
+		var parts_str: Array[String] = []
+		for p in stat_parts: parts_str.append(str(p))
+		summary_text = "✦ " + sep_sym.join(parts_str)
+
+	var sum_lbl := g._label(summary_text, 10, g.JADE if not stat_parts.is_empty() else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT)
+	sum_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sum_lbl.clip_text = true
+	summary_row.add_child(sum_lbl)
+
+	var dust_count: int = int(g.profile.get("spirit_dust", 0))
+	var dust_lbl := g._label(g.tf("ui.meridian_dust_cost", dust_count), 10, Color("d4aeff"), HORIZONTAL_ALIGNMENT_RIGHT)
+	summary_row.add_child(dust_lbl)
+
+	vbox.add_child(summary_row)
+	return panel
+
+func _close_meridian_modal() -> void:
+	if g.overlay == null: return
+	var existing: Node = g.overlay.get_node_or_null("MeridianModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_meridian_modal() -> void:
+	_close_meridian_modal()
+
+	var modal := g._modal_dialog("MeridianModal", func(): _close_meridian_modal())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "MeridianModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(360, vp_w - 20), 540)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("091316"), 14, g.JADE))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	# Header row
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.meridian_title") + " 🎋", 16, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.meridian_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	header_row.add_child(title_box)
+
+	var close_btn := g._button("✕", func(): _close_meridian_modal(), Color("223640"), Vector2(32, 32))
+	close_btn.name = "MeridianCloseBtn"
+	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	# Dust & Respec status bar
+	var status_row := HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 8)
+
+	var dust_icon := TextureRect.new()
+	dust_icon.custom_minimum_size = Vector2(20, 20)
+	dust_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	dust_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	dust_icon.texture = load("res://assets/icons/hud_dust.png")
+	dust_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_row.add_child(dust_icon)
+
+	var cur_dust_lbl := g._label(g.tf("ui.meridian_dust_cost", int(g.profile.get("spirit_dust", 0))), 11, Color("d4aeff"), HORIZONTAL_ALIGNMENT_LEFT)
+	cur_dust_lbl.name = "MeridianDustLabel"
+	cur_dust_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_row.add_child(cur_dust_lbl)
+
+	var reset_btn := g._button(g.t("ui.meridian_reset"), Callable(), Color("3a1c22"), Vector2(80, 26))
+	reset_btn.name = "MeridianResetBtn"
+	status_row.add_child(reset_btn)
+	vbox.add_child(status_row)
+
+	# Branch Tabs: 任脉 / 督脉 / 冲脉
+	var tab_row := HBoxContainer.new()
+	tab_row.name = "MeridianTabRow"
+	tab_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(tab_row)
+
+	var branches := ["ren", "du", "chong"]
+	var tab_names := {
+		"ren": g.t("ui.meridian_ren"),
+		"du": g.t("ui.meridian_du"),
+		"chong": g.t("ui.meridian_chong")
+	}
+	var current_branch: Array = ["ren"]
+	var tab_buttons: Dictionary = {}
+
+	# Scrollable Node Container
+	var scroll := TouchScrollContainer.new()
+	scroll.name = "MeridianScroll"
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 260
+	vbox.add_child(scroll)
+
+	var nodes_list := VBoxContainer.new()
+	nodes_list.name = "MeridianNodesList"
+	nodes_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nodes_list.add_theme_constant_override("separation", 8)
+	scroll.add_child(nodes_list)
+
+	# Refresh function for node tree and labels
+	var refresh_meridian_ui: Array = [Callable()]
+	refresh_meridian_ui[0] = func(branch: String) -> void:
+		current_branch[0] = branch
+		cur_dust_lbl.text = g.tf("ui.meridian_dust_cost", int(g.profile.get("spirit_dust", 0)))
+		for b in branches:
+			var btn_obj: Button = tab_buttons.get(b)
+			if btn_obj != null:
+				var active: bool = (b == branch)
+				var b_col: Color = g.JADE if b == "ren" else (g.EMBER if b == "du" else g.GOLD)
+				btn_obj.add_theme_stylebox_override("normal", g._panel(Color("162a2d") if active else Color("0f191b"), 6, b_col if active else Color("233c42")))
+
+		for ch in nodes_list.get_children():
+			nodes_list.remove_child(ch)
+			ch.queue_free()
+
+		var allocated: Dictionary = g.profile.get("meridians", {})
+		var branch_nodes: Array[String] = []
+		if branch == "ren": branch_nodes = ["ren_1", "ren_2", "ren_3"]
+		elif branch == "du": branch_nodes = ["du_1", "du_2", "du_3"]
+		elif branch == "chong": branch_nodes = ["chong_1", "chong_2", "chong_3"]
+
+		for node_id in branch_nodes:
+			var node_data: Dictionary = g.content.meridian_node(node_id)
+			if node_data.is_empty(): continue
+			var max_rank: int = int(node_data.get("max_rank", 5))
+			var cur_rank: int = int(allocated.get(node_id, 0))
+			var is_max: bool = (cur_rank >= max_rank)
+			var cost: int = g.content.meridian_cost(node_id, cur_rank)
+			var cur_dust: int = int(g.profile.get("spirit_dust", 0))
+
+			var card := PanelContainer.new()
+			card.name = "MeridianCard_" + node_id
+			var branch_col: Color = g.JADE if branch == "ren" else (g.EMBER if branch == "du" else g.GOLD)
+			card.add_theme_stylebox_override("panel", g._panel(Color("0f1d22"), 8, branch_col if cur_rank > 0 else Color("1a353c")))
+
+			var card_pad := MarginContainer.new()
+			for s in ["left", "right"]: card_pad.add_theme_constant_override("margin_%s" % s, 10)
+			for s in ["top", "bottom"]: card_pad.add_theme_constant_override("margin_%s" % s, 8)
+			card.add_child(card_pad)
+
+			var card_v := VBoxContainer.new()
+			card_v.add_theme_constant_override("separation", 6)
+			card_pad.add_child(card_v)
+
+			# Title row
+			var c_top := HBoxContainer.new()
+			c_top.add_theme_constant_override("separation", 6)
+			var name_lbl := g._label(g.content.meridian_name(node_id, g.lang), 12, g.GOLD if cur_rank > 0 else Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+			name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			c_top.add_child(name_lbl)
+
+			var rank_lbl := g._label(g.tf("ui.meridian_rank_fmt", [cur_rank, max_rank]), 10, branch_col if cur_rank > 0 else g.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+			c_top.add_child(rank_lbl)
+			card_v.add_child(c_top)
+
+			# Desc & Action row
+			var c_bot := HBoxContainer.new()
+			c_bot.add_theme_constant_override("separation", 8)
+
+			var desc_text := g.content.meridian_desc(node_id, cur_rank if cur_rank > 0 else 1, g.lang)
+			var desc_lbl := g._label(desc_text, 9, g.TEXT if cur_rank > 0 else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+			desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			c_bot.add_child(desc_lbl)
+
+			var btn_text := g.t("ui.meridian_maxed") if is_max else (g.t("ui.meridian_upgrade") + (" (%d)" % cost))
+			var up_btn := g._button(btn_text, Callable(), Color("225046") if not is_max else Color("1c2b2e"), Vector2(95, 32))
+			up_btn.name = "MeridianUpgradeBtn_" + node_id
+			up_btn.disabled = is_max or (cur_dust < cost)
+			var target_id: String = node_id
+			up_btn.pressed.connect(func():
+				var ok: bool = g.upgrade_meridian_node(target_id)
+				if ok:
+					refresh_meridian_ui[0].call(current_branch[0])
+			)
+			c_bot.add_child(up_btn)
+			card_v.add_child(c_bot)
+
+			nodes_list.add_child(card)
+
+	reset_btn.pressed.connect(func():
+		var total_refunded: int = g.reset_meridians()
+		refresh_meridian_ui[0].call(current_branch[0])
+	)
+
+	for b in branches:
+		var branch_key: String = b
+		var tab_b := g._button(tab_names[branch_key], Callable(), Color("0f191b"), Vector2(0, 32))
+		tab_b.name = "MeridianTab_" + branch_key
+		tab_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab_b.pressed.connect(func(): refresh_meridian_ui[0].call(branch_key))
+		tab_buttons[branch_key] = tab_b
+		tab_row.add_child(tab_b)
+
+	refresh_meridian_ui[0].call("ren")
+
 
 
 
