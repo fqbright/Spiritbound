@@ -799,7 +799,7 @@ func _difficulty_tier_section() -> Control:
 	row.add_theme_constant_override("v_separation", 6)
 	row.alignment = FlowContainer.ALIGNMENT_CENTER
 	for value in max_tier + 1:
-		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(46,40))
+		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; g._check_feature_unlocks(); SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(46,40))
 		button.name = "DifficultyTierBtn_A%d" % value
 		row.add_child(button)
 	section.add_child(row)

@@ -1444,6 +1444,29 @@ func _toast(message: String, color := TEXT) -> void:
 	overlay.add_child(toast)
 	var tween := create_tween(); tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.95); tween.tween_property(toast,"modulate:a",0.0,.35); tween.tween_callback(toast.queue_free)
 
+# One-time "you just unlocked X" toast the moment a gated Camp feature's threshold is first
+# crossed, so a player discovers Compendium/Daily Trial/Weekly Challenge/Boss Rush/Abyss/
+# Difficulty Tiers/Curse Run as they unlock instead of only by noticing a new tab appeared.
+# Call after anything that can move profile.unlocked or profile.difficulty forward (a campaign
+# win, a difficulty tier pick) — see SpiritContent.FEATURE_UNLOCKS' own comment for why entries
+# are grouped by threshold rather than one call per feature. A no-op once every entry has fired
+# once; safe to call liberally rather than trying to reason about exactly which call sites can
+# possibly cross a threshold.
+func _check_feature_unlocks() -> void:
+	var seen: Array = profile.get("feature_unlocks_seen", [])
+	var changed := false
+	for entry in SpiritContent.FEATURE_UNLOCKS:
+		var id: String = str(entry.id)
+		if seen.has(id): continue
+		var current: int = int(profile.unlocked) if str(entry.kind) == "unlocked" else int(profile.difficulty)
+		if current >= int(entry.threshold):
+			_toast(t(str(entry.toast_key)), GOLD)
+			seen.append(id)
+			changed = true
+	if changed:
+		profile.feature_unlocks_seen = seen
+		SpiritSave.write(profile)
+
 # Thin delegators onto BattleScreen (scripts/game_battle_screen.gd) — see MapScreen's header
 # comment (game_map_screen.gd) for why composition rather than inheritance, and game.gd's own
 # MapScreen delegator block above for why these keep their original bare names.

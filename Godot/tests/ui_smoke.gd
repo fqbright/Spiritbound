@@ -2702,6 +2702,37 @@ func _run() -> void:
 	check(found_locked_badge_dim, "a locked achievement's medal badge renders dimmed")
 	check(found_unlocked_badge_bright, "an unlocked achievement's medal badge renders at full brightness")
 
+	section("== feature-unlock discoverability toasts ==")
+	# game._check_feature_unlocks() fires a one-time "New!" toast the moment profile.unlocked or
+	# profile.difficulty first crosses a gated feature's threshold (SpiritContent.FEATURE_UNLOCKS),
+	# so a player discovers Compendium/Daily Trial/Abyss/Curse Run/etc. instead of only noticing a
+	# new tab appeared. Save/restore every field it reads or writes.
+	var saved_unlocked_fu: int = int(game.profile.unlocked)
+	var saved_difficulty_fu: int = int(game.profile.difficulty)
+	var saved_seen_fu: Array = game.profile.get("feature_unlocks_seen", []).duplicate()
+
+	game.profile.feature_unlocks_seen = []
+	game.profile.unlocked = 5
+	game.profile.difficulty = 0
+	game._check_feature_unlocks()
+	check(_find_label_containing(game.overlay, game.t("ui.unlock_ch1_toast")), "crossing unlocked=5 the first time surfaces the chapter-1-features unlock toast")
+	check(game.profile.feature_unlocks_seen.has("ch1_features"), "crossing unlocked=5 marks ch1_features as seen")
+	check(not game.profile.feature_unlocks_seen.has("abyss"), "unlocked=5 has not yet crossed abyss's own threshold of 10")
+
+	# A second call at the same progress must not re-append an already-seen id or crash.
+	var seen_count_after_first: int = game.profile.feature_unlocks_seen.size()
+	game._check_feature_unlocks()
+	check(game.profile.feature_unlocks_seen.size() == seen_count_after_first, "re-checking at the same progress does not re-append an already-seen id")
+
+	# The "kind":"difficulty" branch reads profile.difficulty instead, independent of unlocked.
+	game.profile.difficulty = 2
+	game._check_feature_unlocks()
+	check(game.profile.feature_unlocks_seen.has("curse_run"), "crossing difficulty=2 marks curse_run as seen, independent of the unlocked-stage thresholds")
+
+	game.profile.unlocked = saved_unlocked_fu
+	game.profile.difficulty = saved_difficulty_fu
+	game.profile.feature_unlocks_seen = saved_seen_fu
+
 	section("== phase 3: settings, deck filters, colorblind glyphs, victory recap & hard replays ==")
 	# F2: Settings modal
 	game.show_map()

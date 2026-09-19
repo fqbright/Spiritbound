@@ -445,6 +445,22 @@ const LOGIN_REWARD_TIERS = [
 	{"days":7,"reward":100},
 ]
 
+# One-time "you just unlocked X" toasts (game._check_feature_unlocks()) for every gated Camp
+# feature — otherwise a player only ever discovers Daily Trial/Abyss/Curse Run/etc. by noticing
+# a new tab appeared. `kind` picks which profile field the threshold compares against
+# ("unlocked" = campaign stage index, "difficulty" = challenge tier). Grouped by threshold
+# rather than one entry per feature: Compendium, Daily Trial, Weekly Challenge, and Boss Rush
+# all gate on the same `unlocked >= 5` (see their own _*_section() functions in
+# game_camp_screen.gd), so they fire one combined toast — _toast() has no queue and always
+# renders at the same fixed position, so four separate calls back to back would visually stack
+# on top of each other, not display in sequence.
+const FEATURE_UNLOCKS = [
+	{"id":"ch1_features","kind":"unlocked","threshold":5,"toast_key":"ui.unlock_ch1_toast"},
+	{"id":"abyss","kind":"unlocked","threshold":10,"toast_key":"ui.unlock_abyss_toast"},
+	{"id":"difficulty_tiers","kind":"unlocked","threshold":25,"toast_key":"ui.unlock_difficulty_toast"},
+	{"id":"curse_run","kind":"difficulty","threshold":2,"toast_key":"ui.unlock_curse_run_toast"},
+]
+
 const RELICS = [
 	{"id":"foxCharm","icon":"✦","icon_mark":"flame","color":"ffb765","zh":"绯狐护符","en":"Fox Charm","detail":"第 2 回合额外获得 1 点能量。","detail_en":"Gain 1 extra Energy on Turn 2."},
 	{"id":"starShard","icon":"✧","icon_mark":"sparkle","color":"a2d9ff","zh":"碎星石","en":"Star Shard","detail":"每回合第一张攻击牌额外造成 2 点伤害。","detail_en":"First attack each turn deals +2 damage."},
@@ -2132,6 +2148,10 @@ const UI_TEXT = {
 	"ui.challenges_sub": {"zh-Hans":"每日试炼 · 每周挑战 · 无尽深渊 · 难度调控", "en":"Daily Trial · Weekly · Abyss · Difficulty"},
 	"ui.achievement_unlocked_toast": {"zh-Hans":"✦ 成就解锁：%s", "en":"✦ Achievement Unlocked: %s"},
 	"ui.achievement_locked": {"zh-Hans":"未解锁", "en":"Locked"},
+	"ui.unlock_ch1_toast": {"zh-Hans":"✦ 新功能解锁：驭灵秘典 · 每日试炼 · 每周主题挑战 · 首领连战！", "en":"✦ New: Spirit Compendium, Daily Trial, Weekly Challenge, Boss Rush!"},
+	"ui.unlock_abyss_toast": {"zh-Hans":"✦ 新玩法解锁：无尽深渊！", "en":"✦ New mode unlocked: Endless Abyss!"},
+	"ui.unlock_difficulty_toast": {"zh-Hans":"✦ 新功能解锁：挑战等级！", "en":"✦ New: Challenge Tiers unlocked!"},
+	"ui.unlock_curse_run_toast": {"zh-Hans":"✦ 新玩法解锁：咒缚试炼！", "en":"✦ New mode unlocked: Curse Run!"},
 	"ach.win10.name": {"zh-Hans":"初出茅庐", "en":"First Steps"},
 	"ach.win10.desc": {"zh-Hans":"累计赢得 10 场战斗", "en":"Win 10 battles total"},
 	"ach.win50.name": {"zh-Hans":"身经百战", "en":"Battle-Tested"},

@@ -435,6 +435,7 @@ func _grant_stage_rewards() -> void:
 	g.profile.health = 60
 	g.profile.unlocked = maxi(int(g.profile.unlocked), mini(g.content.encounters.size() - 1, g.current_stage + 1))
 	g.profile.position = g.current_stage
+	g._check_feature_unlocks()
 	_mark_stage_event_claimed(g.current_stage)
 
 	var kind := g.content.node_kind(g.current_stage)

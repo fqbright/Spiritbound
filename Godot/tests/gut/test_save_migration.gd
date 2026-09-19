@@ -84,6 +84,24 @@ func test_account_missing_newer_subfields_gets_upgraded_in_place():
 	assert_eq(str(profile.account.get("user_id", "MISSING")), "", "account.user_id is backfilled to an empty string when missing")
 	assert_eq(int(profile.account.get("linked_at", -1)), 0, "account.linked_at is backfilled when missing")
 
+func test_feature_unlocks_seen_backfills_already_crossed_thresholds_on_ancient_save():
+	# An old save has necessarily already lived past whatever unlock thresholds it currently
+	# exceeds, so migration must mark those as "already seen" — otherwise a returning player
+	# with unlocked=12 would get a "New: Endless Abyss!" toast for a mode they've had for weeks.
+	# unlocked=12 clears ch1_features (>=5) and abyss (>=10) but not difficulty_tiers (>=25);
+	# difficulty=2 clears curse_run (>=2) independently, on the other profile field.
+	_write_fixture({"gold": 80, "unlocked": 12, "difficulty": 2})
+	var profile: Dictionary = SpiritSave.load_profile(content)
+	var seen: Array = profile.feature_unlocks_seen
+	assert_true(seen.has("ch1_features"), "unlocked=12 backfills ch1_features (threshold 5) as already seen")
+	assert_true(seen.has("abyss"), "unlocked=12 backfills abyss (threshold 10) as already seen")
+	assert_true(seen.has("curse_run"), "difficulty=2 backfills curse_run (threshold 2) as already seen")
+	assert_false(seen.has("difficulty_tiers"), "unlocked=12 has not crossed difficulty_tiers' threshold of 25, so it is not backfilled")
+
+func test_feature_unlocks_seen_empty_on_brand_new_save():
+	var profile: Dictionary = SpiritSave.defaults(content)
+	assert_true(profile.feature_unlocks_seen is Array and profile.feature_unlocks_seen.is_empty(), "a fresh save starts with no unlocks marked seen, since unlocked/difficulty both start at 0")
+
 func test_corrupted_deck_falls_back_to_starting_deck():
 	_write_fixture({"gold": 80, "deck": ["strike", "ward"]})
 	var profile: Dictionary = SpiritSave.load_profile(content)
