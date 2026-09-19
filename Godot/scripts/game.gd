@@ -61,6 +61,11 @@ var _swipe_tracking := false
 var map_music: AudioStreamPlayer
 var battle_music: AudioStreamPlayer
 var battle_music_streams: Array[AudioStream] = []
+var sfx_muted := false
+var _sfx_pool: Array[AudioStreamPlayer] = []
+var _sfx_pool_index: int = 0
+var _sfx_cache: Dictionary = {}
+const SFX_POOL_SIZE := 8
 static func _load_game_font() -> Font:
 	var en_font: FontFile = load("res://assets/fonts/Cinzel-SemiBold.ttf")
 	var cjk_font: FontFile = load("res://assets/fonts/LXGWWenKai-Medium.ttf")
@@ -382,6 +387,8 @@ func _ready() -> void:
 	profile = SpiritSave.load_profile(content)
 	lang = str(profile.get("language", "zh-Hans"))
 	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 2.0)
+	muted = bool(profile.get("music_muted", false))
+	sfx_muted = bool(profile.get("sfx_muted", false))
 	_build_audio()
 	_ensure_quests_current()
 	_ensure_daily_trial_current()
@@ -761,7 +768,8 @@ func _safe_bottom() -> int:
 
 func _clear() -> void:
 	for child in get_children():
-		if child != map_music and child != battle_music: child.queue_free()
+		if child is AudioStreamPlayer: continue
+		child.queue_free()
 	_back_action = Callable()
 	_swipe_tracking = false
 	root = Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
@@ -966,6 +974,52 @@ func _build_audio() -> void:
 	]
 	map_music.finished.connect(func(): if not muted: map_music.play())
 	battle_music.finished.connect(func(): if not muted: battle_music.play())
+	_build_sfx()
+
+func _build_sfx() -> void:
+	_sfx_pool.clear()
+	for i in range(SFX_POOL_SIZE):
+		var player := AudioStreamPlayer.new()
+		player.name = "SFXPlayer_%d" % i
+		add_child(player)
+		_sfx_pool.append(player)
+	
+	var sfx_files := [
+		"card_play", "card_draw", "attack_slash", "attack_heavy",
+		"shield_gain", "heal", "buff", "resonance_combustion",
+		"resonance_sunder", "resonance_fortify", "enemy_hit",
+		"enemy_defeat", "boss_phase2", "battle_victory",
+		"battle_defeat", "coin", "chest_open"
+	]
+	for sfx_name in sfx_files:
+		var path := "res://assets/audio/sfx/sfx_%s.wav" % sfx_name
+		if ResourceLoader.exists(path):
+			_sfx_cache[sfx_name] = load(path)
+
+func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.0) -> void:
+	if muted or sfx_muted: return
+	var stream: AudioStream = _sfx_cache.get(sfx_name, null)
+	if stream == null:
+		var path := "res://assets/audio/sfx/sfx_%s.wav" % sfx_name
+		if ResourceLoader.exists(path):
+			stream = load(path)
+			_sfx_cache[sfx_name] = stream
+		else:
+			return
+	if _sfx_pool.is_empty():
+		return
+	var player: AudioStreamPlayer = _sfx_pool[_sfx_pool_index]
+	_sfx_pool_index = (_sfx_pool_index + 1) % _sfx_pool.size()
+	if not is_instance_valid(player) or not player.is_inside_tree():
+		return
+	player.stop()
+	player.stream = stream
+	player.volume_db = volume_db
+	if pitch_range > 0.0:
+		player.pitch_scale = randf_range(1.0 - pitch_range, 1.0 + pitch_range)
+	else:
+		player.pitch_scale = 1.0
+	player.play()
 
 func _play_music(battle := false, stage_level: int = 0) -> void:
 	if muted: return
@@ -1826,6 +1880,9 @@ func show_settings() -> void:
 	var music_btn := _button(t("ui.settings_audio_on") if not muted else t("ui.settings_audio_off"), func(): _toggle_music_settings(), JADE if not muted else Color("2c333a"), Vector2(0, 36))
 	music_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	audio_row.add_child(music_btn)
+	var sfx_btn := _button(t("ui.settings_sfx_on") if not sfx_muted else t("ui.settings_sfx_off"), func(): _toggle_sfx_settings(), JADE if not sfx_muted else Color("2c333a"), Vector2(0, 36))
+	sfx_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	audio_row.add_child(sfx_btn)
 	audio_box.add_child(audio_row)
 	list.add_child(audio_box)
 
@@ -2238,8 +2295,17 @@ func _change_battle_speed(new_speed: float) -> void:
 
 func _toggle_music_settings() -> void:
 	muted = not muted
+	profile.music_muted = muted
+	SpiritSave.write(profile)
 	if muted: map_music.stop(); battle_music.stop()
 	else: _play_music(false)
+	_close_settings()
+	show_settings()
+
+func _toggle_sfx_settings() -> void:
+	sfx_muted = not sfx_muted
+	profile.sfx_muted = sfx_muted
+	SpiritSave.write(profile)
 	_close_settings()
 	show_settings()
 

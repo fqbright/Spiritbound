@@ -149,6 +149,7 @@ func show_battle() -> void:
 			# that led to a screen with another button labelled "open chest".
 			_advance_to_reward()
 		else:
+			g.play_sfx("battle_defeat")
 			var diag: Dictionary = g.diagnose_battle_defeat()
 			var diag_card := PanelContainer.new()
 			diag_card.name = "DefeatDiagnosisCard"
@@ -1336,6 +1337,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var desc_lbl := g._label(g._card_description(card), 8, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
 	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc_lbl.clip_text = true
 	info_stack.add_child(desc_lbl)
 
 	# 5. Top badges (cost & rune)
@@ -1392,6 +1394,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 # among just the newly-drawn ones (0-based), so a 2-card turn draw deals them one after another
 # instead of both popping in at once.
 func _animate_card_draw_in(tile: HandCard, stagger_index: int) -> void:
+	g.play_sfx("card_draw", 0.08, -3.0)
 	var final_pos: Vector2 = tile.position
 	var final_rot: float = tile.rotation
 	tile.position = final_pos + Vector2(-26.0, -92.0)
@@ -1738,6 +1741,7 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	if not g.combat.play(hand_index, target):
 		g._toast(g.t("ui.target_invalid"))
 		return false
+	g.play_sfx("card_play")
 	g.selected_card = -1
 	g.resolving = true
 	_resolve_play(hand_index, before, player_shield_before, player_health_before, player_focus_before, player_strength_before, card)
@@ -1905,6 +1909,7 @@ func _animate_player_action(card: Dictionary) -> void:
 	player_sprite.modulate = Color.WHITE
 
 func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
+	g.play_sfx("attack_slash")
 	if g.overlay == null or g.get_tree() == null: return
 	var box: Control = null
 	for candidate in g.enemy_boxes:
@@ -1960,6 +1965,7 @@ func _animate_attack_slash(enemy_index: int, card_id: String) -> void:
 	slash.queue_free()
 
 func _animate_player_heal(amount: int) -> void:
+	g.play_sfx("heal")
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node == null or not is_instance_valid(player_node): return
@@ -2010,6 +2016,7 @@ func _animate_player_heal(amount: int) -> void:
 	await g.get_tree().create_timer(g._battle_delay(0.50)).timeout
 
 func _animate_player_buff(text: String) -> void:
+	g.play_sfx("buff")
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node == null or not is_instance_valid(player_node): return
@@ -2096,6 +2103,7 @@ func _animate_player_curse() -> void:
 	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 
 func _animate_player_shield_gain(amount: int) -> void:
+	g.play_sfx("shield_gain")
 	if g.overlay == null or g.get_tree() == null: return
 	var player_node: Sprite2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Sprite2D
 	if player_node == null or not is_instance_valid(player_node): return
@@ -2230,6 +2238,12 @@ func _maybe_step_auto_battle() -> void:
 			_maybe_step_auto_battle()
 
 func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
+	if defeated:
+		g.play_sfx("enemy_defeat")
+	elif amount >= 15:
+		g.play_sfx("attack_heavy")
+	else:
+		g.play_sfx("enemy_hit")
 	var box: Control = null
 	for candidate in g.enemy_boxes:
 		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index")) == enemy_index:
@@ -2372,6 +2386,7 @@ func _advance_to_reward() -> void:
 	# show_battle can run several times while the win is on screen; only one hand-off.
 	if g.advancing_to_reward: return
 	g.advancing_to_reward = true
+	g.play_sfx("battle_victory")
 	await g.get_tree().create_timer(g._battle_delay(0.8)).timeout
 	g.advancing_to_reward = false
 	if g.combat == null or g.combat.state.phase != "won": return
@@ -2563,6 +2578,7 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 	sprite.modulate = rest_tint
 
 func _animate_player_hit(amount: int) -> void:
+	g.play_sfx("attack_heavy", 0.08, 1.0)
 	var popup := g._label("−%d" % amount, 42, Color("ff5242"), HORIZONTAL_ALIGNMENT_CENTER)
 	popup.position = Vector2(145, 475)
 	popup.size = Vector2(100, 48)
@@ -2637,7 +2653,13 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	elif kind == "boss_phase":
 		var p_name: String = payload.get("name_en", "") if g.lang == "en" else payload.get("name", "")
 		var p_desc: String = payload.get("desc_en", "") if g.lang == "en" else payload.get("desc", "")
+		g.play_sfx("boss_phase2")
 		_show_boss_phase_banner(p_name, p_desc)
+	elif kind == "resonance":
+		var r_type: String = str(payload.get("type", ""))
+		if r_type == "combustion": g.play_sfx("resonance_combustion")
+		elif r_type == "sunder": g.play_sfx("resonance_sunder")
+		elif r_type == "fortify": g.play_sfx("resonance_fortify")
 
 func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	if g.overlay == null: return

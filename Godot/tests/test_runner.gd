@@ -1234,6 +1234,45 @@ func run() -> void:
 	check(content.ui("ui.settings_replay_intro", "zh-Hans") == "重播开场动画", "settings replay intro localized in Chinese")
 	check(content.ui("ui.settings_replay_intro", "en") == "Replay Intro Video", "settings replay intro localized in English")
 
+	# SFX Audio Engine tests
+	var sfx_list := [
+		"card_play", "card_draw", "attack_slash", "attack_heavy",
+		"shield_gain", "heal", "buff", "resonance_combustion",
+		"resonance_sunder", "resonance_fortify", "enemy_hit",
+		"enemy_defeat", "boss_phase2", "battle_victory",
+		"battle_defeat", "coin", "chest_open"
+	]
+	check(sfx_list.size() == 17, "seventeen audio sfx defined")
+	for sfx in sfx_list:
+		var sfx_path := "res://assets/audio/sfx/sfx_%s.wav" % sfx
+		check(ResourceLoader.exists(sfx_path), "sfx file exists: %s" % sfx_path)
+		var stream: AudioStream = load(sfx_path)
+		check(stream != null, "sfx stream loads: %s" % sfx)
+
+	check(content.ui("ui.settings_sfx", "zh-Hans") == "战斗音效", "settings sfx localized in Chinese")
+	check(content.ui("ui.settings_sfx", "en") == "Combat SFX", "settings sfx localized in English")
+	check(content.ui("ui.settings_sfx_on", "zh-Hans") == "音效 ⚔", "settings sfx on localized in Chinese")
+	check(content.ui("ui.settings_sfx_off", "zh-Hans") == "静音 ⚔", "settings sfx off localized in Chinese")
+
+	# Test SpiritGame SFX methods
+	var game_script: Script = load("res://scripts/game.gd")
+	var sfx_game_inst: Node = game_script.new()
+	check(sfx_game_inst.has_method("play_sfx"), "game instance has play_sfx method")
+	check(sfx_game_inst.has_method("_build_sfx"), "game instance has _build_sfx method")
+	check(sfx_game_inst.get("SFX_POOL_SIZE") == 8, "sfx pool size constant is 8")
+	root.add_child(sfx_game_inst)
+	sfx_game_inst.call("_build_sfx")
+	var pool: Array = sfx_game_inst.get("_sfx_pool")
+	check(pool.size() == 8, "sfx pool contains 8 players")
+	var sfx_cache: Dictionary = sfx_game_inst.get("_sfx_cache")
+	check(sfx_cache.size() >= 17, "sfx cache loaded all 17 sound effects")
+	sfx_game_inst.call("play_sfx", "card_play")
+	sfx_game_inst.call("play_sfx", "battle_victory")
+	sfx_game_inst.set("sfx_muted", true)
+	sfx_game_inst.call("play_sfx", "attack_slash")
+	sfx_game_inst.set("sfx_muted", false)
+	sfx_game_inst.queue_free()
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

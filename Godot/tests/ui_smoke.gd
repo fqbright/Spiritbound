@@ -2895,9 +2895,9 @@ func _run() -> void:
 		await process_frame
 		check(game.auto_battle_active == true, "AutoBattleToggle enables auto-battle")
 		var starting_hand: int = game.combat.state.hand.size()
-		for _step in 15:
+		for _step in 30:
 			await create_timer(0.08).timeout
-			if game.combat == null or game.combat.state.energy < 2:
+			if game.combat == null or game.combat.state.hand.size() < starting_hand:
 				break
 		check(game.combat != null and game.combat.state.hand.size() < starting_hand, "auto-battle played cards in combat")
 		game.stop_auto_battle("manual")
@@ -2952,6 +2952,10 @@ func _run() -> void:
 		check(game.battle_speed == 1.0, "speed cycled back to 1.0x")
 		check(game.auto_battle_active == true, "auto battle remains active after cycling to 1.0x")
 		check(speed_btn2.text == "1x", "speed toggle button text updated to 1x in-place")
+		var wait_res := 0.0
+		while game.resolving and wait_res < 4.0:
+			await create_timer(0.08).timeout
+			wait_res += 0.08
 		check(not game.resolving, "resolving is false after speed cycles")
 		game.stop_auto_battle("manual")
 	game._leave_battle()

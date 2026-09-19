@@ -51,6 +51,8 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 	atlas.region.position.x = atlas.atlas.get_width() / 2.0
 	chest.texture = atlas
 	g._shake_screen(6.0)
+	g.play_sfx("chest_open")
+	g.play_sfx("coin")
 	var pop := chest.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), 0.16)
 	pop.tween_property(chest, "scale", Vector2.ONE, 0.12)
