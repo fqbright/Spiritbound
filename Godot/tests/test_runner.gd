@@ -209,9 +209,17 @@ func run() -> void:
 	check(int(weakened.state.enemies[0].weak) == 1, "Weak decays by one enemy turn")
 
 	# 250-stage difficulty curve: bands should be monotonically harder, chapter 1 should be
-	# trivial and chapter 50 should be a genuine wall. A full Monte Carlo run lives in
-	# balance_probe.gd (deleted after use — see Docs/ARCHITECTURE.md for what it found);
-	# this is the cheap, permanent version that stops the curve from silently flattening.
+	# trivial and chapter 50 should be a genuine wall. This is the cheap, static version that
+	# stops the curve from silently flattening.
+	#
+	# The full Monte Carlo trajectory lives in balance_probe.gd, restored as a permanent
+	# suite (`./run_tests.sh --balance`, or `--balance-quick` for CI). Unlike these static
+	# pins, it plays every stage with the real heuristic AI, gathers rewards through the real
+	# _grant_stage_rewards()/_smart_add_card()/_card_build_score() plus a farming loop on top
+	# (free rest/event upgrades, rune-set socketing, one shop buy a chapter), and fails if
+	# chapters 1-4/1-10 are not lossless or the run walls before a measured floor (chapter 35
+	# full / chapter 17 quick) — so the two together catch both a flattened curve and a curve
+	# that is merely unplayable, which the pinned numbers can't see.
 	var boss1: Dictionary = content.encounters[4]
 	var boss10: Dictionary = content.encounters[49]
 	var boss20: Dictionary = content.encounters[99]

@@ -292,9 +292,10 @@ const CARD_ATLAS_2_POS = {
 }
 
 func _get_character_texture(key: String) -> Texture2D:
-	# Standalone portraits (a hero that doesn't fit the fixed 3x3 atlas, e.g. miasma_witch)
-	# take priority over the atlas — checked by exact key match so every existing atlas key
-	# ("fox", "sentinel", ...) falls through unchanged since none of them name a real file here.
+	# Standalone portraits (monsters or heroes outside the 3x3 atlas) take priority
+	var monster_path := "res://assets/characters/monsters/%s.png" % key
+	if ResourceLoader.exists(monster_path):
+		return load(monster_path)
 	var standalone_path := "res://assets/characters/%s.png" % key
 	if ResourceLoader.exists(standalone_path):
 		return load(standalone_path)
@@ -311,7 +312,15 @@ func _get_character_texture(key: String) -> Texture2D:
 	return atlas
 
 func _art_key_for_enemy(enemy: Dictionary) -> String:
+	if enemy.has("art_key") and not str(enemy.get("art_key", "")).is_empty():
+		return str(enemy.get("art_key"))
 	var art_str: String = str(enemy.get("art", ""))
+	if not art_str.is_empty():
+		var base_art := art_str.get_file().get_basename()
+		if ResourceLoader.exists("res://assets/characters/monsters/%s.png" % base_art):
+			return base_art
+		if ResourceLoader.exists("res://assets/characters/%s.png" % base_art):
+			return base_art
 	if art_str.contains("sentinel"): return "sentinel"
 	if art_str.contains("lanternstone"): return "lanternstone"
 	if art_str.contains("runebound"): return "runebound"

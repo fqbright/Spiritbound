@@ -2,7 +2,7 @@
 
 A portrait mobile card-battler built in Godot 4. You play a spirit tamer working
 up a 250-stage campaign across 50 chapters, building a 25-card deck from a pool of
-36 and fitting it with equipment, runes and relics along the way. Difficulty runs
+47 and fitting it with equipment, runes and relics along the way. Difficulty runs
 in four bands — see [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md#the-250-stage-difficulty-curve)
 for the curve and how it was tuned.
 
@@ -13,11 +13,12 @@ Fully bilingual — English and 简体中文 — switchable at any time from the
 
 ## How it plays
 
-Each turn you get **3 energy and 2 plays**. There is no End Turn button — the
-turn hands itself over once your plays are spent, or when nothing left in hand
-is affordable. Enemies telegraph their next move a turn ahead (attack, defend,
-empower, curse, or a combination) and then do exactly what they showed, so you
-can always plan against a known board.
+Each turn opens with **2 energy**, climbing to 3 on turn 3, 4 on turn 5, and so
+on. Energy alone gates what you can play — there is no fixed plays-per-turn cap —
+and the turn hands itself over once nothing left in hand is affordable. A **Pass**
+button lets you end a turn early with cards still in hand. Enemies telegraph their
+next move a turn ahead (attack, defend, empower, curse, or a combination) and then
+do exactly what they showed, so you can always plan against a known board.
 
 Drag a card onto an enemy and the predicted damage appears above it, including
 Focus, equipment, relic and rune bonuses, plus how much their shield will absorb
@@ -54,25 +55,33 @@ dead too. Test on a physical device, or use the headless suites below.
 
 ## Tests
 
+The whole suite runs headlessly from the repository root:
+
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules engine
-godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + one full combat turn
+./run_tests.sh                 # core: test_runner + ui_smoke + e2e_playthrough
+./run_tests.sh --all           # everything, including the balance trajectory bot
+./run_tests.sh --balance       # 250-stage balance trajectory bot (byte-reproducible)
+./run_tests.sh --balance-quick # the same bot, retry-capped — the CI-friendly form
 ```
 
-The UI smoke test exists because the simulator is unavailable. It walks every
-screen, plays a full combat turn, and asserts things that are hard to eyeball —
-for example that the damage preview equals the damage actually dealt, and that
-enemies execute exactly the intent they telegraphed. It has already caught
-several bugs that unit tests could not, including a type error that silently
-killed a coroutine mid-turn and a parse error that left the main script
-unattached.
+`test_runner.gd` covers the rules engine (655 checks). `ui_smoke.gd` walks every
+screen and plays a full combat turn — it exists because the simulator is
+unavailable, and it asserts things that are hard to eyeball, for example that the
+damage preview equals the damage actually dealt and that enemies execute exactly
+the intent they telegraphed. `e2e_playthrough.gd` drives several real stages end
+to end. `balance_probe.gd` replays the entire 250-stage campaign with the game's
+own heuristic AI and fails if the four-band difficulty curve drifts — see
+[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md#the-250-stage-difficulty-curve) for the
+measured numbers. These suites have already caught several bugs that unit tests
+could not, including a type error that silently killed a coroutine mid-turn and a
+parse error that left the main script unattached.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
 | `Godot/scripts/combat.gd` | Rules engine — cards, intents, relics, statuses. No UI. |
-| `Godot/scripts/game.gd` | Every screen: map, battle, deck, equipment, shop, camp. |
+| `Godot/scripts/game.gd` | Game shell that composes the per-screen scripts (`game_*_screen.gd`) and holds shared helpers. |
 | `Godot/scripts/content.gd` | Card/equipment/rune/relic definitions and all UI strings. |
 | `Godot/scripts/save_store.gd` | Local profile, versioned and ready for cloud sync. |
 | `Godot/data/core.json` | Card definitions and balance numbers. |
@@ -118,11 +127,12 @@ gets tested on exactly one device.
 
 Before opening a PR:
 
-1. **Run both suites.** `test_runner.gd` for rules changes, `ui_smoke.gd` for
-   anything that touches a screen. Both must pass.
+1. **Run the suite.** `./run_tests.sh` for rules and screen changes; if you
+   touched the difficulty curve, also run `./run_tests.sh --balance` (or
+   `--balance-quick`). Everything must pass.
 2. **Add a check for what you changed.** If you fix a bug, add the assertion
-   that would have caught it. If you touch combat, prefer `test_runner.gd`; if
-   you touch a screen, `ui_smoke.gd`.
+   that would have caught it. Combat and balance go in `test_runner.gd`; screens
+   in `ui_smoke.gd`; campaign flows in `e2e_playthrough.gd`.
 3. **Keep combat free of UI.** `combat.gd` must never reference a node, scene or
    `Control`. That boundary is what keeps the game testable headlessly.
 4. **Say how you verified it.** "Tests pass" is fine for rules work. For UI work,

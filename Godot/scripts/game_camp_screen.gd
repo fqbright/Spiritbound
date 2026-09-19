@@ -190,9 +190,42 @@ func _build_compendium_relics(list: VBoxContainer) -> void:
 		list.add_child(_compendium_row(badge, g._relic_resonance_name(res), desc, all_discovered, res_color))
 
 func _build_compendium_bestiary(list: VBoxContainer) -> void:
+	var total_count: int = SpiritContent.ENEMIES.size()
+	var disc_count := 0
 	for enemy in SpiritContent.ENEMIES:
+		if g._bestiary_discovered(str(enemy.name)): disc_count += 1
+	list.add_child(g._label(g.tf("ui.compendium_progress", [disc_count, total_count]), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var realm_names := {
+		1: {"zh": "第一域 · 灵木与熔炉", "en": "Realm 1: Mistwood & Ancient Forge"},
+		2: {"zh": "第二域 · 幽泽与沉沦古都", "en": "Realm 2: Nether Marsh & Sunken Dynasty"},
+		3: {"zh": "第三域 · 云海与苍穹神域", "en": "Realm 3: Cloudsea Heights & Storm Domain"},
+		4: {"zh": "第四域 · 虚空深渊与归墟裂痕", "en": "Realm 4: Void Rift & Oblivion Trench"},
+		5: {"zh": "第五域 · 创世烘炉与万象终焉", "en": "Realm 5: Genesis Hearth & Primordial Origin"}
+	}
+	var current_realm := 0
+	for enemy in SpiritContent.ENEMIES:
+		var r: int = int(enemy.get("realm", 1))
+		if r != current_realm:
+			current_realm = r
+			var r_info: Dictionary = realm_names.get(r, {})
+			var r_title: String = str(r_info.get("en" if g.lang == "en" else "zh", "Realm %d" % r))
+			var r_hdr := MarginContainer.new()
+			r_hdr.add_theme_constant_override("margin_top", 10)
+			r_hdr.add_theme_constant_override("margin_bottom", 2)
+			var r_lbl := g._label(r_title, 11, g.GOLD)
+			r_hdr.add_child(r_lbl)
+			list.add_child(r_hdr)
+
 		var discovered := g._bestiary_discovered(str(enemy.name))
-		var name_str: String = str(enemy.name_en) if g.lang == "en" else str(enemy.name)
+		var tier: int = int(enemy.get("tier", 1))
+		var tier_prefix := ""
+		match tier:
+			1: tier_prefix = "[凡灵] " if g.lang != "en" else "[Minion] "
+			2: tier_prefix = "[精锐] " if g.lang != "en" else "[Elite] "
+			3: tier_prefix = "[霸主] " if g.lang != "en" else "[Boss] "
+			4: tier_prefix = "[天灾] " if g.lang != "en" else "[Cataclysm] "
+		var name_str: String = tier_prefix + (str(enemy.name_en) if g.lang == "en" else str(enemy.name))
 		var badge: Control
 		if discovered:
 			var tex := TextureRect.new()

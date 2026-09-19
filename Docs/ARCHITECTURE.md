@@ -33,7 +33,8 @@ One dictionary, deliberately flat and JSON-shaped:
 - `enemies` — each with health, shield, burn, stun, mechanics, and an `intent`.
 - `draw` / `hand` / `discard` / `exhaust` — arrays of `{uid, card_id}`. The uid is
   combat-local so two copies of a card are distinguishable.
-- `energy` (3/turn), `actions` (2/turn), `turn`, `phase`.
+- `energy` (opens at 2, then +1 every two turns), `turn`, `phase`. Plays are gated by energy
+  alone — the old fixed `actions` (2/turn) play cap was removed.
 - `equipment`, `runes`, `relics`, `upgrades`, `modifier` — the run's modifiers, passed in.
 - Per-turn latches: `swift_used`, `first_attack`, `moon_used`, `elements`.
 
@@ -140,12 +141,22 @@ These constants did not come from guessing. `Godot/tests/test_runner.gd` has the
 cheap version of the check — bosses at chapters 1/10/20/50 are pinned, plus (as of
 2026-09-17) `_chapter_factor(20)`'s value and the elite add-count at chapters 19/21, so the
 curve can't silently regress back to the version that broke chapter 19 — but the bands
-themselves are tuned against `Godot/tests/balance_probe.gd`, a from-scratch AI-driven
+themselves are tuned against `Godot/tests/balance_probe.gd` (`./run_tests.sh --balance`, or
+`--balance-quick` for a retry-capped, ~1s CI-friendly run), a from-scratch AI-driven
 playthrough simulator (see below for why "from scratch"). It drives `combat.gd` directly (no
 `Main.tscn`/node instantiation at all — simulating all 250 stages takes well under a second),
 using `combat.ai_best_play()` as the in-battle decision-maker and the same `_card_build_score`
 formula (duplicated locally, like `_predict_damage` duplicates combat.gd's bonus arithmetic
 for the same reason) real reward-picking uses to grow the deck realistically stage by stage.
+Every seed is derived from the stage/attempt index rather than the clock — the same reason
+`begin_battle()`'s own time-seeded shuffle/`active_modifier` can't be used here — so a run is
+byte-reproducible; the full run prints a trajectory digest for pinning against regressions
+once the curve is considered frozen (off by default — see the probe's own header for why).
+For the fuller write-up of one parallel rebuild of this same suite, its guardrails, and a
+standing backlog of suggestions for extending it, see
+[BALANCE_REVALIDATION.md](BALANCE_REVALIDATION.md) — this section is the canonical account of
+what's actually merged and current; treat that doc as historical/supplementary context, not a
+second source of truth, if the two ever seem to disagree.
 
 **2026-09-15: the original probe was deleted after its one-time use** (never survived in this
 repo's history) after finding and motivating fixes for two real production bugs, both

@@ -90,6 +90,11 @@ func begin_battle(index: int) -> void:
 func show_battle() -> void:
 	var encounter: Dictionary = g._current_encounter()
 	var stage_lvl: int = int(encounter.get("level", 1)) - 1
+	var b_tier: int = int(encounter.get("tier", 1))
+	if b_tier == 4:
+		_shake_screen(8.0, 0.35)
+	elif b_tier == 3:
+		_shake_screen(4.0, 0.2)
 	g._clear(); g._play_music(true, stage_lvl); g.enemy_boxes.clear()
 	# Keyed by within-chapter level (Trailhead..Crown), the same index _play_music() uses for
 	# the matching battle theme, rather than the old per-encounter "background" rotation index
@@ -441,14 +446,107 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	# the sprite drawn inside it shrinks and dims a touch for the "further back" slots.
 	var sprite_side := clampf(u_width - 16.0, 70.0, 96.0) * lerpf(1.0, 0.82, depth_t)
 	var spr_size := Vector2(sprite_side, sprite_side)
-	var cell_w := float(g._char_atlas_tex.get_width()) / 3.0
-	var scale_factor: float = minf(spr_size.x / cell_w, spr_size.y / cell_w)
+	var cell_w: float = float(sprite.texture.get_width()) if sprite.texture else 341.0
+	var cell_h: float = float(sprite.texture.get_height()) if sprite.texture else 341.0
+	var base_scale: float = minf(spr_size.x / cell_w, spr_size.y / cell_h)
+	var tier: int = int(enemy.get("tier", 1))
+	var tier_scale_mult := 1.0
+	match tier:
+		1: tier_scale_mult = 0.88 # Minion
+		2: tier_scale_mult = 1.05 # Elite
+		3: tier_scale_mult = 1.25 # Chapter Boss
+		4: tier_scale_mult = 1.42 # Great World Boss
+	var scale_factor: float = base_scale * tier_scale_mult
 	sprite.scale = Vector2(scale_factor, scale_factor)
 	# Animations restore scale from this meta. Without it they fell back to 1.0 and left the
 	# enemy roughly three times its intended size after any action.
 	sprite.set_meta("base_scale", scale_factor)
 	sprite.position = Vector2(center_x, 26.0 + spr_size.y / 2.0)
 	_install_hit_flash(sprite)
+
+	# Tier visual hierarchy: Aura formations and floating boss crests
+	if tier == 2:
+		var elite_halo := Panel.new()
+		elite_halo.name = "EliteAuraRing"
+		var halo_size := spr_size.x * 0.96
+		elite_halo.custom_minimum_size = Vector2(halo_size, halo_size)
+		elite_halo.size = elite_halo.custom_minimum_size
+		elite_halo.position = Vector2(center_x - halo_size * 0.5, 26.0 + spr_size.y * 0.5 - halo_size * 0.5)
+		elite_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var halo_style := StyleBoxFlat.new()
+		halo_style.bg_color = Color(0.9, 0.65, 0.2, 0.08)
+		halo_style.border_color = Color(1.0, 0.75, 0.25, 0.55)
+		halo_style.set_border_width_all(2)
+		halo_style.set_corner_radius_all(int(halo_size * 0.5))
+		halo_style.shadow_color = Color(1.0, 0.7, 0.1, 0.35)
+		halo_style.shadow_size = 6
+		elite_halo.add_theme_stylebox_override("panel", halo_style)
+		unit.add_child(elite_halo)
+		var h_tween := elite_halo.create_tween().set_loops()
+		h_tween.tween_property(elite_halo, "modulate:a", 0.45, 1.2).set_trans(Tween.TRANS_SINE)
+		h_tween.tween_property(elite_halo, "modulate:a", 1.0, 1.2).set_trans(Tween.TRANS_SINE)
+	elif tier == 3:
+		var boss_halo := Panel.new()
+		boss_halo.name = "BossAuraRing"
+		var b_size := spr_size.x * 1.15
+		boss_halo.custom_minimum_size = Vector2(b_size, b_size)
+		boss_halo.size = boss_halo.custom_minimum_size
+		boss_halo.position = Vector2(center_x - b_size * 0.5, 26.0 + spr_size.y * 0.5 - b_size * 0.5)
+		boss_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var b_style := StyleBoxFlat.new()
+		b_style.bg_color = Color(1.0, 0.8, 0.2, 0.12)
+		b_style.border_color = Color(1.0, 0.84, 0.3, 0.75)
+		b_style.set_border_width_all(2)
+		b_style.set_corner_radius_all(int(b_size * 0.5))
+		b_style.shadow_color = Color(1.0, 0.65, 0.1, 0.5)
+		b_style.shadow_size = 10
+		boss_halo.add_theme_stylebox_override("panel", b_style)
+		unit.add_child(boss_halo)
+
+		var crown := Label.new()
+		crown.name = "BossCrownHalo"
+		crown.text = "👑"
+		crown.add_theme_font_size_override("font_size", 13)
+		crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		crown.position = Vector2(center_x - 14.0, 10.0)
+		crown.size = Vector2(28.0, 18.0)
+		crown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		unit.add_child(crown)
+		var c_tween := crown.create_tween().set_loops()
+		c_tween.tween_property(crown, "position:y", 6.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		c_tween.tween_property(crown, "position:y", 10.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	elif tier == 4:
+		var g_halo := Panel.new()
+		g_halo.name = "GreatBossCelestialFormation"
+		var g_size := spr_size.x * 1.3
+		g_halo.custom_minimum_size = Vector2(g_size, g_size)
+		g_halo.size = g_halo.custom_minimum_size
+		g_halo.position = Vector2(center_x - g_size * 0.5, 26.0 + spr_size.y * 0.5 - g_size * 0.5)
+		g_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var g_style := StyleBoxFlat.new()
+		g_style.bg_color = Color(1.0, 0.3, 0.2, 0.15)
+		g_style.border_color = Color(1.0, 0.9, 0.5, 0.9)
+		g_style.set_border_width_all(3)
+		g_style.set_corner_radius_all(int(g_size * 0.5))
+		g_style.shadow_color = Color(1.0, 0.2, 0.4, 0.65)
+		g_style.shadow_size = 14
+		g_halo.add_theme_stylebox_override("panel", g_style)
+		unit.add_child(g_halo)
+
+		var crown := Label.new()
+		crown.name = "BossCrownHalo"
+		crown.text = "✦ 👑 ✦"
+		crown.add_theme_font_size_override("font_size", 12)
+		crown.add_theme_color_override("font_color", Color("ffe066"))
+		crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		crown.position = Vector2(center_x - 30.0, 8.0)
+		crown.size = Vector2(60.0, 18.0)
+		crown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		unit.add_child(crown)
+		var c_tween := crown.create_tween().set_loops()
+		c_tween.tween_property(crown, "position:y", 4.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		c_tween.tween_property(crown, "position:y", 8.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
 	unit.add_child(sprite)
 
 	var weakened: bool = int(enemy.get("weak", 0)) > 0
@@ -523,7 +621,18 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 		el_lbl.position = Vector2(4, 4)
 		unit.add_child(el_lbl)
 
-	var name_lbl := g._label(g._enemy_name(enemy), 10, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	var name_prefix := ""
+	var name_color: Color = g.TEXT
+	if tier == 2:
+		name_prefix = "◆ "
+		name_color = Color("ffcc55")
+	elif tier == 3:
+		name_prefix = "★ "
+		name_color = Color("ffd700")
+	elif tier == 4:
+		name_prefix = "✦ "
+		name_color = Color("ff5577")
+	var name_lbl := g._label(name_prefix + g._enemy_name(enemy), 10, name_color, HORIZONTAL_ALIGNMENT_CENTER)
 	name_lbl.position = Vector2(0, 128.0)
 	name_lbl.size = Vector2(u_width, 18.0)
 	unit.add_child(name_lbl)
@@ -2292,8 +2401,9 @@ func _animate_player_shield_gain(amount: int) -> void:
 	await ring_settle.finished
 	ring.queue_free()
 
-# There is no End Turn button, so the turn has to hand itself over once nothing in hand is
-# affordable any more (either the hand is empty or every card costs more than remaining energy).
+# Auto turn handoff: the turn ends itself once nothing in hand is affordable any more (either
+# the hand is empty or every card costs more than remaining energy). A separate manual Pass
+# button (`_pass_turn()`) also lets the player end a turn early with unspent cards.
 func _maybe_end_turn() -> void:
 	var guard := 0
 	while g.combat != null and g.combat.state.phase == "player" and guard < 12:

@@ -19,10 +19,11 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Godot/data/core.json` | Card definitions and balance numbers. |
 | `Godot/tests/test_runner.gd` | Rules-engine regression suite. |
 | `Godot/tests/ui_smoke.gd` | Headless walk over every screen and a full combat turn. |
-| `Godot/tests/balance_probe.gd` | 250-stage difficulty-curve simulation. Part of the default `./run_tests.sh` run — asserts a diligent build reaches at least stage 170 (chapter 35) before the documented Band 4 wall, so a card/encounter/curve change that breaks the balance curve fails CI instead of waiting for a manual re-run. |
+| `Godot/tests/balance_probe.gd` | 250-stage balance trajectory bot — drives the real `game.gd` reward/deck-building pipeline (not a duplicated formula) through a full campaign run, with a diligent farming loop (free rest/event upgrades, rune-set socketing, one shop buy per chapter) layered on top, and fails CI if the four-band curve regresses below a measured floor (see `Docs/ARCHITECTURE.md`). |
 | `Godot/addons/gut/` | Vendored [GUT](https://github.com/bitwes/Gut) (Godot Unit Test) framework, v9.4.0. Third-party code — don't hand-edit; re-vendor from upstream instead. |
 | `Godot/tests/gut/test_*.gd` | GUT-based tests (`extends GutTest`, `assert_*` methods) — the newer, framework-backed alternative to this repo's older hand-rolled `check()`-style suites above. New test files here are auto-discovered by filename (`test_*.gd`), no registration needed. |
-| `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them. |
+| `Godot/tools/generate_monsters.gd` | Offline, one-time art-generation tool — composited the 125 monster portraits under `Godot/assets/characters/monsters/` from base creature art (sourced from the otherwise-abandoned `Expo/assets/` prototype images below), elemental grading, biome backgrounds, VFX overlays, and tier frames. Not part of any test run; re-run by hand only if the monster set itself needs regenerating. |
+| `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them — except as one-time raw art source material for `Godot/tools/generate_monsters.gd` above, which is the only thing in this repo that still reads from `Expo/`. |
 | `Docs/ARCHITECTURE.md` | Why the code is shaped this way. Read it before a structural change. |
 | `Docs/GROWTH_ROADMAP.md` | Retention/growth feature backlog, ordered by impact. Check this for what's in progress before starting new feature work. |
 
@@ -36,17 +37,18 @@ Every agent working on this repository **MUST** run the automated verification s
 ./run_tests.sh --monkey        # Chaos Monkey stress tests (500+ random taps & invalid plays)
 ./run_tests.sh --leaks         # Memory & ObjectDB leak profiler (zero unbounded leaks)
 ./run_tests.sh --diff          # Visual Pixel-Diff baseline comparison (sub-pixel regression)
-./run_tests.sh --balance       # 250-stage balance-curve regression probe alone
+./run_tests.sh --balance       # 250-stage balance trajectory bot (full, byte-reproducible)
+./run_tests.sh --balance-quick # Same bot, retry-capped (~1s) — the CI-friendly form
 ./run_tests.sh --gut           # GUT suite alone (tests/gut/test_*.gd)
 ./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots
 ```
 
 Individual suite commands:
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (350+ checks)
+godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (655 checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
-godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-stage balance-curve regression probe
+godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-stage balance trajectory bot
 godot --headless --path Godot/ -s addons/gut/gut_cmdln.gd -- -gdir=res://tests/gut -gexit  # GUT suite
 godot --headless --path Godot/ --script res://tests/chaos_monkey.gd     # chaos monkey stress test
 godot --headless --path Godot/ --script res://tests/leak_checker.gd     # memory and object leak profiler
@@ -75,6 +77,7 @@ attached, use `./run_tests.sh --snapshots` to inspect the rendered mobile frames
 
 1. **EVERY NEW FEATURE MUST HAVE CORRESPONDING TESTS (MANDATORY)**:
    - **Combat rules, balance, cards, relics, currencies, economy**: MUST add test assertions in `Godot/tests/test_runner.gd`.
+   - **Difficulty-curve changes (the four bands in `content.gd`'s `_chapter_factor`, encounter health/damage scaling, the always-full-HP `begin_battle()` contract)**: MUST re-run `./run_tests.sh --balance` and either keep the guardrails green or update `Docs/ARCHITECTURE.md`'s "250-stage difficulty curve" section with the new measured numbers. Do not change those constants and trust the old curve description.
    - **Screens, buttons, modals, input handlers, navigation**: MUST add UI walk and clickability assertions in `Godot/tests/ui_smoke.gd`.
    - **Campaign flows, multi-stage transitions, rewards, shop buying**: MUST ensure `Godot/tests/e2e_playthrough.gd` exercises the flow without softlocks.
    - **NEVER** merge or push a new feature without adding automated test coverage for it.
@@ -250,7 +253,7 @@ Every one of these produced a wrong screen with no error in the log. They are th
   see `end_turn()` in `combat.gd`: `state.energy = 2 + int((state.turn - 1) / 2)`), not a flat
   per-turn amount — a long fight gradually loosens up instead of staying exactly as tight on
   turn 20 as turn 1. No cap on the number of cards played — energy alone gates plays. Card
-  costs run 1/2/3 (18/15/3 cards respectively) so energy is a real constraint on a built-out
+  costs run 1/2/3 (18/19/3 cards respectively) so energy is a real constraint on a built-out
   deck early on. Keep the starting deck (`startingDeck` in `core.json`) all 1-cost — the first
   stretch of the campaign is meant to be forgiving, and that is where the difficulty curve
   controls it, not card costs. `test_runner.gd` asserts that two 2-cost cards cannot both fit
@@ -262,19 +265,22 @@ Every one of these produced a wrong screen with no error in the log. They are th
   Turn 2 draws the flat 2 cards (e.g. 3 cards remaining on turn 1 -> 5 cards on turn 2).
   Relics and equipment must NEVER blow up hand size on turn 2 (foxCharm grants +1 energy on turn 2;
   windChime triggers when draw pile reshuffles; tideCharm triggers on first shield gained).
-- There is no End Turn button: the turn ends itself once nothing left in hand is affordable
-  (empty hand or every remaining card costs more than remaining energy) — see
-  `_maybe_end_turn()` in `game.gd`. There used to also be a fixed plays-per-turn cap
-  (`state.actions`); it was removed so cost, not an arbitrary play count, is the only
-  constraint. Swift's rune refunds energy; foxCharm grants 1 extra energy on turn 2.
+- The turn auto-hands-over once nothing left in hand is affordable (empty hand or every
+  remaining card costs more than remaining energy) — see `_maybe_end_turn()` in
+  `game_battle_screen.gd`. A **manual Pass button also exists** (`PassTurnBtn`, calling
+  `_pass_turn()`) for voluntarily ending a turn while holding unspent cards. There used to
+  also be a fixed plays-per-turn cap (`state.actions`); it was removed so cost, not an
+  arbitrary play count, is the only constraint. Swift's rune refunds energy; foxCharm grants
+  1 extra energy on turn 2.
 - Enemies roll an intent a turn ahead and `_execute_intent` spends exactly the telegraphed
   amount. Never recompute it at execution time — the promise is the mechanic.
 - A card with any `target: "opponent"` effect aims at enemies; everything else aims at the
   player. `_is_attack` (damage only) drives damage bonuses; `_targets_opponent` drives
   targeting. Conflating them either loses pure-debuff cards or wastes Focus on them.
-- 47 cards (45 collectible + 2 battle-only curses), 250 stages across 50 chapters, a
-  four-band difficulty curve (see Docs/ARCHITECTURE.md), and three enemy debuffs beyond
-  burn/stun: `vulnerable` (+50% damage
+- 53 cards (46 collectible across 22/21/3 one-/two-/three-costs, plus 5 starters and 2
+  curses — the Phase 7 boomerang/reverb/overload keyword cards brought the collectible pool up
+  from 40), 250 stages across 50 chapters, a four-band difficulty curve (see
+  Docs/ARCHITECTURE.md), and three enemy debuffs beyond burn/stun: `vulnerable` (+50% damage
   taken) and `weak` (-25% damage dealt), both decaying by one enemy turn; `poison`
   (`enemy.poison`), Miasma Witch's signature status, deals its stack count as damage every
   turn like Burn but — unlike Burn — never decays on its own, only clearing on a heal or a
@@ -534,9 +540,14 @@ The visual presentation blends high-detail painted assets with procedural vector
     already-owned items as discovered without a migration pass. Curse cards
     (`rarity == "Curse"`) are excluded from the card tab — they're enemy-inflicted battle
     hazards nothing ever "collects", and including them would leave a permanently
-    uncompletable entry. Bestiary entries are the 5 `SpiritContent.ENEMIES` (not one per
-    chapter — every chapter/boss reuses this same pool of 5 sprites via
-    `_art_key_for_enemy`), marked discovered the moment a battle starts against them.
+    uncompletable entry. Bestiary entries are `SpiritContent.ENEMIES` — 125 unique monsters (25
+    per realm × 5 realms, each with bilingual lore, an `element`, a `tint` color, and a
+    `tier` 1-4 of Minion/Elite/Boss/Cataclysm that drives both its battle-screen presentation
+    (aura ring, boss crown, screen-shake on entry) and its Compendium name prefix), resolved
+    from an encounter's `art`/`art_key` field by `_art_key_for_enemy` and rendered as a
+    standalone portrait (`res://assets/characters/monsters/<key>.png`) rather than the older
+    fixed 3x3 atlas — see `Godot/tools/generate_monsters.gd` for the offline art-generation
+    tool behind them. Marked discovered the moment a battle starts against that monster.
   - **Hero Mastery (`content.HERO_MASTERY_PERKS` / `mastery_bonuses()`)**: every battle win
     grants `profile.hero_masteries[hero_id].xp` to whichever hero is currently equipped
     (boss kills worth double, campaign replays halved — see `_grant_mastery_xp` in
@@ -572,8 +583,12 @@ The visual presentation blends high-detail painted assets with procedural vector
 
 - **Verifying changes**: see "Verifying a change" near the top of this file for the full
   `./run_tests.sh` command set. Don't duplicate suite names/check counts here — they drift out
-  of sync with reality otherwise, which is exactly how this note ended up pointing at only 2 of
-  what are now 7 suites with a check count 188 checks stale.
+  of sync with reality otherwise, which is exactly how this note once ended up pointing at only
+  2 of what are now 8 suites with a check count hundreds stale. For the balance curve
+  specifically, `Docs/ARCHITECTURE.md`'s "250-stage difficulty curve" section is the canonical
+  account of its current measured state; `Docs/BALANCE_REVALIDATION.md` has the fuller
+  write-up of one rebuild of that suite plus a standing backlog of suggestions for extending it
+  further.
 - **Deploying to iOS**:
   Run `./deploy_ios.sh --full-export` with the iPhone unlocked and connected. If the screen is locked, `devicectl` reports `unavailable`.
 - **Importing newly added images**:
