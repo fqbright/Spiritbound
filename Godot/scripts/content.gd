@@ -310,6 +310,69 @@ const RELICS = [
 # mid-chapter boss.
 const BOSS_RELIC_IDS = ["cursedTome", "titanBell", "chaosPrism"]
 
+const RELIC_RESONANCES = [
+	{
+		"id": "res_sun_moon",
+		"icon": "☯",
+		"color": "ffe08a",
+		"relics": ["thunderSeal", "mirrorScale"],
+		"zh": "日月同辉",
+		"en": "Sun & Moon Harmony",
+		"detail": "每 3 回合额外获得 2 点能量（共+4 点），且回合结束保留 100% 护盾。",
+		"detail_en": "Gain +2 extra Energy every 3rd turn (+4 total), and retain 100% Shield at turn end."
+	},
+	{
+		"id": "res_fox_wind",
+		"icon": "✦",
+		"color": "78e9ff",
+		"relics": ["foxCharm", "windChime"],
+		"zh": "灵狐引魂",
+		"en": "Fox Spirit Guidance",
+		"detail": "抽牌堆洗牌时获得 1 点能量；第 2 回合额外多摸 1 张牌。",
+		"detail_en": "Gain 1 Energy when draw pile reshuffles; draw +1 extra card on Turn 2."
+	},
+	{
+		"id": "res_star_flame",
+		"icon": "♨",
+		"color": "ff9868",
+		"relics": ["starShard", "emberCore"],
+		"zh": "星火燎原",
+		"en": "Blazing Star Shards",
+		"detail": "首张攻击牌施加 2 层燃烧；燃烧每层结算伤害额外 +1 点（共+2 点）。",
+		"detail_en": "First attack each turn applies 2 Burn; Burn deals +1 extra damage per stack (+2 total)."
+	},
+	{
+		"id": "res_blood_seed",
+		"icon": "❦",
+		"color": "8ff5cf",
+		"relics": ["ancientSeed", "bloodJade"],
+		"zh": "枯木逢春",
+		"en": "Blood & Arbor Vitality",
+		"detail": "每回合开始回复 4 点生命（替代原 2 点）；过量回复直接转化为等量护盾！",
+		"detail_en": "Restore 4 HP at start of turn (replaces 2 HP); any overheal is converted into Shield!"
+	},
+	{
+		"id": "res_nether_pact",
+		"icon": "🕮",
+		"color": "ff5577",
+		"relics": ["cursedTome", "bloodJade"],
+		"zh": "冥渊血契",
+		"en": "Nether Blood Pact",
+		"detail": "击败敌人时立即多抽 1 张牌，并免疫下一回合死灵禁典的反噬自伤！",
+		"detail_en": "Defeating an enemy draws 1 card and negates Cursed Tome self-damage for the next turn."
+	},
+	{
+		"id": "res_chaos_titan",
+		"icon": "💎",
+		"color": "b359ff",
+		"relics": ["titanBell", "chaosPrism"],
+		"zh": "太虚混沌",
+		"en": "Chaos Horizon",
+		"detail": "战斗开始额外获得 +15 最大生命与生命；对易伤敌人造成的所有伤害 +2 点。",
+		"detail_en": "Start battle with +15 extra Max HP and HP; all attacks deal +2 damage to Vulnerable targets."
+	}
+]
+
 # combat.gd's upgrade bonus is already a raw int add with no cap of its own (see
 # state.upgrades.get(card.id, 0) in _play_card/_resolve_effects/_preview_damage) — the cap
 # lives here, purely as a UI/economy rule, so a card can be Spirit-Smithed to +1 once and,
@@ -1168,6 +1231,32 @@ func relic_detail(item: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return item.get("detail_en", item.get("detail", ""))
 	return item.get("detail", "")
 
+func relic_resonance(id: String) -> Dictionary:
+	for item in RELIC_RESONANCES:
+		if item.id == id: return item
+	return {}
+
+func active_relic_resonances(relic_ids: Array) -> Array[Dictionary]:
+	var active: Array[Dictionary] = []
+	for res in RELIC_RESONANCES:
+		var req: Array = res.get("relics", [])
+		var has_all := true
+		for r_id in req:
+			if not relic_ids.has(r_id):
+				has_all = false
+				break
+		if has_all:
+			active.append(res)
+	return active
+
+func relic_resonance_name(res: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return res.get("en", res.get("zh", ""))
+	return res.get("zh", "")
+
+func relic_resonance_detail(res: Dictionary, language := "zh-Hans") -> String:
+	if language == "en": return res.get("detail_en", res.get("detail", ""))
+	return res.get("detail", "")
+
 func store_consumable(id: String) -> Dictionary:
 	for item in STORE_CONSUMABLES:
 		if item.id == id: return item
@@ -1419,6 +1508,12 @@ const UI_TEXT = {
 	"ui.camp_sub": {"zh-Hans":"档案、遗物与挑战阶梯", "en":"Dossier, relics, and challenge tiers"},
 	"ui.camp_tier": {"zh-Hans":"挑战等级 A%d", "en":"Challenge Tier A%d"},
 	"ui.camp_relics": {"zh-Hans":"已获得遗物 %d/5", "en":"Relics collected %d/5"},
+	"ui.relic_resonance_title": {"zh-Hans":"法宝共鸣", "en":"Relic Resonance"},
+	"ui.relic_resonance_active": {"zh-Hans":"已激活共鸣", "en":"Active Resonances"},
+	"ui.relic_resonance_codex": {"zh-Hans":"法宝共鸣谱", "en":"Resonance Codex"},
+	"ui.relic_resonance_none": {"zh-Hans":"暂未激活法宝共鸣", "en":"No active resonances"},
+	"ui.relic_resonance_req": {"zh-Hans":"共鸣法宝：%s", "en":"Resonance Relics: %s"},
+	"ui.relic_resonance_activated_toast": {"zh-Hans":"⚡ 激活共鸣：%s！", "en":"⚡ Resonance Activated: %s!"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
 	"ui.thorns_toast": {"zh-Hans":"荆棘反伤 −%d", "en":"Thorns reflect −%d"},
 	"ui.quests_title": {"zh-Hans":"探险委托", "en":"Quest Commissions"},

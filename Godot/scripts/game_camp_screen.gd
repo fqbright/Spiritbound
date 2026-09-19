@@ -170,6 +170,22 @@ func _build_compendium_relics(list: VBoxContainer) -> void:
 		var badge: Control = _compendium_locked_badge()
 		if discovered: badge = g._relic_icon_badge(relic, Color(relic.color), 46)
 		list.add_child(_compendium_row(badge, g._relic_name(relic), g._relic_detail(relic), discovered, Color(relic.color)))
+	list.add_child(g._spacer(8))
+	list.add_child(g._label(g.t("ui.relic_resonance_codex"), 13, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
+	for res in SpiritContent.RELIC_RESONANCES:
+		var res_color := Color(res.color)
+		var badge: Panel = g._relic_resonance_badge(res, res_color, 46)
+		var req_names: Array[String] = []
+		var all_discovered := true
+		for req_id in res.relics:
+			var r := g.content.relic(req_id)
+			var r_name: String = g._relic_name(r) if not r.is_empty() else req_id
+			var is_disc := g._relic_discovered(req_id)
+			if not is_disc: all_discovered = false
+			req_names.append(r_name if is_disc else "???")
+		var req_str: String = " · ".join(req_names)
+		var desc: String = g._relic_resonance_detail(res) + "\n" + (g.tf("ui.relic_resonance_req", req_str))
+		list.add_child(_compendium_row(badge, g._relic_resonance_name(res), desc, all_discovered, res_color))
 
 func _build_compendium_bestiary(list: VBoxContainer) -> void:
 	for enemy in SpiritContent.ENEMIES:
@@ -751,6 +767,42 @@ func _relics_section() -> Control:
 		relic_row.add_child(texts)
 		texts.add_child(g._label(g._relic_name(relic), 12, g.TEXT))
 		texts.add_child(g._label(g._relic_detail(relic), 9, color, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var active_resonances: Array[Dictionary] = g.content.active_relic_resonances(g.profile.relics)
+	if not active_resonances.is_empty():
+		section.add_child(g._spacer(4))
+		section.add_child(g._label(g.t("ui.relic_resonance_active"), 13, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+		for res in active_resonances:
+			var res_color := Color(res.color)
+			var res_panel := Panel.new()
+			res_panel.name = "ResonanceRow_%s" % str(res.get("id", ""))
+			res_panel.custom_minimum_size.y = 56
+			res_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var res_style := g._panel(Color("162024"), 12, res_color)
+			res_style.border_width_left = 2; res_style.border_width_right = 2; res_style.border_width_top = 2; res_style.border_width_bottom = 2
+			res_panel.add_theme_stylebox_override("panel", res_style)
+			section.add_child(res_panel)
+
+			var res_pad := MarginContainer.new()
+			res_pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			for side in ["left", "right"]: res_pad.add_theme_constant_override("margin_%s" % side, 10)
+			res_panel.add_child(res_pad)
+
+			var res_row := HBoxContainer.new()
+			res_row.add_theme_constant_override("separation", 10)
+			res_pad.add_child(res_row)
+
+			var res_holder := CenterContainer.new()
+			res_holder.add_child(g._relic_resonance_badge(res, res_color, 38))
+			res_row.add_child(res_holder)
+
+			var res_texts := VBoxContainer.new()
+			res_texts.alignment = BoxContainer.ALIGNMENT_CENTER
+			res_texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			res_texts.add_theme_constant_override("separation", 1)
+			res_row.add_child(res_texts)
+
+			res_texts.add_child(g._label(g._relic_resonance_name(res) + "  ✦", 12, g.GOLD))
+			res_texts.add_child(g._label(g._relic_resonance_detail(res), 9, res_color, HORIZONTAL_ALIGNMENT_LEFT, true))
 	return section
 
 func _compendium_section() -> Control:

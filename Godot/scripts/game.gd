@@ -369,6 +369,12 @@ func _relic_name(item: Dictionary) -> String:
 func _relic_detail(item: Dictionary) -> String:
 	return content.relic_detail(item, lang)
 
+func _relic_resonance_name(res: Dictionary) -> String:
+	return content.relic_resonance_name(res, lang)
+
+func _relic_resonance_detail(res: Dictionary) -> String:
+	return content.relic_resonance_detail(res, lang)
+
 
 
 # Composition objects are constructed here, not in _ready(), because test_runner.gd
@@ -944,6 +950,32 @@ func _relic_icon_badge(relic: Dictionary, color: Color, diameter := 44) -> Panel
 		badge.add_child(tr)
 		return badge
 	return _sigil_icon_badge(str(relic.get("icon_mark", "sparkle")), color, diameter)
+
+func _relic_resonance_badge(res: Dictionary, color: Color, diameter := 44) -> Panel:
+	var badge := Panel.new()
+	badge.custom_minimum_size = Vector2(diameter, diameter)
+	badge.size = badge.custom_minimum_size
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := _panel(Color(color.r, color.g, color.b, 0.22), int(diameter / 2.0), color)
+	style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+	badge.add_theme_stylebox_override("panel", style)
+	var lbl := Label.new()
+	lbl.text = str(res.get("icon", "☯"))
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if font_cjk: lbl.add_theme_font_override("font", font_cjk)
+	lbl.add_theme_font_size_override("font_size", int(diameter * 0.52))
+	lbl.add_theme_color_override("font_color", color)
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(lbl)
+	return badge
+
+func _spacer(h: float = 8.0) -> Control:
+	var sp := Control.new()
+	sp.custom_minimum_size.y = h
+	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return sp
 
 func _create_page(separation := 6) -> VBoxContainer:
 	var margin := MarginContainer.new()

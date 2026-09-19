@@ -1378,6 +1378,32 @@ func _run() -> void:
 	var fox_charm_badge: Panel = game._relic_icon_badge(game.content.relic("foxCharm"), Color.WHITE)
 	check(_find_texture_rect_ending_with(fox_charm_badge, "relic_foxCharm.png"), "_relic_icon_badge renders the painted icon for a relic that has one")
 
+	# Relic Resonance UI testing
+	var res_badge: Panel = game._relic_resonance_badge(SpiritContent.RELIC_RESONANCES[0], Color.GOLD, 40)
+	check(res_badge != null, "_relic_resonance_badge builds successfully")
+
+	# Camp screen active resonance rendering
+	var pre_camp_tab: String = game.camp_tab
+	var pre_camp_relics: Array = game.profile.relics.duplicate()
+	game.profile.relics = ["thunderSeal", "mirrorScale"]
+	game.camp_tab = "collection"
+	game.show_camp()
+	await process_frame
+	var res_row: Node = game.root.find_child("ResonanceRow_res_sun_moon", true, false)
+	check(res_row != null, "active resonance row rendered in Camp screen for thunderSeal + mirrorScale")
+	game.profile.relics = pre_camp_relics
+	game.camp_tab = pre_camp_tab
+
+	# Battle screen active resonance HUD test
+	var saved_combat: SpiritCombat = game.combat
+	game.combat = SpiritCombat.new(game.content)
+	game.combat.create(777, game.content.encounters[0], game.profile.deck, 60, {}, [], {}, {}, ["thunderSeal", "mirrorScale"])
+	game.show_battle()
+	await process_frame
+	check(game.root.get_child_count() > 0, "battle screen renders with active relic resonance")
+	check(game.combat.state.relic_resonances.has("res_sun_moon"), "combat state tracks active resonance in battle screen")
+	game.combat = saved_combat
+
 	var target_card: Dictionary = game.content.card("moonfang")
 	game.profile.deck = []
 	for i in 25: game.profile.deck.append("strike")

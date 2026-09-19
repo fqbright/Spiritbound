@@ -93,6 +93,12 @@ func show_battle() -> void:
 	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(36,34))
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(leave_btn); page.add_child(top)
+	if g.combat != null and g.combat.state.turn == 1 and not g.combat.state.get("relic_resonances", []).is_empty() and not bool(g.combat.state.get("resonance_toast_shown", false)):
+		g.combat.state["resonance_toast_shown"] = true
+		var first_res_id: String = str(g.combat.state.relic_resonances[0])
+		var first_res: Dictionary = g.content.relic_resonance(first_res_id)
+		if not first_res.is_empty():
+			g._toast(g.tf("ui.relic_resonance_activated_toast", g._relic_resonance_name(first_res)))
 
 	var enemy_area := Control.new()
 	enemy_area.custom_minimum_size = Vector2(366.0, 205.0)
@@ -719,7 +725,7 @@ func _build_player_stage() -> Control:
 		var e_badge := g._equip_icon_badge(item, g.GOLD, 26)
 		all_items.append(_tap_wrap(e_badge, func(): _show_info_popup(g._equip_icon_badge(item, g.GOLD, 60), e_name, e_det, g.GOLD)))
 
-	for id in g.profile.relics:
+	for id in g.combat.state.get("relics", g.profile.relics):
 		var relic := g.content.relic(id)
 		if relic.is_empty(): continue
 		var r_color := Color(relic.color)
@@ -727,6 +733,15 @@ func _build_player_stage() -> Control:
 		var r_det: String = g._relic_detail(relic)
 		var r_badge := g._relic_icon_badge(relic, r_color, 26)
 		all_items.append(_tap_wrap(r_badge, func(): _show_info_popup(g._relic_icon_badge(relic, r_color, 60), r_name, r_det, r_color)))
+
+	for res_id in g.combat.state.get("relic_resonances", []):
+		var res := g.content.relic_resonance(str(res_id))
+		if res.is_empty(): continue
+		var res_color := Color(res.color)
+		var res_name: String = g._relic_resonance_name(res)
+		var res_det: String = g._relic_resonance_detail(res)
+		var res_badge := g._relic_resonance_badge(res, res_color, 26)
+		all_items.append(_tap_wrap(res_badge, func(): _show_info_popup(g._relic_resonance_badge(res, res_color, 60), res_name, res_det, res_color)))
 
 	# Lay out items vertically in columns of up to 4 items each
 	var cur_col: VBoxContainer = null

@@ -23,11 +23,17 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	var draw_pile: Array = []
 	for i in deck.size(): draw_pile.append({"uid":i,"card_id":deck[i]})
 	_shuffle(draw_pile)
+	var active_resonances: Array[Dictionary] = content.active_relic_resonances(relics)
+	var resonance_ids: Array[String] = []
+	for r in active_resonances:
+		resonance_ids.append(str(r.get("id", "")))
 	state = {
 		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
+		"relic_resonances":resonance_ids,
+		"pact_cleansed_turns":0,
 		"boons":modifier.get("boons",[]).duplicate(),
 		"rune_sets":content.active_rune_sets(card_runes),
 		"gale_used":false,
@@ -65,6 +71,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		state.player.max_health += 20
 		state.player.health += 20
 		state.player.shield += 15
+	if _has_resonance("res_chaos_titan"):
+		state.player.max_health += 15
+		state.player.health += 15
 	if _has_relic("chaosPrism"):
 		for enemy in state.enemies:
 			enemy.shield += 6
@@ -99,6 +108,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 
 func _has_relic(id: String) -> bool:
 	return state.get("relics", []).has(id)
+
+func _has_resonance(id: String) -> bool:
+	return state.get("relic_resonances", []).has(id)
 
 func _equip_tier(id: String) -> int:
 	return int(state.get("equipment_tiers", {}).get(id, 0))
@@ -214,6 +226,8 @@ func play(hand_index: int, target_index := -1) -> bool:
 		if state.equipment.has("emberBlade"):
 			bonus += [3, 5, 7, 10][clampi(_equip_tier("emberBlade"), 0, 3)]
 		if _has_relic("starShard"): bonus += 2
+		if _has_resonance("res_star_flame") and target_index >= 0 and target_index < state.enemies.size() and state.enemies[target_index].health > 0 and not bool(state.enemies[target_index].mechanics.get("burn_immune", false)):
+			state.enemies[target_index].burn += 2
 		if state.get("boons", []).has("boon_spirit_surge"): bonus += 4
 		bonus += int(state.get("hero_bonuses", {}).get("first_attack_bonus", 0))
 		bonus += int(state.inscr_bonuses.get("atk", 0))
@@ -276,7 +290,7 @@ func end_turn() -> void:
 		if enemy.stun > 0: enemy.stun -= 1
 		else: _execute_intent(enemy_index)
 		if enemy.burn > 0 and enemy.health > 0:
-			var burn_damage: int = enemy.burn + (1 if _has_relic("emberCore") else 0)
+			var burn_damage: int = enemy.burn + (1 if _has_relic("emberCore") else 0) + (1 if _has_resonance("res_star_flame") else 0)
 			_damage_enemy(enemy_index,burn_damage,false)
 			enemy.burn = maxi(0,enemy.burn - 1)
 		# Poison is Burn's non-decaying counterpart — Miasma Witch's whole identity is that it
@@ -323,22 +337,41 @@ func end_turn() -> void:
 	if _has_relic("titanBell"): energy_growth = 0
 	state.energy = 2 + energy_growth
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
-	state.player.shield = int(state.player.shield / 2) if _has_relic("mirrorScale") else 0
+	var kept_shield: int = 0
+	if _has_resonance("res_sun_moon"):
+		kept_shield = state.player.shield
+	elif _has_relic("mirrorScale"):
+		kept_shield = int(state.player.shield / 2)
+	state.player.shield = kept_shield
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
-	if _has_relic("ancientSeed"): state.player.health = mini(state.player.max_health, state.player.health + 2)
+	if _has_resonance("res_blood_seed"):
+		var target_hp: int = state.player.health + 4
+		if target_hp > state.player.max_health:
+			var overheal: int = target_hp - state.player.max_health
+			state.player.health = state.player.max_health
+			state.player.shield += overheal
+			if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + overheal
+		else:
+			state.player.health = target_hp
+	elif _has_relic("ancientSeed"):
+		state.player.health = mini(state.player.max_health, state.player.health + 2)
 	var mastery_heal: int = int(state.get("hero_bonuses", {}).get("heal_per_turn", 0))
 	if mastery_heal > 0: state.player.health = mini(state.player.max_health, state.player.health + mastery_heal)
 	var inscr_heal: int = int(state.inscr_bonuses.get("heal", 0))
 	if inscr_heal > 0 and state.player.health > 0:
 		state.player.health = mini(state.player.max_health, state.player.health + inscr_heal)
-	if _has_relic("thunderSeal") and state.turn % 3 == 0: state.energy += 2
+	if _has_relic("thunderSeal") and state.turn % 3 == 0:
+		state.energy += 2 + (2 if _has_resonance("res_sun_moon") else 0)
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""
-	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome —
-	# its own -2 HP cost applies every turn it is held, same as the turn-1 setup above).
-	_draw(2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0))
+	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome, +1 if res_fox_wind on Turn 2)
+	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
+	_draw(turn_draw)
 	if _has_relic("cursedTome"):
-		_damage_player(2)
-		if state.phase != "player": return
+		if _has_resonance("res_nether_pact") and int(state.get("pact_cleansed_turns", 0)) > 0:
+			state.pact_cleansed_turns = int(state.pact_cleansed_turns) - 1
+		else:
+			_damage_player(2)
+			if state.phase != "player": return
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 
@@ -401,7 +434,8 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 		amount = maxi(1, amount - int(enemy.mechanics.frost_armor))
 	# Vulnerable is the counterplay to armor-heavy late enemies: raw damage scales up before
 	# shield absorption, same slot in the pipeline pierce and Stone Spear already use.
-	if int(enemy.get("vulnerable", 0)) > 0: amount = int(round(amount * 1.5))
+	if int(enemy.get("vulnerable", 0)) > 0:
+		amount = int(round(amount * 1.5)) + (2 if _has_resonance("res_chaos_titan") else 0)
 	var absorbed := 0 if pierce else mini(enemy.shield,amount)
 	enemy.shield -= absorbed
 	var dealt := mini(enemy.health,amount - absorbed)
@@ -431,6 +465,9 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 			_draw(sb_draw)
 			if sb_shield > 0: state.player.shield += sb_shield
 		if _has_relic("bloodJade"): state.player.health = mini(state.player.max_health, state.player.health + 3)
+		if _has_resonance("res_nether_pact"):
+			state.pact_cleansed_turns = int(state.get("pact_cleansed_turns", 0)) + 1
+			_draw(1)
 		if state.get("boons", []).has("boon_blood_lust"): state.player.health = mini(state.player.max_health, state.player.health + 8)
 		if _living_count() == 0: state.phase = "won"
 	else: emit_signal("event","hit",{"enemy":index,"amount":dealt})
@@ -500,6 +537,8 @@ func _draw(count: int) -> void:
 			_shuffle(state.draw)
 			if _has_relic("windChime") and state.hand.size() < 10 and not state.draw.is_empty():
 				_draw_one()
+			if _has_resonance("res_fox_wind"):
+				state.energy += 1
 		_draw_one()
 
 # Pulled out of _draw's loop body so both the normal draw and windChime's bonus draw run the
@@ -595,7 +634,8 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 		var execute := 1.5 if rune == "execute" and temp_hp <= enemy.max_health * 0.25 else 1.0
 		var critical := 2 if card.get("special", "") == "critical" else 1
 		var hit_amount := int(round(amount * execute * critical))
-		if int(enemy.get("vulnerable", 0)) > 0: hit_amount = int(round(hit_amount * 1.5))
+		if int(enemy.get("vulnerable", 0)) > 0:
+			hit_amount = int(round(hit_amount * 1.5)) + (2 if _has_resonance("res_chaos_titan") else 0)
 		if int(enemy.mechanics.get("frost_armor", 0)) > 0: hit_amount = maxi(1, hit_amount - int(enemy.mechanics.frost_armor))
 		var absorbed := 0 if pierce else mini(temp_shield, hit_amount)
 		temp_shield -= absorbed
@@ -610,7 +650,8 @@ func preview_card_damage(hand_index: int, target_index: int) -> int:
 			var execute := 1.5 if rune == "execute" and temp_hp <= enemy.max_health * 0.25 else 1.0
 			var critical := 2 if card.get("special", "") == "critical" else 1
 			var hit_amount := int(round(amount * execute * critical))
-			if int(enemy.get("vulnerable", 0)) > 0: hit_amount = int(round(hit_amount * 1.5))
+			if int(enemy.get("vulnerable", 0)) > 0:
+				hit_amount = int(round(hit_amount * 1.5)) + (2 if _has_resonance("res_chaos_titan") else 0)
 			if int(enemy.mechanics.get("frost_armor", 0)) > 0: hit_amount = maxi(1, hit_amount - int(enemy.mechanics.frost_armor))
 			var absorbed := 0 if pierce else mini(temp_shield, hit_amount)
 			temp_shield -= absorbed

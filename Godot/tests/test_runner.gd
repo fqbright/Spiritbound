@@ -1428,6 +1428,116 @@ func run() -> void:
 	check(prof_reforge.has("equipment_tiers") and prof_reforge.equipment_tiers is Dictionary, "profile defaults include equipment_tiers dict")
 	check(prof_reforge.has("equipment_inscriptions") and prof_reforge.equipment_inscriptions is Dictionary, "profile defaults include equipment_inscriptions dict")
 
+	# ========================================================
+	# Phase 5: Dynamic Relic Synergies & Combo Resonance Tests
+	# ========================================================
+	check(SpiritContent.RELIC_RESONANCES.size() == 6, "6 ancient relic resonances are defined")
+	for r in SpiritContent.RELIC_RESONANCES:
+		check(not str(r.get("id", "")).is_empty(), "relic resonance has valid id")
+		check(not str(r.get("zh", "")).is_empty() and not str(r.get("en", "")).is_empty(), "relic resonance %s has bilingual names" % r.id)
+		check(r.get("relics", []).size() >= 2, "relic resonance %s requires at least 2 relics" % r.id)
+
+	# Active resonance detection
+	var res_none: Array[Dictionary] = content.active_relic_resonances([])
+	check(res_none.is_empty(), "empty relics yields no active resonances")
+	var res_half: Array[Dictionary] = content.active_relic_resonances(["thunderSeal"])
+	check(res_half.is_empty(), "single relic does not trigger resonance")
+	var res_pair: Array[Dictionary] = content.active_relic_resonances(["thunderSeal", "mirrorScale"])
+	check(res_pair.size() == 1 and res_pair[0].id == "res_sun_moon", "thunderSeal + mirrorScale activates res_sun_moon")
+	var res_multi: Array[Dictionary] = content.active_relic_resonances(["thunderSeal", "mirrorScale", "foxCharm", "windChime"])
+	check(res_multi.size() == 2, "multiple pairs activate multiple resonances")
+
+	# Resonance 1: 日月同辉 (res_sun_moon: thunderSeal + mirrorScale)
+	var c_sunmoon := SpiritCombat.new(content)
+	c_sunmoon.create(301, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["thunderSeal", "mirrorScale"])
+	check(c_sunmoon.state.relic_resonances.has("res_sun_moon"), "res_sun_moon registered in combat state")
+	c_sunmoon.state.player.shield = 20
+	force_attack(c_sunmoon)
+	c_sunmoon.end_turn()
+	check(c_sunmoon.state.player.shield == 20, "res_sun_moon retains 100% of shield (20 -> 20) instead of half (10)")
+	# Advance to Turn 3
+	c_sunmoon.end_turn() # turn 2 -> turn 3
+	check(c_sunmoon.state.turn == 3, "turn is 3")
+	# Turn 3 base energy is 2 + (3-1)/2 = 3. thunderSeal adds +2, res_sun_moon adds +2 -> total 7 energy!
+	check(c_sunmoon.state.energy == 7, "turn 3 energy is 3 base + 2 (thunderSeal) + 2 (res_sun_moon) = 7")
+
+	# Resonance 2: 灵狐引魂 (res_fox_wind: foxCharm + windChime)
+	var c_foxwind := SpiritCombat.new(content)
+	c_foxwind.create(302, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["foxCharm", "windChime"])
+	check(c_foxwind.state.relic_resonances.has("res_fox_wind"), "res_fox_wind registered in combat state")
+	# At turn 1, hand is 5. Discard 2, leaving 3.
+	c_foxwind.state.hand.pop_back()
+	c_foxwind.state.hand.pop_back()
+	c_foxwind.end_turn() # to Turn 2
+	# Normal turn 2 draw is 2 cards + 1 extra from res_fox_wind on Turn 2 = 3 cards drawn (3 + 3 = 6)
+	check(c_foxwind.state.hand.size() == 6, "res_fox_wind draws +1 card on Turn 2 (3 + 3 = 6 cards)")
+	check(c_foxwind.state.energy == 3, "foxCharm grants 3 energy on Turn 2")
+	# Empty draw pile to trigger reshuffle
+	var energy_pre_reshuffle: int = c_foxwind.state.energy
+	c_foxwind.state.discard = c_foxwind.state.draw.duplicate()
+	c_foxwind.state.draw.clear()
+	c_foxwind._draw(1)
+	check(c_foxwind.state.energy == energy_pre_reshuffle + 1, "res_fox_wind grants +1 energy on draw pile reshuffle")
+
+	# Resonance 3: 星火燎原 (res_star_flame: starShard + emberCore)
+	var c_starflame := SpiritCombat.new(content)
+	c_starflame.create(303, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["starShard", "emberCore"])
+	check(c_starflame.state.relic_resonances.has("res_star_flame"), "res_star_flame registered in combat state")
+	_force_hand(c_starflame, "strike")
+	c_starflame.play(0, 0)
+	check(c_starflame.state.enemies[0].burn == 2, "first attack inflicts 2 burn with res_star_flame")
+	force_attack(c_starflame)
+	var hp_before_burn: int = c_starflame.state.enemies[0].health
+	c_starflame.end_turn()
+	# Burn damage with 2 stacks: 2 + 1 (emberCore) + 1 (res_star_flame) = 4 damage!
+	check(hp_before_burn - c_starflame.state.enemies[0].health == 4, "burn ticks for 2 + 1 + 1 = 4 damage")
+
+	# Resonance 4: 枯木逢春 (res_blood_seed: ancientSeed + bloodJade)
+	var c_bloodseed := SpiritCombat.new(content)
+	c_bloodseed.create(304, encounter(100, 0), content.raw.startingDeck, 58, {}, [], {}, {}, ["ancientSeed", "bloodJade"])
+	check(c_bloodseed.state.relic_resonances.has("res_blood_seed"), "res_blood_seed registered in combat state")
+	force_attack(c_bloodseed)
+	c_bloodseed.end_turn()
+	# HP was 58/60. Heals 4 HP -> 60 HP, remaining 2 overheal converts to 2 shield!
+	check(c_bloodseed.state.player.health == 60, "res_blood_seed heals to max HP (58 + 4 -> 60)")
+	check(c_bloodseed.state.player.shield == 2, "res_blood_seed converts 2 overheal into 2 shield")
+
+	# Resonance 5: 冥渊血契 (res_nether_pact: cursedTome + bloodJade)
+	var c_pact := SpiritCombat.new(content)
+	var enc_pact := encounter(100, 0)
+	enc_pact["adds"] = 1
+	c_pact.create(305, enc_pact, content.raw.startingDeck, 60, {}, [], {}, {}, ["cursedTome", "bloodJade"])
+	check(c_pact.state.relic_resonances.has("res_nether_pact"), "res_nether_pact registered in combat state")
+	# Kill the minion (enemy index 1)
+	c_pact.state.enemies[1].health = 1
+	_force_hand(c_pact, "strike")
+	c_pact.play(0, 1)
+	check(int(c_pact.state.pact_cleansed_turns) == 1, "killing enemy sets pact_cleansed_turns to 1")
+	# Turn end should NOT damage player (boss is still alive, so phase is player)
+	var hp_pre_end: int = c_pact.state.player.health
+	force_attack(c_pact)
+	c_pact.end_turn()
+	check(c_pact.state.player.health == hp_pre_end, "res_nether_pact cleanses Cursed Tome self-damage")
+	check(int(c_pact.state.pact_cleansed_turns) == 0, "pact_cleansed_turns consumed")
+
+	# Resonance 6: 太虚混沌 (res_chaos_titan: titanBell + chaosPrism)
+	var c_chaos := SpiritCombat.new(content)
+	c_chaos.create(306, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {}, ["titanBell", "chaosPrism"])
+	check(c_chaos.state.relic_resonances.has("res_chaos_titan"), "res_chaos_titan registered in combat state")
+	# 60 base + 20 (titanBell) + 15 (res_chaos_titan) = 95 Max HP and HP!
+	check(c_chaos.state.player.max_health == 95, "res_chaos_titan grants +15 Max HP (total 95)")
+	check(c_chaos.state.player.health == 95, "res_chaos_titan grants +15 HP (total 95)")
+	# Damage against vulnerable target:
+	c_chaos.state.enemies[0].shield = 0
+	c_chaos.state.enemies[0].vulnerable = 1
+	_force_hand(c_chaos, "strike")
+	var preview_dmg: int = c_chaos.preview_card_damage(0, 0)
+	# strike deals 6 * 1.5 = 9 + 2 (res_chaos_titan) = 11 damage!
+	check(preview_dmg == 11, "preview_card_damage reflects +2 on vulnerable target (%d expected, got %d)" % [11, preview_dmg])
+	var hp_before_strike: int = c_chaos.state.enemies[0].health
+	c_chaos.play(0, 0)
+	check(hp_before_strike - c_chaos.state.enemies[0].health == 11, "strike deals 11 damage on vulnerable target with res_chaos_titan")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)
