@@ -306,6 +306,50 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 6: Career Codex shipped
+Per user direction to work through the plan's Phases 6-10 in order. First synced this branch
+with `origin/main` (which had moved substantially since the last sync: Supabase auth/cloud
+save, global leaderboards, a Cultivation Meridian talent tree, Equipment Reforging, Relic
+Resonance, a cinematic intro, a combat SFX engine, and auto-battle fixes, plus the plan doc
+itself) — see the merge commit for the 4 real conflicts resolved.
+
+**Design deviation from the plan, deliberate**: the plan's `profile.career_stats` schema
+listed `total_runs`/`victories`/`total_damage_dealt`/`total_gold_earned`/`max_abyss_floor` as
+new fields, but `profile.lifetime_stats` (an existing generic stat-counter dict fed by
+`_advance_quest()`) and `profile.abyss_record` already track the exact same numbers
+(`win_battles`, `deal_damage`, `earn_gold`, and the Abyss floor record respectively).
+Duplicating them into `career_stats` would mean keeping two counters in sync for no reason —
+the Codex UI reads `lifetime_stats`/`abyss_record` directly for those, and `career_stats` only
+holds what genuinely didn't exist anywhere yet: `defeats`, `total_shield_gained`,
+`total_cards_played`, `elites_slain`/`bosses_slain`, `current_win_streak`/`longest_win_streak`,
+`favorite_cards`, `favorite_hero`, `hall_of_fame`. Also added the Codex as an 8th Compendium
+tab, not the "4th" the plan assumed — cards/gear/runes/relics/bestiary/achievements/chronicle
+already existed before this phase.
+
+**Tracking hooks**: `game._track_career_win()` is called once from the very first line of
+`_grant_stage_rewards()`, which covers all 7 win paths (campaign, Abyss, Boss Rush, Daily/
+Weekly Trial, Draft Arena, Phantom Arena) uniformly without needing a call in each branch.
+`game._track_career_defeat()`/`_track_career_retreat()` are called from `_leave_battle()`,
+branching on `combat.state.phase == "lost"` — per this file's own AGENTS.md trap entry on that
+function, it only ever fires for a loss or a manual retreat, never a win, so there's no
+double-counting risk between the two hook points. Hall of Fame keeps the most recent 3 Great
+Boss kills (not score-ranked by some invented quality metric — simplest thing that still
+delivers "show off a real run").
+
+**A real test-pollution bug found and fixed while writing ui_smoke.gd coverage**: simulating a
+Great Boss win to test the Hall of Fame calls the real `_grant_stage_rewards()` pipeline, which
+(same as for a real player) rolls a random boss relic into `profile.relics` among other side
+effects (gold/unlocked/position/claimed_stage_events) — an early version of this test left that
+relic (`cursedTome`, whose -2 HP/turn drains through shield first) sitting in the shared test
+profile, which then silently broke an unrelated, pre-existing samsara-shield assertion later in
+the same suite run. Fixed by snapshotting and restoring the *entire* profile around this
+section rather than guessing which fields `_grant_stage_rewards()` touches.
+
+**Verification**: `test_runner.gd` +25 checks (603/0, including a revert-and-reconfirm on the
+streak-reset-on-defeat logic), `ui_smoke.gd` new Career Codex section (also confirmed the
+pollution bug above by running 3x before the fix — consistent failure, not flaky — then 0
+failures after), full `./run_tests.sh --all` green from a from-scratch `Godot/.godot/` state.
+
 ### 2026-09-18 — Merged two parallel C2 implementations (Rebirth + Samsara) into one design
 While syncing this branch with `origin/main` before pushing unrelated work, found a human
 collaborator had independently built a full "Samsara Reincarnation" prestige system on

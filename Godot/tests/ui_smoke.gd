@@ -1995,6 +1995,53 @@ func _run() -> void:
 	check(_find_label_text(game.root, game.content.chapter_lore(49, game.lang)), "reaching chapter 50 reveals its chronicle entry text")
 	game.profile.unlocked = prior_unlocked
 
+	section("== career codex compendium tab (Phase 6) ==")
+	check(_find_button_containing(game.root, game.content.ui("ui.compendium_tab_career", game.lang)) != null, "Career Codex tab button exists")
+	# _grant_stage_rewards() is the real reward-granting pipeline, not a stub — calling it below
+	# to simulate a Great Boss win actually rolls a real random boss relic (cursedTome/titanBell/
+	# chaosPrism) into g.profile.relics among other side effects (gold/unlocked/position/
+	# claimed_stage_events), exactly as it would for a real player. A full profile snapshot/
+	# restore is simplest here rather than enumerating every field that function touches.
+	var saved_profile_cc: Dictionary = game.profile.duplicate(true)
+	var saved_combat_cc = game.combat
+	var saved_stage_cc: int = int(game.current_stage)
+	# Reset to a clean slate before checking the empty state: an earlier section in this long-
+	# lived suite (D4's Great Boss phase banner, etc.) may have already driven a real campaign
+	# win through _grant_stage_rewards() at a greatboss-kind stage, which now also feeds this
+	# Phase 6 hook — checking "empty" against whatever state happens to be left over would be
+	# order-dependent and fragile.
+	game.profile.career_stats = {"defeats":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"current_win_streak":0,"longest_win_streak":0,"favorite_cards":{},"favorite_hero":{},"hall_of_fame":[]}
+	game.profile.lifetime_stats = {}
+	game.compendium_tab = "career"
+	game.show_compendium()
+	await process_frame
+	check(_find_label_text(game.root, game.t("ui.career_overview_title")), "Lifetime Overview section renders")
+	check(_find_label_text(game.root, game.t("ui.career_style_title")), "Combat Style section renders")
+	var hof_node: Node = game.root.find_child("CareerHallOfFame", true, false)
+	check(hof_node != null, "Hall of Fame section renders")
+	check(_find_label_text(game.root, game.t("ui.career_hof_empty")), "Hall of Fame shows the empty-state message before any Great Boss win")
+
+	# Simulate a Great Boss win driving both the Hall of Fame and the streak/favorite-card
+	# stats, then confirm the Codex tab actually reflects it once redrawn. The underlying data
+	# (exact chapter/turn/relic values) is already verified thoroughly in test_runner.gd; this
+	# only needs to prove the UI actually reads and renders career_stats, not re-derive it.
+	game.current_stage = 49
+	game.combat = SpiritCombat.new(game.content)
+	game.combat.state = {"stats": {"shield_gained": 3, "cards_played": 2, "card_play_counts": {"strike": 2}}, "turn": 6}
+	game._grant_stage_rewards()
+	game.show_compendium()
+	await process_frame
+	check(not _find_label_text(game.root, game.t("ui.career_hof_empty")), "Hall of Fame empty-state message disappears once a Great Boss has been defeated")
+	var hero_display_cc: String = game.content.hero_name(game.content.hero_class(str(game.profile.hero_class)), game.lang)
+	check(_find_label_containing(game.root, hero_display_cc), "Hall of Fame shows the hero used in the just-recorded Great Boss win")
+	check(_find_label_text(game.root, game.tf("ui.career_total_battles_fmt", 1)), "Total Battles reflects the one simulated win")
+	check(_find_label_text(game.root, game.tf("ui.career_win_rate_fmt", 100)), "Win Rate shows 100%% after one win with zero defeats")
+	_sweep_buttons_clickable(game.root, "Compendium (career tab)")
+
+	game.profile = saved_profile_cc
+	game.combat = saved_combat_cc
+	game.current_stage = saved_stage_cc
+
 	# A synthetic key is used here (rather than a real card/equipment id) so the check doesn't
 	# depend on what earlier sections in this same long-running suite already collected or
 	# fought — this suite shares one profile across every section.

@@ -1,6 +1,6 @@
 # Next Phases Implementation Plan: Spiritbound Post-Launch Roadmap
 
-This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 6** or subsequent phases following the repository standards.
+This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 7** or subsequent phases following the repository standards.
 
 ---
 
@@ -10,47 +10,21 @@ This implementation plan lays out the next sequential phases of Spiritbound deve
 - ✅ **Phase 3**: Endless Abyss Mode Expansion & Modifiers
 - ✅ **Phase 4**: Equipment Reforging & Inscription System (器灵重铸与灵纹洗练)
 - ✅ **Phase 5**: Dynamic Relic Synergies & Combo Resonance (法宝共鸣系统)
-
----
-
-## Phase 6: Career Codex & Player Statistics Dashboard (旅者典籍 / 终生战绩看板)
-**Impact: Medium-High | Effort: Low | Backend: None (Pure Local Profile)**
-
-### 1. Goal Description
-Give players a dedicated, beautifully styled **Career Codex (旅者典籍)** tab in the Compendium / Camp screen, celebrating their lifetime achievements, playstyle tendencies, and run history.
-
-### 2. Architecture & Data Schema
-- **Profile Extension (`save_store.gd`)**:
-  - `profile.career_stats`:
-    - `total_runs`: int
-    - `victories`: int
-    - `defeats`: int
-    - `total_damage_dealt`: int
-    - `total_shield_gained`: int
-    - `elites_slain`: int
-    - `bosses_slain`: int
-    - `max_abyss_floor`: int
-    - `longest_win_streak`: int
-    - `current_win_streak`: int
-    - `total_gold_earned`: int
-    - `total_cards_played`: int
-    - `favorite_cards`: Dictionary (card_id -> play_count)
-    - `favorite_hero`: Dictionary (hero_id -> win_count)
-    - `hall_of_fame`: Array[Dictionary] (top 3 victorious run deck snapshots)
-- **Tracking Hooks (`combat.gd`, `game_rewards_screen.gd`)**:
-  - End of combat increments damage, shield, cards played.
-  - Stage victory/defeat updates streaks, win counts, and Hall of Fame records.
-
-### 3. UI Implementation (`game_camp_screen.gd`)
-- Add a 4th tab in the Compendium catalog: **"典籍" (Codex / Career)**.
-- Section 1: **战绩概要 (Lifetime Overview)** — Total battles, win rate %, longest win streak, highest Abyss floor.
-- Section 2: **战斗风格 (Combat Style)** — Total damage, cards played, favorite hero archetype badge.
-- Section 3: **常胜卡组 (Hall of Fame)** — Showcase top deck snapshots with card tiles and relic badges.
-
-### 4. Verification Plan
-- `test_runner.gd`: Assert stats tracking and lifetime counters increment correctly on combat actions and victory.
-- `ui_smoke.gd`: Assert Compendium 4th tab navigation and unblocked clickability.
-- `./run_tests.sh`: 0 failures across all 6 verification suites.
+- ✅ **Phase 6**: Career Codex & Player Statistics Dashboard (旅者典籍) — done 2026-09-19. Added
+  as a `career` tab in Compendium (8 tabs total now, not the 4 this plan originally assumed —
+  cards/gear/runes/relics/bestiary/achievements/chronicle already existed). `profile.
+  career_stats` deliberately does NOT duplicate victories/total damage/total gold/highest Abyss
+  floor, which already live in `lifetime_stats`/`abyss_record` — only tracks what nothing else
+  did: win/loss streaks, per-battle shield/cards totals, favorite hero/cards, and a 3-entry
+  Hall of Fame of Great Boss kills (most recent 3, not score-ranked — see the section below for
+  why). Tracking hooks: `game._track_career_win()` (called once from the top of
+  `_grant_stage_rewards()`, covering all 7 win paths uniformly) and `game._track_career_defeat()`/
+  `_track_career_retreat()` (called from `_leave_battle()`, which — per AGENTS.md's own trap
+  entry on this function — only ever fires for a loss or manual retreat, never a win, so there's
+  no double-counting risk between the two hook points). See `Docs/GROWTH_ROADMAP.md`'s progress
+  log for the full account, including a real test-pollution bug this phase's own testing caught
+  and fixed (simulating a Great Boss win through the real reward pipeline rolls a real random
+  relic into the profile, same as a real player would get).
 
 ---
 

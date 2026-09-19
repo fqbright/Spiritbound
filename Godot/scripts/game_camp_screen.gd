@@ -25,6 +25,7 @@ func show_compendium() -> void:
 		["bestiary", g.t("ui.compendium_tab_bestiary")],
 		["achievements", g.t("ui.compendium_tab_achievements")],
 		["chronicle", g.t("ui.compendium_tab_chronicle")],
+		["career", g.t("ui.compendium_tab_career")],
 	], g.compendium_tab, func(id): g.compendium_tab = id; show_compendium()))
 
 	var scroll := TouchScrollContainer.new()
@@ -43,7 +44,8 @@ func show_compendium() -> void:
 		"relics": _build_compendium_relics(list)
 		"bestiary": _build_compendium_bestiary(list)
 		"achievements": _build_compendium_achievements(list)
-		_: _build_compendium_chronicle(list)
+		"chronicle": _build_compendium_chronicle(list)
+		_: _build_compendium_career(list)
 
 func _build_compendium_milestones_bar(pct: int) -> Control:
 	var bar_panel := PanelContainer.new()
@@ -207,6 +209,87 @@ func _build_compendium_bestiary(list: VBoxContainer) -> void:
 # same check game_map_screen.gd's _add_map_chapter uses) rather than a separate discovery
 # flag, so a fresh save's Chronicle tab fills in exactly as fast as the player actually travels
 # — no migration needed for existing saves either, since it reads progress already there.
+func _career_stat_panel(border: Color, title: String, title_color: Color, rows: Array[String]) -> Control:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", g._panel(Color("10221c"), 12, border))
+	var pad := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 12)
+	panel.add_child(pad)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+	pad.add_child(stack)
+	stack.add_child(g._label(title, 14, title_color))
+	for row in rows: stack.add_child(g._label(row, 11, g.TEXT))
+	return panel
+
+# Career Codex (旅者典籍 / Phase 6): lifetime playstyle stats independent of any single run.
+# Deliberately reads victories/damage/gold straight from lifetime_stats and the highest Abyss
+# floor from profile.abyss_record rather than duplicating them into career_stats — see
+# _track_career_battle_stats()'s own comment in game.gd for why. Everything here only ever
+# grows; there's no reset path, matching the "lifetime" framing.
+func _build_compendium_career(list: VBoxContainer) -> void:
+	var cs: Dictionary = g.profile.get("career_stats", {})
+	var lifetime: Dictionary = g.profile.get("lifetime_stats", {})
+	var victories: int = int(lifetime.get("win_battles", 0))
+	var defeats: int = int(cs.get("defeats", 0))
+	var total_runs: int = victories + defeats
+	var win_rate: int = int(round(100.0 * float(victories) / float(maxi(1, total_runs)))) if total_runs > 0 else 0
+
+	list.add_child(_career_stat_panel(g.JADE, g.t("ui.career_overview_title"), g.GOLD, [
+		g.tf("ui.career_total_battles_fmt", total_runs),
+		g.tf("ui.career_win_rate_fmt", win_rate),
+		g.tf("ui.career_longest_streak_fmt", int(cs.get("longest_win_streak", 0))),
+		g.tf("ui.career_abyss_floor_fmt", int(g.profile.get("abyss_record", 0))),
+	]))
+
+	var style_rows: Array[String] = [
+		g.tf("ui.career_total_damage_fmt", int(lifetime.get("deal_damage", 0))),
+		g.tf("ui.career_cards_played_fmt", int(cs.get("total_cards_played", 0))),
+		g.tf("ui.career_shield_gained_fmt", int(cs.get("total_shield_gained", 0))),
+	]
+	var fav_hero: Dictionary = cs.get("favorite_hero", {})
+	if not fav_hero.is_empty():
+		var best_hero_id := ""
+		var best_hero_wins := -1
+		for hero_id in fav_hero:
+			if int(fav_hero[hero_id]) > best_hero_wins:
+				best_hero_wins = int(fav_hero[hero_id])
+				best_hero_id = str(hero_id)
+		style_rows.append(g.tf("ui.career_favorite_hero_fmt", [g.content.hero_name(g.content.hero_class(best_hero_id), g.lang), best_hero_wins]))
+	var fav_cards: Dictionary = cs.get("favorite_cards", {})
+	if not fav_cards.is_empty():
+		var best_card_id := ""
+		var best_card_count := -1
+		for card_id in fav_cards:
+			if int(fav_cards[card_id]) > best_card_count:
+				best_card_count = int(fav_cards[card_id])
+				best_card_id = str(card_id)
+		var best_card: Dictionary = g.content.card(best_card_id)
+		if not best_card.is_empty():
+			style_rows.append(g.tf("ui.career_favorite_card_fmt", [g.content.text(best_card.nameKey, g.lang), best_card_count]))
+	list.add_child(_career_stat_panel(Color("6a8fbd"), g.t("ui.career_style_title"), Color("8fb8ff"), style_rows))
+
+	var hof_panel := PanelContainer.new()
+	hof_panel.name = "CareerHallOfFame"
+	hof_panel.add_theme_stylebox_override("panel", g._panel(Color("10221c"), 12, g.GOLD))
+	var hof_pad := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: hof_pad.add_theme_constant_override("margin_%s" % side, 12)
+	hof_panel.add_child(hof_pad)
+	var hof_stack := VBoxContainer.new()
+	hof_stack.add_theme_constant_override("separation", 6)
+	hof_pad.add_child(hof_stack)
+	hof_stack.add_child(g._label(g.t("ui.career_hof_title"), 14, g.GOLD))
+	var hof: Array = cs.get("hall_of_fame", [])
+	if hof.is_empty():
+		hof_stack.add_child(g._label(g.t("ui.career_hof_empty"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	else:
+		for i in range(hof.size() - 1, -1, -1):
+			var entry: Dictionary = hof[i]
+			var hero_display: String = g.content.hero_name(g.content.hero_class(str(entry.get("hero_class", ""))), g.lang)
+			var relic_count: int = int(entry.get("relics", []).size())
+			hof_stack.add_child(g._label(g.tf("ui.career_hof_entry_fmt", [int(entry.get("chapter", 0)), hero_display, int(entry.get("turns", 0)), relic_count]), 10, g.JADE))
+	list.add_child(hof_panel)
+
 func _build_compendium_chronicle(list: VBoxContainer) -> void:
 	var chapter_count: int = SpiritContent.CHAPTER_NAMES_ZH.size()
 	var unlocked_n: int = clampi(int(g.profile.unlocked) / 5 + 1, 0, chapter_count)

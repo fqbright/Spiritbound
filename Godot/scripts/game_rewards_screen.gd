@@ -217,6 +217,7 @@ func _current_stage_label() -> String:
 	return g.content.stage_name(g.current_stage, g.lang)
 
 func _grant_stage_rewards() -> void:
+	g._track_career_win()
 	if g.in_phantom_arena:
 		g.in_phantom_arena = false
 		g._ensure_phantom_arena_current()
@@ -264,6 +265,7 @@ func _grant_stage_rewards() -> void:
 		g._advance_quest("win_battles", 1)
 		g._advance_quest("earn_gold", br_gold)
 		g._advance_quest("clear_elite_or_boss", 1)
+		g.profile.career_stats.bosses_slain = int(g.profile.career_stats.get("bosses_slain", 0)) + 1
 		_grant_mastery_xp(24)
 		g._add_season_xp(60)
 		return
@@ -362,6 +364,23 @@ func _grant_stage_rewards() -> void:
 	g._advance_quest("earn_gold", int(g.pending_rewards.gold))
 	if g.content.is_boss_kind(kind) or kind == "elite": g._advance_quest("clear_elite_or_boss", 1)
 	if kind == "greatboss": g._advance_quest("defeat_great_boss", 1)
+	if kind == "elite":
+		g.profile.career_stats.elites_slain = int(g.profile.career_stats.get("elites_slain", 0)) + 1
+	elif g.content.is_boss_kind(kind):
+		g.profile.career_stats.bosses_slain = int(g.profile.career_stats.get("bosses_slain", 0)) + 1
+	# Hall of Fame: a snapshot of the deck that just felled a Great Boss, the game's own
+	# highest-signal "this was a real run" milestone. Keeps only the most recent 3 rather than
+	# ranking by some invented quality score — simplest thing that's still worth showing off.
+	if kind == "greatboss":
+		var hof: Array = g.profile.career_stats.get("hall_of_fame", [])
+		hof.append({
+			"stage": g.current_stage, "chapter": g.content.encounters[g.current_stage].chapter,
+			"hero_class": g.profile.hero_class, "deck": g.profile.deck.duplicate(),
+			"relics": g.profile.relics.duplicate(), "turns": int(g.combat.state.get("turn", 0)),
+			"timestamp": int(Time.get_unix_time_from_system()),
+		})
+		if hof.size() > 3: hof = hof.slice(hof.size() - 3, hof.size())
+		g.profile.career_stats.hall_of_fame = hof
 	var mastery_xp: int = 24 if g.content.is_boss_kind(kind) else 12
 	_grant_mastery_xp(mastery_xp)
 	g._add_season_xp(35)

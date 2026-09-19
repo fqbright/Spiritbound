@@ -28,7 +28,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"spirit_jade":10,"spirit_dust":0,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"equipment_tiers":{},"equipment_inscriptions":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[],"history":[]},"tutorial_seen":false,"tutorials_seen":{},"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"achievements_unlocked":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]},"boss_rush_floor":1,"boss_rush_record":0,"text_scale":1.0,"idle_harvest":{"last_claim_time":0,"last_fast_claim_day":-1},"phantom_arena":{"day":-1,"wins_today":0,"claimed_today":false},"novice_journey":{"claimed":[]},"daily_first_win":{"day":-1,"claimed":false},"combat_consumables":{"strength":0,"focus":0,"energy":0},"stamina":{"current":100,"max":100,"last_regen_time":0},"samsara_count":0,"intro_seen":false,"meridians":{}}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"spirit_jade":10,"spirit_dust":0,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"equipment_tiers":{},"equipment_inscriptions":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[],"history":[]},"tutorial_seen":false,"tutorials_seen":{},"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"achievements_unlocked":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]},"boss_rush_floor":1,"boss_rush_record":0,"text_scale":1.0,"idle_harvest":{"last_claim_time":0,"last_fast_claim_day":-1},"phantom_arena":{"day":-1,"wins_today":0,"claimed_today":false},"novice_journey":{"claimed":[]},"daily_first_win":{"day":-1,"claimed":false},"combat_consumables":{"strength":0,"focus":0,"energy":0},"stamina":{"current":100,"max":100,"last_regen_time":0},"samsara_count":0,"intro_seen":false,"meridians":{},"career_stats":{"defeats":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"current_win_streak":0,"longest_win_streak":0,"favorite_cards":{},"favorite_hero":{},"hall_of_fame":[]}}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -82,6 +82,14 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 		base.daily_first_win = {"day":-1,"claimed":false}
 	if not base.get("combat_consumables") is Dictionary:
 		base.combat_consumables = {"strength":0,"focus":0,"energy":0}
+	if not base.get("career_stats") is Dictionary:
+		base.career_stats = {"defeats":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"current_win_streak":0,"longest_win_streak":0,"favorite_cards":{},"favorite_hero":{},"hall_of_fame":[]}
+	else:
+		for key in ["defeats","total_shield_gained","total_cards_played","elites_slain","bosses_slain","current_win_streak","longest_win_streak"]:
+			if not base.career_stats.has(key): base.career_stats[key] = 0
+		if not base.career_stats.get("favorite_cards") is Dictionary: base.career_stats.favorite_cards = {}
+		if not base.career_stats.get("favorite_hero") is Dictionary: base.career_stats.favorite_hero = {}
+		if not base.career_stats.get("hall_of_fame") is Array: base.career_stats.hall_of_fame = []
 	if not base.get("stamina") is Dictionary:
 		base.stamina = {"current":100,"max":100,"last_regen_time":0}
 	else:

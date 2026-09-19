@@ -1574,6 +1574,88 @@ func run() -> void:
 	c_chaos.play(0, 0)
 	check(hp_before_strike - c_chaos.state.enemies[0].health == 11, "strike deals 11 damage on vulnerable target with res_chaos_titan")
 
+	# Phase 6: Career Codex lifetime stats (game.gd's _track_career_win/_defeat/_retreat)
+	var career_game := SpiritGame.new()
+	career_game.content = content
+	career_game.profile = SpiritSave.defaults(content)
+	var cs0: Dictionary = career_game.profile.career_stats
+	check(int(cs0.defeats) == 0 and int(cs0.current_win_streak) == 0 and int(cs0.longest_win_streak) == 0 and cs0.favorite_hero.is_empty() and cs0.favorite_cards.is_empty() and cs0.hall_of_fame.is_empty(), "career_stats starts fully at zero/empty on a fresh profile")
+
+	career_game.combat = SpiritCombat.new(content)
+	career_game.combat.state = {"stats": {"shield_gained": 5, "cards_played": 3, "card_play_counts": {"strike": 2, "ward": 1}}}
+	career_game.profile.hero_class = "fox_spirit"
+	career_game._track_career_win()
+	check(int(career_game.profile.career_stats.current_win_streak) == 1, "first win sets current_win_streak to 1")
+	check(int(career_game.profile.career_stats.longest_win_streak) == 1, "first win sets longest_win_streak to 1")
+	check(int(career_game.profile.career_stats.total_shield_gained) == 5, "win accumulates shield_gained from combat.state.stats")
+	check(int(career_game.profile.career_stats.total_cards_played) == 3, "win accumulates cards_played from combat.state.stats")
+	check(int(career_game.profile.career_stats.favorite_cards.get("strike", 0)) == 2, "win accumulates per-card play counts (strike x2)")
+	check(int(career_game.profile.career_stats.favorite_hero.get("fox_spirit", 0)) == 1, "win credits the currently-equipped hero's win count")
+
+	career_game.combat.state = {"stats": {"shield_gained": 2, "cards_played": 4, "card_play_counts": {"strike": 1}}}
+	career_game._track_career_win()
+	check(int(career_game.profile.career_stats.current_win_streak) == 2, "a second consecutive win raises current_win_streak to 2")
+	check(int(career_game.profile.career_stats.longest_win_streak) == 2, "longest_win_streak tracks the current streak's new high")
+	check(int(career_game.profile.career_stats.favorite_cards.get("strike", 0)) == 3, "favorite_cards accumulates across multiple wins (strike x3)")
+
+	career_game.combat.state = {"stats": {"shield_gained": 1, "cards_played": 1, "card_play_counts": {}}, "phase": "lost"}
+	career_game._track_career_defeat()
+	check(int(career_game.profile.career_stats.defeats) == 1, "a defeat increments the defeats counter")
+	check(int(career_game.profile.career_stats.current_win_streak) == 0, "a defeat resets current_win_streak to 0")
+	check(int(career_game.profile.career_stats.longest_win_streak) == 2, "a defeat does not reduce the already-recorded longest_win_streak")
+	check(int(career_game.profile.career_stats.total_shield_gained) == 8, "a defeat still credits shield_gained for that battle (5+2+1)")
+
+	career_game.combat.state = {"stats": {"shield_gained": 0, "cards_played": 2, "card_play_counts": {"ward": 1}}}
+	career_game._track_career_retreat()
+	check(int(career_game.profile.career_stats.defeats) == 1, "a voluntary retreat does not count as a defeat")
+	check(int(career_game.profile.career_stats.current_win_streak) == 0, "a voluntary retreat does not touch the win streak either way")
+	check(int(career_game.profile.career_stats.total_cards_played) == 10, "a retreat still credits cards_played for that battle (3+4+1+2)")
+	career_game.free()
+
+	# Hall of Fame: a real Great Boss win through _grant_stage_rewards() should append a snapshot.
+	var hof_game := SpiritGame.new()
+	hof_game.content = content
+	hof_game.profile = SpiritSave.defaults(content)
+	hof_game.profile.hero_class = "stone_sentinel"
+	hof_game.profile.relics = ["titanBell", "chaosPrism"]
+	# Chapter 10's Great Boss is stage index 49 (chapter 10, stage 5 of 5, 0-indexed).
+	hof_game.current_stage = 49
+	hof_game.combat = SpiritCombat.new(content)
+	hof_game.combat.state = {"stats": {"shield_gained": 0, "cards_played": 0, "card_play_counts": {}}, "turn": 7}
+	hof_game._grant_stage_rewards()
+	check(hof_game.profile.career_stats.hall_of_fame.size() == 1, "defeating a Great Boss appends one Hall of Fame entry")
+	var hof_entry: Dictionary = hof_game.profile.career_stats.hall_of_fame[0]
+	check(str(hof_entry.hero_class) == "stone_sentinel", "the Hall of Fame entry records the hero class used")
+	check(int(hof_entry.turns) == 7, "the Hall of Fame entry records the turn count")
+	check(int(hof_entry.relics.size()) == 2, "the Hall of Fame entry records the relics held")
+	check(int(hof_game.profile.career_stats.bosses_slain) == 1, "a Great Boss win increments bosses_slain")
+	hof_game.free()
+
+	# Hall of Fame keeps only the most recent 3 entries.
+	var hof_cap_game := SpiritGame.new()
+	hof_cap_game.content = content
+	hof_cap_game.profile = SpiritSave.defaults(content)
+	hof_cap_game.combat = SpiritCombat.new(content)
+	for boss_stage in [49, 99, 149, 199]:
+		hof_cap_game.current_stage = boss_stage
+		hof_cap_game.combat.state = {"stats": {"shield_gained": 0, "cards_played": 0, "card_play_counts": {}}, "turn": 5}
+		hof_cap_game._grant_stage_rewards()
+	check(hof_cap_game.profile.career_stats.hall_of_fame.size() == 3, "Hall of Fame caps at 3 entries after 4 Great Boss wins")
+	check(int(hof_cap_game.profile.career_stats.hall_of_fame[-1].get("stage", -1)) == 199, "Hall of Fame keeps the most recent entries, dropping the oldest")
+	hof_cap_game.free()
+
+	# Save-migration coverage for career_stats (mirrors Godot/tests/gut/test_save_migration.gd's
+	# style for an ancient save missing this field entirely).
+	var had_profile_cs := FileAccess.file_exists(SpiritSave.PATH)
+	var saved_profile_cs := FileAccess.open(SpiritSave.PATH, FileAccess.READ).get_as_text() if had_profile_cs else ""
+	FileAccess.open(SpiritSave.PATH, FileAccess.WRITE).store_string(JSON.stringify({"gold": 40}))
+	var migrated_cs: Dictionary = SpiritSave.load_profile(content)
+	check(migrated_cs.get("career_stats") is Dictionary and int(migrated_cs.career_stats.get("defeats", -1)) == 0, "loading a save from before career_stats existed backfills it with sane zero defaults")
+	if had_profile_cs:
+		FileAccess.open(SpiritSave.PATH, FileAccess.WRITE).store_string(saved_profile_cs)
+	elif FileAccess.file_exists(SpiritSave.PATH):
+		DirAccess.remove_absolute(SpiritSave.PATH)
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

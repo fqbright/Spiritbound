@@ -2799,6 +2799,14 @@ func _leave_battle() -> void:
 	g.selected_card = -1
 	g.resolving = false
 	auto_stepping = false
+	# Career Codex bookkeeping: this is the one choke point every non-win battle ending goes
+	# through (a real loss or a manual retreat) — _grant_stage_rewards() is a win's own separate
+	# path and never reaches here (see AGENTS.md's own trap entry on this function). Checked
+	# before g.in_sandbox specifically clears below, since Sandbox is the one mode that
+	# shouldn't count toward lifetime stats at all (zero-stakes practice, not a real run).
+	if g.combat != null and not g.in_sandbox:
+		if g.combat.state.phase == "lost": g._track_career_defeat()
+		else: g._track_career_retreat()
 	if g.in_sandbox:
 		# Zero-stakes: profile.health was never touched on the way in, so there is nothing to
 		# restore and nothing worth writing to disk on the way out either.
