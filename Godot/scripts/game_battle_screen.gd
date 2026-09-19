@@ -66,7 +66,7 @@ func begin_battle(index: int) -> void:
 	# might still be about to do.
 	g.battle_session += 1
 	g.resolving = false
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = _apply_difficulty(_modifier(seed, index), g.content.difficulty_modifier(int(g.profile.difficulty)))
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()

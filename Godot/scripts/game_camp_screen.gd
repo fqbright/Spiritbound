@@ -1140,7 +1140,7 @@ func begin_world_event_battle() -> void:
 	g.active_modifier = g.content.world_event_modifier(period)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	var seed_val := int(Time.get_unix_time_from_system())
+	var seed_val := g._battle_seed()
 	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
@@ -1484,7 +1484,7 @@ func begin_boss_rush_battle() -> void:
 	var loop: int = (floor_num - 1) / boss_indices.size()
 	g.in_boss_rush = true
 	g.current_stage = idx
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = {
 		"id": "boss_rush", "name": "连战淬炼", "name_en": "Gauntlet Tempering",
 		"detail": "敌人生命 +%d%%，攻击 +%d" % [int(loop * 25), loop], "detail_en": "Enemy HP +%d%%, ATK +%d" % [int(loop * 25), loop],
@@ -1589,7 +1589,7 @@ func begin_curse_run_battle() -> void:
 	var floor_num: int = int(curse_run.get("floors", {}).get(selected, 1))
 	g.current_stage = 0
 	var enc: Dictionary = g.content.abyss_encounter(floor_num)
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	# active_modifier doubles as the modifier dict combat.create() reads (player_max_hp,
 	# player_dmg_mult, energy_cap, mirror_hp, extra_enemy, damage_mult, no_heal, draw_penalty —
 	# whichever the selected mutator carries) and the battle screen's modifier badge, which
@@ -1666,7 +1666,7 @@ func _sandbox_section() -> Control:
 func begin_sandbox_battle(stage: int) -> void:
 	g.in_sandbox = true
 	g.current_stage = clampi(stage, 0, int(g.profile.unlocked))
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = {}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
@@ -1687,7 +1687,7 @@ func begin_abyss_battle() -> void:
 	var floor_num: int = int(g.profile.get("abyss_floor", 1))
 	var enc: Dictionary = g.content.abyss_encounter(floor_num)
 	g.current_stage = 0
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = g._modifier(seed, floor_num)
 	g.active_modifier["boons"] = g.profile.get("abyss_boons", []).duplicate()
 	g.combat = SpiritCombat.new(g.content)
@@ -1712,7 +1712,7 @@ func begin_phantom_arena() -> void:
 	g.active_modifier = {}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	var seed_val := int(Time.get_unix_time_from_system())
+	var seed_val := g._battle_seed()
 	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)

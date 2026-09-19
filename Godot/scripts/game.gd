@@ -45,6 +45,19 @@ var battle_session := 0
 # problem for _resolve_play() specifically (and also resets g.resolving, which this doesn't) —
 # this is the general version for everything else.
 var screen_generation := 0
+# -1 (the default) means "disabled" — every begin_*_battle() function seeds SpiritCombat from
+# _battle_seed() below instead of inlining Time.get_unix_time_from_system() itself, the same
+# formula duplicated across 7 call sites (begin_battle, begin_boss_rush_battle,
+# begin_curse_run_battle, begin_sandbox_battle, begin_abyss_battle, begin_world_event_battle,
+# begin_phantom_arena) until this was added. A real player's shuffle and flavor-modifier roll
+# differing every battle is intended, not a bug — but that same non-determinism produced two
+# separately-diagnosed flakiness bugs in one session before either was traced back to this
+# exact line (ui_smoke.gd's finishing-blow banner check, and visual_snapshots.gd's battle-
+# screen capture — see AGENTS.md's Traps section for both). Set this to a fixed value before
+# calling any begin_*_battle() function to make its shuffle, flavor modifier, and enemy count
+# fully reproducible instead of hand-patching combat state after the fact per-test; never
+# touched by real gameplay.
+var test_seed_override := -1
 var loadout_tab := "equipment"
 var pending_rewards: Dictionary = {}
 var selected_card := -1
@@ -885,6 +898,12 @@ func _safe_bottom() -> int:
 		if inset > 0:
 			return int(round(float(inset) * 844.0 / float(win_h)))
 	return 22
+
+# See test_seed_override's own comment for why this exists. Every begin_*_battle() function
+# calls this instead of inlining Time.get_unix_time_from_system() itself.
+func _battle_seed() -> int:
+	if test_seed_override >= 0: return test_seed_override
+	return int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
 
 func _clear() -> void:
 	screen_generation += 1

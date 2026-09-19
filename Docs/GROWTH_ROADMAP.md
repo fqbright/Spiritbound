@@ -306,6 +306,40 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-19 — Deduplicated the wall-clock battle seed across 7 functions, added a test hook
+
+Follow-up to the same day's Xvfb/Pixel-Diff work: that entry's two bugs (`ui_smoke.gd`'s
+finishing-blow flake, the battle-screen visual-diff noise floor) shared one root cause —
+`begin_battle()` seeds `SpiritCombat` from `Time.get_unix_time_from_system() * 1000.0`, so its
+shuffle and flavor modifier genuinely differ every call. Checked whether that formula was unique
+to `begin_battle()`: it wasn't — `begin_boss_rush_battle`, `begin_curse_run_battle`,
+`begin_sandbox_battle`, `begin_abyss_battle`, `begin_world_event_battle`, and
+`begin_phantom_arena` (all `game_camp_screen.gd`) each independently copy-pasted the identical
+line, and `begin_abyss_battle` feeds it into the same swarm/rebirth-capable `_modifier()` that
+caused both bugs above — meaning the same flake was latent for any future test touching those 6
+modes, not fixed by either of that day's two patches.
+
+**Fixed**: extracted one `SpiritGame._battle_seed()` helper (`game.gd`) that all 7 sites now call
+instead of inlining the formula, plus `test_seed_override` (an `int`, default `-1` = disabled —
+zero behavior change for real players). Any current or future test can set it before calling any
+`begin_*_battle()` function to make that mode's shuffle, flavor modifier, and enemy count fully
+reproducible in one line, rather than rediscovering and hand-patching combat state per mode the
+way the day's two earlier fixes had to. Covered by
+`tests/gut/test_battle_seed_override.gd` (4 new assertions: defaults to wall-clock when disabled,
+returns the override verbatim, reproducible across repeated calls, and `0` is treated as a real
+override rather than falling through to "disabled" — an off-by-one every sentinel-value design
+like this risks). Deliberately did not retrofit the two earlier fixes to use it — they force a
+specific scenario (an exact enemy count, revive disabled), a different and in their case more
+directly useful property than "reproducible," so leaving them as dedicated patches was more
+honest than reaching for the new hook just because it now exists.
+
+Verified with a full `xvfb-run ... ./run_tests.sh --all` (all 8 suites green) plus 3 extra
+standalone `ui_smoke.gd` re-runs after a one-off, unrelated travel-timing flake surfaced on one
+run (`"a 2-stage journey takes ~TOTAL_TRAVEL_SECONDS"` — a real-wall-clock-duration assertion,
+a different mechanism from anything touched here, reproduced clean 3/3 afterward). Not
+investigated further since it's outside this change's scope, but worth knowing it exists if it
+resurfaces.
+
 ### 2026-09-19 — Pixel-Diff visual regression wired into CI as a real, hard-gated check
 
 User asked for a broader pass on reducing manual verification. Found that the Pixel-Diff suite

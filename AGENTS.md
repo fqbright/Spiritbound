@@ -310,9 +310,30 @@ Every one of these produced a wrong screen with no error in the log. They are th
   `visual_snapshots.gd` by forcing a fixed hand and enemy count right after `begin_battle(0)` and
   re-rendering, the same "poke combat state directly for determinism" pattern already used
   elsewhere (see `ui_smoke.gd`'s finishing-blow banner test) — not by loosening the threshold,
-  which would have shipped a gate one unlucky roll away from flaking on an unrelated PR. If a new
-  screen is ever added to this suite and its capture touches anything `begin_battle()` seeds from
-  the clock, give it the same treatment before trusting its threshold.
+  which would have shipped a gate one unlucky roll away from flaking on an unrelated PR. Both
+  fixes predate `SpiritGame.test_seed_override`/`_battle_seed()` (added right after, once it was
+  clear this was the second bug from the same root cause in one session — see the next entry)
+  and were left as-is rather than retrofitted: they force an exact scenario (a specific enemy
+  count, revive disabled) that a fixed seed alone wouldn't guarantee without also solving for
+  which seed value avoids every non-determinism source, which is a real but different property
+  than "reproducible." A **new** test that just needs the whole battle reproducible — not a
+  specific forced scenario — should set `test_seed_override` before calling any `begin_*_battle()`
+  function instead of reinventing either of these two patches.
+- **The same wall-clock-seed idiom above wasn't unique to `begin_battle()` — it was
+  independently copy-pasted into 6 more battle-launch functions**, all in `game_camp_screen.gd`:
+  `begin_boss_rush_battle`, `begin_curse_run_battle`, `begin_sandbox_battle`,
+  `begin_abyss_battle`, `begin_world_event_battle`, `begin_phantom_arena` (`begin_daily_trial`/
+  `begin_weekly_challenge` are fine — they seed from `day`/`week * 1000 + stage`, not wall-clock
+  milliseconds, so they're already reproducible within the same day/week). `begin_abyss_battle`
+  even feeds its seed into the same `_modifier()` whose "swarm"/"rebirth" rolls caused the two
+  bugs above, meaning the identical flake was one GUT test or snapshot away from being
+  rediscovered from scratch for Abyss, Boss Rush, Sandbox, or either arena. Deduplicated into one
+  `SpiritGame._battle_seed()` (`game.gd`), which all 7 sites now call instead of inlining
+  `Time.get_unix_time_from_system()` themselves, plus `test_seed_override` (default `-1`,
+  meaning "disabled" — real gameplay is unaffected) so any current or future test can make any of
+  these 7 modes' shuffle, flavor modifier, and enemy count fully reproducible with one line set
+  before calling the relevant `begin_*_battle()`, instead of discovering the same non-determinism
+  the hard way per mode. Covered by `tests/gut/test_battle_seed_override.gd`.
 
 ## Game rules worth knowing before touching balance
 
