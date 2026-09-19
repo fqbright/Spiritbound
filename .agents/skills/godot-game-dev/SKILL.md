@@ -3,7 +3,8 @@ name: godot-game-dev
 description: >-
   CRITICAL RULE: You MUST use this specialist skill whenever modifying GDScript code,
   adding or debugging UI nodes, handling cross-screen delegators, or verifying
-  changes with test_runner.gd and ui_smoke.gd in the Spiritbound project.
+  changes with test_runner.gd, ui_smoke.gd, e2e_playthrough.gd and
+  balance_probe.gd in the Spiritbound project.
 ---
 
 # Godot 4.7.2 & Spiritbound Architecture Skill
@@ -22,10 +23,12 @@ Run the automated verification helper:
 ```
 Or run individually:
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules
-godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
+godot --headless --path Godot/ --script res://tests/test_runner.gd    # rules (399 checks)
+godot --headless --path Godot/ --script res://tests/ui_smoke.gd       # screens + combat turn
+godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd # multi-stage campaign flow
+godot --headless --path Godot/ --script res://tests/balance_probe.gd  # 250-stage balance curve
 ```
-Both MUST pass. If either fails, fix the regression before proceeding.
+All MUST pass. If any fails, fix the regression before proceeding.
 
 ## Core Architectural Boundaries
 

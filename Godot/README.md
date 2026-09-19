@@ -1,6 +1,6 @@
 # Spiritbound — Godot 4
 
-Portrait mobile card-battler engine and complete client, featuring a 250-stage campaign across 50 chapters, a 36-card pool, 12 equipment pieces, 10 card runes, 8 relics, finite deck mechanics, audio, original art, and full bilingual support (English + 简体中文). See the [root README](../README.md) for how it plays and [Docs/ARCHITECTURE.md](../Docs/ARCHITECTURE.md) for the difficulty curve.
+Portrait mobile card-battler engine and complete client, featuring a 250-stage campaign across 50 chapters, a 47-card pool, 12 equipment pieces, 10 card runes, 11 relics, finite deck mechanics, audio, original art, and full bilingual support (English + 简体中文). See the [root README](../README.md) for how it plays and [Docs/ARCHITECTURE.md](../Docs/ARCHITECTURE.md) for the difficulty curve.
 
 ## Requirements
 
@@ -57,13 +57,15 @@ godot --headless --path Godot/ --export-debug "iOS" build/ios/Spiritbound.ipa
 
 ## Automated Tests
 
-Run the full headless regression test suite:
+Run the whole headless suite from the repository root:
 
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd
+./run_tests.sh          # core: test_runner + ui_smoke + e2e_playthrough
+./run_tests.sh --all    # everything, including the balance trajectory bot
 ```
 
-Also run `godot --headless --path Godot/ --script res://tests/ui_smoke.gd` — a headless walk
-of every screen plus a full combat turn, which exists because the iOS Simulator cannot run
-this project (see the root README). Both suites must pass; see [AGENTS.md](../AGENTS.md) for
-what to do before touching combat or a screen.
+`test_runner.gd` covers the rules engine, `ui_smoke.gd` walks every screen plus a full combat
+turn (it exists because the iOS Simulator cannot run this project), `e2e_playthrough.gd`
+drives several real stages, and `balance_probe.gd` replays the 250-stage campaign to guard the
+difficulty curve. Everything must pass; see [AGENTS.md](../AGENTS.md) for what to do before
+touching combat or a screen.

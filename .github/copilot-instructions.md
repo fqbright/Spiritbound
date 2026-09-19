@@ -7,6 +7,7 @@ Refer to `AGENTS.md` for full project guidelines.
    - Rules, mechanics, economy, cards: `Godot/tests/test_runner.gd`
    - Screens, UI, modals, buttons: `Godot/tests/ui_smoke.gd`
    - Playthrough flows, transitions: `Godot/tests/e2e_playthrough.gd`
+   - Difficulty curve, encounter scaling: `Godot/tests/balance_probe.gd` (via `./run_tests.sh --balance`)
 2. **Execute tests before completing any task**:
    - Execute `./run_tests.sh` and ensure 0 failures.
    - For UI changes, execute `./run_tests.sh --snapshots` to inspect 390x844 mobile renders.

@@ -2218,8 +2218,9 @@ func _animate_player_shield_gain(amount: int) -> void:
 	await ring_settle.finished
 	ring.queue_free()
 
-# There is no End Turn button, so the turn has to hand itself over once nothing in hand is
-# affordable any more (either the hand is empty or every card costs more than remaining energy).
+# Auto turn handoff: the turn ends itself once nothing in hand is affordable any more (either
+# the hand is empty or every card costs more than remaining energy). A separate manual Pass
+# button (`_pass_turn()`) also lets the player end a turn early with unspent cards.
 func _maybe_end_turn() -> void:
 	var guard := 0
 	while g.combat != null and g.combat.state.phase == "player" and guard < 12:

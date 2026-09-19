@@ -7,6 +7,8 @@ Read and strictly adhere to `AGENTS.md`.
    - New mechanics, cards, balance, currencies -> Add test to `Godot/tests/test_runner.gd`.
    - New screens, buttons, popups, click interactions -> Add test to `Godot/tests/ui_smoke.gd`.
    - Game loops, stage progression, flow logic -> Add test to `Godot/tests/e2e_playthrough.gd`.
+   - Difficulty-curve changes -> Re-run `./run_tests.sh --balance` and update
+     `Docs/ARCHITECTURE.md` if the measured numbers move (see `Godot/tests/balance_probe.gd`).
    - NEVER commit or propose code without corresponding test coverage.
 
 2. **ALL TESTS MUST PASS BEFORE COMMITTING**:

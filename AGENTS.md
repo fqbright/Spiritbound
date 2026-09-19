@@ -19,6 +19,7 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Godot/data/core.json` | Card definitions and balance numbers. |
 | `Godot/tests/test_runner.gd` | Rules-engine regression suite. |
 | `Godot/tests/ui_smoke.gd` | Headless walk over every screen and a full combat turn. |
+| `Godot/tests/balance_probe.gd` | 250-stage balance trajectory bot — plays the whole campaign with the heuristic AI and fails if the four-band curve drifts (see `Docs/ARCHITECTURE.md`). |
 | `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them. |
 | `Docs/ARCHITECTURE.md` | Why the code is shaped this way. Read it before a structural change. |
 | `Docs/GROWTH_ROADMAP.md` | Retention/growth feature backlog, ordered by impact. Check this for what's in progress before starting new feature work. |
@@ -29,10 +30,12 @@ Every agent working on this repository **MUST** run the automated verification s
 
 ```bash
 ./run_tests.sh                 # Core suites: test_runner + ui_smoke + e2e_playthrough
-./run_tests.sh --all           # All 6 suites: core + chaos monkey + leak profiler + pixel-diff
+./run_tests.sh --all           # All 7 suites: core + balance + chaos monkey + leak profiler + pixel-diff
 ./run_tests.sh --monkey        # Chaos Monkey stress tests (500+ random taps & invalid plays)
 ./run_tests.sh --leaks         # Memory & ObjectDB leak profiler (zero unbounded leaks)
 ./run_tests.sh --diff          # Visual Pixel-Diff baseline comparison (sub-pixel regression)
+./run_tests.sh --balance       # 250-stage balance trajectory bot (full, byte-reproducible)
+./run_tests.sh --balance-quick # Same bot, retry-capped (~1s) — the CI-friendly form
 ./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots
 ```
 
@@ -41,6 +44,7 @@ Individual suite commands:
 godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (350+ checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
+godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-stage balance trajectory bot
 godot --headless --path Godot/ --script res://tests/chaos_monkey.gd     # chaos monkey stress test
 godot --headless --path Godot/ --script res://tests/leak_checker.gd     # memory and object leak profiler
 godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # visual pixel-diff test
@@ -62,6 +66,7 @@ attached, use `./run_tests.sh --snapshots` to inspect the rendered mobile frames
 
 1. **EVERY NEW FEATURE MUST HAVE CORRESPONDING TESTS (MANDATORY)**:
    - **Combat rules, balance, cards, relics, currencies, economy**: MUST add test assertions in `Godot/tests/test_runner.gd`.
+   - **Difficulty-curve changes (the four bands in `content.gd`'s `_chapter_factor`, encounter health/damage scaling, the always-full-HP `begin_battle()` contract)**: MUST re-run `./run_tests.sh --balance` and either keep the guardrails green or update `Docs/ARCHITECTURE.md`'s "250-stage difficulty curve" section with the new measured numbers. Do not change those constants and trust the old curve description.
    - **Screens, buttons, modals, input handlers, navigation**: MUST add UI walk and clickability assertions in `Godot/tests/ui_smoke.gd`.
    - **Campaign flows, multi-stage transitions, rewards, shop buying**: MUST ensure `Godot/tests/e2e_playthrough.gd` exercises the flow without softlocks.
    - **NEVER** merge or push a new feature without adding automated test coverage for it.
@@ -164,7 +169,7 @@ Every one of these produced a wrong screen with no error in the log. They are th
   see `end_turn()` in `combat.gd`: `state.energy = 2 + int((state.turn - 1) / 2)`), not a flat
   per-turn amount — a long fight gradually loosens up instead of staying exactly as tight on
   turn 20 as turn 1. No cap on the number of cards played — energy alone gates plays. Card
-  costs run 1/2/3 (18/15/3 cards respectively) so energy is a real constraint on a built-out
+  costs run 1/2/3 (18/19/3 cards respectively) so energy is a real constraint on a built-out
   deck early on. Keep the starting deck (`startingDeck` in `core.json`) all 1-cost — the first
   stretch of the campaign is meant to be forgiving, and that is where the difficulty curve
   controls it, not card costs. `test_runner.gd` asserts that two 2-cost cards cannot both fit
@@ -176,17 +181,20 @@ Every one of these produced a wrong screen with no error in the log. They are th
   Turn 2 draws the flat 2 cards (e.g. 3 cards remaining on turn 1 -> 5 cards on turn 2).
   Relics and equipment must NEVER blow up hand size on turn 2 (foxCharm grants +1 energy on turn 2;
   windChime triggers when draw pile reshuffles; tideCharm triggers on first shield gained).
-- There is no End Turn button: the turn ends itself once nothing left in hand is affordable
-  (empty hand or every remaining card costs more than remaining energy) — see
-  `_maybe_end_turn()` in `game.gd`. There used to also be a fixed plays-per-turn cap
-  (`state.actions`); it was removed so cost, not an arbitrary play count, is the only
-  constraint. Swift's rune refunds energy; foxCharm grants 1 extra energy on turn 2.
+- The turn auto-hands-over once nothing left in hand is affordable (empty hand or every
+  remaining card costs more than remaining energy) — see `_maybe_end_turn()` in
+  `game_battle_screen.gd`. A **manual Pass button also exists** (`PassTurnBtn`, calling
+  `_pass_turn()`) for voluntarily ending a turn while holding unspent cards. There used to
+  also be a fixed plays-per-turn cap (`state.actions`); it was removed so cost, not an
+  arbitrary play count, is the only constraint. Swift's rune refunds energy; foxCharm grants
+  1 extra energy on turn 2.
 - Enemies roll an intent a turn ahead and `_execute_intent` spends exactly the telegraphed
   amount. Never recompute it at execution time — the promise is the mechanic.
 - A card with any `target: "opponent"` effect aims at enemies; everything else aims at the
   player. `_is_attack` (damage only) drives damage bonuses; `_targets_opponent` drives
   targeting. Conflating them either loses pure-debuff cards or wastes Focus on them.
-- 39 cards, 250 stages across 50 chapters, a four-band difficulty curve (see
+- 47 cards (40 collectible across 18/19/3 one-/two-/three-costs, plus 5 starters and 2
+  curses), 250 stages across 50 chapters, a four-band difficulty curve (see
   Docs/ARCHITECTURE.md), and three enemy debuffs beyond burn/stun: `vulnerable` (+50% damage
   taken) and `weak` (-25% damage dealt), both decaying by one enemy turn; `poison`
   (`enemy.poison`), Miasma Witch's signature status, deals its stack count as damage every
@@ -438,10 +446,12 @@ The visual presentation blends high-detail painted assets with procedural vector
 
 - **Verifying changes**:
   ```bash
-  godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules (189 checks)
-  godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
+  ./run_tests.sh        # core: test_runner (rules) + ui_smoke (screens) + e2e_playthrough
+  ./run_tests.sh --all  # everything, including the 250-stage balance trajectory bot
   ```
-  Both must pass without failures before committing.
+  Everything must pass without failures before committing. For the difficulty curve
+  specifically, read `Docs/BALANCE_REVALIDATION.md` — it explains the curve's current
+  measured state and the standing suggestions for extending the balance bot.
 - **Deploying to iOS**:
   Run `./deploy_ios.sh --full-export` with the iPhone unlocked and connected. If the screen is locked, `devicectl` reports `unavailable`.
 - **Importing newly added images**:

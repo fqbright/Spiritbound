@@ -29,9 +29,14 @@ card/relic design guidelines for Spiritbound.
    - `end_turn()` draws a **flat 2 cards** (`_draw(2)`).
    - Maximum hand size: **10 cards**.
    - Relics and runes must NEVER artificially blow up turn 2 hand size.
-4. **No Manual End Turn Button**:
-   - The turn ends automatically when the player has no affordable cards in hand
-     (see `_maybe_end_turn()` in `game.gd`).
+4. **Turn Handoff (auto + optional manual Pass)**:
+   - The turn auto-hands-over when the player has no affordable cards in hand
+     (see `_maybe_end_turn()` in `game_battle_screen.gd`).
+   - A **manual Pass button also exists** (`PassTurnBtn` → `_pass_turn()` in `game.gd`),
+     letting the player end a turn early with unspent cards. Do not describe the game as
+     having "no End Turn button" — that was true before the Pass button was added.
+   - There is **no fixed plays-per-turn cap** (`state.actions` was removed): energy alone
+     gates how many cards can be played.
 5. **Targeting Rule**:
    - Cards with ANY effect having `target: "opponent"` aim at opponents.
    - All other effects aim at the player.
@@ -49,6 +54,19 @@ card/relic design guidelines for Spiritbound.
 - `strength`: Player-side permanent combat damage boost.
 - `focus`: One-shot burst damage bonus (consumed on attack).
 - `thorns`: Reflects damage back to the attacker.
+
+## Revalidating the Difficulty Curve
+
+Any change to the four-band curve (`_chapter_factor` in `content.gd`), encounter
+health/damage scaling, or the always-full-HP battle contract MUST be revalidated:
+
+```bash
+./run_tests.sh --balance        # full, byte-reproducible trajectory
+./run_tests.sh --balance-quick  # retry-capped, CI-friendly
+```
+
+Either keep the guardrails green or update the measured numbers in
+`Docs/ARCHITECTURE.md`'s "250-stage difficulty curve" section.
 
 ## Card Build Scoring (`_card_build_score`)
 

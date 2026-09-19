@@ -33,7 +33,8 @@ One dictionary, deliberately flat and JSON-shaped:
 - `enemies` — each with health, shield, burn, stun, mechanics, and an `intent`.
 - `draw` / `hand` / `discard` / `exhaust` — arrays of `{uid, card_id}`. The uid is
   combat-local so two copies of a card are distinguishable.
-- `energy` (3/turn), `actions` (2/turn), `turn`, `phase`.
+- `energy` (opens at 2, then +1 every two turns), `turn`, `phase`. Plays are gated by energy
+  alone — the old fixed `actions` (2/turn) play cap was removed.
 - `equipment`, `runes`, `relics`, `upgrades`, `modifier` — the run's modifiers, passed in.
 - Per-turn latches: `swift_used`, `first_attack`, `moon_used`, `elements`.
 
@@ -132,33 +133,53 @@ to end on a chapter boundary rather than an arbitrary stage number:
 Every 10th chapter is a "great boss" combining three mechanics at once (shield regen,
 frequent crits, a below-half-health damage spike), scaling with the arc.
 
-These constants did not come from guessing. `Godot/tests/test_runner.gd` has the permanent,
-cheap version of the check — bosses at chapters 1/10/20/50 are pinned so the curve can't
-silently flatten — but the bands themselves were tuned against a one-off Monte Carlo bot
-(`balance_probe.gd`, deleted after use) that played a full trajectory through the campaign:
-a "decent but not optimizing" heuristic bot that reads each enemy's telegraphed intent to
-decide when to block, picks the better of the three reward cards by the same scoring the
-real auto-builder uses, and retries a loss up to eight times before giving up (there is no
-permadeath in this game — a loss only resets health — so getting stuck after eight losses is
-a real signal, not bad luck).
+These constants did not come from guessing. `Godot/tests/test_runner.gd` has the cheap
+static version of the check — bosses at chapters 1/10/20/50 are pinned so the curve can't
+silently flatten — and `Godot/tests/balance_probe.gd` is the full trajectory bot
+(`./run_tests.sh --balance`), a permanent suite that plays a full
+pass through the campaign: a "decent but not optimizing" heuristic bot that reads each
+enemy's telegraphed intent to decide when to block, picks the better of the three reward
+cards by the same scoring the real auto-builder uses, and retries a loss up to eight times
+before giving up (there is no permadeath in this game — a loss only resets health — so
+getting stuck after eight losses is a real signal, not bad luck).
 
-**This curve's tuning premise no longer holds, and it has not been revalidated.** The bot's
-"getting stuck after eight losses is a real signal" reasoning above depended on `_grant_
-stage_rewards()` only restoring full health on a loss, with a win carrying accumulated damage
-into the next stage — real attrition pressure across a chapter. As of the "reset full HP per
-battle, remove inter-battle healing" change, **every** stage (win or lose) resets
+**Revalidated against the always-full-HP rules.** The bot's original tuning above assumed
+`_grant_stage_rewards()` only restored full health on a *loss*, so a win carried accumulated
+damage into the next stage and a chapter had real attrition pressure. As of the "reset full HP
+per battle, remove inter-battle healing" change, **every** stage (win or lose) resets
 `profile.health` to a flat 60 (`game_rewards_screen.gd`'s campaign, Boss Rush, Abyss, Daily
 Trial, Weekly Challenge and Phantom Arena reward paths all do this unconditionally now, and
 `begin_battle()` passes a literal `60` into `combat.create()` rather than the profile's actual
-current health). This was a deliberate, confirmed decision (moving resource pressure from HP
-management onto the gold economy — AFK Harvest, Phantom Arena — instead), not reverted here,
-but it means the four-band curve above was tuned against a game that no longer exists in this
-one specific respect. Nothing has re-run `balance_probe.gd`'s trajectory (it was deleted after
-its original use anyway) against the current always-full-HP rules, so whether the bands still
-land where they're described below — "clearable on autopilot" through chapter 4, "needs a
-deliberately built deck" by chapter 11 — is unverified, not re-confirmed. If a future pass
-revisits balance, that revalidation is the first thing to do, before trusting any of the
-specific percentages below.
+current health). That is a deliberate, confirmed decision (moving resource pressure from HP
+management onto the gold economy — AFK Harvest, Phantom Arena — instead), but it means the
+four-band curve above was tuned against a game that no longer existed in this one respect, so
+the curve was re-run against the current rules.
+
+`balance_probe.gd` is now a permanent suite (`./run_tests.sh --balance`, or `--balance-quick`
+for CI: the same trajectory with retries capped at one, which finishes in about a second). It
+plays the campaign stage by stage with the same heuristic AI the game's autopilot uses, tops up
+stamina and gold every stage so it measures *combat* difficulty rather than the economy, drafts
+the best of the same three reward options through the real `_smart_add_card`, and stops at the
+first stage it cannot clear. Every seed is derived from the stage and attempt index — never the
+clock, which is exactly the difference from `begin_battle()`'s time-seeded `active_modifier` —
+so a run is byte-reproducible (the full run prints a trajectory digest for pinning against
+regressions). The result, against current rules:
+
+- **Chapters 1-4**: 12/12 won, zero losses, ~3.2 turns per win. Still "clearable on autopilot."
+- **Chapters 5-10**: 18/18 won, zero losses, ~5.0 turns per win. Still a gentle step up.
+- **Chapters 11-20**: the band starts biting about where it is supposed to — the bot cleared
+  chapters 11-16 cleanly, then lost and retried from around chapter 17 and walled at stage 92
+  (chapter 19) after exhausting its eight retries.
+
+So the *shape* the bands describe survives the always-full-HP change: the first ten chapters stay
+lossless for a non-optimizing approach, and a deliberately built deck (runes, equipment, mixing
+cost) is what carries a player past chapter ~11. What changed is the mechanism, not the landing:
+with no inter-battle attrition, the pressure that makes chapters 11-20 hard is now entirely
+*in-fight* — `_chapter_factor`'s +22%/chapter against a fixed 60-HP starting pool — rather than
+partly accumulated damage.
+
+For the full write-up — how the bot was rebuilt, the guardrails, the reproducibility digest, and
+the standing suggestions for extending it — see [BALANCE_REVALIDATION.md](BALANCE_REVALIDATION.md).
 
 That simulation is what caught two production bugs no other test did, both invisible until
 you actually tried to win with the deck the game itself would build:
@@ -179,10 +200,11 @@ you actually tried to win with the deck the game itself would build:
   nudges rather than the dominant term. `test_runner.gd` now asserts a plain attacker
   outscores a same-cost pure-utility card, so this can't quietly regress.
 
-After both fixes, the same simulation cleared chapters 1-10 without a single loss and won
-43% of unassisted attempts through chapters 11-20 before the bot's own greedy reward-picking
-produced a curve-broken, all-expensive-cards deck that couldn't combo two plays in a turn —
-a limitation of always taking the top-scoring card, not evidence the content is unbeatable.
-That result matches the intent: an unassisted, non-optimizing approach should start to
-struggle right around the deckbuilding band, and a player making deliberate manual choices
-(mixing cost, socketing runes) has room the bot didn't use.
+After both fixes, the original run of that bot cleared chapters 1-10 without a single loss and
+won 43% of unassisted attempts through chapters 11-20 before its own greedy reward-picking
+produced a curve-broken, all-expensive-cards deck that couldn't combo two plays in a turn — a
+limitation of always taking the top-scoring card, not evidence the content is unbeatable. Re-run
+against the current always-full-HP rules, the permanent suite lands in the same place: chapters
+1-10 lossless, first wall at chapter 19. That matches the intent — an unassisted, non-optimizing
+approach should start to struggle right around the deckbuilding band, and a player making
+deliberate manual choices (mixing cost, socketing runes) has room the bot didn't use.

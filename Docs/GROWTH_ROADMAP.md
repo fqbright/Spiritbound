@@ -13,12 +13,12 @@ append notes instead, so the ordering itself stays a reliable record of intent.
 ## Execution discipline (same as every prior milestone)
 
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd   # rules
-godot --headless --path Godot/ --script res://tests/ui_smoke.gd      # screens + combat turn
+./run_tests.sh   # core: test_runner (rules) + ui_smoke (screens) + e2e_playthrough
 ```
 
-Both must pass with 0 failures before a commit. Rules changes get a `test_runner.gd`
-assertion; screen changes get a `ui_smoke.gd` assertion (AGENTS.md rule 3). Commit after each
+Everything must pass with 0 failures before a commit. Rules changes get a `test_runner.gd`
+assertion; screen changes get a `ui_smoke.gd` assertion (AGENTS.md rule 3); difficulty-curve
+changes also re-run `./run_tests.sh --balance`. Commit after each
 completed, verified item (or a small tightly-related group) — do not batch unrelated items
 into one commit, since quota can run out mid-session and a smaller commit is a cleaner handoff
 point. Update this file's checkbox and add a one-line note in the same commit.
