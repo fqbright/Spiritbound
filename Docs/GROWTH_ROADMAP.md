@@ -358,6 +358,45 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
 
+### 2026-09-20 — UI readability audited by measurement, not by eye
+New tool `Godot/tools/ui_audit.gd` (+ `Docs/UI_AUDIT.md`): renders all nine snapshot screens and
+measures hit-target sizes, text cut off by its own container, and text contrast against the pixels
+really behind it. Not a gate — it prints numbers. Five real defects fell out, none of which any
+headless test could have caught, because a 26pt button and a 44pt button are equally "present" to a
+smoke test. Full detail in `Docs/UI_AUDIT.md`; the decisions are gated headlessly in `ui_smoke.gd`'s
+new `== ui readability ==` section (+13 checks).
+
+Most serious, with the measured numbers: `_button` hardcoded near-white text on *every* fill, so
+the deck screen's active filter chips were 1.90:1 (ember) and 1.62:1 (jade) — live, tappable
+controls with unreadable labels. Now `_ink_for(fill)` decides per fill. The player's own HP readout
+was 2.19:1 (white across an orange fill) and needed an outline rather than an ink swap, because
+`_stat_bar` draws its text across the light fill *and* the dark track simultaneously. Map pin
+captions over terrain went 2.07–2.98:1 → outlined. The leftmost card's cost badge in a full
+five-card hand was half clipped by the hand's own clip rect.
+
+**Open, and needing a design decision rather than a bug fix:** 107 enabled hit targets remain under
+44pt, 46 of them the deck screen's search/filter chips and 22 the challenges screen. A row of five
+mutually-exclusive chips cannot each be 44pt tall inside a 390pt-wide portrait screen that also
+carries a search field above. The honest fix is structural — collapse filtering into a full-height
+sheet, or give the chip rows a taller container and accept losing something else. Not guessed at
+here. Same shape, same answer, for the 168 text nodes under 11pt (5 at 7pt).
+
+Also worth recording: **the tool's own metric was wrong twice before it was right**, and both
+mistakes produced confident readings. (1) Scoring a label against the *average* of all non-glyph
+pixels in its rect hides the very fix it is meant to verify — growing the HP outline from 2px to
+10px moved that number only 2.18→2.73, because a small label's rect is mostly its own fill. An eye
+compares a glyph to what is immediately beside it, so it now measures per glyph pixel against local
+neighbours. (2) Colour emoji are drawn in their own colours by the system emoji font, so matching
+them against `font_color` scores a colour that was never used — 4 of the 13 remaining findings were
+this artifact. A gate that cries wolf gets switched off.
+
+**Baselines:** these changes move pixels, so the committed visual baselines were refreshed through
+the CI renderer (`ci/refresh-baselines*` branch → workflow → merge), not locally. The workflow's own
+commit body carries the re-verification: all 9 screens pass a fresh capture, and the delta this
+change introduced was largest on the battle screen at **1.91%** (7324 px, gate 2.50%) — the hand-fan
+clamp plus the HP outline. That is a real move and close enough to the gate to be worth knowing
+about if the battle layout is touched again.
+
 ### 2026-09-20 — B4: the notification half that is actually verifiable, plus the rating ask
 Two of the three items from Docs/COMPETITIVE_RESEARCH.md's recommended order (the third, the ASO
 copy pivot, is still open). Both landed with the same discipline: build the half that can be

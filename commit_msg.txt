@@ -1,0 +1,7 @@
+docs(roadmap): log the UI readability audit and what it left open
+
+Handoff entry for the ui_audit.gd work: the five measured defects, the
+107 sub-44pt hit targets that need a layout decision rather than a fix, and the
+two metric mistakes the tool itself made (averaging a label rect hides the fix;
+emoji are not text). Also records that the baseline refresh ran through the CI
+renderer and that the battle screen moved 1.91% against a 2.50% gate.
