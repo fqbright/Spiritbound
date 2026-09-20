@@ -1,95 +1,120 @@
-# Asset compression: the measured case, and the decision it leaves open
+# Asset compression: what was shipped, and what it cost
 
-Status: **research only — no `.import` sidecar has been changed, so the shipped game is byte-for-byte
-unaffected.** This records what the change would cost and save, so the decision can be made (and
-re-made later) from numbers rather than impressions.
+Status: **applied and shipped.** `Godot/tools/tex_policy.py` is the policy and the only thing that
+edits the `.import` sidecars. The decision is reversible with one command (`--restore`).
 
-Re-measure at any time with:
+Re-measure at any time:
 
 ```bash
-godot --headless --path Godot/ -s tools/tex_probe.gd
+python3 Godot/tools/tex_policy.py --pck Godot/build/ios/Spiritbound.pck   # plan + real pack bytes
+python3 Godot/tools/tex_policy.py --restore && godot --headless --path Godot/ --import
+python3 Godot/tools/tex_policy.py --samples Godot/tools/tex_probe_samples.txt --per-group 3
+godot --headless --path Godot/ -s tools/tex_probe.gd                      # per-category PSNR
+python3 Godot/tools/pck_audit.py Godot/build/ios/Spiritbound.pck          # where the pack bytes go
 ```
 
-## Current state
+## The result
 
-Every one of the **638 texture sources is imported Lossless** (`compress/mode=0`). Read straight
-from the `.import` sidecars:
+The pack was 99.3% imported texture and all 638 texture sources imported Lossless. Switching the
+519 large-art sources to Lossy q=0.95 (`compress/mode=1`, Godot's own WebP encoder):
 
-| import mode | files | source bytes |
+| | pack size |
+|---|---|
+| before | 136,094,432 bytes (129.8 MiB) |
+| after | 63,887,520 bytes (60.9 MiB) |
+| | **−72.2 MB, −53.1%** |
+
+Both are real exports read with `pck_audit.py`, not extrapolations. The artifact boots from the pack
+and reaches the game loop with zero errors.
+
+## The number that should be quoted for quality
+
+**On-screen, the whole lossless → q=0.95 switch moves at most 0.52% of the pixels on any of the nine
+captured screens** (largest raw move: battle screen, 2247 px of ~329k), against existing per-screen
+gates of 0.80–2.50%. That came out of the CI baseline refresh (`refresh-baselines.yml`), which
+diffs a fresh capture against the baselines it is about to replace — i.e. the measurement is taken
+on rendered frames, in the renderer CI uses, before the baselines are overwritten.
+
+That is a considerably stronger statement than the PSNR table below, and it is measured rather than
+inferred. Note the corollary: the old pre-compression baselines still pass against the new capture,
+so CI would have gone green either way. The baselines were refreshed because a baseline should
+describe the art that ships.
+
+## Where the bytes went (before → after, by source directory)
+
+| dir | before | after | policy |
+|---|---|---|---|
+| `assets/characters/monsters` | 34.1 MiB | 13.6 MiB | 375 lossy |
+| `assets/chapters` | 23.9 MiB | 8.0 MiB | 50 lossy |
+| `assets` (root frames/atlas) | 5.0 MiB | 5.0 MiB | 10 keep (lossless) |
+| `assets/cards` | 16.6 MiB | 4.9 MiB | 48 lossy / 4 keep |
+| `assets/characters` | 10.2 MiB | 3.3 MiB | 15 lossy |
+| `assets/banners` | 9.4 MiB | 2.7 MiB | 8 lossy |
+| `assets/backgrounds` | 7.5 MiB | 2.2 MiB | 17 lossy |
+| `assets/icons` | 1.9 MiB | 1.9 MiB | 82 keep |
+| `assets/ui` (title logo) | 1.2 MiB | 1.2 MiB | 1 keep |
+| `assets/biomes` | 3.0 MiB | 1.0 MiB | 6 lossy |
+
+## What is Lossy, what is not, and why
+
+Lossy: banners, backgrounds, chapter art, biomes, card art, character portraits, monster sprites —
+the large illustrated frames. Anything ≥384×384 px and ≥48 KiB, and not named below.
+
+Lossless, deliberately: UI icons, badges, map pins, vfx sprites, the fox rig, card frames, the chest
+atlas, map tiles, and the title logo. **8.6 MiB combined.** They are small, and their high-contrast
+edges are precisely where a codec rings first, so compressing them buys a rounding error and risks
+the most visible artifact class.
+
+## Measured quality per category (PSNR, composited over mid-grey)
+
+At q=0.95, min per group:
+
+| group | min PSNR | worst file |
 |---|---|---|
-| `compress/mode=0` (Lossless) — textures | 638 | 182.0 MiB |
-| `compress/mode=2` — the `.wav` audio (QOA; the audio importer's `mode=2` is unrelated to the texture importer's) | 30 | 27.6 MiB |
-| none — the two `.ttf` fonts | 2 | 13.2 MiB |
+| backgrounds | 41.0 dB | `battle_stage_4.png` |
+| banners | 39.2 dB | `banner_boss_rush.png` |
+| biomes / chapters | 36.2 dB | `biome_1_autumn.png`, `chapter_5.png` |
+| cards | 37.2 dB | `ironWill.png` |
+| characters | 35.2 dB | `character-atlas-v3.png` |
+| **monsters** | **34.5 dB** | `m_r4_25.png` |
 
-**These are source-directory figures, not pack figures.** They are not interchangeable with what
-ends up in the `.pck`, which stores Godot's own imported containers: a Lossless texture becomes an
-uncompressed `.ctex` holding raw pixels, which the packer then compresses itself. The pack-level
-delta therefore has to be measured by an actual export; do not quote the percentages below as a
-`.pck` reduction.
+>40 dB is conventionally indistinguishable, 35–40 dB normally invisible on a phone at arm's length,
+>below ~32 dB is where soft gradients band.
 
-The largest single items are the **eight 1376x768 banners (~1.9 MiB each)** — one of them is the
-background of every card on the trial-challenges screen — and a set of **720x1280 backgrounds
-(~1.7-1.8 MiB each)**.
+**The monsters are the known worst case and the trade was made deliberately.** They are 512×512
+sprites with anti-aliased rims and they were the single largest group in the pack (34.1 MiB), so
+leaving them lossless would have kept roughly a third of the total saving on the table. If they
+prove visible in play, one line in `tex_policy.py` holds them back (add
+`assets/characters/monsters/` to `KEEP_LOSSLESS_DIRS`) — the policy is re-runnable, and `--restore`
+undoes the lot.
 
-`textures/vram_compression/import_etc2_astc=true` in `project.godot`, so ETC2/ASTC (VRAM
-Compressed) is available; the mobile renderer is `gl_compatibility`.
+## Two measurement traps this went through
 
-## Measured: what Lossy (compress/mode=1) actually costs
+Both produced confident wrong answers first, so they are recorded rather than quietly fixed.
 
-Godot's own WebP encoder, via `Image.save_webp_to_buffer()` — the same encoder the Lossy import
-path uses, so this is not a third-party proxy. PSNR is measured by decoding the result back and
-comparing sample pixels against the original.
+**1. Source bytes are not pack bytes.** The first pass at this concluded "audio is the top target,
+convert the `.wav` to OGG for ~28 MiB" by running `du` over `assets/`. That is the *source* tree;
+the pack holds Godot's own imported containers, in which those `.wav` files had already been
+compressed to QOA (`compress/mode=2`) and weighed 5.6 MiB. The recommendation was wrong by a factor
+of five. Audio was never worth touching; texture was 90%+ of the problem.
 
-| sample | source | q=0.90 | PSNR | q=0.95 | PSNR |
-|---|---|---|---|---|---|
-| `banners/banner_boss_rush.png` 1376x768 | 1.89 MiB | 0.29 MiB (-84.6%) | 37.5 dB | 0.39 MiB (-79.4%) | 39.1 dB |
-| `backgrounds/battle_stage_4.png` 720x1280 | 1.84 MiB | 0.33 MiB (-81.8%) | 38.4 dB | 0.44 MiB (-76.2%) | 40.9 dB |
-| `cards/card_back_default.png` 848x1264 | 1.91 MiB | 0.28 MiB (-85.5%) | 38.5 dB | 0.39 MiB (-79.8%) | 40.6 dB |
-
-Roughly **-80% of source bytes**. For context on the quality column: >40 dB is conventionally
-indistinguishable, 35-40 dB is normally invisible on a phone at arm's length, and below ~32 dB is
-where soft gradients start to band. These banners *are* soft gradients, so they are the
-worst-case content for this, and q=0.95 still lands at the indistinguishable end.
+**2. Straight (non-premultiplied) RGB over every pixel is the wrong quality metric for art with
+alpha.** `tex_probe.gd` originally reported the monster sprites at ~17–23 dB — "severe artifacts" —
+and reported *the same 17.5 dB at q=0.90, q=0.95 and q=0.98*. A number that does not move when the
+quality setting moves is not measuring quality. On an anti-aliased rim the source RGB of a
+near-transparent pixel is undefined, a codec is free to change it, and a straight comparison bills
+that as error while the composited pixel is identical. Compositing both images over the same backdrop
+— what a player sees — lifted those same sprites to 34.5 dB. The tool now reports the composited
+figure (and alpha separately), and takes its file list from the policy so the two cannot drift.
 
 ## Why Lossy rather than VRAM Compressed (ETC2/ASTC)
 
-ETC2/ASTC goes further on size and additionally cuts GPU memory (Lossy is decoded to full RGBA in
-VRAM, so it saves pack size but not VRAM). But it is a *block* codec: on the smooth colour ramps in
-these banners and backgrounds it produces exactly the blocky banding that q=0.95 avoids. The art
-here is illustration and gradient, not photographic texture, which is the content block codecs are
-best at and gradients are what they are worst at.
+`textures/vram_compression/import_etc2_astc=true` is set, so ETC2/ASTC is available. It goes further
+on size and additionally cuts GPU memory (Lossy is decoded to full RGBA in VRAM, so it saves pack
+bytes but not VRAM). But it is a *block* codec: on the smooth colour ramps in these banners and
+backgrounds it produces exactly the banding that q=0.95 avoids. The art here is illustration and
+gradient — the content block codecs are worst at.
 
-So the two options trade differently, and it is not simply "ETC2 is stronger":
-
-- **Lossy q=0.95** — ~-80% source bytes, PSNR ~40 dB, no visible change expected. No VRAM win.
-- **VRAM/ETC2** — larger size win plus a real VRAM win (relevant to the 170 MB→136 MB pack that
-  was previously within 85% of Apple's 200 MB cellular limit), at the cost of banding on the art
-  most likely to show it.
-
-If VRAM is the actual goal — and on a 60fps mobile target held by a large number of full-screen
-gradient textures, it plausibly is — measure that separately rather than inferring it from size.
-
-## Recommended shape of the change
-
-1. Apply Lossy **only to large illustrated art** (banners, backgrounds, character/card art). Leave
-   **UI icons, sprites and frames Lossless**: they are small, and their high-contrast edges are
-   precisely where a block codec shows ringing first. This keeps the quality argument simple — no
-   decision has to be made about whether a given icon survived.
-2. Run `godot --headless --path Godot/ --import`, then **measure the real `.pck` delta** before and
-   after (`Godot/tools/pck_audit.py`), and record both numbers. Do not extrapolate from the table
-   above.
-3. Expect the nine pixel-diff baselines to shift: the thresholds are tight (0.8%-2.5%), so any
-   lossy pass moves pixels well past them. Refresh through
-   `.github/workflows/refresh-baselines.yml`, which re-captures under the CI renderer, re-checks the
-   result against a second capture, and reports the verdict in its commit body. Do **not** recapture
-   locally — a local Metal capture disagrees with the committed baselines on all 7 of the original
-   screens.
-4. Re-run `./run_tests.sh` and confirm the pack still boots (`Godot/tools/pck_audit.py` exists for
-   the pack side).
-
-## Not done, and why
-
-Nothing in this document has been applied. Compression quality is a visual judgement about the
-game's art, it changes every committed baseline, and the evidence above makes the choice
-low-risk but still a choice — so the numbers are recorded here rather than a setting being
-flipped unilaterally.
+If VRAM is the actual goal (on a 60 fps mobile target holding many full-screen gradients, it
+plausibly is) that is a separate measurement, and it should be measured rather than inferred from
+pack size. Nothing here claims a VRAM win.
