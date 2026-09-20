@@ -26,6 +26,7 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them — except as one-time raw art source material for `Godot/tools/generate_monsters.gd` above, which is the only thing in this repo that still reads from `Expo/`. |
 | `Docs/ARCHITECTURE.md` | Why the code is shaped this way. Read it before a structural change. |
 | `Docs/GROWTH_ROADMAP.md` | Retention/growth feature backlog, ordered by impact. Check this for what's in progress before starting new feature work. |
+| `Docs/LAUNCH_READINESS.md` | **Hard gate on submitting/resubmitting this app.** Account deletion, a real purchase gate for the season pass, and crash/error logging + minimal analytics — none of which exist in this repo yet. Read this before any App Store/Play Store submission work, and before touching `game.gd`'s `season_pass`/`is_premium` handling or anything account-deletion-adjacent. |
 
 ## Verifying a change
 
