@@ -26,6 +26,48 @@ set -e
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GODOT_DIR="${REPO_DIR}/Godot"
 
+# run_suite <label> <success-sentinel> <command...>
+#
+# Runs a Godot test script, shows its output, and -- this is the point -- decides pass/fail from
+# what it printed rather than from the process exit code. Each of these suites is a Godot script
+# invoked with `-s`; if one fails to *parse* (or dies before its first print), Godot still exits 0
+# and a caller that only checked the status would report a pass. In practice this suite did
+# exactly that: a parse error in test_runner.gd printed "🎉 ALL SELECTED SPIRITBOUND TESTS PASSED
+# CLEANLY!" while the unit tests never ran at all. Anything that let a release gate go green
+# without running is worth an explicit check.
+#
+# Fails on Godot script/parse errors, and fails when the sentinel is absent -- so a suite that
+# silently skips (or was never wired up) counts as a failure, not a pass.
+run_suite() {
+    local label="$1"; shift
+    local sentinel="$1"; shift
+    local log; log="$(mktemp)"
+
+    set +e
+    "$@" 2>&1 | tee "${log}"
+    local status="${PIPESTATUS[0]}"
+    set -e
+
+    if grep -qE "SCRIPT ERROR|Parse Error|Failed to load script" "${log}"; then
+        echo -e "${RED}✗ ${label} FAILED — the script did not run cleanly (see the errors above).${NC}"
+        rm -f "${log}"
+        exit 1
+    fi
+    if ! grep -qF "${sentinel}" "${log}"; then
+        echo -e "${RED}✗ ${label} FAILED — never printed its success line (\"${sentinel}\").${NC}"
+        echo -e "${RED}  Absence means the suite did not actually run to completion; treating that as a${NC}"
+        echo -e "${RED}  pass is how a green build ships untested code.${NC}"
+        rm -f "${log}"
+        exit 1
+    fi
+    if [ "${status}" -ne 0 ]; then
+        echo -e "${RED}✗ ${label} FAILED — exit status ${status} despite the success line.${NC}"
+        rm -f "${log}"
+        exit 1
+    fi
+    rm -f "${log}"
+}
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
@@ -149,21 +191,24 @@ done
 # 1. Unit & Integration Test Suite
 if [ "$RUN_UNIT" = true ]; then
     echo -e "\n${YELLOW}[1/8] Running Unit & Integration Tests (tests/test_runner.gd)...${NC}"
-    godot --headless --path "${GODOT_DIR}" -s tests/test_runner.gd
+    run_suite "Unit & Integration tests" "SPIRITBOUND TESTS:" \
+        godot --headless --path "${GODOT_DIR}" -s tests/test_runner.gd
     echo -e "${GREEN}✓ Unit & Integration tests passed!${NC}"
 fi
 
 # 2. UI Smoke & Interaction Suite
 if [ "$RUN_SMOKE" = true ]; then
     echo -e "\n${YELLOW}[2/8] Running UI Smoke & Interaction Tests (tests/ui_smoke.gd)...${NC}"
-    godot --headless --path "${GODOT_DIR}" -s tests/ui_smoke.gd
+    run_suite "UI Smoke & Interaction tests" "UI SMOKE: all checks passed" \
+        godot --headless --path "${GODOT_DIR}" -s tests/ui_smoke.gd
     echo -e "${GREEN}✓ UI Smoke & Interaction tests passed!${NC}"
 fi
 
 # 3. E2E Campaign Playthrough Bot
 if [ "$RUN_E2E" = true ]; then
     echo -e "\n${YELLOW}[3/8] Running E2E Campaign Playthrough Bot (tests/e2e_playthrough.gd)...${NC}"
-    godot --headless --path "${GODOT_DIR}" -s tests/e2e_playthrough.gd
+    run_suite "E2E Campaign Playthrough" "E2E CAMPAIGN RUN: ALL CHECKS PASSED (0 FAILURES)" \
+        godot --headless --path "${GODOT_DIR}" -s tests/e2e_playthrough.gd
     echo -e "${GREEN}✓ E2E Campaign Playthrough passed without softlocks!${NC}"
 fi
 
@@ -172,13 +217,16 @@ if [ "$RUN_BALANCE" = true ]; then
     if [ "$BALANCE_GOLD" = true ]; then
         echo -e "\n${YELLOW}[4/8] Running 250-Stage Balance Trajectory Bot, gold-constrained (tests/balance_probe.gd --gold)...${NC}"
         echo -e "${YELLOW}  (diagnostic only — see Docs/BALANCE_REVALIDATION.md suggestion #1; not gated on depth yet)${NC}"
-        godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd -- --gold
+        run_suite "Balance trajectory (gold)" "BALANCE PROBE: CURVE HOLDS (0 FAILURES)" \
+            godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd -- --gold
     elif [ "$BALANCE_QUICK" = true ]; then
         echo -e "\n${YELLOW}[4/8] Running 250-Stage Balance Trajectory Bot, quick (tests/balance_probe.gd --quick)...${NC}"
-        godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd -- --quick
+        run_suite "Balance trajectory (quick)" "BALANCE PROBE: CURVE HOLDS (0 FAILURES)" \
+            godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd -- --quick
     else
         echo -e "\n${YELLOW}[4/8] Running 250-Stage Balance Trajectory Bot, full (tests/balance_probe.gd)...${NC}"
-        godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd
+        run_suite "Balance trajectory" "BALANCE PROBE: CURVE HOLDS (0 FAILURES)" \
+            godot --headless --path "${GODOT_DIR}" -s tests/balance_probe.gd
     fi
     echo -e "${GREEN}✓ Balance trajectory holds its four-band curve!${NC}"
 fi
@@ -209,14 +257,16 @@ fi
 # 6. Chaos Monkey Stress Testing
 if [ "$RUN_MONKEY" = true ]; then
     echo -e "\n${YELLOW}[6/8] Running Chaos Monkey Stress Tests (tests/chaos_monkey.gd)...${NC}"
-    godot --headless --path "${GODOT_DIR}" -s tests/chaos_monkey.gd
+    run_suite "Chaos Monkey stress tests" "CHAOS & MONKEY TEST SUITE: ALL CHECKS PASSED (0 FAILURES)" \
+        godot --headless --path "${GODOT_DIR}" -s tests/chaos_monkey.gd
     echo -e "${GREEN}✓ Chaos Monkey survived without crashes!${NC}"
 fi
 
 # 7. Memory & ObjectDB Leak Profiler
 if [ "$RUN_LEAKS" = true ]; then
     echo -e "\n${YELLOW}[7/8] Running Memory & Object Leak Profiler (tests/leak_checker.gd)...${NC}"
-    godot --headless --path "${GODOT_DIR}" -s tests/leak_checker.gd
+    run_suite "Memory & object leak profiler" "LEAK PROFILER: ALL CHECKS PASSED (0 UNBOUNDED LEAKS)" \
+        godot --headless --path "${GODOT_DIR}" -s tests/leak_checker.gd
     echo -e "${GREEN}✓ Leak Profiler confirmed zero unbounded leaks!${NC}"
 fi
 
@@ -241,7 +291,8 @@ if [ "$RUN_DIFF" = true ]; then
         exit 1
     fi
     godot --path "${GODOT_DIR}" --rendering-driver opengl3 -s tests/visual_snapshots.gd
-    godot --headless --path "${GODOT_DIR}" -s tests/pixel_diff_test.gd
+    run_suite "Visual pixel-diff comparison" "DE-FLAKED PIXEL-DIFF SUITE: ALL CHECKS PASSED (0 FAILURES)" \
+        godot --headless --path "${GODOT_DIR}" -s tests/pixel_diff_test.gd
     echo -e "${GREEN}✓ Pixel-Diff verified all screens match baselines!${NC}"
 fi
 

@@ -1974,6 +1974,34 @@ func run() -> void:
 	elif FileAccess.file_exists(SpiritSave.PATH):
 		DirAccess.remove_absolute(SpiritSave.PATH)
 
+	# The release .pck must not re-inflate silently. export_presets.cfg's exclude_filter is the
+	# only thing keeping tests/, tools/, the GUT framework, the duplicate m_r* monster sheets and
+	# the dead background art out of the shipped pack (Docs/STORE_SUBMISSION.md §1.1 — worth
+	# ~33 MiB / 19%). A lost or truncated exclude_filter is invisible until someone measures the
+	# payload, so assert it here.
+	var preset_file := FileAccess.open("res://export_presets.cfg", FileAccess.READ)
+	check(preset_file != null, "export_presets.cfg is readable from the project root")
+	if preset_file != null:
+		var preset_text: String = preset_file.get_as_text()
+		preset_file.close()
+		var exclude_value := ""
+		var exclude_declarations := 0
+		for line in preset_text.split("\n"):
+			if line.begins_with("exclude_filter="):
+				exclude_declarations += 1
+				exclude_value = line
+		check(exclude_declarations == 1, "export_presets.cfg declares exactly one exclude_filter")
+		for pattern in ["tests/*", "tools/*", "addons/gut/*", "m_r*.png",
+				"battlefield-v1.*", "ember-cliff-v1.*", "mountain-forge-v1.*",
+				"rune-ravine-v1.*", "lantern-marsh-v1.png", "spirit-world-map-v1.png"]:
+			check(exclude_value.contains(pattern),
+				"the release exclude_filter still drops %s" % pattern)
+		# The two backgrounds that ARE used must stay in the pack: they are loaded as .jpg by
+		# name, so excluding the .jpg would break those screens.
+		for needed in ["res://assets/backgrounds/lantern-marsh-v1.jpg",
+				"res://assets/backgrounds/spirit-world-map-v1.jpg"]:
+			check(ResourceLoader.exists(needed), "%s stays loadable (still referenced in code)" % needed)
+
 	print("SPIRITBOUND TESTS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 

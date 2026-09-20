@@ -58,10 +58,22 @@ fresh clone never shows it, which is why it survived this long. The already-buil
 repo was affected. `release_ios.sh` now clears `build/ios` first (`build/` is gitignored and
 fully regenerated), which makes repeated exports reproducible.
 
+**(c) Dead background art is excluded too.** In `assets/backgrounds/` six basenames ship as
+both `.png` and `.jpg`. Grepping every `.gd`/`.json`/`.tscn`/`.tres`/`.cfg` in the project for
+both the full filename *and* the bare stem shows four (`battlefield-v1`, `ember-cliff-v1`,
+`mountain-forge-v1`, `rune-ravine-v1`) are referenced **nowhere at all**, and for the two that
+are used (`lantern-marsh-v1`, `spirit-world-map-v1`) only the `.jpg` is ever loaded -- the `.png`
+half is dead. There is no directory scan over `assets/backgrounds`; `_background()` is only ever
+called with string literals, so nothing resolves these by name at runtime. Excluded rather than
+deleted, so the art stays in the repo and it is one line to revert.
+
 ```
-before  170,449,820 bytes (162.5 MiB)   with stale-export pollution (20 export errors)
-after   147,705,952 bytes (140.8 MiB)   -22.7 MiB, -13.3%, 0 errors, 1140 entries
+before  170,449,820 bytes (162.5 MiB)   20 export errors, non-reproducible
+after   136,084,320 bytes (129.8 MiB)   -32.8 MiB, -19.2%, 0 errors, 1120 entries
 ```
+
+Cumulative: **-19.2%, all of it bytes that were never reachable.** `./run_tests.sh` green
+(720 checks, ui_smoke, e2e, balance, GUT 19/19) after every step.
 
 Reproducibility check that caught (b): exporting twice in a row without the wipe produced
 `147,709,736` vs `147,705,952` bytes — the same commit does not yield the same pack, and the
@@ -95,6 +107,28 @@ difference is garbage. `./run_tests.sh` green (720 checks) after both changes.
 
 Re-run `pck_audit.py` after any art change. `Godot/tests/visual_snapshots.gd` is the visual
 regression check.
+
+### 1.1b The test gate used to pass without running
+
+Found while adding the assertion above, and worth stating because it affects every other claim in
+this file: `run_tests.sh` ran each suite and then printed `✓ ... passed!` **unconditionally**,
+never checking the exit status or the output. Godot exits `0` when a script fails to *parse*, so a
+syntax error produced this:
+
+```
+SCRIPT ERROR: Parse Error: Cannot find member "filter" in base "PackedStringArray".
+  🎉 ALL SELECTED SPIRITBOUND TESTS PASSED CLEANLY!
+```
+
+The unit tests had not run at all. Any "the suite is green" claim from before this fix was
+therefore a claim about the exit code of a process that will happily return `0` having executed
+nothing.
+
+Suites 1–4, 6–8 now go through a `run_suite` helper that fails on `SCRIPT ERROR` /
+`Parse Error` / `Failed to load script`, fails if the suite's success line is **absent** (so a
+silently-skipped suite is a failure, not a pass), and fails on a non-zero status. Verified by
+injecting a parse error into `test_runner.gd`: the script now exits `1` instead of reporting
+success.
 
 ### 1.2 The purchase gate cannot unlock anything yet
 
@@ -255,9 +289,10 @@ expensive to discover late:
 python3 Godot/tools/pck_audit.py Godot/build/ios/Spiritbound.pck
 ```
 
-Expect ~141 MiB (147,705,952 bytes) after the changes in §1.1; anything much larger means the
+Expect ~130 MiB (136,084,320 bytes) after the changes in §1.1; anything much larger means the
 `exclude_filter` was lost, the stale `build/ios` was packed back in, or new art landed
-uncompressed.
+uncompressed. `./run_tests.sh` now asserts the exclusions still hold, so a lost `exclude_filter`
+fails the suite instead of silently inflating the release.
 
 Then, in App Store Connect: attach the build to a TestFlight group, complete the
 export-compliance question if it appears, confirm App Privacy and the account-deletion
