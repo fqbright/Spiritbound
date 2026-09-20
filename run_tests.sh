@@ -9,7 +9,7 @@ set -e
 #   ./run_tests.sh --all           # Run EVERYTHING (core + monkey + leaks + diff)
 #   ./run_tests.sh --monkey        # Run Chaos Monkey stress tests
 #   ./run_tests.sh --leaks         # Run Memory & Object leak profiler
-#   ./run_tests.sh --diff          # Regenerate the 7 snapshots and diff them against baseline
+#   ./run_tests.sh --diff          # Regenerate the 9 snapshots and diff them against baseline
 #                                   #   (needs a real or Xvfb display — see the suite's own note)
 #   ./run_tests.sh --balance       # Run only the 250-stage balance trajectory bot (full)
 #   ./run_tests.sh --balance-quick # Run the same bot retry-capped (fast, for CI)
@@ -300,7 +300,7 @@ fi
 if [ "$GEN_SNAPSHOTS" = true ]; then
     echo -e "\n${YELLOW}[+] Capturing Mobile Visual Snapshots (390x844)...${NC}"
     godot --path "${GODOT_DIR}" --rendering-driver opengl3 -s tests/visual_snapshots.gd
-    echo -e "${GREEN}✓ All 7 mobile visual snapshots generated in Godot/tests/snapshots/${NC}"
+    echo -e "${GREEN}✓ All 9 mobile visual snapshots generated in Godot/tests/snapshots/${NC}"
     ls -lh "${GODOT_DIR}/tests/snapshots/"
 fi
 

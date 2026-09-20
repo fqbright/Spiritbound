@@ -90,12 +90,12 @@ func _run() -> void:
 	await process_frame
 
 	# 1. Map Screen
-	print("1/7 Rendering Map Screen...")
+	print("1/9 Rendering Map Screen...")
 	game.show_map()
 	await _capture_screen(game, "01_map_screen.png")
 
 	# 2. Battle Screen
-	print("2/7 Rendering Battle Screen...")
+	print("2/9 Rendering Battle Screen...")
 	game.begin_battle(0)
 	await process_frame
 	# begin_battle()'s per-battle modifier and draw shuffle are both seeded from wall-clock time
@@ -122,35 +122,35 @@ func _run() -> void:
 	await _capture_screen(game, "02_battle_screen.png")
 
 	# 3. Rewards & Loot Screen
-	print("3/7 Rendering Rewards Screen...")
+	print("3/9 Rendering Rewards Screen...")
 	game._grant_stage_rewards()
 	game.show_reward_details()
 	await _capture_screen(game, "03_rewards_screen.png")
 
 	# 4. Shop Screen
-	print("4/7 Rendering Shop Screen...")
+	print("4/9 Rendering Shop Screen...")
 	game.show_shop()
 	await _capture_screen(game, "04_shop_screen.png")
 
 	# 5. Deck Screen
-	print("5/7 Rendering Deck Screen...")
+	print("5/9 Rendering Deck Screen...")
 	game.show_deck()
 	await _capture_screen(game, "05_deck_screen.png")
 
 	# 6. Camp Hub Screen
-	print("6/7 Rendering Camp Hub Screen...")
+	print("6/9 Rendering Camp Hub Screen...")
 	game.show_camp()
 	await _capture_screen(game, "06_camp_screen.png")
 
 	# 7. Treasury Inspector Modal
-	print("7/8 Rendering Treasury Inspector...")
+	print("7/9 Rendering Treasury Inspector...")
 	game.show_map()
 	await process_frame
 	game.show_treasury_inspector()
 	await _capture_screen(game, "07_treasury_inspector.png")
 
 	# 8. Career Codex Screen
-	print("8/8 Rendering Career Codex Screen...")
+	print("8/9 Rendering Career Codex Screen...")
 	game.compendium_tab = "codex"
 	game.show_compendium()
 	await _capture_screen(game, "08_codex_screen.png")
