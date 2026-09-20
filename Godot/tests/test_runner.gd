@@ -1469,6 +1469,20 @@ func run() -> void:
 	var samsara_fallbacks: Array = SupabaseClient._get_fallback_leaderboard("samsara")
 	check(samsara_fallbacks.size() == 10, "samsara fallback leaderboard provides top 10 entries")
 
+	# The sample board exists by design and stays — but it must never be presented as the real
+	# global standings. fetch_leaderboard() already flagged this case with offline:true and the
+	# leaderboard modal used to drop that flag on the floor, so a player with no connection saw
+	# ten realistic names and scores and nothing anywhere said they were samples (which is also
+	# the kind of thing an App Store reviewer asks about). The modal now renders
+	# ui.leaderboard_sample_notice whenever the flag is set; these hold the pieces that make that
+	# disclosure work. The render path itself isn't asserted here: the leaderboard fetch is
+	# fire-and-forget inside the modal's update closure, so a headless assertion on the notice
+	# would be timing-dependent (see ui_smoke.gd's note on the same fetch).
+	check(not abyss_fallbacks.is_empty(), "the fallback board is non-empty, so there is always sample content that needs labelling")
+	check(content.ui("ui.leaderboard_sample_notice", "zh-Hans") != "ui.leaderboard_sample_notice", "the sample-board notice exists in Chinese")
+	check(content.ui("ui.leaderboard_sample_notice", "en") != "ui.leaderboard_sample_notice", "the sample-board notice exists in English")
+	check(content.ui("ui.leaderboard_sample_notice", "zh-Hans") != content.ui("ui.leaderboard_sample_notice", "en"), "the sample-board notice is actually translated, not one string reused for both")
+
 	# Leaderboard UI localization
 	check(content.ui("ui.leaderboard_title", "zh-Hans") == "封神天梯榜", "leaderboard title localized in Chinese")
 	check(content.ui("ui.leaderboard_title", "en") == "Celestial Leaderboard", "leaderboard title localized in English")

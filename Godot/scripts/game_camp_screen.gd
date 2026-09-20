@@ -3064,6 +3064,19 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 			list.remove_child(ch)
 			ch.queue_free()
 
+		# `offline` is set by SupabaseClient.fetch_leaderboard() when it fell back to the seeded
+		# sample board (network error, or an empty table). That flag was returned and then
+		# discarded here, so a player with no connection saw ten realistic names and scores
+		# rendered as the real global standings, with nothing anywhere to say otherwise. The
+		# sample board itself is deliberate and tested (see _get_fallback_leaderboard) — it only
+		# has to be labelled as a sample rather than passed off as real players. Friends scope
+		# never falls back (see fetch_leaderboard_for_users), so this fires only when the board
+		# genuinely could not be read.
+		if bool(res.get("offline", false)):
+			var notice := g._label(g.t("ui.leaderboard_sample_notice"), 10, g.EMBER, HORIZONTAL_ALIGNMENT_CENTER, true)
+			notice.name = "LeaderboardSampleNotice"
+			list.add_child(notice)
+
 		var entries: Array = res.get("entries", [])
 		if entries.is_empty():
 			var empty_key := "ui.leaderboard_friends_empty" if current_scope[0] == "friends" else "ui.leaderboard_empty"

@@ -98,15 +98,23 @@ have to match that wording. This is an accuracy check, not a document to write f
 
 ## 2. Should fix before review
 
-### 2.1 Offline leaderboards show fabricated players
+### 2.1 Offline leaderboards show fabricated players — now disclosed
 
 `SupabaseClient._get_fallback_leaderboard()` substitutes ten invented names
-(`无极剑仙`, `幻月灵狐`, `碧落丹圣`, …) when the network call fails. On a plane, a reviewer sees
-a populated global leaderboard that does not exist. Fabricated social proof is the kind of thing
-that turns a routine review into a question about the app's honesty. The sibling function
-`fetch_leaderboard_for_users()` already made the right call and refuses to fake friends
-("showing fabricated 'friends' would be actively misleading"); the global board should do the
-same, with the empty state the code already has.
+(`无极剑仙`, `幻月灵狐`, `碧落丹圣`, …) when the network call fails or the table is empty. The
+sample board itself is deliberate and covered by six existing tests, so it stays.
+
+The problem was that `fetch_leaderboard()` already returned `offline: true` for this case and
+**the leaderboard modal dropped that flag on the floor**: a player on a plane saw ten realistic
+names and scores rendered as the real global standings, with nothing anywhere to say otherwise.
+Fabricated social proof presented as real is the kind of thing that turns a routine review into
+a question about the app's honesty — and it is a bad experience regardless of review.
+
+Fixed: the modal now renders `ui.leaderboard_sample_notice` ("⚠️ sample standings, not real
+scores") whenever the flag is set. The stricter alternative — mirroring
+`fetch_leaderboard_for_users()`, which already refuses to fake friends — would mean deleting the
+sample board outright; that would also delete a deliberate, tested design choice, so labelling
+it was the smaller and more honest change. Revisit if you would rather have the empty state.
 
 ### 2.2 Version numbers say 0.2.0 / build 2
 

@@ -2398,6 +2398,7 @@ const UI_TEXT = {
 	"ui.leaderboard_score_asc": {"zh-Hans":"难度 A%d · %d 关", "en":"A%d · St.%d"},
 	"ui.leaderboard_loading": {"zh-Hans":"正在同步天机名录...", "en":"Fetching celestial rankings..."},
 	"ui.leaderboard_empty": {"zh-Hans":"暂无登榜记录，虚位以待！", "en":"No entries yet, awaiting heroes!"},
+	"ui.leaderboard_sample_notice": {"zh-Hans":"⚠️ 天梯暂未连通，以下为示例榜单，非真实战绩", "en":"⚠️ Leaderboard unreachable — sample standings, not real scores"},
 	"ui.leaderboard_submit_toast": {"zh-Hans":"🏆 新纪录已登入封神榜！", "en":"🏆 New record published to Leaderboard!"},
 	"ui.leaderboard_scope_global": {"zh-Hans":"全服", "en":"Global"},
 	"ui.leaderboard_scope_friends": {"zh-Hans":"好友", "en":"Friends"},
