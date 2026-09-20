@@ -17,9 +17,13 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	# Only the Daily Trial's "double damage" tag ever sets this — a straight multiplier applied
 	# after the flat bonus above, to the boss and its adds alike.
 	var damage_mult: float = modifier.get("damage_mult", 1.0)
-	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), encounter.art, int(round(encounter.health * health_scale)), int(round((encounter.damage + damage_bonus) * damage_mult)), encounter.mechanics)]
+	var boss_art: String = str(encounter.get("art_key", encounter.get("art", "m_s001")))
+	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), boss_art, int(round(encounter.health * health_scale)), int(round((encounter.damage + damage_bonus) * damage_mult)), encounter.mechanics)]
+	var add_art: String = str(encounter.get("add_art_key", encounter.get("art_key", boss_art)))
+	var add_name: String = str(encounter.get("add_name", "灵迹随从"))
+	var add_name_en: String = str(encounter.get("add_name_en", "Spirit Minion"))
 	for add_index in encounter.adds + modifier.get("extra_enemy", 0):
-		enemies.append(_enemy("add-%d" % add_index, "灵迹随从", "Spirit Minion", "ash-raven-v2.jpg" if add_index % 2 == 0 else "rune-shard-v2.jpg", int(round((9 + encounter.chapter) * health_scale)), int(round((2 + encounter.chapter / 3 + damage_bonus) * damage_mult)), {}))
+		enemies.append(_enemy("add-%d" % add_index, add_name, add_name_en, add_art, int(round((9 + encounter.chapter) * health_scale)), int(round((2 + encounter.chapter / 3 + damage_bonus) * damage_mult)), {}))
 	var draw_pile: Array = []
 	for i in deck.size(): draw_pile.append({"uid":i,"card_id":deck[i]})
 	_shuffle(draw_pile)
@@ -494,7 +498,7 @@ func _trigger_great_boss_phase_2(enemy: Dictionary) -> void:
 		30:
 			state.player.vulnerable = int(state.player.get("vulnerable", 0)) + 2
 			if state.enemies.size() < 3:
-				var clone: Dictionary = _enemy("boss_clone", "暗影化身", "Shadow Avatar", "void-fiend-v2.jpg", maxi(10, int(round(enemy.max_health * 0.35))), maxi(2, int(round(enemy.damage * 0.5))), {})
+				var clone: Dictionary = _enemy("boss_clone", "暗影化身", "Shadow Avatar", "m_s150", maxi(10, int(round(enemy.max_health * 0.35))), maxi(2, int(round(enemy.damage * 0.5))), {})
 				state.enemies.append(clone)
 			emit_signal("event", "boss_phase", {"chapter": 30, "phase": 2, "name": "暗影分身", "name_en": "Shadow Legion", "desc": "召唤暗影化身协助作战，使玩家获得2层易伤！", "desc_en": "Summons a Shadow Clone, inflicts 2 Vulnerable on player!"})
 		40:
@@ -558,7 +562,7 @@ func _shuffle(cards: Array) -> void:
 		var value = cards[i]; cards[i] = cards[j]; cards[j] = value
 
 func _enemy(id: String, title: String, title_en: String, art: String, health: int, damage: int, mechanics: Dictionary) -> Dictionary:
-	return {"id":id,"name":title,"name_en":title_en,"art":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"poison":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
+	return {"id":id,"name":title,"name_en":title_en,"art":art,"art_key":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"poison":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
 
 func _is_attack(card: Dictionary) -> bool:
 	for effect in card.effects:

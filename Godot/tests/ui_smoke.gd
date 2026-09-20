@@ -3166,6 +3166,24 @@ func _run() -> void:
 	game.show_compendium()
 	await process_frame
 	_sweep_buttons_clickable(game.root, "Compendium screen")
+	# === 250 UNIQUE ENEMY MONSTER ARTS & HERO SEPARATION INTEGRITY ===
+	print("== 250 unique enemy monster arts & hero separation ==")
+	var all_stage_arts: Dictionary = {}
+	var hero_keys := ["fox", "sentinel", "hero_fox_spirit", "hero_stone_sentinel", "hero_shadow_stalker", "hero_miasma_witch"]
+	for s_idx in range(game.content.encounters.size()):
+		var enc: Dictionary = game.content.encounters[s_idx]
+		var a_key: String = game._art_key_for_enemy(enc)
+		check(not hero_keys.has(a_key), "stage %d enemy art_key '%s' must not be a hero art" % [s_idx, a_key])
+		check(not all_stage_arts.has(a_key), "stage %d main enemy art_key '%s' is strictly unique across all stages" % [s_idx, a_key])
+		all_stage_arts[a_key] = s_idx
+		
+		var chapter: int = enc.chapter
+		var expected_minion_idx := (chapter - 1) * 5
+		var expected_minion_art: String = str(game.content.encounters[expected_minion_idx].art_key)
+		var expected_minion_name: String = str(game.content.encounters[expected_minion_idx].name)
+		check(str(enc.get("add_art_key", "")) == expected_minion_art, "stage %d adds share chapter %d minion art '%s'" % [s_idx, chapter, expected_minion_art])
+		check(str(enc.get("add_name", "")) == expected_minion_name, "stage %d adds share chapter %d minion name '%s'" % [s_idx, chapter, expected_minion_name])
+	check(all_stage_arts.size() == 250, "all 250 small stages have 100% unique main enemy arts")
 
 	_restore_save()
 	print("")

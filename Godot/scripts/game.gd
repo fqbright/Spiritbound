@@ -280,7 +280,7 @@ func _get_character_texture(key: String) -> Texture2D:
 	if _char_atlas_tex == null:
 		_char_atlas_tex = load("res://assets/characters/character-atlas-v3.png")
 	if not CHAR_KEYS.has(key):
-		key = "sentinel"
+		key = "runebound"
 	var coord: Vector2i = CHAR_KEYS[key]
 	var atlas := AtlasTexture.new()
 	atlas.atlas = _char_atlas_tex
@@ -297,9 +297,8 @@ func _art_key_for_enemy(enemy: Dictionary) -> String:
 		var base_art := art_str.get_file().get_basename()
 		if ResourceLoader.exists("res://assets/characters/monsters/%s.png" % base_art):
 			return base_art
-		if ResourceLoader.exists("res://assets/characters/%s.png" % base_art):
+		if ResourceLoader.exists("res://assets/characters/%s.png" % base_art) and not base_art.begins_with("hero_"):
 			return base_art
-	if art_str.contains("sentinel"): return "sentinel"
 	if art_str.contains("lanternstone"): return "lanternstone"
 	if art_str.contains("runebound"): return "runebound"
 	if art_str.contains("embercliff"): return "embercliff"
@@ -308,13 +307,14 @@ func _art_key_for_enemy(enemy: Dictionary) -> String:
 	if art_str.contains("shard"): return "runeShard"
 	if art_str.contains("spark"): return "forgeSpark"
 	var name_str: String = str(enemy.get("name", ""))
-	if name_str.contains("守卫"): return "sentinel"
 	if name_str.contains("提灯"): return "lanternstone"
 	if name_str.contains("巨像"): return "runebound"
 	if name_str.contains("烬崖"): return "embercliff"
 	if name_str.contains("山岳"): return "mountainHeart"
-	if name_str.contains("随从"): return "ashRaven"
-	return "sentinel"
+	if name_str.contains("乌鸦") or name_str.contains("鸦") or name_str.contains("随从"): return "ashRaven"
+	if name_str.contains("残片") or name_str.contains("晶石"): return "runeShard"
+	if name_str.contains("火花") or name_str.contains("火精"): return "forgeSpark"
+	return "m_s001"
 
 func _get_card_texture(card_id: String) -> Texture2D:
 	var direct_png := "res://assets/cards/%s.png" % card_id
