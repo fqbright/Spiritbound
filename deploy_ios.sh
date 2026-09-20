@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # Spiritbound iOS One-Click Export & Wireless Deploy Script
 if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
@@ -42,7 +43,7 @@ elif [ "$MODE" != "build" ]; then
 fi
 
 # Step 2: Ensure Xcode project signing is permanently configured
-DETECTED_TEAM=$(security find-identity -v -p codesigning 2>/dev/null | grep -o -E "\([A-Z0-9]{10}\)" | tr -d '()' | head -n 1)
+DETECTED_TEAM=$(security find-certificate -a -p | openssl x509 -noout -subject 2>/dev/null | grep -o "OU=[A-Z0-9]\{10\}" | head -n 1 | cut -d= -f2)
 if [ -n "$DETECTED_TEAM" ]; then
     TEAM_ID="$DETECTED_TEAM"
 fi
@@ -59,9 +60,20 @@ extern "C" {
     __attribute__((visibility("default"))) void* CADynamicRangeHigh = nullptr;
     __attribute__((visibility("default"))) void* CADynamicRangeStandard = nullptr;
     __attribute__((visibility("default"))) void* MTLTensorDomain = nullptr;
+    int SDL_IsAppleTV(void) { return 0; }
+    int SDL_IsIPad(void) { return 0; }
 }
 EOF
-        echo "   ✓ Patched dummy.cpp with Metal/QuartzCore compatibility symbols"
+        echo "   ✓ Patched dummy.cpp with Metal/QuartzCore/SDL compatibility symbols"
+    elif ! grep -q "SDL_IsAppleTV" "$DUMMY_CPP"; then
+        cat << 'EOF' >> "$DUMMY_CPP"
+
+extern "C" {
+    int SDL_IsAppleTV(void) { return 0; }
+    int SDL_IsIPad(void) { return 0; }
+}
+EOF
+        echo "   ✓ Patched dummy.cpp with SDL compatibility symbols"
     fi
 fi
 
