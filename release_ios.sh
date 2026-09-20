@@ -112,6 +112,33 @@ else
 fi
 RELEASE_COMMIT="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
 
+# An App Store archive has to be signed with an Apple Distribution identity. Godot's iOS preset
+# writes application/code_sign_identity_release="iPhone Developer" into the exported Xcode project,
+# and the archive step below used to pass no identity of its own, so it inherited that and produced
+# an Apple Development-signed archive -- while still printing "✓ Archived" and exiting 0. That
+# archive is not submittable: App Store Connect rejects it at upload, minutes later, with an error
+# that never mentions signing. Measured on this machine (2026-09-20): an archive of this exact
+# project signed as "Apple Development: jiacongxu@gmail.com (QYQ7WU2QAL)" with the development
+# profile "iOS Team Provisioning Profile: com.jiacong.spiritbound". Checking here turns a confusing
+# rejection at the end of a long release into an immediate, actionable message.
+#
+# A preflight failure rather than a hard stop, for the same reason as the others: --dry-run exists
+# to walk the whole flow on a machine that is not set up for a release yet. And it deliberately
+# does not affect ./deploy_ios.sh, which installs a development build on a cabled phone and needs
+# no distribution certificate at all.
+DIST_IDENTITY_COUNT="$(security find-identity -v -p codesigning 2>/dev/null | grep -cE 'Apple Distribution|iPhone Distribution' || true)"
+if [ "${DIST_IDENTITY_COUNT:-0}" -eq 0 ]; then
+    fail_preflight "No 'Apple Distribution' identity in the login keychain.
+  With only 'Apple Development' present, the archive below signs a development build, reports
+  success, and is then rejected by App Store Connect at upload time.
+  Fix: Xcode → Settings → Accounts → select the team → Manage Certificates → + →
+  Apple Distribution (requires a paid Apple Developer Program membership; the free Personal
+  Team cannot issue one).
+  Verify with: security find-identity -v -p codesigning | grep Distribution"
+else
+    echo "  ✓ Apple Distribution identity present ($DIST_IDENTITY_COUNT)"
+fi
+
 if [ "$PREFLIGHT_FAILED" = true ] && [ "$DRY_RUN" = false ]; then
     echo -e "\n${RED}Preflight failed — nothing was built.${NC}"
     exit 1
@@ -188,15 +215,49 @@ if [ -z "$BUILD_NUMBER_ARG" ] && [ "$DRY_RUN" = false ]; then
 fi
 
 # ---- Archive -----------------------------------------------------------------
-echo -e "\n${YELLOW}[4/6] xcodebuild archive (distribution signing, needs a distribution certificate)${NC}"
+echo -e "\n${YELLOW}[4/6] xcodebuild archive (distribution signing)${NC}"
 mkdir -p "$ARCHIVE_DIR"
+# CODE_SIGN_IDENTITY is the part that actually decides this. Without it the archive silently
+# inherits the preset's "iPhone Developer" and produces a development-signed build (see the
+# preflight check above); CODE_SIGN_STYLE=Automatic plus -allowProvisioningUpdates then lets Xcode
+# create/fetch the matching App Store profile from the Apple account signed into Xcode.
 run xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -scheme Spiritbound \
     -configuration Release \
     -destination "generic/platform=iOS" \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
+    CODE_SIGN_STYLE=Automatic \
+    CODE_SIGN_IDENTITY="Apple Distribution" \
     archive
+
+# Check the artifact, not the exit status. `xcodebuild archive` succeeds just as happily for a
+# development-signed build as for a distribution-signed one, and nothing in its output says which
+# you got, so the only trustworthy answer is the provisioning profile embedded in the .app. An
+# App Store distribution profile carries no ProvisionedDevices list and disallows debugging; a
+# development profile has both. This is the difference that decides whether the upload works.
+if [ "$DRY_RUN" = false ]; then
+    EMBEDDED_PROFILE="$ARCHIVE_PATH/Products/Applications/Spiritbound.app/embedded.mobileprovision"
+    if [ ! -f "$EMBEDDED_PROFILE" ]; then
+        echo -e "${RED}✗ The archive has no embedded.mobileprovision — nothing to verify signing against.${NC}"
+        exit 1
+    fi
+    PROFILE_PLIST="$(mktemp)"
+    security cms -D -i "$EMBEDDED_PROFILE" > "$PROFILE_PLIST" 2>/dev/null
+    PROFILE_NAME="$(plutil -extract Name raw "$PROFILE_PLIST" 2>/dev/null || echo '(unreadable)')"
+    if plutil -extract ProvisionedDevices raw "$PROFILE_PLIST" >/dev/null 2>&1; then
+        echo -e "${RED}✗ The archive is signed with a DEVELOPMENT profile:" 
+        echo -e "${RED}    $PROFILE_NAME${NC}"
+        echo -e "${RED}  It contains a ProvisionedDevices list, which an App Store profile never does.${NC}"
+        echo -e "${RED}  This archive cannot be submitted; App Store Connect would reject it at upload with${NC}"
+        echo -e "${RED}  an error that does not mention signing. Create an Apple Distribution certificate${NC}"
+        echo -e "${RED}  (Xcode → Settings → Accounts → Manage Certificates → +) and re-run.${NC}"
+        rm -f "$PROFILE_PLIST"
+        exit 1
+    fi
+    echo "  ✓ Distribution-signed: $PROFILE_NAME (no device list, debugging disallowed)"
+    rm -f "$PROFILE_PLIST"
+fi
 
 if [ "$UPLOAD" = false ]; then
     echo -e "\n${GREEN}✓ Archived to $ARCHIVE_PATH${NC}"
