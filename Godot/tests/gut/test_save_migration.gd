@@ -102,6 +102,25 @@ func test_feature_unlocks_seen_empty_on_brand_new_save():
 	var profile: Dictionary = SpiritSave.defaults(content)
 	assert_true(profile.feature_unlocks_seen is Array and profile.feature_unlocks_seen.is_empty(), "a fresh save starts with no unlocks marked seen, since unlocked/difficulty both start at 0")
 
+func test_feature_unlocks_seen_backfills_new_entries_added_after_the_field_already_existed():
+	# Regression test for a real bug: the original backfill only ran when feature_unlocks_seen
+	# was entirely ABSENT, so a save that already had the field (from a previous version of this
+	# game) never got re-checked when SpiritContent.FEATURE_UNLOCKS itself later grew new
+	# entries (exactly what happened when the per-tier A2-A5 unlock toasts were added). Without
+	# this, an existing player already at unlocked=120 — past tier_a2 (50) and tier_a3 (100)'s
+	# thresholds — would have both of those toasts fire back to back on their very next battle
+	# win, for tiers they'd already had available for weeks.
+	_write_fixture({
+		"gold": 80, "unlocked": 120, "difficulty": 0,
+		"feature_unlocks_seen": ["ch1_features", "abyss", "difficulty_tiers"],
+	})
+	var profile: Dictionary = SpiritSave.load_profile(content)
+	var seen: Array = profile.feature_unlocks_seen
+	assert_true(seen.has("ch1_features") and seen.has("abyss") and seen.has("difficulty_tiers"), "entries already marked seen before this version survive migration untouched")
+	assert_true(seen.has("tier_a2"), "unlocked=120 backfills the newly-added tier_a2 (threshold 50) as already seen, even though feature_unlocks_seen already existed")
+	assert_true(seen.has("tier_a3"), "unlocked=120 backfills the newly-added tier_a3 (threshold 100) as already seen")
+	assert_false(seen.has("tier_a4"), "unlocked=120 has not crossed tier_a4's threshold of 150, so it is correctly not backfilled")
+
 func test_corrupted_deck_falls_back_to_starting_deck():
 	_write_fixture({"gold": 80, "deck": ["strike", "ward"]})
 	var profile: Dictionary = SpiritSave.load_profile(content)

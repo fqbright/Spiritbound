@@ -459,6 +459,10 @@ const FEATURE_UNLOCKS = [
 	{"id":"abyss","kind":"unlocked","threshold":10,"toast_key":"ui.unlock_abyss_toast"},
 	{"id":"difficulty_tiers","kind":"unlocked","threshold":25,"toast_key":"ui.unlock_difficulty_toast"},
 	{"id":"curse_run","kind":"difficulty","threshold":2,"toast_key":"ui.unlock_curse_run_toast"},
+	{"id":"tier_a2","kind":"unlocked","threshold":50,"toast_key":"ui.unlock_tier_a2_toast"},
+	{"id":"tier_a3","kind":"unlocked","threshold":100,"toast_key":"ui.unlock_tier_a3_toast"},
+	{"id":"tier_a4","kind":"unlocked","threshold":150,"toast_key":"ui.unlock_tier_a4_toast"},
+	{"id":"tier_a5","kind":"unlocked","threshold":200,"toast_key":"ui.unlock_tier_a5_toast"},
 ]
 
 const RELICS = [
@@ -1692,6 +1696,22 @@ func difficulty_modifier(tier: int) -> Dictionary:
 		"detail_en": "Enemy HP +%d%%, damage +%d, gold +%d%%" % [hp_pct, tier, gold_pct],
 	}
 
+# Each tier from A1 up used to become selectable the instant _difficulty_tier_section()'s own
+# overall gate (unlocked>=25) opened — all the way to A5 at once, +60% enemy HP and +5 flat
+# damage per difficulty_modifier() above, with zero guardrail for a player only 25 stages in.
+# Progressive per-tier unlocking instead: A0 is always available (see difficulty_modifier()'s
+# own comment on why it's a no-op), and A1's threshold matches the section's own existing
+# unlocked>=25 gate exactly, so a first-time unlock still happens at the same moment as before —
+# only A2 and up are new gates. Tiers past A5 (Samsara's escalating ceiling) are governed
+# entirely by _difficulty_tier_section()'s own "5 + samsara_count" mechanism in
+# game_camp_screen.gd, not this table — reaching those already requires a full 250-stage clear,
+# a much stronger gate than any stage threshold here could add.
+const DIFFICULTY_TIER_UNLOCK_STAGE: Array[int] = [0, 25, 50, 100, 150, 200]
+
+func difficulty_tier_unlock_stage(tier: int) -> int:
+	if tier < DIFFICULTY_TIER_UNLOCK_STAGE.size(): return DIFFICULTY_TIER_UNLOCK_STAGE[tier]
+	return DIFFICULTY_TIER_UNLOCK_STAGE[DIFFICULTY_TIER_UNLOCK_STAGE.size() - 1]
+
 func _chapter_mechanics(chapter: int, is_great_boss: bool) -> Dictionary:
 	if chapter <= 2: return {}
 	if is_great_boss:
@@ -2187,6 +2207,11 @@ const UI_TEXT = {
 	"ui.unlock_ch1_toast": {"zh-Hans":"✦ 新功能解锁：驭灵秘典 · 每日试炼 · 每周主题挑战 · 首领连战！", "en":"✦ New: Spirit Compendium, Daily Trial, Weekly Challenge, Boss Rush!"},
 	"ui.unlock_abyss_toast": {"zh-Hans":"✦ 新玩法解锁：无尽深渊！", "en":"✦ New mode unlocked: Endless Abyss!"},
 	"ui.unlock_difficulty_toast": {"zh-Hans":"✦ 新功能解锁：挑战等级！", "en":"✦ New: Challenge Tiers unlocked!"},
+	"ui.unlock_tier_a2_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A2！", "en":"✦ New: Challenge Tier A2 available!"},
+	"ui.unlock_tier_a3_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A3！", "en":"✦ New: Challenge Tier A3 available!"},
+	"ui.unlock_tier_a4_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A4！", "en":"✦ New: Challenge Tier A4 available!"},
+	"ui.unlock_tier_a5_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A5！", "en":"✦ New: Challenge Tier A5 available!"},
+	"ui.camp_tier_next_unlock": {"zh-Hans":"通关第%d关解锁更高难度", "en":"Clear stage %d to unlock the next tier"},
 	"ui.unlock_curse_run_toast": {"zh-Hans":"✦ 新玩法解锁：咒缚试炼！", "en":"✦ New mode unlocked: Curse Run!"},
 	"ach.win10.name": {"zh-Hans":"初出茅庐", "en":"First Steps"},
 	"ach.win10.desc": {"zh-Hans":"累计赢得 10 场战斗", "en":"Win 10 battles total"},

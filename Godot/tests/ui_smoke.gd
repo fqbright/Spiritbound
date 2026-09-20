@@ -2733,6 +2733,64 @@ func _run() -> void:
 	game.profile.difficulty = saved_difficulty_fu
 	game.profile.feature_unlocks_seen = saved_seen_fu
 
+	section("== progressive difficulty tier unlocking ==")
+	# A0-A5 (and any samsara-extended tiers) used to all become selectable the instant the
+	# section's own overall gate (unlocked>=25) opened, with zero further guardrail — A5 alone
+	# is +60% enemy HP and +5 flat damage (content.difficulty_modifier()). Each tier now needs
+	# its own campaign-progress threshold (content.difficulty_tier_unlock_stage()) to appear at
+	# all, grandfathering in whatever a player already had selected.
+	var saved_unlocked_dt: int = int(game.profile.unlocked)
+	var saved_difficulty_dt: int = int(game.profile.difficulty)
+	var saved_samsara_dt: int = int(game.profile.get("samsara_count", 0))
+	game.camp_tab = "challenges"
+
+	game.profile.unlocked = 25
+	game.profile.difficulty = 0
+	game.profile.samsara_count = 0
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A0", true, false) != null, "A0 is always shown")
+	check(game.root.find_child("DifficultyTierBtn_A1", true, false) != null, "A1 is shown once unlocked reaches its own threshold (25)")
+	check(game.root.find_child("DifficultyTierBtn_A2", true, false) == null, "A2 is hidden entirely (not just disabled) before unlocked reaches its threshold (50)")
+	var a0_btn: Node = game.root.find_child("DifficultyTierBtn_A0", true, false)
+	check(a0_btn != null and a0_btn.find_child("NotificationDot", true, false) == null, "the currently-active default tier (A0) never shows a 'new, untried' marker")
+	var a1_btn: Node = game.root.find_child("DifficultyTierBtn_A1", true, false)
+	check(a1_btn != null and a1_btn.find_child("NotificationDot", true, false) != null, "a newly-eligible, not-yet-selected tier (A1) is visibly marked so it doesn't blend in")
+	check(_find_label_containing(game.root, game.tf("ui.camp_tier_next_unlock", 50)), "a hint names the stage that unlocks the next tier")
+
+	game.profile.unlocked = 50
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A2", true, false) != null, "A2 appears once unlocked reaches 50")
+	check(game.root.find_child("DifficultyTierBtn_A3", true, false) == null, "A3 stays hidden until unlocked reaches 100")
+
+	var a1_select_btn: Button = game.root.find_child("DifficultyTierBtn_A1", true, false) as Button
+	if a1_select_btn != null:
+		tap_button(a1_select_btn, "DifficultyTierBtn_A1")
+		await process_frame
+		check(int(game.profile.difficulty) == 1, "tapping a tier button selects it")
+		var a1_btn_after: Node = game.root.find_child("DifficultyTierBtn_A1", true, false)
+		check(a1_btn_after != null and a1_btn_after.find_child("NotificationDot", true, false) == null, "selecting a tier clears its own 'new, untried' marker")
+		var a2_btn_after: Node = game.root.find_child("DifficultyTierBtn_A2", true, false)
+		check(a2_btn_after != null and a2_btn_after.find_child("NotificationDot", true, false) != null, "a higher, still-untried tier keeps its marker after a lower one is selected")
+
+	# Grandfathering: a save that already has difficulty=4 selected (from before this system
+	# existed, or from a later point in the same playthrough) must keep seeing A4 even if
+	# unlocked alone no longer would have unlocked it on its own — this can only ever reveal
+	# tiers going forward, never retroactively hide one a player already has active.
+	game.profile.unlocked = 30
+	game.profile.difficulty = 4
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A4", true, false) != null, "an already-selected tier (A4) stays visible even below its own threshold (150) — no regression for existing players")
+	check(game.root.find_child("DifficultyTierBtn_A5", true, false) == null, "grandfathering only preserves the tier actually selected, it does not also reveal the next one above it")
+
+	game.profile.unlocked = saved_unlocked_dt
+	game.profile.difficulty = saved_difficulty_dt
+	game.profile.samsara_count = saved_samsara_dt
+	game.show_map()
+	await process_frame
+
 	section("== phase 3: settings, deck filters, colorblind glyphs, victory recap & hard replays ==")
 	# F2: Settings modal
 	game.show_map()

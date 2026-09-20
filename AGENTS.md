@@ -354,6 +354,23 @@ Every one of these produced a wrong screen with no error in the log. They are th
   baseline was captured before assuming a real regression — this is the second time in one session
   wall-clock content has silently eaten a visual-diff threshold from underneath a passing baseline,
   just on a different clock granularity than the first.
+- **A "backfill if this field is entirely missing" migration guard stops protecting you the
+  moment the table it backfills from grows a new entry.** `save_store.gd`'s migration for
+  `feature_unlocks_seen` (an array of `SpiritContent.FEATURE_UNLOCKS` ids already marked "seen"
+  so `game._check_feature_unlocks()` doesn't re-toast something a player unlocked ages ago)
+  originally only ran its backfill loop `if not parsed.has("feature_unlocks_seen")` — correct
+  for a save from before the field existed, but silent for a save that already had the field
+  from an earlier version of the game once `FEATURE_UNLOCKS` itself grew new entries (exactly
+  what happened when per-tier difficulty-unlock entries were added). An existing player already
+  well past a new entry's threshold would have gotten that entry's toast fired for real on their
+  very next qualifying action, having never been backfilled, since the field-presence check had
+  already been satisfied by the OLD version's entries. Fixed by making the backfill loop run
+  unconditionally on every load instead — idempotent (an id already in the array is skipped), so
+  there's no cost to always checking every current `FEATURE_UNLOCKS` entry against the loaded
+  profile's stats rather than only reasoning about "was this field missing." Any future table
+  with the same shape (a persisted "already seen/claimed/granted" id list checked against a
+  growable data table) needs backfill logic that survives the table growing, not just logic that
+  survives the field being absent — check the whole table on every load, not just once.
 
 ## Game rules worth knowing before touching balance
 

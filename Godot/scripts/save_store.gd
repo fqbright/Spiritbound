@@ -103,23 +103,26 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 		if not base.world_event_record.has("period"): base.world_event_record.period = -1
 		if not base.world_event_record.has("claimed"): base.world_event_record.claimed = false
 		if not base.world_event_record.get("badges") is Array: base.world_event_record.badges = []
-	if not parsed.has("feature_unlocks_seen") or not base.get("feature_unlocks_seen") is Array:
-		# A save from before this field existed has necessarily already lived past whatever
-		# unlock thresholds it currently exceeds — backfill those as "already seen" so a
-		# returning player doesn't get a flood of "New!" toasts for modes they've been using
-		# for weeks (see game._check_feature_unlocks()). Only a threshold crossed from here on
-		# should ever actually announce itself. A brand-new save never hits this branch with
-		# anything to backfill, since unlocked/difficulty both start at 0.
-		# Must check the ORIGINAL parsed save for the key's presence, not base's already-
-		# defaulted value: defaults() unconditionally seeds feature_unlocks_seen as [], which
-		# already satisfies "is Array" even when the real save file never had the key, so a
-		# type-only check here would never fire and every pre-existing save would get flooded
-		# with unlock toasts instead of the silent backfill this is meant to guarantee.
-		var already_seen: Array = []
-		for entry in SpiritContent.FEATURE_UNLOCKS:
-			var current: int = int(base.unlocked) if str(entry.kind) == "unlocked" else int(base.difficulty)
-			if current >= int(entry.threshold): already_seen.append(str(entry.id))
-		base.feature_unlocks_seen = already_seen
+	if not base.get("feature_unlocks_seen") is Array: base.feature_unlocks_seen = []
+	# Runs unconditionally on every load, not just when the field is entirely missing: a save
+	# from before this field existed has necessarily already lived past whatever unlock
+	# thresholds it currently exceeds, so those must be backfilled as "already seen" the same
+	# way — but a save that already HAS the field (from a previous version of this game) also
+	# needs each entry checked individually, because SpiritContent.FEATURE_UNLOCKS itself grows
+	# over time (this is exactly what happened when the per-tier A2-A5 entries were added after
+	# feature_unlocks_seen already shipped). Backfilling only on total absence would have missed
+	# those for every existing player already past stage 50/100/150/200 — their very next
+	# battle win would have fired 2-4 "New!" toasts back to back for tiers they'd had available
+	# for weeks, since _toast() has no queue (see game._check_feature_unlocks()'s own comment).
+	# Idempotent either way: an id already in the array is simply skipped, so this is safe to
+	# run every single load rather than only reasoning about it once at migration time.
+	var seen_unlocks: Array = base.feature_unlocks_seen
+	for entry in SpiritContent.FEATURE_UNLOCKS:
+		var unlock_id: String = str(entry.id)
+		if seen_unlocks.has(unlock_id): continue
+		var current: int = int(base.unlocked) if str(entry.kind) == "unlocked" else int(base.difficulty)
+		if current >= int(entry.threshold): seen_unlocks.append(unlock_id)
+	base.feature_unlocks_seen = seen_unlocks
 	if not base.get("friends") is Array: base.friends = []
 	if not base.get("stamina") is Dictionary:
 		base.stamina = {"current":100,"max":100,"last_regen_time":0}

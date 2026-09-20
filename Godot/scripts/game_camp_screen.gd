@@ -794,16 +794,42 @@ func _difficulty_tier_section() -> Control:
 	# and never again" ceiling, so a later samsara cycle keeps raising the stakes instead of
 	# repeating the same A6 tier forever.
 	var max_tier: int = 5 + int(g.profile.get("samsara_count", 0))
+	# Only reveal tiers the player has actually earned instead of opening all of A0-A5 (and any
+	# samsara-extended tiers) the instant this section's own overall gate unlocks — A5 alone is
+	# +60% enemy HP and +5 flat damage (see content.difficulty_modifier()), a real risk to hand a
+	# player only 25 stages in with no guardrail at all. maxi() against profile.difficulty
+	# grandfathers in whatever a player already selected under the old all-at-once behavior (or
+	# any samsara-extended tier past 5, which is its own much stronger gate) — this can only ever
+	# reveal tiers going forward, never retroactively hide one a player already has active.
+	var eligible_max_tier: int = int(g.profile.difficulty)
+	for t in range(1, max_tier + 1):
+		if int(g.profile.unlocked) >= g.content.difficulty_tier_unlock_stage(t):
+			eligible_max_tier = maxi(eligible_max_tier, t)
+	eligible_max_tier = mini(eligible_max_tier, max_tier)
 	var row := HFlowContainer.new()
 	row.name = "DifficultyTierRow"
 	row.add_theme_constant_override("h_separation", 6)
 	row.add_theme_constant_override("v_separation", 6)
 	row.alignment = FlowContainer.ALIGNMENT_CENTER
-	for value in max_tier + 1:
+	for value in eligible_max_tier + 1:
 		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; g._check_feature_unlocks(); SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(46,40))
 		button.name = "DifficultyTierBtn_A%d" % value
+		# A tier the player hasn't actually selected yet gets a small marker so a newly-earned
+		# option doesn't just silently blend in among the others — the one-time toast from
+		# _check_feature_unlocks() covers the moment it unlocks, this covers every visit after
+		# until they actually try it.
+		if value > int(g.profile.difficulty):
+			g._add_notification_dot(button, Vector2(46, 40))
 		row.add_child(button)
 	section.add_child(row)
+	# Capped at 5: a tier past 5 is samsara-gated (full 250-stage clear, not a stage threshold at
+	# all — see ui.camp_tier_samsara_unlocked/ui.samsara_locked_desc below), and
+	# difficulty_tier_unlock_stage() clamps any tier past the table's end to its last real entry
+	# (200), so without this cap a player already at eligible_max_tier=5 with one samsara cycle
+	# done (max_tier=6) would see a stale "clear stage 200" hint for a tier that stage progress
+	# alone can never actually unlock.
+	if eligible_max_tier < mini(5, max_tier):
+		section.add_child(g._label(g.tf("ui.camp_tier_next_unlock", g.content.difficulty_tier_unlock_stage(eligible_max_tier + 1)), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 	if max_tier > 5:
 		section.add_child(g._label(g.tf("ui.camp_tier_samsara_unlocked", max_tier), 10, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER, true))
 	section.add_child(g._label(g.t("ui.camp_desc"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))

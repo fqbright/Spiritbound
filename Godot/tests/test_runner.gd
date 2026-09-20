@@ -1224,6 +1224,15 @@ func run() -> void:
 	check(int(content._ghost_difficulty_level("daily_trial", 5000)) == 50, "daily_trial scores are coarsely normalized down to a comparable level")
 	check(int(content._ghost_difficulty_level("samsara", 3)) == 15, "samsara scores (cycle counts) are scaled up to a comparable level")
 
+	# Progressive difficulty tier unlocking: A0-A5 used to all become selectable the instant
+	# unlocked>=25, with no further gate — this table makes each tier require its own stage
+	# threshold instead (see content.gd's own comment on DIFFICULTY_TIER_UNLOCK_STAGE for why).
+	check(int(content.difficulty_tier_unlock_stage(0)) == 0, "A0 is always available (threshold 0)")
+	check(int(content.difficulty_tier_unlock_stage(1)) == 25, "A1's threshold matches the difficulty section's own pre-existing overall unlock gate")
+	check(int(content.difficulty_tier_unlock_stage(2)) < int(content.difficulty_tier_unlock_stage(3)), "each tier's threshold is strictly higher than the one before it")
+	check(int(content.difficulty_tier_unlock_stage(5)) == 200, "A5 (the highest non-samsara tier) requires real, late-game campaign progress")
+	check(int(content.difficulty_tier_unlock_stage(6)) == int(content.difficulty_tier_unlock_stage(5)), "a samsara-extended tier past A5 clamps to A5's own threshold (samsara has its own, much stronger gate — a full 250-stage clear)")
+
 	# Multi-currency & Soulbound & Exchange tests
 	var new_prof := SpiritSave.defaults(content)
 	check(int(new_prof.get("spirit_jade", 0)) == 10, "profile defaults include 10 Spirit Jade")

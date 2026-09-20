@@ -351,6 +351,28 @@ normalization) and a full win/loss lifecycle test in `ui_smoke.gd` (calls
 leaderboard's real async fetch, for the same reason the pre-existing leaderboard test never
 asserts on fetched row content — see that section's own comment).
 
+### 2026-09-20 — Progressive difficulty tier unlocking (user-reported UX gap)
+User feedback: A0-A5 all became selectable the instant Camp's difficulty section itself
+unlocked (`unlocked>=25`), with zero further guardrail — A5 alone is +60% enemy HP and +5 flat
+damage (`content.difficulty_modifier()`), a real risk to hand a player only 25 stages in. Each
+tier now needs its own campaign-progress threshold
+(`content.difficulty_tier_unlock_stage()`: A1@25 — unchanged from the section's own prior
+overall gate — A2@50, A3@100, A4@150, A5@200; tiers past A5 stay governed entirely by Samsara's
+own much stronger "full 250-stage clear" gate, untouched). Grandfathers in whatever a player
+already had selected, so this can only reveal tiers going forward, never retroactively hide an
+existing player's own active one. A newly-eligible, not-yet-selected tier gets a small
+persistent marker (reusing `_add_notification_dot()`, the same one quests use) in addition to
+a one-time toast on first crossing (4 new `FEATURE_UNLOCKS` entries, reusing the toast system
+from earlier the same day).
+
+Found and fixed a real bug in that reuse: `save_store.gd`'s `feature_unlocks_seen` backfill only
+ever ran when the field was entirely absent, which missed the case of an *existing* save (one
+that already had the field from before this change) suddenly needing the 4 new tier entries
+backfilled too — without the fix, any player already past stage 50/100/150/200 would have gotten
+those toasts fired for real, back to back, on their very next win. See AGENTS.md's Traps section
+for the general lesson (a "field missing" migration guard doesn't survive the table it backfills
+from growing new entries).
+
 ### 2026-09-20 — E3 Part 2 (friend leaderboards) shipped; found & fixed a second wall-clock-content trap
 First of the three "gaming experience" follow-ups (feature-unlock toasts shipped the same day,
 just before this) picked up in order. Investigated the roadmap's own "待后续增加 `public.leaderboards`
