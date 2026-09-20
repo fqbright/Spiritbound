@@ -669,52 +669,6 @@ func _advance_quest(quest_type: String, amount: int) -> void:
 	if any_completed: _toast(t("ui.quest_ready_toast"), GOLD)
 	_refresh_achievements()
 
-# Career Codex (旅者典籍): permanent playstyle/lifetime stats independent of the period-scoped
-# quest system above. Deliberately does NOT duplicate what lifetime_stats/abyss_record already
-# track (victories == lifetime_stats.win_battles, total damage == lifetime_stats.deal_damage,
-# total gold == lifetime_stats.earn_gold, highest Abyss floor == profile.abyss_record) — only
-# what nothing else does: win/loss streaks, per-battle totals pulled from combat.state.stats,
-# and which hero/cards actually get played.
-func _track_career_battle_stats() -> void:
-	if not profile.get("career_stats") is Dictionary: profile.career_stats = {}
-	if combat == null: return
-	var cs: Dictionary = profile.career_stats
-	var stats: Dictionary = combat.state.get("stats", {})
-	cs.total_shield_gained = int(cs.get("total_shield_gained", 0)) + int(stats.get("shield_gained", 0))
-	cs.total_cards_played = int(cs.get("total_cards_played", 0)) + int(stats.get("cards_played", 0))
-	if not cs.get("favorite_cards") is Dictionary: cs.favorite_cards = {}
-	var play_counts: Dictionary = stats.get("card_play_counts", {})
-	for card_id in play_counts:
-		cs.favorite_cards[card_id] = int(cs.favorite_cards.get(card_id, 0)) + int(play_counts[card_id])
-
-# Called once per win from the top of _grant_stage_rewards(), covering every win path
-# (campaign, Abyss, Boss Rush, Daily/Weekly Trial, Draft Arena, Phantom Arena) uniformly —
-# g.combat is still the just-finished battle's state at that point, before the next begin_battle().
-func _track_career_win() -> void:
-	_track_career_battle_stats()
-	var cs: Dictionary = profile.career_stats
-	cs.current_win_streak = int(cs.get("current_win_streak", 0)) + 1
-	cs.longest_win_streak = maxi(int(cs.get("longest_win_streak", 0)), int(cs.current_win_streak))
-	var hero_id: String = str(profile.hero_class)
-	if not cs.get("favorite_hero") is Dictionary: cs.favorite_hero = {}
-	cs.favorite_hero[hero_id] = int(cs.favorite_hero.get(hero_id, 0)) + 1
-	SpiritSave.write(profile)
-
-# Called from _leave_battle() when g.combat.state.phase == "lost" specifically — a voluntary
-# retreat is not a defeat and must not break the streak (see _track_career_retreat() below).
-func _track_career_defeat() -> void:
-	_track_career_battle_stats()
-	profile.career_stats.defeats = int(profile.career_stats.get("defeats", 0)) + 1
-	profile.career_stats.current_win_streak = 0
-	SpiritSave.write(profile)
-
-# Called from _leave_battle() for every other way a battle ends (a manual retreat mid-fight) —
-# still credits the shield/cards/favorite-card totals for what actually happened this battle,
-# just without touching the win/loss streak either way.
-func _track_career_retreat() -> void:
-	_track_career_battle_stats()
-	SpiritSave.write(profile)
-
 # Achievement progress readers, one per ACHIEVEMENTS "kind" — most kinds just read an existing
 # permanent profile field directly (nothing to duplicate), "stat" is the one kind backed by
 # the lifetime_stats counter _advance_quest() maintains above.
