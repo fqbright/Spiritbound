@@ -25,6 +25,7 @@ func show_compendium() -> void:
 		["bestiary", g.t("ui.compendium_tab_bestiary")],
 		["achievements", g.t("ui.compendium_tab_achievements")],
 		["chronicle", g.t("ui.compendium_tab_chronicle")],
+		["codex", g.t("ui.compendium_tab_codex")],
 	], g.compendium_tab, func(id): g.compendium_tab = id; show_compendium()))
 
 	var scroll := TouchScrollContainer.new()
@@ -43,6 +44,7 @@ func show_compendium() -> void:
 		"relics": _build_compendium_relics(list)
 		"bestiary": _build_compendium_bestiary(list)
 		"achievements": _build_compendium_achievements(list)
+		"codex": _build_compendium_codex(list)
 		_: _build_compendium_chronicle(list)
 
 func _build_compendium_milestones_bar(pct: int) -> Control:
@@ -321,6 +323,262 @@ func _build_compendium_achievements(list: VBoxContainer) -> void:
 			var bar := g._stat_bar(120.0, 14.0, progress, int(ach.target), g.GOLD, "%d / %d" % [progress, int(ach.target)], 9)
 			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			texts.add_child(bar)
+
+func _fmt_codex_num(n: int) -> String:
+	var s: String = str(n)
+	var res: String = ""
+	var count: int = 0
+	for i in range(s.length() - 1, -1, -1):
+		res = s[i] + res
+		count += 1
+		if count % 3 == 0 and i > 0:
+			res = "," + res
+	return res
+
+func _build_compendium_codex(list: VBoxContainer) -> void:
+	var cs: Dictionary = g.profile.get("career_stats", {})
+	var total_battles: int = int(cs.get("total_battles", 0))
+	var victories: int = int(cs.get("victories", 0))
+	var defeats: int = int(cs.get("defeats", 0))
+	var win_rate: int = int(round(float(victories * 100) / float(maxi(1, total_battles)))) if total_battles > 0 else 0
+	var longest_streak: int = int(cs.get("longest_win_streak", 0))
+	var current_streak: int = int(cs.get("current_win_streak", 0))
+	var total_dmg: int = int(cs.get("total_damage_dealt", 0))
+	var total_shd: int = int(cs.get("total_shield_gained", 0))
+	var total_cards: int = int(cs.get("total_cards_played", 0))
+	var elites: int = int(cs.get("elites_slain", 0))
+	var bosses: int = int(cs.get("bosses_slain", 0))
+
+	# Section 1: Overview
+	list.add_child(g._label(g.t("ui.codex_overview"), 13, g.JADE))
+	var ov_panel := PanelContainer.new()
+	ov_panel.name = "CodexOverviewPanel"
+	ov_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ov_panel.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 12, Color("1f404d")))
+	list.add_child(ov_panel)
+
+	var ov_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: ov_pad.add_theme_constant_override("margin_%s" % s, 10)
+	ov_panel.add_child(ov_pad)
+
+	var ov_grid := GridContainer.new()
+	ov_grid.columns = 3
+	ov_grid.add_theme_constant_override("h_separation", 8)
+	ov_grid.add_theme_constant_override("v_separation", 10)
+	ov_pad.add_child(ov_grid)
+
+	var metrics: Array = [
+		[g.t("ui.codex_total_battles"), str(total_battles), g.TEXT],
+		[g.t("ui.codex_victories"), str(victories), g.JADE],
+		[g.t("ui.codex_defeats"), str(defeats), Color("e06c75") if defeats > 0 else g.MUTED],
+		[g.t("ui.codex_win_rate"), "%d%%" % win_rate, g.GOLD],
+		[g.t("ui.codex_best_streak"), str(longest_streak), g.GOLD],
+		[g.t("ui.codex_current_streak"), str(current_streak), g.JADE if current_streak > 0 else g.MUTED],
+	]
+	for m in metrics:
+		var m_box := VBoxContainer.new()
+		m_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		m_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		m_box.add_theme_constant_override("separation", 2)
+		m_box.add_child(g._label(str(m[0]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		m_box.add_child(g._label(str(m[1]), 16, m[2] as Color, HORIZONTAL_ALIGNMENT_CENTER))
+		ov_grid.add_child(m_box)
+
+	# Section 2: Combat Mastery
+	list.add_child(g._label(g.t("ui.codex_mastery"), 13, g.JADE))
+	var m_panel := PanelContainer.new()
+	m_panel.name = "CodexMasteryPanel"
+	m_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_panel.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 12, Color("1f404d")))
+	list.add_child(m_panel)
+
+	var m_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: m_pad.add_theme_constant_override("margin_%s" % s, 10)
+	m_panel.add_child(m_pad)
+
+	var m_vbox := VBoxContainer.new()
+	m_vbox.add_theme_constant_override("separation", 8)
+	m_pad.add_child(m_vbox)
+
+	var m_stats_row := HBoxContainer.new()
+	m_stats_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_vbox.add_child(m_stats_row)
+
+	var mastery_items: Array = [
+		[g.t("ui.codex_total_damage"), _fmt_codex_num(total_dmg), Color("ff8755")],
+		[g.t("ui.codex_total_shield"), _fmt_codex_num(total_shd), Color("61afef")],
+		[g.t("ui.codex_cards_played"), _fmt_codex_num(total_cards), g.TEXT],
+	]
+	for mi in mastery_items:
+		var mi_box := VBoxContainer.new()
+		mi_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mi_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		mi_box.add_theme_constant_override("separation", 2)
+		mi_box.add_child(g._label(str(mi[0]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		mi_box.add_child(g._label(str(mi[1]), 14, mi[2] as Color, HORIZONTAL_ALIGNMENT_CENTER))
+		m_stats_row.add_child(mi_box)
+
+	var sep_line := ColorRect.new()
+	sep_line.custom_minimum_size = Vector2(0, 1)
+	sep_line.color = Color("1a3840")
+	m_vbox.add_child(sep_line)
+
+	var bosses_row := HBoxContainer.new()
+	bosses_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	m_vbox.add_child(bosses_row)
+
+	var slay_items: Array = [
+		[g.t("ui.codex_elites_slain"), str(elites), g.GOLD],
+		[g.t("ui.codex_bosses_slain"), str(bosses), Color("e5c07b")],
+	]
+	for si in slay_items:
+		var si_box := VBoxContainer.new()
+		si_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		si_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		si_box.add_theme_constant_override("separation", 2)
+		si_box.add_child(g._label(str(si[0]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		si_box.add_child(g._label(str(si[1]), 14, si[2] as Color, HORIZONTAL_ALIGNMENT_CENTER))
+		bosses_row.add_child(si_box)
+
+	# Signature Hero & Signature Card row
+	var sig_row := HBoxContainer.new()
+	sig_row.add_theme_constant_override("separation", 10)
+	m_vbox.add_child(sig_row)
+
+	# Find signature hero
+	var hero_id: String = str(cs.get("favorite_hero", g.profile.get("hero_class", "fox_spirit")))
+	var hero_data: Dictionary = {}
+	for hc in g.content.HERO_CLASSES:
+		if hc.id == hero_id:
+			hero_data = hc
+			break
+	var hero_name: String = g.content.hero_name(hero_data, g.lang) if not hero_data.is_empty() else hero_id
+
+	var hero_box := PanelContainer.new()
+	hero_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hero_box.add_theme_stylebox_override("panel", g._panel(Color("0e1d22"), 8, Color("1b3a42")))
+	sig_row.add_child(hero_box)
+	var hb_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: hb_pad.add_theme_constant_override("margin_%s" % s, 6)
+	hero_box.add_child(hb_pad)
+	var hb_row := HBoxContainer.new()
+	hb_row.add_theme_constant_override("separation", 8)
+	hb_pad.add_child(hb_row)
+
+	var h_spr := TextureRect.new()
+	if not hero_data.is_empty():
+		h_spr.texture = g._get_character_texture(str(hero_data.sprite))
+	h_spr.custom_minimum_size = Vector2(36, 36)
+	h_spr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	h_spr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hb_row.add_child(h_spr)
+
+	var h_txts := VBoxContainer.new()
+	h_txts.alignment = BoxContainer.ALIGNMENT_CENTER
+	h_txts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h_txts.add_child(g._label(g.t("ui.codex_fav_hero"), 9, g.MUTED))
+	h_txts.add_child(g._label(hero_name, 11, g.GOLD))
+	hb_row.add_child(h_txts)
+
+	# Find signature card
+	var fav_cards: Dictionary = cs.get("favorite_cards", {})
+	var top_cid: String = ""
+	var top_count: int = 0
+	for cid in fav_cards:
+		var cnt: int = int(fav_cards[cid])
+		if cnt > top_count:
+			top_count = cnt
+			top_cid = str(cid)
+	var top_card: Dictionary = g.content.card(top_cid) if not top_cid.is_empty() else {}
+	var card_name_str: String = g.content.text(str(top_card.get("nameKey", "")), g.lang) if not top_card.is_empty() else (top_cid if not top_cid.is_empty() else g.t("ui.loadout_empty"))
+
+	var card_box := PanelContainer.new()
+	card_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card_box.add_theme_stylebox_override("panel", g._panel(Color("0e1d22"), 8, Color("1b3a42")))
+	sig_row.add_child(card_box)
+	var cb_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: cb_pad.add_theme_constant_override("margin_%s" % s, 6)
+	card_box.add_child(cb_pad)
+	var cb_row := HBoxContainer.new()
+	cb_row.add_theme_constant_override("separation", 8)
+	cb_pad.add_child(cb_row)
+
+	var c_badge: Control = g._icon_badge("✦" if not top_card.is_empty() else "—", g._card_color(top_card) if not top_card.is_empty() else Color("3c5057"), 36, 16)
+	cb_row.add_child(c_badge)
+
+	var c_txts := VBoxContainer.new()
+	c_txts.alignment = BoxContainer.ALIGNMENT_CENTER
+	c_txts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	c_txts.add_child(g._label(g.t("ui.codex_fav_card"), 9, g.MUTED))
+	var c_label_str: String = ("%s (%d)" % [card_name_str, top_count]) if top_count > 0 else card_name_str
+	c_txts.add_child(g._label(c_label_str, 11, g.JADE if not top_card.is_empty() else g.MUTED))
+	cb_row.add_child(c_txts)
+
+	# Section 3: Hall of Fame
+	list.add_child(g._label(g.t("ui.codex_hall_of_fame"), 13, g.JADE))
+	var hof: Array = cs.get("hall_of_fame", [])
+	if hof.is_empty():
+		var empty_panel := PanelContainer.new()
+		empty_panel.name = "CodexHofEmpty"
+		empty_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		empty_panel.add_theme_stylebox_override("panel", g._panel(Color("0e191d"), 10, Color("162e35")))
+		var ep_pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: ep_pad.add_theme_constant_override("margin_%s" % s, 16)
+		empty_panel.add_child(ep_pad)
+		ep_pad.add_child(g._label(g.t("ui.codex_no_records"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+		list.add_child(empty_panel)
+	else:
+		for rec in hof:
+			var r_panel := PanelContainer.new()
+			r_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			r_panel.add_theme_stylebox_override("panel", g._panel(Color("10242b"), 10, g.GOLD))
+			list.add_child(r_panel)
+
+			var r_pad := MarginContainer.new()
+			for s in ["left", "right", "top", "bottom"]: r_pad.add_theme_constant_override("margin_%s" % s, 10)
+			r_panel.add_child(r_pad)
+
+			var r_vbox := VBoxContainer.new()
+			r_vbox.add_theme_constant_override("separation", 6)
+			r_pad.add_child(r_vbox)
+
+			var r_head := HBoxContainer.new()
+			r_vbox.add_child(r_head)
+
+			var stage_idx: int = int(rec.get("stage", 0))
+			var mode_str: String = str(rec.get("mode", "campaign"))
+			var st_name: String = ""
+			if mode_str == "abyss":
+				st_name = g.tf("ui.abyss_stage_label_fmt", stage_idx)
+			elif mode_str == "trial":
+				st_name = g.t("tutorial.daily_trial.title")
+			else:
+				st_name = g.content.stage_name(stage_idx, g.lang) if (stage_idx >= 0 and stage_idx < g.content.encounters.size()) else ("Stage %d" % (stage_idx + 1))
+			var r_title := g._label("👑 " + st_name, 12, g.GOLD)
+			r_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			r_head.add_child(r_title)
+
+			var rec_hero_id: String = str(rec.get("hero", "fox_spirit"))
+			var rec_hero_data: Dictionary = {}
+			for hc in g.content.HERO_CLASSES:
+				if hc.id == rec_hero_id: rec_hero_data = hc; break
+			var rec_hero_name: String = g.content.hero_name(rec_hero_data, g.lang) if not rec_hero_data.is_empty() else rec_hero_id
+			r_head.add_child(g._label(rec_hero_name, 11, g.JADE))
+
+			var r_detail := HBoxContainer.new()
+			r_detail.add_theme_constant_override("separation", 12)
+			r_vbox.add_child(r_detail)
+
+			var turns_lbl := g._label(g.tf("ui.codex_hof_turns_fmt", int(rec.get("turns", 1))), 10, g.MUTED)
+			r_detail.add_child(turns_lbl)
+
+			var hp_lbl := g._label(g.tf("ui.codex_hof_hp_fmt", int(rec.get("hp_left", 60))), 10, Color("e06c75"))
+			r_detail.add_child(hp_lbl)
+
+			var deck_arr: Array = rec.get("deck", [])
+			var deck_lbl := g._label(g.tf("ui.codex_hof_deck_fmt", deck_arr.size()), 10, g.TEXT)
+			r_detail.add_child(deck_lbl)
+
 
 func _equip(item: Dictionary) -> void:
 	if g.profile.equipment_slots.get(item.slot,"") == item.id: g.profile.equipment_slots.erase(item.slot)

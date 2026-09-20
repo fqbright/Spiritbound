@@ -1335,8 +1335,8 @@ func _tab_bar(tabs: Array, active: String, on_pick: Callable) -> Control:
 	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	row.add_theme_constant_override("separation", 0)
 	bar.add_child(row)
-	var font_sz: int = 10 if tabs.size() > 5 else (11 if tabs.size() > 3 else 13)
-	var rad: int = 12 if tabs.size() > 4 else 22
+	var font_sz: int = 9 if tabs.size() > 6 else (10 if tabs.size() > 5 else (11 if tabs.size() > 3 else 13))
+	var rad: int = 10 if tabs.size() > 6 else (12 if tabs.size() > 4 else 22)
 	for entry in tabs:
 		var id: String = entry[0]
 		var is_active: bool = id == active

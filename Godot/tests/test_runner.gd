@@ -1544,6 +1544,72 @@ func run() -> void:
 	c_chaos.play(0, 0)
 	check(hp_before_strike - c_chaos.state.enemies[0].health == 11, "strike deals 11 damage on vulnerable target with res_chaos_titan")
 
+	# ========================================================
+	# Phase 6: Career Codex & Player Statistics Dashboard Tests
+	# ========================================================
+	var prof_codex := SpiritSave.defaults(content)
+	check(prof_codex.has("career_stats") and prof_codex.career_stats is Dictionary, "profile defaults include career_stats")
+	var cs_test: Dictionary = prof_codex.career_stats
+	check(cs_test.has("total_battles") and cs_test.total_battles == 0, "career_stats initialized with 0 total_battles")
+	check(cs_test.has("victories") and cs_test.victories == 0, "career_stats initialized with 0 victories")
+	check(cs_test.has("defeats") and cs_test.defeats == 0, "career_stats initialized with 0 defeats")
+	check(cs_test.has("current_win_streak") and cs_test.current_win_streak == 0, "career_stats initialized with 0 current_win_streak")
+	check(cs_test.has("longest_win_streak") and cs_test.longest_win_streak == 0, "career_stats initialized with 0 longest_win_streak")
+	check(cs_test.has("favorite_cards") and cs_test.favorite_cards is Dictionary, "career_stats has favorite_cards dict")
+	check(cs_test.has("hall_of_fame") and cs_test.hall_of_fame is Array, "career_stats has hall_of_fame array")
+
+	# Test combat cards tally tracking
+	var c_tally := SpiritCombat.new(content)
+	c_tally.create(1, encounter(50, 0), content.raw.startingDeck, 60)
+	_force_hand(c_tally, "strike")
+	c_tally.play(0, 0)
+	check(c_tally.state.stats.has("cards_tally"), "combat stats contains cards_tally")
+	check(int(c_tally.state.stats.cards_tally.get("strike", 0)) == 1, "cards_tally increments for strike")
+
+	# Test _record_battle_result logic
+	var g_codex: Object = load("res://scripts/game.gd").new()
+	g_codex.content = content
+	g_codex.profile = SpiritSave.defaults(content)
+	g_codex.combat = c_tally
+	g_codex.current_stage = 0
+
+	# Victory 1
+	g_codex._record_battle_result(true)
+	var cs_res: Dictionary = g_codex.profile.career_stats
+	check(cs_res.total_battles == 1, "_record_battle_result increments total_battles")
+	check(cs_res.victories == 1, "_record_battle_result increments victories")
+	check(cs_res.current_win_streak == 1, "win streak becomes 1")
+	check(cs_res.longest_win_streak == 1, "longest win streak becomes 1")
+	check(int(cs_res.favorite_cards.get("strike", 0)) == 1, "favorite_cards records strike tally")
+
+	# Victory 2
+	g_codex._record_battle_result(true)
+	check(cs_res.total_battles == 2, "total battles becomes 2")
+	check(cs_res.victories == 2, "victories becomes 2")
+	check(cs_res.current_win_streak == 2, "current win streak becomes 2")
+	check(cs_res.longest_win_streak == 2, "longest win streak becomes 2")
+
+	# Defeat: resets current streak, keeps longest streak
+	g_codex._record_battle_result(false)
+	check(cs_res.total_battles == 3, "total battles becomes 3")
+	check(cs_res.victories == 2, "victories remains 2")
+	check(cs_res.defeats == 1, "defeats becomes 1")
+	check(cs_res.current_win_streak == 0, "defeat resets current_win_streak to 0")
+	check(cs_res.longest_win_streak == 2, "defeat preserves longest_win_streak of 2")
+
+	# Boss victory adds Hall of Fame entry
+	g_codex.current_stage = 4
+	g_codex._record_battle_result(true)
+	check(cs_res.hall_of_fame.size() == 1, "boss victory adds entry to hall_of_fame")
+	var hof_item: Dictionary = cs_res.hall_of_fame[0]
+	check(hof_item.has("stage") and hof_item.has("hero") and hof_item.has("turns") and hof_item.has("hp_left"), "hall_of_fame entry has stage, hero, turns, hp_left")
+
+	# Test Hall of Fame capping at 5
+	for i in 10:
+		g_codex._record_battle_result(true)
+	check(cs_res.hall_of_fame.size() <= 5, "hall_of_fame capped at maximum 5 entries")
+
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

@@ -47,7 +47,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
 		"chapter":int(encounter.get("chapter", 1)),
 		"last_element":"",
-		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0}
+		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0,"cards_tally":{}}
 	}
 	if not enemies.is_empty():
 		enemies[0]["is_great_boss"] = state.is_great_boss
@@ -201,7 +201,10 @@ func play(hand_index: int, target_index := -1) -> bool:
 	else: target_index = -1
 	var rune: String = state.runes.get(card.id, "")
 	state.energy -= card.cost
-	if state.has("stats"): state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
+	if state.has("stats"):
+		state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
+		if not state.stats.has("cards_tally"): state.stats.cards_tally = {}
+		state.stats.cards_tally[card.id] = int(state.stats.cards_tally.get(card.id, 0)) + 1
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true

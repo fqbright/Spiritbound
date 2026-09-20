@@ -2775,6 +2775,71 @@ func diagnose_battle_defeat() -> Dictionary:
 		return {"tip": tf("ui.defeat_diag_low_shield", shield_cards), "action": "deck"}
 	return {"tip": t("ui.defeat_diag_general"), "action": "cultivate"}
 
+func _record_battle_result(won: bool) -> void:
+	if not profile.get("career_stats") is Dictionary:
+		profile.career_stats = {
+			"total_battles": 0, "victories": 0, "defeats": 0,
+			"current_win_streak": 0, "longest_win_streak": 0,
+			"total_damage_dealt": 0, "total_shield_gained": 0, "total_cards_played": 0,
+			"elites_slain": 0, "bosses_slain": 0,
+			"favorite_hero": str(profile.get("hero_class", "fox_spirit")),
+			"favorite_cards": {}, "hall_of_fame": []
+		}
+	var cs: Dictionary = profile.career_stats
+	cs.total_battles = int(cs.get("total_battles", 0)) + 1
+	if won:
+		cs.victories = int(cs.get("victories", 0)) + 1
+		var streak: int = int(cs.get("current_win_streak", 0)) + 1
+		cs.current_win_streak = streak
+		cs.longest_win_streak = maxi(int(cs.get("longest_win_streak", 0)), streak)
+	else:
+		cs.defeats = int(cs.get("defeats", 0)) + 1
+		cs.current_win_streak = 0
+
+	var hero_key: String = str(profile.get("hero_class", "fox_spirit"))
+	cs.favorite_hero = hero_key
+
+	var c_stats: Dictionary = combat.state.get("stats", {}) if (combat != null and combat.state.has("stats")) else {}
+	var dmg: int = int(c_stats.get("damage_dealt", 0))
+	var shd: int = int(c_stats.get("shield_gained", 0))
+	var cards: int = int(c_stats.get("cards_played", 0))
+	cs.total_damage_dealt = int(cs.get("total_damage_dealt", 0)) + dmg
+	cs.total_shield_gained = int(cs.get("total_shield_gained", 0)) + shd
+	cs.total_cards_played = int(cs.get("total_cards_played", 0)) + cards
+
+	var node_k: String = content.node_kind(current_stage) if (not in_abyss and not in_daily_trial and not in_weekly_challenge and current_stage >= 0 and current_stage < content.encounters.size()) else ""
+	if won:
+		if node_k == "elite" or in_weekly_challenge:
+			cs.elites_slain = int(cs.get("elites_slain", 0)) + 1
+		elif content.is_boss_kind(node_k) or in_boss_rush or (in_abyss and int(profile.get("abyss_floor", 1)) % 5 == 0):
+			cs.bosses_slain = int(cs.get("bosses_slain", 0)) + 1
+
+	var fav_cards: Dictionary = cs.get("favorite_cards", {})
+	var c_tally: Dictionary = c_stats.get("cards_tally", {})
+	for cid in c_tally:
+		fav_cards[cid] = int(fav_cards.get(cid, 0)) + int(c_tally[cid])
+	cs.favorite_cards = fav_cards
+
+	if won and (content.is_boss_kind(node_k) or in_boss_rush or in_abyss or (current_stage % 5 == 4)):
+		var hof_entry: Dictionary = {
+			"stage": current_stage if not in_abyss else int(profile.get("abyss_floor", 1)),
+			"mode": "abyss" if in_abyss else ("trial" if in_daily_trial else ("challenge" if in_weekly_challenge else "campaign")),
+			"hero": hero_key,
+			"turns": int(combat.state.get("turn", 1)) if combat != null else 1,
+			"hp_left": int(combat.state.player.health) if (combat != null and combat.state.has("player")) else int(profile.health),
+			"timestamp": int(Time.get_unix_time_from_system()),
+			"deck": profile.get("deck", []).duplicate()
+		}
+		var hof: Array = cs.get("hall_of_fame", []).duplicate()
+		hof.push_front(hof_entry)
+		if hof.size() > 5:
+			hof.resize(5)
+		cs.hall_of_fame = hof
+
+	profile.career_stats = cs
+	SpiritSave.write(profile)
+
+
 func _on_pin_pressed(index: int) -> void:
 	if _is_replay(index) and content.node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
 		_show_replay_mode_prompt(index)

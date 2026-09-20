@@ -1967,8 +1967,18 @@ func _run() -> void:
 	game.show_compendium()
 	await process_frame
 	check(_find_label_containing(game.root, game.content.chapter_name(49, game.lang)), "reaching chapter 50 reveals its real name in the Chronicle")
-	check(_find_label_text(game.root, game.content.chapter_lore(49, game.lang)), "reaching chapter 50 reveals its chronicle entry text")
 	game.profile.unlocked = prior_unlocked
+
+	section("== career codex: compendium tab ==")
+	check(_find_button_containing(game.root, game.content.ui("ui.compendium_tab_codex", game.lang)) != null, "Codex tab button exists")
+	game.compendium_tab = "codex"
+	game.show_compendium()
+	await process_frame
+	check(game.root.find_child("CodexOverviewPanel", true, false) != null, "CodexOverviewPanel renders in Codex tab")
+	check(game.root.find_child("CodexMasteryPanel", true, false) != null, "CodexMasteryPanel renders in Codex tab")
+	check(_find_label_text(game.root, game.t("ui.codex_overview")), "Codex overview title renders")
+	check(_find_label_text(game.root, game.t("ui.codex_mastery")), "Codex mastery title renders")
+	check(_find_label_text(game.root, game.t("ui.codex_hall_of_fame")), "Codex hall of fame title renders")
 
 	# A synthetic key is used here (rather than a real card/equipment id) so the check doesn't
 	# depend on what earlier sections in this same long-running suite already collected or

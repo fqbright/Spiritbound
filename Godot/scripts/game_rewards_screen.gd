@@ -218,6 +218,7 @@ func _current_stage_label() -> String:
 	return g.content.stage_name(g.current_stage, g.lang)
 
 func _grant_stage_rewards() -> void:
+	g._record_battle_result(true)
 	if g.in_phantom_arena:
 		g.in_phantom_arena = false
 		g._ensure_phantom_arena_current()

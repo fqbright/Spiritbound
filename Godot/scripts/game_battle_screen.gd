@@ -320,6 +320,7 @@ func show_battle() -> void:
 			_advance_to_reward()
 		else:
 			g.play_sfx("battle_defeat")
+			g._record_battle_result(false)
 			var diag: Dictionary = g.diagnose_battle_defeat()
 			var diag_card := PanelContainer.new()
 			diag_card.name = "DefeatDiagnosisCard"

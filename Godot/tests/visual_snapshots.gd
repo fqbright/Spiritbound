@@ -115,13 +115,19 @@ func _run() -> void:
 	await _capture_screen(game, "06_camp_screen.png")
 
 	# 7. Treasury Inspector Modal
-	print("7/7 Rendering Treasury Inspector...")
+	print("7/8 Rendering Treasury Inspector...")
 	game.show_map()
 	await process_frame
 	game.show_treasury_inspector()
 	await _capture_screen(game, "07_treasury_inspector.png")
 
+	# 8. Career Codex Screen
+	print("8/8 Rendering Career Codex Screen...")
+	game.compendium_tab = "codex"
+	game.show_compendium()
+	await _capture_screen(game, "08_codex_screen.png")
+
 	print("\n========================================================")
-	print("  🎉 ALL 7 SCREENSHOTS CAPTURED TO Godot/tests/snapshots/")
+	print("  🎉 ALL 8 SCREENSHOTS CAPTURED TO Godot/tests/snapshots/")
 	print("========================================================\n")
 	quit(0)
