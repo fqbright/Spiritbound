@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/focus.jpg-4d77ad54bb4806650c5b066a82d4d34a.ct
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.95
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1

@@ -89,6 +89,31 @@ jobs:
       # there are no pixels to save. The virtual screen must also be at least as tall as the
       # game's 390x844 portrait viewport — a shorter one resolves bottom-anchored UI against the
       # wrong height and looks exactly like a genuine layout bug.
+      #
+      # This runs *before* the promotion below, while the committed baselines are still the OLD
+      # ones, and that is the entire point: it answers "how far did this change move each screen?"
+      # by diffing a fresh capture against the baselines it is about to replace. After the
+      # promotion, that comparison is the new capture against itself and carries no information.
+      #
+      # It matters because this workflow is the only feedback channel available for an intentional
+      # visual change (Actions logs are not readable from the dev machine, so a commit body is the
+      # only place a number can land). Without this step the honest answer to "did that change the
+      # art on screen?" is "unknown", and the tempting answer is "the new baselines pass, so no".
+      # Non-blocking: these are measurements, not a gate.
+      - name: Measure the move against the baselines being replaced
+        id: before
+        run: |
+          set +e
+          xvfb-run -a --server-args="-screen 0 400x900x24" ./run_tests.sh --diff > /tmp/before.log 2>&1
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          grep -E "matches baseline|exceeded visual difference|no committed baseline|was not captured" \
+            /tmp/before.log | tee /tmp/before_screen.txt || true
+          if [ ! -s /tmp/before_screen.txt ]; then
+            echo "(no per-screen lines: the suite did not reach its comparison stage)" > /tmp/before_screen.txt
+            tail -20 /tmp/before.log
+          fi
+
       - name: Recapture snapshots and promote them to baselines
         run: |
           chmod +x run_tests.sh
@@ -134,6 +159,10 @@ jobs:
             echo
             echo "Per-screen measurements from the re-check:"
             sed 's/^/  /' /tmp/per_screen.txt 2>/dev/null || echo "  (no per-screen lines found — the suite may not have reached its comparison stage)"
+            echo
+            echo "How far this change moved each screen (fresh capture vs the baselines this commit"
+            echo "replaces, i.e. the size of the visual delta that prompted the refresh):"
+            sed 's/^/  /' /tmp/before_screen.txt 2>/dev/null || echo "  (not measured)"
             echo
             echo "Baseline files touched:"
             git status --short Godot/tests/snapshots/baselines || true

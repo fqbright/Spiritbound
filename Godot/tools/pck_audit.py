@@ -38,7 +38,11 @@ while True:
     if start is None:
         break
     ln = struct.unpack('<I', data[start:start + 4])[0]
-    name = data[start + 4:start + 4 + ln].decode()
+    # The path field is NUL-padded to a 4-byte boundary. Leaving the padding on turned one
+    # extension into several in the table below (`ctex`, `ctex `, `ctex  ` ...), which reads as a
+    # broken parser rather than as padding -- it did, and it cost a wrong conclusion about missing
+    # files. Stripped here.
+    name = data[start + 4:start + 4 + ln].decode().rstrip('\x00')
     off, size = struct.unpack('<QQ', data[start + 4 + ln:start + 4 + ln + 16])
     entries.append((name, off, size))
     end = start

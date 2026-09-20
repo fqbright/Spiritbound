@@ -2002,6 +2002,57 @@ func run() -> void:
 				"res://assets/backgrounds/spirit-world-map-v1.jpg"]:
 			check(ResourceLoader.exists(needed), "%s stays loadable (still referenced in code)" % needed)
 
+	# The texture-compression policy (Godot/tools/tex_policy.py) is a judgement about what the art
+	# looks like, and it currently lives in 519 .import sidecars -- a place where a revert, a bad
+	# merge, or someone opening the project with a different editor build can undo it silently.
+	# It is worth ~66 MiB of the shipped pack (Docs/ASSET_COMPRESSION.md), so it earns a gate.
+	#
+	# Both halves are asserted, and the second is the important one: the art meant to be Lossy
+	# still is, AND the small high-contrast art meant to stay Lossless has not been swept up by a
+	# future "compress everything" pass. Those two failure modes pull in opposite directions, which
+	# is why asserting only one of them proves nothing about the other.
+	var tex_lossy := [
+		"res://assets/banners/banner_boss_rush.png",
+		"res://assets/backgrounds/battle_stage_4.png",
+		"res://assets/chapters/chapter_0.png",
+		"res://assets/cards/card_back_default.png",
+		"res://assets/characters/hero_fox_spirit.png",
+		"res://assets/characters/monsters/m_s100.png",
+	]
+	var tex_lossless := [
+		"res://assets/icons/coins.png",
+		"res://assets/ui/spiritbound_logo.png",
+		"res://assets/card_frame_common.png",
+		"res://assets/badges/badge_gold.png",
+		"res://assets/vfx/spirit_slash_arc.png",
+		"res://assets/characters/fox_rig/fox_body.png",
+	]
+	var tex_sidecar_text := func(path: String) -> String:
+		var side := path + ".import"
+		if not FileAccess.file_exists(side):
+			return ""
+		var f := FileAccess.open(side, FileAccess.READ)
+		if f == null:
+			return ""
+		var text := f.get_as_text()
+		f.close()
+		return text
+	for path in tex_lossy:
+		var text: String = tex_sidecar_text.call(path)
+		check(not text.is_empty(), "%s has a readable .import sidecar" % path.get_file())
+		check(text.contains("compress/mode=1"), "%s ships Lossy (expected by the policy)" % path.get_file())
+		check(text.contains("compress/lossy_quality=0.95"),
+			"%s uses the policy quality (0.95)" % path.get_file())
+	for path in tex_lossless:
+		var text: String = tex_sidecar_text.call(path)
+		check(not text.is_empty(), "%s has a readable .import sidecar" % path.get_file())
+		check(text.contains("compress/mode=0"),
+			"%s stays Lossless (small art with hard alpha edges; the policy keeps it lossless)" % path.get_file())
+	check(FileAccess.file_exists("res://tools/tex_policy.py"),
+		"tools/tex_policy.py is present: the compression policy is re-runnable, not a one-off edit")
+	check(FileAccess.file_exists("res://tools/tex_probe_samples.txt"),
+		"tools/tex_probe_samples.txt is present: the per-category PSNR measurement is reproducible")
+
 	print("SPIRITBOUND TESTS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
