@@ -99,6 +99,12 @@ var deck_filter_element: String = "all"
 var deck_search_query: String = ""
 var in_phantom_arena: bool = false
 var in_world_event: bool = false
+var in_ghost_arena: bool = false
+# Set by game_camp_screen.gd's leaderboard-row duel button right before calling
+# begin_ghost_arena_battle() — the identity/strength of whichever real leaderboard entry the
+# player chose to duel. See content.ghost_arena_encounter()'s own comment for why this becomes
+# a synthesized Encounter rather than a literal replay.
+var ghost_arena_target: Dictionary = {}
 var current_screen_name: String = "map"
 var clipboard_cache: String = ""
 var _back_action := Callable()
@@ -1621,6 +1627,8 @@ func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
 func begin_phantom_arena() -> void: _camp_screen.begin_phantom_arena()
+func begin_ghost_arena_battle() -> void: _camp_screen.begin_ghost_arena_battle()
+func _start_ghost_duel(ghost_name: String, char_id: String, category: String, score: int) -> void: _camp_screen._start_ghost_duel(ghost_name, char_id, category, score)
 func show_leaderboard(category: String = "abyss") -> void: _camp_screen.show_leaderboard(category)
 func show_friends_modal() -> void: _camp_screen.show_friends_modal()
 

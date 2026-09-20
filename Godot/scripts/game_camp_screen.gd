@@ -1725,6 +1725,46 @@ func begin_phantom_arena() -> void:
 	g.show_battle()
 	g._maybe_end_turn()
 
+# E4 "async ghost battle": g.ghost_arena_target is set by a leaderboard row's duel button
+# (_start_ghost_duel below) right before this is called — see content.ghost_arena_encounter()'s
+# own comment for the full design rationale. Otherwise identical to begin_phantom_arena() above:
+# the player's own real deck/relics/equipment/mastery, only the opponent Encounter differs.
+func begin_ghost_arena_battle() -> void:
+	g.in_ghost_arena = true
+	var ghost: Dictionary = g.ghost_arena_target
+	var enc: Dictionary = g.content.ghost_arena_encounter(str(ghost.get("name", "无名修士")), str(ghost.get("character_id", "fox")), str(ghost.get("category", "abyss")), int(ghost.get("score", 1)))
+	# Carried onto ghost_arena_target (rather than recomputed from category+score again) so
+	# _grant_stage_rewards()'s win branch can scale gold off the exact same resolved difficulty
+	# this encounter actually used, without reaching back into content.gd's normalization helper.
+	g.ghost_arena_target.level = int(enc.level)
+	g.current_stage = 0
+	g.active_modifier = {}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	var seed_val := g._battle_seed()
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	# Deliberately skips _mark_discovered("bestiary", ...)/_grant_bestiary_discovery_bonus():
+	# enc.name here is an arbitrary, unbounded real player name (not one of a finite, completable
+	# set of real monsters or Phantom Arena's 4 fixed NPCs), so treating each newly-seen name as a
+	# "new bestiary discovery" would hand out its one-time 20-gold/6-mastery-XP bonus over and
+	# over — once per unique leaderboard name ever duelled, with no cap. Found before this shipped
+	# by checking what that call actually does, the same way AGENTS.md's own economy traps got
+	# caught: read the function before assuming its name matches its safety.
+	g.pre_battle_health = 60
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+# Bound via .bind() from show_leaderboard()'s per-row duel button rather than captured directly
+# in a per-iteration button lambda — same reasoning as _set_leaderboard_scope's own comment.
+func _start_ghost_duel(ghost_name: String, char_id: String, category: String, score: int) -> void:
+	g.ghost_arena_target = {"name": ghost_name, "character_id": char_id, "category": category, "score": score}
+	_close_leaderboard_modal()
+	begin_ghost_arena_battle()
+
 func begin_daily_trial() -> void:
 	g._maybe_show_tutorial("daily_trial")
 	g._ensure_daily_trial_current()
@@ -2733,6 +2773,11 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 				var s_lbl := g._label(score_str, 11, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
 				s_lbl.custom_minimum_size.x = 90
 				row_h.add_child(s_lbl)
+
+				# E4: duel this entry as a synthesized encounter (see content.ghost_arena_encounter()).
+				var duel_btn := g._button("⚔", _start_ghost_duel.bind(name_str, char_id, cat, score_num), Color("3a1c1c"), Vector2(26, 26))
+				duel_btn.name = "GhostDuelBtn_%d" % i
+				row_h.add_child(duel_btn)
 
 				row.add_child(row_h)
 				list.add_child(row)

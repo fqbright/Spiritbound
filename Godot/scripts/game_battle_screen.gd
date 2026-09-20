@@ -2983,6 +2983,14 @@ func _leave_battle() -> void:
 		SpiritSave.write(g.profile)
 		g.show_camp()
 		return
+	if g.in_ghost_arena:
+		# Freely repeatable like Phantom Arena/Sandbox — a loss just restores HP and returns to
+		# camp, nothing to reset since there's no floor/streak tied to this mode either.
+		g.in_ghost_arena = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
 	if g.in_weekly_challenge:
 		g.in_weekly_challenge = false
 		g.profile.health = 60

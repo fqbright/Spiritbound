@@ -3578,6 +3578,41 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	section("== ghost arena: duel a leaderboard entry (E4) ==")
+	# combat.gd only models deck-vs-encounter, not deck-vs-deck (see content.ghost_arena_
+	# encounter()'s own comment), so this doesn't wait on show_leaderboard()'s real, async
+	# SupabaseClient fetch to render a row's duel button — the same reason the leaderboard
+	# section above never asserts on fetched row content either — and instead calls
+	# _start_ghost_duel()/begin_ghost_arena_battle() directly, exactly like begin_phantom_arena()
+	# is tested directly rather than through a tapped button.
+	game.show_challenges()
+	await process_frame
+	var ghost_gold_before: int = int(game.profile.gold)
+	game.show_leaderboard("abyss")
+	await process_frame
+	var ghost_lb_modal: Node = game.overlay.find_child("LeaderboardModal", true, false)
+	check(ghost_lb_modal != null, "LeaderboardModal opens ahead of the ghost-duel check")
+	game._start_ghost_duel("TestGhost", "sentinel", "abyss", 20)
+	await process_frame
+	check(game.overlay.find_child("LeaderboardModal", true, false) == null, "starting a ghost duel closes the leaderboard modal")
+	check(game.in_ghost_arena, "_start_ghost_duel begins a ghost arena battle")
+	check(game.ghost_arena_target.get("name","") == "TestGhost", "ghost_arena_target records the duelled entry's identity")
+	check(game.combat != null and game.combat.state.enemies.size() > 0 and int(game.combat.state.enemies[0].get("max_health", 0)) > 0, "the ghost battle has a real, scaled enemy")
+	check(str(game.combat.state.enemies[0].get("name","")) == "TestGhost", "the ghost battle's enemy is named after the duelled entry")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_ghost_arena, "_grant_stage_rewards clears in_ghost_arena after granting")
+	check(int(game.profile.gold) > ghost_gold_before, "winning a ghost duel grants gold")
+
+	# Loss path, mirroring the phantom-arena shortcut test's own shape (ghost_arena_target is
+	# still set from the win test above, so this reuses the same synthesized ghost).
+	game.begin_ghost_arena_battle()
+	await process_frame
+	check(game.in_ghost_arena, "begin_ghost_arena_battle() starts a ghost arena battle directly")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_ghost_arena, "leaving the ghost arena battle cleans up its state")
+
 	# 1d. Cultivation Meridian Modal
 	game.show_camp()
 	await process_frame

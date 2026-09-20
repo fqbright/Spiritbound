@@ -1210,6 +1210,20 @@ func run() -> void:
 	check(int(p_enc.chapter) == 102, "phantom arena encounter uses chapter 102 sentinel")
 	check(int(p_enc.health) > 0 and int(p_enc.damage) > 0, "phantom arena encounter scales health and damage")
 
+	# Ghost Arena tests (E4): a real leaderboard row synthesized into a Phantom-Arena-shaped
+	# Encounter (see content.ghost_arena_encounter()'s own comment) rather than a literal replay.
+	var ghost_enc: Dictionary = content.ghost_arena_encounter("TestGhost", "sentinel", "abyss", 20)
+	check(int(ghost_enc.chapter) == 103, "ghost arena encounter uses its own chapter 103, distinct from abyss (99) and phantom arena (102)")
+	check(str(ghost_enc.name) == "TestGhost" and str(ghost_enc.name_en) == "TestGhost", "ghost arena encounter's name is the real player's name verbatim in both languages")
+	check(str(ghost_enc.art) == "sentinel", "ghost arena encounter's art is overridden to the ghost's own character_id")
+	check(int(ghost_enc.health) > 0 and int(ghost_enc.damage) > 0, "ghost arena encounter has valid scaled stats")
+	var ghost_enc_weak: Dictionary = content.ghost_arena_encounter("Weak", "fox", "abyss", 2)
+	var ghost_enc_strong: Dictionary = content.ghost_arena_encounter("Strong", "fox", "abyss", 40)
+	check(int(ghost_enc_strong.health) > int(ghost_enc_weak.health), "a ghost recorded at a higher abyss floor is a tougher encounter (%d > %d)" % [int(ghost_enc_strong.health), int(ghost_enc_weak.health)])
+	check(int(content._ghost_difficulty_level("abyss", 20)) == 20, "abyss scores map 1:1 to a difficulty level (already a floor number)")
+	check(int(content._ghost_difficulty_level("daily_trial", 5000)) == 50, "daily_trial scores are coarsely normalized down to a comparable level")
+	check(int(content._ghost_difficulty_level("samsara", 3)) == 15, "samsara scores (cycle counts) are scaled up to a comparable level")
+
 	# Multi-currency & Soulbound & Exchange tests
 	var new_prof := SpiritSave.defaults(content)
 	check(int(new_prof.get("spirit_jade", 0)) == 10, "profile defaults include 10 Spirit Jade")

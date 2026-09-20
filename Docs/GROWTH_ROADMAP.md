@@ -310,11 +310,25 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   Friend codes require a cloud-linked account (a guest's submission id isn't stable across
   sessions, so there'd be nothing durable to share); the modal shows a sign-in prompt instead of
   a code for a guest account.
-- `[ ]` **E4 — 异步"幽灵对战"**
-  Recorded-run AI opponents need a backend to store and serve run recordings. E3 Part 2 shipped
-  without needing a new table by reusing `leaderboards`/`player_saves`; E4 has no equivalent
-  existing table to piggyback on (a run recording is arbitrary-length action data, not a score
-  row or a save blob), so it still needs one, e.g. `public.ghost_runs` keyed by stage + user_id.
+- `[x]` **E4 — 异步"幽灵对战"**
+  Shipped as a duel against a *synthesized encounter* built from a real leaderboard row, not a
+  literal move-by-move replay — `combat.gd` only ever models deck-vs-encounter (see
+  `Godot/scripts/combat.gd`'s own "No UI" boundary and AGENTS.md's file table), so a true
+  deck-vs-deck PvP engine would be a far larger lift than this feature's value justifies, and
+  redefining the scope this way also meant it needed no new backend table after all: a
+  leaderboard row's existing `player_name`/`character_id`/`category`/`score` (already public via
+  `SupabaseClient.fetch_leaderboard()`, per E3 Part 2 above) is everything
+  `content.ghost_arena_encounter()` needs to build a Phantom-Arena-shaped opponent — reusing
+  `abyss_encounter()`'s own tuned health/damage curve, parameterized by a normalized difficulty
+  level from the entry's score, so a ghost recorded at real floor 40 hits about as hard as floor
+  40 actually does. A "⚔" duel button on each leaderboard row (`GhostDuelBtn_<rank>`,
+  `game_camp_screen.gd`) launches it with the player's own real deck/relics/equipment/mastery,
+  same as Phantom Arena; a win/loss is inert like Phantom Arena/Sandbox (gold reward, no
+  streak). One real bug caught before shipping: the normal per-battle bestiary-discovery-bonus
+  call (`_grant_bestiary_discovery_bonus()`, +20 gold/+6 mastery XP the first time an encounter
+  name is seen) had to be deliberately skipped here, since a ghost's name is an arbitrary,
+  unbounded real player name rather than one of a small fixed roster — leaving it wired up would
+  have made "duel every unique name on the leaderboard once" a free, uncapped gold/XP farm.
 
 ---
 
@@ -322,6 +336,20 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-20 — E4 (Ghost Arena) shipped, completing the three "gaming experience" follow-ups
+Last of the three (feature-unlock toasts and E3 Part 2 shipped just before this, same day).
+Reconsidered E4's own framing before writing any code: the roadmap entry above used to assume
+a full move-by-move run recording, which really would need a new backend table plus a new
+deck-vs-deck combat engine `combat.gd` doesn't have. Redefined it as a duel against a
+synthesized encounter (`content.ghost_arena_encounter()`) instead — see the roadmap entry above
+for the full design and the bestiary-discovery-bonus exploit caught and skipped before shipping.
+Zero new backend surface needed: everything reads fields the leaderboard already exposes.
+Covered by 8 new `test_runner.gd` pure-function checks (encounter scaling, difficulty
+normalization) and a full win/loss lifecycle test in `ui_smoke.gd` (calls
+`begin_ghost_arena_battle()`/`_start_ghost_duel()` directly rather than waiting on the
+leaderboard's real async fetch, for the same reason the pre-existing leaderboard test never
+asserts on fetched row content — see that section's own comment).
 
 ### 2026-09-20 — E3 Part 2 (friend leaderboards) shipped; found & fixed a second wall-clock-content trap
 First of the three "gaming experience" follow-ups (feature-unlock toasts shipped the same day,

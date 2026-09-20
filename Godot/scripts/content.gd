@@ -1463,6 +1463,39 @@ func abyss_encounter(floor: int) -> Dictionary:
 		"background": bgs
 	}
 
+# E4 "async ghost battle": combat.gd only models deck-vs-encounter (see AGENTS.md — no PvP
+# engine exists here, and building one would be a far bigger lift than this feature needs), so
+# a duel against another player's real recorded run reuses the same "opponent as a flavor
+# Encounter" shape Phantom Arena already established with its 4 fixed PHANTOM_CULTIVATORS —
+# just with identity and strength sourced from a real submitted leaderboard row (game_camp_
+# screen.gd's show_leaderboard()) instead of fixed NPC data. No new backend table needed either:
+# player_name/character_id/category/score already round-trip through the existing public.
+# leaderboards table (see SupabaseClient.fetch_leaderboard()), which is everything this needs.
+# health/damage reuse abyss_encounter()'s own tuned curve (already validated by
+# balance_probe.gd) parameterized by a normalized "level" from _ghost_difficulty_level() below,
+# so a ghost recorded at real floor 40 hits about as hard as floor 40 actually does — this is
+# deliberately an approximation of "how strong was this run," not a move-by-move replay of it.
+func ghost_arena_encounter(ghost_name: String, ghost_char_id: String, category: String, score: int) -> Dictionary:
+	var level: int = clampi(_ghost_difficulty_level(category, score), 1, 250)
+	var enc: Dictionary = abyss_encounter(level)
+	enc.chapter = 103
+	# A real player's submitted name has no localized counterpart the way system-authored
+	# flavor text (PHANTOM_CULTIVATORS etc.) does, so it's shown as-is regardless of language.
+	enc.name = ghost_name
+	enc.name_en = ghost_name
+	enc.art = ghost_char_id
+	return enc
+
+# Every leaderboard category encodes score differently (see the _submit_*_record() call sites
+# in game.gd) — this doesn't attempt an exact decode, since the goal is only "roughly as strong
+# as the real thing," not reconstructing the original run.
+func _ghost_difficulty_level(category: String, score: int) -> int:
+	match category:
+		"abyss": return score
+		"daily_trial": return int(score / 100.0)
+		"samsara": return score * 5
+		_: return score
+
 func equipment(id: String) -> Dictionary:
 	for item in EQUIPMENT:
 		if item.id == id: return item
@@ -2255,6 +2288,7 @@ const UI_TEXT = {
 	"ui.leaderboard_scope_global": {"zh-Hans":"全服", "en":"Global"},
 	"ui.leaderboard_scope_friends": {"zh-Hans":"好友", "en":"Friends"},
 	"ui.leaderboard_friends_empty": {"zh-Hans":"暂无好友战绩，先添加好友吧", "en":"No friends on this board yet — add some first"},
+	"ui.ghost_arena_win_toast": {"zh-Hans":"✦ 击败虚影战绩！获得%d灵币", "en":"✦ Ghost defeated! +%d gold"},
 	"ui.friends_title": {"zh-Hans":"好友名录", "en":"Friends"},
 	"ui.friends_sub": {"zh-Hans":"添加好友代码，同榜比拼名次", "en":"Add a friend's code to compare rankings"},
 	"ui.friends_manage_btn": {"zh-Hans":"管理好友", "en":"Manage Friends"},

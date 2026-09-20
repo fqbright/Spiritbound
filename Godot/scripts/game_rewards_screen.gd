@@ -243,6 +243,17 @@ func _grant_stage_rewards() -> void:
 		g.pending_rewards = {"gold": gold_gain, "equipment": "", "rune": "", "relic": "", "phantom_arena": true}
 		SpiritSave.write(g.profile)
 		return
+	if g.in_ghost_arena:
+		g.in_ghost_arena = false
+		var ghost_level: int = int(g.ghost_arena_target.get("level", 1))
+		var ghost_gold_gain: int = 40 + ghost_level * 3
+		g.profile.gold += ghost_gold_gain
+		g._add_season_xp(30)
+		g.profile.health = 60
+		g._toast(g.tf("ui.ghost_arena_win_toast", ghost_gold_gain), g.GOLD)
+		g.pending_rewards = {"gold": ghost_gold_gain, "equipment": "", "rune": "", "relic": ""}
+		SpiritSave.write(g.profile)
+		return
 	if g.in_draft_battle:
 		g.in_draft_battle = false
 		var draft: Dictionary = g.profile.get("draft_arena", {})
