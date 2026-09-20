@@ -42,6 +42,29 @@ elif [ "$MODE" != "build" ]; then
 fi
 
 # Step 2: Ensure Xcode project signing is permanently configured
+DETECTED_TEAM=$(security find-identity -v -p codesigning 2>/dev/null | grep -o -E "\([A-Z0-9]{10}\)" | tr -d '()' | head -n 1)
+if [ -n "$DETECTED_TEAM" ]; then
+    TEAM_ID="$DETECTED_TEAM"
+fi
+
+# Step 2.1: Patch dummy.cpp with missing weak symbols for iOS 18.5 SDK
+DUMMY_CPP="$BUILD_DIR/Spiritbound/dummy.cpp"
+if [ -f "$DUMMY_CPP" ]; then
+    if ! grep -q "CADynamicRangeAutomatic" "$DUMMY_CPP"; then
+        cat << 'EOF' >> "$DUMMY_CPP"
+
+extern "C" {
+    __attribute__((visibility("default"))) void* CADynamicRangeAutomatic = nullptr;
+    __attribute__((visibility("default"))) void* CADynamicRangeConstrainedHigh = nullptr;
+    __attribute__((visibility("default"))) void* CADynamicRangeHigh = nullptr;
+    __attribute__((visibility("default"))) void* CADynamicRangeStandard = nullptr;
+    __attribute__((visibility("default"))) void* MTLTensorDomain = nullptr;
+}
+EOF
+        echo "   ✓ Patched dummy.cpp with Metal/QuartzCore compatibility symbols"
+    fi
+fi
+
 if [ -f "$PBXPROJ" ]; then
     echo "🔒 [2/4] Verifying Xcode Automatic Signing & Team ID..."
     python3 - <<PYEOF
@@ -51,8 +74,9 @@ path = "$PBXPROJ"
 with open(path, "r", encoding="utf-8") as f:
     content = f.read()
 
-# 1. Ensure DEVELOPMENT_TEAM is user team N5Q948HNBR
+# 1. Ensure DEVELOPMENT_TEAM is user team
 content = re.sub(r'DEVELOPMENT_TEAM\s*=\s*[^;]+;', 'DEVELOPMENT_TEAM = $TEAM_ID;', content)
+content = re.sub(r'DevelopmentTeam\s*=\s*[^;]+;', 'DevelopmentTeam = $TEAM_ID;', content)
 
 # 2. Ensure CODE_SIGN_STYLE is Automatic
 content = re.sub(r'CODE_SIGN_STYLE\s*=\s*[^;]+;', 'CODE_SIGN_STYLE = Automatic;', content)
