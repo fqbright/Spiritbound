@@ -473,6 +473,13 @@ func _ready() -> void:
 	_ensure_weekly_challenge_current()
 	_ensure_world_event_current()
 	_ensure_login_reward_current()
+	# Coming to the foreground cancels every pending reminder: there is no reason to notify
+	# someone about a reset while they are already looking at the game. The matching reschedule
+	# happens on the way out — see _notification() below.
+	SpiritNotify.cancel_all()
+	# Idempotent; iOS only ever shows the system permission sheet once. Called here rather than
+	# lazily at the first reschedule so the prompt lands on launch, not on app close.
+	SpiritNotify.request_permission()
 	var should_play_intro := not bool(profile.get("intro_seen", false)) and DisplayServer.get_name() != "headless"
 	if should_play_intro:
 		play_intro_cutscene(func():
@@ -893,8 +900,19 @@ func _track_account_setup_completed(method: String) -> void:
 	}, self)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+	# NOTIFICATION_APPLICATION_PAUSED is what actually fires when an iOS app is backgrounded or
+	# swiped away; WM_CLOSE_REQUEST covers desktop and the clean-shutdown path. Both schedule the
+	# same way, so a player who backgrounds the game and one who quits it get identical
+	# reminders. Without this the notification half would exist but never be scheduled on iOS,
+	# which is the exact "wired up but never called" shape PurchaseService had.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED:
+		if profile.is_empty():
+			return
 		SpiritSave.write(profile)
+		# Cancel-and-reschedule from current state, so a reminder for a cycle the player has
+		# already completed stops existing instead of firing at them later.
+		SpiritNotify.reschedule(profile, int(Time.get_unix_time_from_system()), t)
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		# Clean shutdown → clear the session marker, so the next launch doesn't read this normal
 		# exit as an unclean one. See LogService / Docs/LAUNCH_READINESS.md Section 3.
 		LogService.end_session_cleanly()

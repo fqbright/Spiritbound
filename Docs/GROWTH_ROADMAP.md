@@ -123,9 +123,30 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   *Built on:* `content.gd` card `effects`/`special` data (no schema change). 226/0 rules
   unaffected (this is 100% a game.gd rendering concern — correctly zero rules-engine change),
   UI smoke +5 checks, 0 failures.
-- `[ ]` **B4 — 本地推送提醒 (local iOS notifications)** — investigation spike done 2026-09-17,
-  design sketched 2026-09-17, still blocked on a human decision to write and verify the native
-  half on a real Mac
+- `[ ]` **B4 — 本地推送提醒 (local iOS notifications)** — **GDScript half done 2026-09-20; the
+  native plugin is still the open half, and the reasons are now measured rather than assumed.**
+  See [Docs/NOTIFICATIONS.md](NOTIFICATIONS.md) for the full account. Shipped and tested:
+  `Godot/scripts/notify_bridge.gd` (`class_name SpiritNotify`) with a **pure** scheduling policy
+  (`due_reminders(profile, now_unix)` — clock as a parameter, so tests drive any date instead of
+  waiting days), copy in `UI_TEXT` like every other string, and lifecycle wiring in `game.gd`
+  (`_ready()` cancels everything; `NOTIFICATION_APPLICATION_PAUSED`, the one that actually fires
+  on iOS backgrounding, reschedules). 25 assertions in `test_runner.gd`: the Chapter-1 gate, every
+  `fire_unix` in the future, no duplicate ids, a played cycle suppressing its own reminder, and
+  the re-engagement nudge being pushed further out on each reopen (which is what makes it
+  self-cancelling for an active player). Everything is a no-op off iOS, asserted, which is what
+  keeps the headless suites platform-free.
+  **Still open, and now for a concrete reason:** `SpiritNotify` forwards to
+  `Engine.get_singleton("SpiritIOSNotify")` and nothing registers it. Checked, not guessed: the
+  4.7.2 iOS template ships **one `dummy.h`/`dummy.cpp`/`dummy.swift` and no header set**, and the
+  prebuilt static library has no public Godot headers — so the documented plugin flow (a plugin
+  library compiled against Godot's headers) has nothing to compile against here. Two routes, both
+  needing a person: (A) obtain matching headers and write a real plugin, or (B) use the template's
+  own `$cpp_code` substitution in `dummy.cpp` — **unverified whether it is live in 4.7.2**, which
+  is exactly why no code was written against it. The permissions-prompt-once-per-install detail
+  also means this needs one real-device run, not just a green build.
+  *Superseded note:* the previous entry's claim that "this environment has no `xcodebuild`" was
+  true of the earlier Linux sandbox and is **false on this Mac** — `deploy_ios.sh` builds and
+  installs here. The blocker is the missing header set, not the toolchain.
   Confirmed: Godot 4 has zero built-in local-notification API, `export_presets.cfg` has no
   `plugins/` entry (no existing Godot iOS plugin scaffolding to extend), and the real iOS
   build is a fresh Xcode project Godot generates into `Godot/build/ios/` on every
@@ -336,6 +357,41 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-20 — B4: the notification half that is actually verifiable, plus the rating ask
+Two of the three items from Docs/COMPETITIVE_RESEARCH.md's recommended order (the third, the ASO
+copy pivot, is still open). Both landed with the same discipline: build the half that can be
+tested headlessly, and make the untestable half *loudly* absent rather than quietly broken.
+
+**Notifications (`notify_bridge.gd`).** The scheduling policy is a pure function of
+`(profile, now_unix)`, which is the whole reason it is testable — a test can drive next Tuesday
+through it rather than waiting. 25 assertions cover the gate (no reminders before Chapter 1),
+the timing (every `fire_unix` in the future), the dedup, and the suppression rules (a cycle you
+already played does not remind you about itself). The re-engagement nudge is rescheduled from the
+moment of closing, which is what makes it self-cancelling for anyone who keeps playing.
+
+**What is NOT done, and why it is written down rather than left to look finished:** the native
+plugin. Verified by inspection — the 4.7.2 iOS template contains a single `dummy.h`/`dummy.cpp`/
+`dummy.swift` and no Godot headers, so the documented plugin flow has nothing to compile against.
+Two candidate routes in Docs/NOTIFICATIONS.md, one of them unverified, neither of which should be
+guessed at. `is_supported()` returns false and a test asserts it, so a green run cannot be
+mistaken for "notifications work".
+
+**Rating ask (`rate_prompt.gd`).** Ships dormant: `APP_STORE_ID = 0` because the real id cannot
+exist until the app is in App Store Connect, and `is_available()` returning false is what stops a
+dead URL from being opened. `test_runner.gd` asserts that dormant state, including that
+`should_prompt()` stays false while the id is unset — so the failure mode "button appears, does
+nothing" is a test failure, not a user discovery. Set the id as part of submission
+(Docs/STORE_SUBMISSION.md). Appears once per save, on a Great Boss kill, as a button rather than
+an automatic app switch.
+
+Also worth recording for whoever picks this up: `add_ui_text_keys.gd`-style edits are **not** hot
+— two new `class_name` scripts were invisible to both `--headless -s` runs and the editor until
+`godot --headless --path Godot/ --import` refreshed `.godot/global_script_class_cache.cfg`
+(gitignored, so CI regenerates it and only local runs are affected). The symptom is a misleading
+"Identifier not declared in the current scope" parse error in every *caller*. `--import` is
+already step 1 of the visual-baseline refresh for a related reason; it is worth running after
+adding any script.
 
 ### 2026-09-20 — E4 (Ghost Arena) shipped, completing the three "gaming experience" follow-ups
 Last of the three (feature-unlock toasts and E3 Part 2 shipped just before this, same day).

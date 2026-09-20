@@ -2089,8 +2089,141 @@ func run() -> void:
 	check(FileAccess.file_exists("res://tools/tex_probe_samples.txt"),
 		"tools/tex_probe_samples.txt is present: the per-category PSNR measurement is reproducible")
 
+	# ---------------------------------------------------------------------------------------
+	# Retention notifications: the scheduling policy (Godot/scripts/notify_bridge.gd)
+	# ---------------------------------------------------------------------------------------
+	# Only the policy is asserted here. The native half does not exist yet (Docs/NOTIFICATIONS.md),
+	# so a test that claimed to verify delivery would be a test that verifies nothing — what is
+	# checkable on this side of the platform boundary is *what would be scheduled and when*, and
+	# that is exactly what due_reminders() is.
+	var notif_day := 20000  # an arbitrary day index, mid-week, so week and day boundaries differ
+	var notif_now: int = notif_day * 86400 + 3600
+	var fresh: Dictionary = SpiritSave.defaults(content)
+	check(SpiritNotify.due_reminders(fresh, notif_now).is_empty(),
+		"a player who has not reached Chapter 1 is never notified about daily/weekly content")
+
+	var established: Dictionary = SpiritSave.defaults(content)
+	established.unlocked = 5
+	var reminders: Array = SpiritNotify.due_reminders(established, notif_now)
+	check(reminders.size() == 4, "four reminders are due for an established, inactive player, got %d" % reminders.size())
+
+	var scheduled_ids: Array = []
+	var every_future := true
+	for reminder in reminders:
+		var item: Dictionary = reminder
+		scheduled_ids.append(str(item.get("id", "")))
+		if int(item.get("fire_unix", 0)) <= notif_now:
+			every_future = false
+	check(every_future, "no reminder is scheduled in the past (an immediate-fire notification is a bug, not a nudge)")
+	check(scheduled_ids.size() == _unique_count(scheduled_ids),
+		"each reminder id is scheduled at most once, so cancel/reschedule cannot leave duplicates")
+
+	# The three cycle reminders must be scheduled off the *next* boundary, not the current period:
+	# firing mid-period would tell the player about a reset that has not happened yet.
+	var by_id := {}
+	for reminder in reminders:
+		var item: Dictionary = reminder
+		by_id[str(item.get("id", ""))] = item
+	check(int(by_id[SpiritNotify.ID_DAILY].fire_unix) > (notif_day + 1) * 86400,
+		"the daily reminder fires after the next day boundary, not during the current day")
+	check(int(by_id[SpiritNotify.ID_WEEKLY].fire_unix) > ((notif_now / 604800) + 1) * 604800,
+		"the weekly reminder fires after the next week boundary")
+	check(int(by_id[SpiritNotify.ID_RETURN].fire_unix) == notif_now + SpiritNotify.RETURN_DELAY,
+		"the re-engagement reminder is scheduled from the moment the app closed")
+	# Rescheduling on every close is what makes the re-engagement nudge self-cancelling: an active
+	# player's copy is pushed back each session and therefore never delivered.
+	var reopened_later: Array = SpiritNotify.due_reminders(established, notif_now + 600)
+	var later_return: int = 0
+	for reminder in reopened_later:
+		var item: Dictionary = reminder
+		if str(item.get("id", "")) == SpiritNotify.ID_RETURN:
+			later_return = int(item.get("fire_unix", 0))
+	check(later_return > int(by_id[SpiritNotify.ID_RETURN].fire_unix),
+		"reopening the app pushes the re-engagement reminder further out instead of reusing the old one")
+
+	# Each cycle reminder must stop existing once the player has actually played that cycle — the
+	# reminder is about a *reset*, so reminding someone who just finished it is noise.
+	var played: Dictionary = SpiritSave.defaults(content)
+	played.unlocked = 5
+	played.daily_trial_record = {"day": notif_day, "stage": 4, "best_stage": 4, "streak": 1, "history": []}
+	played.weekly_challenge_record = {"week": notif_now / 604800, "stage": 2}
+	played.login_reward = {"week": notif_now / 604800, "days": [1, 2, 3, 4, 5, 6, 7], "claimed": []}
+	var after_play: Array = SpiritNotify.due_reminders(played, notif_now)
+	var after_ids: Array = []
+	for reminder in after_play:
+		var item: Dictionary = reminder
+		after_ids.append(str(item.get("id", "")))
+	check(not after_ids.has(SpiritNotify.ID_DAILY), "no daily reminder once today's trial is already played")
+	check(not after_ids.has(SpiritNotify.ID_WEEKLY), "no weekly reminder once this week's challenge is started")
+	check(not after_ids.has(SpiritNotify.ID_LOGIN), "no login nudge once the week's tally is already full")
+	check(after_ids.has(SpiritNotify.ID_RETURN), "the re-engagement reminder still applies to a player who stopped")
+
+	# Played yesterday, not today: the daily reminder comes back and the weekly one stays quiet.
+	var yesterday: Dictionary = SpiritSave.defaults(content)
+	yesterday.unlocked = 5
+	yesterday.daily_trial_record = {"day": notif_day - 1, "stage": 0, "best_stage": 0, "streak": 0, "history": []}
+	yesterday.weekly_challenge_record = {"week": notif_now / 604800, "stage": 0}
+	var yesterday_ids: Array = []
+	for reminder in SpiritNotify.due_reminders(yesterday, notif_now):
+		var item: Dictionary = reminder
+		yesterday_ids.append(str(item.get("id", "")))
+	check(yesterday_ids.has(SpiritNotify.ID_DAILY), "a trial played yesterday does not suppress today's reminder")
+	check(not yesterday_ids.has(SpiritNotify.ID_WEEKLY), "a weekly challenge started this week still suppresses the weekly reminder")
+
+	# Off-platform everything is a no-op, which is what lets the headless suites run at all.
+	check(not SpiritNotify.is_supported(), "notifications report unsupported off iOS, so the suites stay platform-free")
+	check(SpiritNotify.due_reminders(established, notif_now).size() == 4,
+		"the policy is pure: it computes what to schedule without a platform to schedule on")
+	check(SpiritNotify.reschedule(established, notif_now, func(key: String): return key).size() == 4,
+		"reschedule returns the ids it would have scheduled when no native plugin is present")
+	SpiritNotify.cancel_all()
+	SpiritNotify.cancel("spiritbound.daily")
+	SpiritNotify.schedule("x", "t", "b", notif_now + 60)
+	SpiritNotify.request_permission()
+	check(true, "the whole notification surface is callable with no native plugin present")
+
+	# Copy lives in content.gd like every other string (AGENTS.md rule 2), and both languages must
+	# resolve — a notification is the one surface a translator cannot see the app to check.
+	for push_key in ["push.daily.title", "push.daily.body", "push.weekly.title", "push.weekly.body",
+			"push.login.title", "push.login.body", "push.return.title", "push.return.body"]:
+		var entry: Dictionary = SpiritContent.UI_TEXT.get(push_key, {})
+		check(not str(entry.get("zh-Hans", "")).is_empty() and not str(entry.get("en", "")).is_empty(),
+			"notification string '%s' exists in both languages" % push_key)
+
+	# ---------------------------------------------------------------------------------------
+	# Rating ask (Godot/scripts/rate_prompt.gd)
+	# ---------------------------------------------------------------------------------------
+	check(SpiritRate.is_available() == (SpiritRate.APP_STORE_ID > 0),
+		"the rating ask reports itself unavailable until a real App Store id is set, rather than opening a dead URL")
+	check(SpiritRate.review_url().begins_with("https://apps.apple.com/app/id"),
+		"the review URL is the write-review form, so the star row is already on screen when it opens")
+	var unrated: Dictionary = SpiritSave.defaults(content)
+	check(not bool(unrated.get("rated_prompted", false)), "a new profile has never been asked to rate")
+	SpiritRate.mark_prompted(unrated)
+	check(bool(unrated.get("rated_prompted", false)), "mark_prompted records that the ask happened")
+	check(not SpiritRate.should_prompt(unrated), "the ask does not repeat once it has been made")
+	# should_prompt is gated on availability as well as the flag, so a build with no App Store id
+	# never shows a button that cannot do anything. Verified both ways rather than assumed.
+	var never_asked: Dictionary = SpiritSave.defaults(content)
+	never_asked.lifetime_stats = {"bosses_slain": 1}
+	check(not SpiritRate.should_prompt(never_asked),
+		"with no App Store id configured the rating button is never offered (it would be a dead button)")
+	check(not SpiritRate.open_review_page(),
+		"open_review_page reports failure instead of opening a URL with a placeholder id in it")
+	# The moment is the first Great Boss: deepest point a first-session player reaches, per the
+	# store research. A player who has not got there yet is not asked.
+	var pre_boss: Dictionary = SpiritSave.defaults(content)
+	check(int(pre_boss.get("unlocked", 0)) < SpiritRate.FIRST_GREAT_BOSS_STAGE,
+		"a fresh profile has not reached the first Great Boss, so the ask has not been earned yet")
+
 	print("SPIRITBOUND TESTS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+func _unique_count(values: Array) -> int:
+	var seen := {}
+	for value in values:
+		seen[value] = true
+	return seen.size()
 
 func _force_hand(battle: SpiritCombat, card_id: String) -> void:
 	battle.state.hand = [{"uid":900,"card_id":card_id}]

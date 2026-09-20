@@ -542,6 +542,17 @@ func show_reward_details() -> void:
 		recap_btn.name = "ViewRunRecapBtn"
 		page.add_child(recap_btn)
 
+	# The rating ask, at the deepest point a first-session player reaches (the first Great Boss
+	# kill — see SpiritRate for why that moment and not launch). Offered as a button rather than
+	# by opening the App Store automatically: switching apps out from under a victory screen is
+	# the same class of unannounced interruption the shop and dismantle confirmation prompts
+	# exist to prevent. Shown at most once per save.
+	if bool(g.pending_rewards.get("great_boss_kill", false)) and SpiritRate.should_prompt(g.profile):
+		var rate_btn := g._button(g.t("ui.rate_prompt_btn"), _rate_prompt_tapped, g.GOLD, Vector2(0, 36))
+		rate_btn.name = "RatePromptBtn"
+		page.add_child(rate_btn)
+		LogService.event(LogService.EV_RATE_PROMPT_SHOWN, {}, g)
+
 	if g.current_stage < 3 or int(g.profile.unlocked) <= 3:
 		var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
 		if not stats.is_empty():
@@ -600,6 +611,18 @@ func show_reward_details() -> void:
 		list.add_child(_reward_card_row(options[(g.current_stage + offset) % options.size()]))
 	if g.auto_battle_active:
 		_auto_handle_card_reward()
+
+# The rating ask's tap handler. Kept out of show_reward_details()'s body (it has to be a
+# separate function to be a button callback at all) but placed right after it so the trigger and
+# the handler stay adjacent for a reader.
+func _rate_prompt_tapped() -> void:
+	# Marked as asked, not as rated: no API reports whether a review was actually left, so this
+	# flag must never be read as an outcome. Written immediately, before the app switch, because
+	# the player may never come back to this screen.
+	SpiritRate.mark_prompted(g.profile)
+	SpiritSave.write(g.profile)
+	LogService.event(LogService.EV_RATE_PROMPT_TAPPED, {}, g)
+	SpiritRate.open_review_page()
 
 func _auto_handle_card_reward() -> void:
 	await g.get_tree().create_timer(g._battle_delay(0.35)).timeout

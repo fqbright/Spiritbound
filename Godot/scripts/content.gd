@@ -2843,6 +2843,18 @@ const UI_TEXT = {
 	"ui.inscribe_toast_success": {"zh-Hans":"洗练完成！已为装备淬炼出新灵纹！", "en":"Inscriptions rolled successfully!"},
 	"ui.inscribe_no_slots": {"zh-Hans":"当前品阶暂无可用灵纹槽，请先升阶！", "en":"No affix slots unlocked. Ascend tier first!"},
 	"ui.inscribe_affix_prefix": {"zh-Hans":"✦ 灵纹: ", "en":"✦ Inscription: "},
+	# Local-notification copy (Godot/scripts/notify_bridge.gd). Every string lives here like every
+	# other user-facing string, even though a native call site consumes it rather than a Control —
+	# that keeps the one place a translator looks actually complete.
+	"push.daily.title": {"zh-Hans":"每日试炼已重置", "en":"Your Daily Trial has reset"},
+	"push.daily.body": {"zh-Hans":"新的一天，新的十五重试炼。今日连续通关还有额外灵玉。", "en":"A new day, a fresh 15-stage trial. Streak clears pay bonus jade."},
+	"push.weekly.title": {"zh-Hans":"周常挑战已换题", "en":"This week's challenge is up"},
+	"push.weekly.body": {"zh-Hans":"本周新词条已生效，八重关卡与周榜一并刷新。", "en":"A new weekly affix is live — 8 stages and the weekly board have reset."},
+	"push.login.title": {"zh-Hans":"今日签到还没领", "en":"Today's check-in is still unclaimed"},
+	"push.login.body": {"zh-Hans":"本周已累计登录，别断了连续奖励。", "en":"You've logged in this week — don't break the streak."},
+	"push.return.title": {"zh-Hans":"灵界还在等你", "en":"The spirit realm is waiting"},
+	"push.return.body": {"zh-Hans":"体力已回满，远征与悬赏都刷新了。", "en":"Your stamina is full and new bounties have appeared."},
+	"ui.rate_prompt_btn": {"zh-Hans":"⭐ 喜欢的话，留个好评吧", "en":"⭐ Enjoying it? Leave a review"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

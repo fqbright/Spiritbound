@@ -316,3 +316,21 @@ questionnaire, and submit.
 
 Section 4 of LAUNCH_READINESS.md is explicit that these are verified, not assumed. None of them
 became untrue because the code landed.
+
+---
+
+## 5. Two values to fill in, both dormant on purpose
+
+Neither of these is a bug. Both features are *built* and deliberately inert until filled in, and
+each is asserted to be inert by `test_runner.gd` — so "forgot to fill it in" shows up as a test
+failure, not as a dead button that a player finds.
+
+| Value | Where | What happens until it's set |
+| --- | --- | --- |
+| `SpiritRate.APP_STORE_ID` | `Godot/scripts/rate_prompt.gd` | The rating button never appears. A placeholder would open a URL that 404s, so `is_available()` gates both the button and the open. Set it to the numeric id from App Store Connect. |
+| `SpiritIOSNotify` singleton | Native plugin — see [NOTIFICATIONS.md](NOTIFICATIONS.md) | Every notification call is a no-op and no reminder is ever delivered. `SpiritNotify.is_supported()` returns false and a test asserts it, so a green suite cannot be mistaken for "notifications work". |
+
+Shipping with notifications off is a legitimate choice — local notifications need the plugin
+described in Section 2 of NOTIFICATIONS.md, which has two candidate routes, one of them
+unverified. Shipping with a half-wired one is not, and that is what the assertions exist to
+prevent.

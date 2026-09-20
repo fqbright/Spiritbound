@@ -51,6 +51,14 @@ const EV_ACCOUNT_SETUP_SHOWN := "account_setup_shown"
 const EV_ACCOUNT_SETUP_COMPLETED := "account_setup_completed"
 const EV_INTRO_COMPLETED := "intro_completed"
 
+# Rating-ask funnel. Whether the ask was *shown* is knowable from the profile flag; whether it was
+# *tapped* is not, and since no API reports back whether a review was left, the tap is the last
+# honest signal available. A high shown-to-tapped ratio with no rating growth would say the ask is
+# appearing at the wrong moment; there is no way to separate "tapped and rated" from "tapped and
+# backed out", and this event deliberately does not pretend otherwise.
+const EV_RATE_PROMPT_SHOWN := "rate_prompt_shown"
+const EV_RATE_PROMPT_TAPPED := "rate_prompt_tapped"
+
 # Every event name this file defines, so a test can assert that each one is actually emitted
 # somewhere instead of trusting a constant that nothing calls. A declared-but-never-fired event is
 # invisible: it looks like a metric, it reports nothing, and no crash tells you.
@@ -58,6 +66,7 @@ const ALL_EVENTS := [
 	EV_TUTORIAL_STARTED, EV_TUTORIAL_COMPLETED, EV_FIRST_BATTLE_WON, EV_STAGE_25_REACHED,
 	EV_DAY2_RETURN, EV_DAY7_RETURN,
 	EV_ACCOUNT_SETUP_SHOWN, EV_ACCOUNT_SETUP_COMPLETED, EV_INTRO_COMPLETED,
+	EV_RATE_PROMPT_SHOWN, EV_RATE_PROMPT_TAPPED,
 ]
 
 # ------------------------------------------------------------------------------
