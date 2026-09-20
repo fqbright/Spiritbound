@@ -1147,19 +1147,25 @@ func _background(file: String, opacity := .42) -> TextureRect:
 func _currency_pill(icon_tex: Texture2D, amount: int, color: Color, on_click := Callable()) -> Control:
 	var pill := Button.new()
 	pill.focus_mode = Control.FOCUS_NONE
-	var normal_box := _panel(Color("0d1e23"), 10, Color(color.r, color.g, color.b, 0.45))
+	pill.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var num_str := "%d" % amount
+	var min_w: float = 46.0 + float(num_str.length()) * 9.5
+	pill.custom_minimum_size = Vector2(min_w, 28.0)
+	var normal_box := _panel(Color("0d1e23"), 12, Color(color.r, color.g, color.b, 0.45))
 	normal_box.content_margin_left = 6; normal_box.content_margin_right = 8
 	normal_box.content_margin_top = 2; normal_box.content_margin_bottom = 2
-	var hover_box := _panel(Color("152c34"), 10, color)
+	var hover_box := _panel(Color("152c34"), 12, color)
 	hover_box.content_margin_left = 6; hover_box.content_margin_right = 8
 	hover_box.content_margin_top = 2; hover_box.content_margin_bottom = 2
 	pill.add_theme_stylebox_override("normal", normal_box)
 	pill.add_theme_stylebox_override("hover", hover_box)
-	pill.add_theme_stylebox_override("pressed", _panel(Color("081316"), 10, color))
+	pill.add_theme_stylebox_override("pressed", _panel(Color("081316"), 12, color))
 	pill.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 6; row.offset_right = -6
+	row.add_theme_constant_override("separation", 6)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pill.add_child(row)
@@ -1168,10 +1174,10 @@ func _currency_pill(icon_tex: Texture2D, amount: int, color: Color, on_click := 
 		ico.texture = icon_tex
 		ico.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		ico.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		ico.custom_minimum_size = Vector2(14, 14)
+		ico.custom_minimum_size = Vector2(22, 22)
 		ico.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(ico)
-	var lbl := _label("%d" % amount, 11, color)
+	var lbl := _label(num_str, 14, color)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
 	if on_click.is_valid():
@@ -1182,7 +1188,7 @@ func _currency_pill(icon_tex: Texture2D, amount: int, color: Color, on_click := 
 
 func _header(title: String, subtitle: String, back := Callable()) -> HBoxContainer:
 	var bar := HBoxContainer.new()
-	bar.custom_minimum_size.y = 56
+	bar.custom_minimum_size.y = 86
 	bar.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	bar.add_theme_constant_override("separation", 0)
 	bar.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -1190,15 +1196,15 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 	# Left side: Logo (map only) + Back button (if present) + Stats box (HP & Gold)
 	var left_box := HBoxContainer.new()
 	left_box.name = "HeaderLeftBox"
-	left_box.add_theme_constant_override("separation", 4)
+	left_box.add_theme_constant_override("separation", 6)
 	left_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 	if title == "SPIRITBOUND":
-		# Map header: logo with currency capsules tucked underneath it, left-aligned.
+		# Map header: logo with currency capsules stacked vertically underneath it, left-aligned.
 		var logo_stack := VBoxContainer.new()
 		logo_stack.name = "HeaderLogoStack"
 		logo_stack.alignment = BoxContainer.ALIGNMENT_BEGIN
-		logo_stack.add_theme_constant_override("separation", 2)
+		logo_stack.add_theme_constant_override("separation", 3)
 		logo_stack.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 		var logo := TextureRect.new()
@@ -1212,9 +1218,9 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		logo_stack.add_child(logo)
 
-		var gold_row := HBoxContainer.new()
+		var gold_row := VBoxContainer.new()
 		gold_row.name = "HeaderGoldRow"
-		gold_row.add_theme_constant_override("separation", 5)
+		gold_row.add_theme_constant_override("separation", 3)
 		gold_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 
 		var gold_pill := _currency_pill(load("res://assets/icons/hud_gold.png"), int(profile.gold), GOLD)
@@ -1241,9 +1247,9 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 			back_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			left_box.add_child(back_btn)
 
-		var stats_box := HBoxContainer.new()
+		var stats_box := VBoxContainer.new()
 		stats_box.name = "HeaderStatsBox"
-		stats_box.add_theme_constant_override("separation", 5)
+		stats_box.add_theme_constant_override("separation", 3)
 		stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 		var hp_pill := _currency_pill(load("res://assets/icons/hud_heart.png"), int(profile.health), TEXT)

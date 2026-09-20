@@ -76,6 +76,7 @@ func _run() -> void:
 	}
 	game.profile.daily_reset_at = 1700086400
 	game.profile.weekly_reset_at = 1700600000
+	game.profile.tutorial_seen = true
 	game.lang = "zh-Hans"
 	await process_frame
 

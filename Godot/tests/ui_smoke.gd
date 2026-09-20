@@ -1109,13 +1109,13 @@ func _run() -> void:
 	var body_sprite := player_sprite as Sprite2D
 	if body_sprite != null and body_sprite.texture != null:
 		var body_effective_px: float = float(body_sprite.texture.get_width()) * body_sprite.scale.x
-		check(body_effective_px > 60.0 and body_effective_px < 100.0, "the fox rig's body renders at roughly its intended ~80px, got %.1fpx (texture %dpx x scale %.4f)" % [body_effective_px, body_sprite.texture.get_width(), body_sprite.scale.x])
+		check(body_effective_px > 80.0 and body_effective_px < 140.0, "the fox rig's body renders at roughly its intended ~114px, got %.1fpx (texture %dpx x scale %.4f)" % [body_effective_px, body_sprite.texture.get_width(), body_sprite.scale.x])
 	if rig_tail is Sprite2D and (rig_tail as Sprite2D).texture != null:
 		var tail_effective_px: float = float((rig_tail as Sprite2D).texture.get_width()) * (rig_tail as Sprite2D).scale.x
-		check(tail_effective_px > 70.0 and tail_effective_px < 120.0, "the fox rig's tail renders at roughly its intended ~94px, got %.1fpx" % tail_effective_px)
+		check(tail_effective_px > 90.0 and tail_effective_px < 160.0, "the fox rig's tail renders at roughly its intended ~132px, got %.1fpx" % tail_effective_px)
 	if rig_orb is Sprite2D and (rig_orb as Sprite2D).texture != null:
 		var orb_effective_px: float = float((rig_orb as Sprite2D).texture.get_width()) * (rig_orb as Sprite2D).scale.x
-		check(orb_effective_px > 25.0 and orb_effective_px < 55.0, "the fox rig's spirit orb renders at roughly its intended ~39px, got %.1fpx" % orb_effective_px)
+		check(orb_effective_px > 35.0 and orb_effective_px < 70.0, "the fox rig's spirit orb renders at roughly its intended ~52px, got %.1fpx" % orb_effective_px)
 
 	# Same regression class, same fix pattern (crest_scale_fix): spirit_shield_crest.png was
 	# also downscaled from 1024px without correcting the 4 flat scale keyframes calibrated
@@ -2848,7 +2848,7 @@ func _run() -> void:
 	game.profile.spirit_dust = 80
 	game.show_map()
 	await process_frame
-	var gold_row: HBoxContainer = game.root.find_child("HeaderGoldRow", true, false) as HBoxContainer
+	var gold_row: BoxContainer = game.root.find_child("HeaderGoldRow", true, false) as BoxContainer
 	check(gold_row != null, "HeaderGoldRow exists in header")
 	if gold_row != null:
 		check(gold_row.get_child_count() >= 3, "HeaderGoldRow contains pills for Gold, Jade, and Dust")

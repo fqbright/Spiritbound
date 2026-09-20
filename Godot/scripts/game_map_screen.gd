@@ -267,8 +267,8 @@ func show_map() -> void:
 	overlay_page.z_index = 100
 	g.root.add_child(overlay_page)
 
-	var top_shade := _fade_strip(float(g._safe_top()) + 74.0, false)
-	top_shade.size = Vector2(g.MAP_WIDTH, float(g._safe_top()) + 74.0)
+	var top_shade := _fade_strip(float(g._safe_top()) + 155.0, false)
+	top_shade.size = Vector2(g.MAP_WIDTH, float(g._safe_top()) + 155.0)
 	top_shade.modulate.a = 0.9
 	overlay_page.add_child(top_shade)
 
@@ -283,7 +283,7 @@ func show_map() -> void:
 	header_holder.offset_left = 0.0
 	header_holder.offset_right = 0.0
 	header_holder.offset_top = 0.0
-	header_holder.offset_bottom = float(g._safe_top()) + 60.0
+	header_holder.offset_bottom = float(g._safe_top()) + 155.0
 	header_holder.add_theme_constant_override("margin_top", g._safe_top())
 	header_holder.add_theme_constant_override("margin_left", 2)
 	header_holder.add_theme_constant_override("margin_right", 12)
@@ -300,7 +300,7 @@ func show_map() -> void:
 	# Dedicated quest commissions entry point with painted quest icon and claimable notification dot
 	var btn_quests := g._button("", g.show_quests, Color("17363e"), btn_size)
 	btn_quests.name = "QuestButton"
-	btn_quests.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	btn_quests.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var quest_icon := TextureRect.new()
 	quest_icon.texture = load("res://assets/icons/nav_quest.png")
 	quest_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -315,7 +315,7 @@ func show_map() -> void:
 	# Dedicated explorer camp entry point with painted camp icon
 	var btn_camp := g._button("", g.show_camp, Color("17363e"), btn_size)
 	btn_camp.name = "CampButton"
-	btn_camp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	btn_camp.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var camp_icon := TextureRect.new()
 	camp_icon.texture = load("res://assets/icons/nav_camp.png")
 	camp_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -330,7 +330,7 @@ func show_map() -> void:
 	# Settings entry point with painted golden gear icon
 	var btn_settings := g._button("", g.show_settings, Color("17363e"), btn_size)
 	btn_settings.name = "SettingsButton"
-	btn_settings.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	btn_settings.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var settings_icon := TextureRect.new()
 	settings_icon.texture = load("res://assets/icons/nav_settings.png")
 	settings_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -344,7 +344,7 @@ func show_map() -> void:
 	var right_box := HBoxContainer.new()
 	right_box.name = "HeaderRightBox"
 	right_box.add_theme_constant_override("separation", 6)
-	right_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right_box.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	right_box.alignment = BoxContainer.ALIGNMENT_END
 	right_box.add_child(btn_quests)
 	right_box.add_child(btn_camp)

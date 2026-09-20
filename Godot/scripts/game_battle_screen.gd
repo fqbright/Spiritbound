@@ -260,7 +260,7 @@ func show_battle() -> void:
 			g._toast(g.tf("ui.relic_resonance_activated_toast", g._relic_resonance_name(first_res)))
 
 	var enemy_area := Control.new()
-	enemy_area.custom_minimum_size = Vector2(366.0, 205.0)
+	enemy_area.custom_minimum_size = Vector2(366.0, 235.0)
 	enemy_area.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	enemy_area.mouse_filter = Control.MOUSE_FILTER_PASS
 	page.add_child(enemy_area)
@@ -274,12 +274,17 @@ func show_battle() -> void:
 	for index in g.combat.state.enemies.size():
 		if g.combat.state.enemies[index].health > 0: living_indices.append(index)
 	var slot_count: int = maxi(1, g.combat.state.enemies.size())
-	var u_width: float = minf(112.0, (366.0 - 10.0 * float(slot_count - 1)) / float(slot_count))
+	var max_w_by_count := 180.0
+	if slot_count == 2:
+		max_w_by_count = 140.0
+	elif slot_count >= 3:
+		max_w_by_count = 112.0
+	var u_width: float = minf(max_w_by_count, (366.0 - 10.0 * float(slot_count - 1)) / float(slot_count))
 	var gap := 10.0
 	var living_n := living_indices.size()
 	var total_w: float = float(living_n) * u_width + float(maxi(0, living_n - 1)) * gap
 	var center_slot: float = float(living_n - 1) / 2.0
-	var right_bias := 52.0 if living_n == 1 else (22.0 if living_n == 2 else 0.0)
+	var right_bias := 20.0 if living_n == 1 else (10.0 if living_n == 2 else 0.0)
 	var start_x: float = clampf((366.0 - total_w) / 2.0 + right_bias, 0.0, 366.0 - total_w - 6.0)
 	for order in living_n:
 		var enemy_index: int = living_indices[order]
@@ -536,8 +541,13 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	var unit := Control.new()
 	unit.name = "Enemy_%d" % index
 	var enemy_count := maxi(1, g.combat.state.enemies.size())
-	var u_width: float = minf(112.0, (366.0 - 10.0 * float(enemy_count - 1)) / float(enemy_count))
-	unit.custom_minimum_size = Vector2(u_width, 205.0)
+	var max_w_by_count := 180.0
+	if enemy_count == 2:
+		max_w_by_count = 140.0
+	elif enemy_count >= 3:
+		max_w_by_count = 112.0
+	var u_width: float = minf(max_w_by_count, (366.0 - 10.0 * float(enemy_count - 1)) / float(enemy_count))
+	unit.custom_minimum_size = Vector2(u_width, 235.0)
 	unit.size = unit.custom_minimum_size
 	unit.set_meta("enemy_index", index)
 	unit.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -548,7 +558,7 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	# It is shown whenever a card that needs an enemy is in hand-play, not only on hover.
 	var glow := Panel.new()
 	glow.name = "TargetGlow"
-	glow.custom_minimum_size = Vector2(u_width - 4.0, 150.0)
+	glow.custom_minimum_size = Vector2(u_width - 4.0, 180.0)
 	glow.size = glow.custom_minimum_size
 	glow.position = Vector2(2.0, 16.0)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -563,7 +573,7 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	# Depth reads through scale and tone, not through the hit box: the unit's own size/position
 	# (used for taps and drag-targeting) stays exactly what _enemy_view always computed, only
 	# the sprite drawn inside it shrinks and dims a touch for the "further back" slots.
-	var sprite_side := clampf(u_width - 16.0, 70.0, 96.0) * lerpf(1.0, 0.82, depth_t)
+	var sprite_side := clampf(u_width - 12.0, 80.0, 155.0) * lerpf(1.0, 0.84, depth_t)
 	var spr_size := Vector2(sprite_side, sprite_side)
 	var cell_w: float = float(sprite.texture.get_width()) if sprite.texture else 341.0
 	var cell_h: float = float(sprite.texture.get_height()) if sprite.texture else 341.0
@@ -571,10 +581,10 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	var tier: int = int(enemy.get("tier", 1))
 	var tier_scale_mult := 1.0
 	match tier:
-		1: tier_scale_mult = 0.88 # Minion
-		2: tier_scale_mult = 1.05 # Elite
-		3: tier_scale_mult = 1.25 # Chapter Boss
-		4: tier_scale_mult = 1.42 # Great World Boss
+		1: tier_scale_mult = 1.08 # Minion
+		2: tier_scale_mult = 1.22 # Elite
+		3: tier_scale_mult = 1.40 # Chapter Boss
+		4: tier_scale_mult = 1.58 # Great World Boss
 	var scale_factor: float = base_scale * tier_scale_mult
 	sprite.scale = Vector2(scale_factor, scale_factor)
 	# Animations restore scale from this meta. Without it they fell back to 1.0 and left the
@@ -751,19 +761,20 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	elif tier == 4:
 		name_prefix = "✦ "
 		name_color = Color("ff5577")
+	var content_y: float = 26.0 + spr_size.y + 4.0
 	var name_lbl := g._label(name_prefix + g._enemy_name(enemy), 10, name_color, HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.position = Vector2(0, 128.0)
+	name_lbl.position = Vector2(0, content_y)
 	name_lbl.size = Vector2(u_width, 18.0)
 	unit.add_child(name_lbl)
 
 	var hp_bar_w := u_width - 12.0
 	var hp_bar := g._stat_bar(hp_bar_w, 16.0, int(enemy.health), int(enemy.max_health), Color(enemy.get("tint", "83e4c1")), "%d/%d" % [enemy.health, enemy.max_health], 9)
 	hp_bar.name = "HealthBar"
-	hp_bar.position = Vector2(6.0, 148.0)
+	hp_bar.position = Vector2(6.0, content_y + 18.0)
 	unit.add_child(hp_bar)
 
 	var badges := HBoxContainer.new()
-	badges.position = Vector2(0.0, 167.0)
+	badges.position = Vector2(0.0, content_y + 36.0)
 	badges.size = Vector2(u_width, 18.0)
 	badges.alignment = BoxContainer.ALIGNMENT_CENTER
 	badges.add_theme_constant_override("separation", 5)
@@ -776,11 +787,16 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(g._status_chip("▼", int(enemy.vulnerable), Color("ff6b6b")))
 	if int(enemy.get("weak", 0)) > 0: badges.add_child(g._status_chip("●", int(enemy.weak), Color("b8c4c8")))
 
+	unit.custom_minimum_size = Vector2(u_width, content_y + 58.0)
+	unit.size = unit.custom_minimum_size
+	glow.custom_minimum_size = Vector2(u_width - 4.0, content_y + 54.0 - 16.0)
+	glow.size = glow.custom_minimum_size
+
 	return unit
 
 func _build_player_stage() -> Control:
 	var stage := Control.new()
-	stage.custom_minimum_size = Vector2(366.0, 118.0)
+	stage.custom_minimum_size = Vector2(366.0, 142.0)
 	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var player_x := 102.0
@@ -788,9 +804,9 @@ func _build_player_stage() -> Control:
 	# Mirror of the enemy ring, lit when a card that acts on you is in play.
 	var glow := Panel.new()
 	glow.name = "PlayerTargetGlow"
-	glow.custom_minimum_size = Vector2(160.0, 112.0)
+	glow.custom_minimum_size = Vector2(170.0, 138.0)
 	glow.size = glow.custom_minimum_size
-	glow.position = Vector2(player_x - 80.0, 2.0)
+	glow.position = Vector2(player_x - 85.0, 2.0)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	glow.add_theme_stylebox_override("panel", _target_ring(false))
 	glow.visible = false
@@ -809,15 +825,15 @@ func _build_player_stage() -> Control:
 
 	var sprite := Sprite2D.new()
 	sprite.name = "PlayerSprite"
-	var spr_size := Vector2(74.0, 74.0)
+	var spr_size := Vector2(108.0, 108.0)
 
 	if use_fox_rig:
 		# 1. Ground Aura (soft jade qi formation under feet)
 		var aura := Sprite2D.new()
 		aura.name = "PlayerGroundAura"
 		aura.texture = load("res://assets/characters/fox_rig/ground_aura.png")
-		aura.position = Vector2(player_x, 74.0)
-		var aura_base_scale := Vector2(0.18, 0.12)
+		aura.position = Vector2(player_x, 102.0)
+		var aura_base_scale := Vector2(0.25, 0.16)
 		aura.scale = aura_base_scale
 		aura.z_index = -2
 		stage.add_child(aura)
@@ -831,13 +847,11 @@ func _build_player_stage() -> Control:
 		var tail := Sprite2D.new()
 		tail.name = "PlayerTail"
 		tail.texture = load("res://assets/characters/fox_rig/fox_tail.png")
-		# Target on-screen size (~94px) computed from the texture's own current width, not a
-		# flat scale baked in for one specific source resolution — this broke once already
-		# when fox_tail.png was downscaled from 1024px without updating a hardcoded 0.092.
-		var tail_scale_val: float = 94.2 / float(tail.texture.get_width())
+		# Target on-screen size (~132px) computed from the texture's own current width
+		var tail_scale_val: float = 132.0 / float(tail.texture.get_width())
 		var tail_scale := Vector2(tail_scale_val, tail_scale_val)
 		tail.scale = tail_scale
-		tail.position = Vector2(player_x, 32.0)
+		tail.position = Vector2(player_x, 44.0)
 		tail.z_index = -1
 		tail.set_meta("base_scale", tail_scale)
 		stage.add_child(tail)
@@ -849,39 +863,37 @@ func _build_player_stage() -> Control:
 		tail_rot.tween_property(tail, "rotation_degrees", -5.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 		var tail_bob := tail.create_tween().set_loops()
-		tail_bob.tween_property(tail, "position:y", 30.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tail_bob.tween_property(tail, "position:y", 41.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		tail_bob.parallel().tween_property(tail, "scale:x", tail_scale.x * 1.04, 1.2).set_trans(Tween.TRANS_SINE)
-		tail_bob.tween_property(tail, "position:y", 34.5, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tail_bob.tween_property(tail, "position:y", 47.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		tail_bob.parallel().tween_property(tail, "scale:x", tail_scale.x * 0.96, 1.2).set_trans(Tween.TRANS_SINE)
 
 		# 3. Main Body Sprite
 		sprite.texture = load(rig_body_path)
-		# Target on-screen size (80px) from the texture's own current width — see the matching
-		# comment on tail_scale_val above for why this can't be a flat constant.
-		var scale_factor: float = 80.0 / float(sprite.texture.get_width())
+		# Target on-screen size (~114px) from the texture's own current width
+		var scale_factor: float = 114.0 / float(sprite.texture.get_width())
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
-		sprite.position = Vector2(player_x, 38.0)
+		sprite.position = Vector2(player_x, 52.0)
 		_install_hit_flash(sprite)
 		stage.add_child(sprite)
 
 		# Primary breathing cycle (vertical bobbing + thoracic squash & stretch)
 		var body_tween := sprite.create_tween().set_loops()
-		body_tween.tween_property(sprite, "position:y", 34.5, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		body_tween.tween_property(sprite, "position:y", 48.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		body_tween.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		body_tween.tween_property(sprite, "position:y", 39.5, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		body_tween.tween_property(sprite, "position:y", 54.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		body_tween.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 		# 4. Floating Foxfire Spirit Flame Orb (Forefront asymmetric Lissajous hover)
 		var orb := Sprite2D.new()
 		orb.name = "PlayerSpiritOrb"
 		orb.texture = load("res://assets/characters/fox_rig/fox_orb.png")
-		# Target on-screen size (~39px) from the texture's own current width — see the matching
-		# comment on tail_scale_val above.
-		var orb_scale_val: float = 38.9 / float(orb.texture.get_width())
+		# Target on-screen size (~52px) from the texture's own current width
+		var orb_scale_val: float = 52.0 / float(orb.texture.get_width())
 		var orb_scale := Vector2(orb_scale_val, orb_scale_val)
 		orb.scale = orb_scale
-		var base_orb_pos := Vector2(player_x + 36.0, 18.0)
+		var base_orb_pos := Vector2(player_x + 50.0, 24.0)
 		orb.position = base_orb_pos
 		orb.z_index = 1
 		orb.set_meta("base_pos", base_orb_pos)
@@ -909,7 +921,7 @@ func _build_player_stage() -> Control:
 		var scale_factor: float = minf(spr_size.x / tex_w, spr_size.y / tex_h) * 1.08
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
-		sprite.position = Vector2(player_x, 37.0)
+		sprite.position = Vector2(player_x, 52.0)
 		_install_hit_flash(sprite)
 		stage.add_child(sprite)
 
@@ -922,7 +934,7 @@ func _build_player_stage() -> Control:
 	var max_hp: int = int(g.combat.state.player.get("max_health", 60))
 	var hp_bar_w := 148.0
 	var hp_bar := g._stat_bar(hp_bar_w, 18.0, int(g.combat.state.player.health), max_hp, g.EMBER, "%s  ♥ %d/%d" % [g.t("ui.spirit_name"), g.combat.state.player.health, max_hp], 10)
-	hp_bar.position = Vector2(player_x - hp_bar_w / 2.0, 78.0)
+	hp_bar.position = Vector2(player_x - hp_bar_w / 2.0, 106.0)
 	stage.add_child(hp_bar)
 
 	var incoming: int = g.combat.total_incoming_damage()
@@ -932,7 +944,7 @@ func _build_player_stage() -> Control:
 		danger_badge.name = "DangerWarningBadge"
 		danger_badge.custom_minimum_size = Vector2(96.0, 18.0)
 		danger_badge.size = danger_badge.custom_minimum_size
-		danger_badge.position = Vector2(player_x - 48.0, 58.0)
+		danger_badge.position = Vector2(player_x - 48.0, 84.0)
 		danger_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var d_style := g._panel(Color(0.85, 0.15, 0.15, 0.95), 9, Color("ffc2c2"))
 		d_style.border_width_left = 1; d_style.border_width_right = 1
@@ -949,8 +961,8 @@ func _build_player_stage() -> Control:
 	# Player side panel for Equipment, Relics & Combat Statuses (arranged vertically in columns of up to 4 items each)
 	var side_panel := HBoxContainer.new()
 	side_panel.name = "PlayerSidePanel"
-	side_panel.position = Vector2(184.0, 10.0)
-	side_panel.custom_minimum_size = Vector2(176.0, 104.0)
+	side_panel.position = Vector2(184.0, 14.0)
+	side_panel.custom_minimum_size = Vector2(176.0, 116.0)
 	side_panel.size = side_panel.custom_minimum_size
 	side_panel.add_theme_constant_override("separation", 6)
 	side_panel.mouse_filter = Control.MOUSE_FILTER_PASS
