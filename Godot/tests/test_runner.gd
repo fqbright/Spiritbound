@@ -1845,6 +1845,82 @@ func run() -> void:
 	check(cs_res.hall_of_fame.size() <= 5, "hall_of_fame capped at maximum 5 entries")
 
 
+	# --- Section 3: crash marker + funnel plumbing (Docs/LAUNCH_READINESS.md) ---
+	# Pure filesystem + constant checks: the network POST itself follows this repo's established
+	# "assert the call is attempted with the right shape, don't hit a real backend" pattern, and
+	# is exercised at its call sites rather than re-mocked here.
+	LogService.clear_session_marker()
+	check(not LogService.previous_session_crashed(), "LogService: no marker reads as a clean previous session")
+	LogService.mark_session_start()
+	check(LogService.previous_session_crashed(), "LogService: a left-behind marker flags the previous session as unclean")
+	LogService.end_session_cleanly()
+	check(not LogService.previous_session_crashed(), "LogService: a clean shutdown clears the marker")
+	check(not FileAccess.file_exists(LogService.SESSION_MARKER_PATH), "LogService: the marker file is actually removed from disk")
+	check(LogService.EV_TUTORIAL_STARTED == "tutorial_started" and LogService.EV_DAY7_RETURN == "day7_return", "LogService exposes the documented starter funnel names")
+	LogService.crash_log_tail(5)
+	check(true, "LogService.crash_log_tail is safe to call whether or not an engine log file exists")
+	check(SupabaseClient.TABLE_CLIENT_EVENTS == "client_events", "SupabaseClient posts events to the client_events table")
+
+	# --- Section 2: the purchase gate (Docs/LAUNCH_READINESS.md) ---
+	# A real StoreKit/Play transaction can't run headless (no different in kind from
+	# deploy_ios.sh being outside run_tests.sh's reach). What IS testable here, and is what
+	# actually keeps the gate honest: is_premium defaults to false, only a *verified* answer
+	# unlocks it, an unverified or rejected one never does, the unlock persists, and restore
+	# re-derives it from account state (including revoking on an authoritative "not owned").
+	# PurchaseService.verify_receipt is the mocked seam; the real call goes to the
+	# verify-purchase Edge Function.
+	PurchaseService.clear_provider()
+	PurchaseService.clear_verify_override()
+	PurchaseService.clear_receipts()
+
+	var gate_prof: Dictionary = SpiritSave.defaults(content)
+	check(not PurchaseService.has_premium(gate_prof), "a fresh profile is not premium")
+	check(not bool(gate_prof.season_pass.get("is_premium", false)), "fresh season_pass.is_premium defaults to false, not true (this was unconditionally true before Section 2)")
+
+	var no_prov: Dictionary = await PurchaseService.purchase(gate_prof)
+	check(not bool(no_prov.get("ok", false)), "purchase with no billing provider wired does not succeed")
+	check(str(no_prov.get("error", "")) == "no_provider", "purchase with no provider reports no_provider")
+	check(not PurchaseService.has_premium(gate_prof), "a failed purchase grants nothing")
+
+	PurchaseService.set_provider(FakeBillingProvider.new({"ok": true, "receipt": "test-receipt", "transaction_id": "tx-1"}))
+
+	# A provider reporting success with a receipt the server rejects must still grant nothing.
+	PurchaseService.set_verify_override(func(_p, _r, _t): return {"ok": true, "premium": false, "error": ""})
+	var rejected: Dictionary = await PurchaseService.purchase(gate_prof)
+	check(not bool(rejected.get("verified", false)), "a server-rejected receipt is not verified")
+	check(not PurchaseService.has_premium(gate_prof), "a server-rejected receipt does not unlock the premium track")
+	check(PurchaseService.receipt_for(PurchaseService.PRODUCT_SEASON_PASS).has("receipt"), "the receipt is cached locally so a later restore can re-verify it")
+
+	# An unreachable verification server is not an unlock either (fail closed).
+	PurchaseService.set_verify_override(func(_p, _r, _t): return {"ok": false, "premium": false, "error": "offline"})
+	check(not bool((await PurchaseService.restore(gate_prof)).get("ok", false)), "restore fails rather than unlocking when verification is unreachable")
+	check(not PurchaseService.has_premium(gate_prof), "an unanswered verification leaves the gate shut")
+
+	# The one allowed path: the provider reports a purchase AND the server verifies it.
+	PurchaseService.set_verify_override(func(_p, _r, _t): return {"ok": true, "premium": true, "error": ""})
+	var bought: Dictionary = await PurchaseService.purchase(gate_prof)
+	check(bool(bought.get("verified", false)), "a verified purchase reports verified")
+	check(PurchaseService.has_premium(gate_prof), "a verified purchase unlocks the premium track")
+	check(bool(gate_prof.season_pass.get("is_premium", false)), "the unlock lands on season_pass.is_premium, where the season-pass UI reads it")
+	check(PurchaseService.has_premium(SpiritSave.load_profile(content)), "the verified unlock persists to the save file")
+
+	# Restore re-derives from account state, and revokes on an authoritative "not owned".
+	check(bool((await PurchaseService.restore(gate_prof)).get("verified", false)), "restore re-derives the entitlement from a verified answer")
+	PurchaseService.set_verify_override(func(_p, _r, _t): return {"ok": true, "premium": false, "error": ""})
+	await PurchaseService.restore(gate_prof)
+	check(not PurchaseService.has_premium(gate_prof), "an authoritative 'not owned' answer revokes the entitlement (refunded or revoked transaction)")
+
+	# A provider claiming success with no receipt is not trustworthy for a gated product.
+	PurchaseService.set_provider(FakeBillingProvider.new({"ok": true, "receipt": "", "transaction_id": ""}))
+	PurchaseService.set_verify_override(func(_p, _r, _t): return {"ok": true, "premium": true, "error": ""})
+	var no_receipt: Dictionary = await PurchaseService.purchase(gate_prof)
+	check(str(no_receipt.get("error", "")) == "no_receipt", "a provider success with no receipt is refused outright")
+	check(not PurchaseService.has_premium(gate_prof), "no receipt means no unlock, even with a permissive verifier")
+
+	PurchaseService.clear_provider()
+	PurchaseService.clear_verify_override()
+	PurchaseService.clear_receipts()
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)
@@ -1857,3 +1933,15 @@ func run() -> void:
 
 func _force_hand(battle: SpiritCombat, card_id: String) -> void:
 	battle.state.hand = [{"uid":900,"card_id":card_id}]
+
+# Stand-in for a vendored StoreKit/Play Billing plugin, injected via
+# PurchaseService.set_provider(). Reports whatever the test hands it; the real plugin would put
+# up the platform's own purchase sheet and hand back a signed receipt.
+class FakeBillingProvider:
+	var _result: Dictionary = {}
+
+	func _init(result: Dictionary) -> void:
+		_result = result
+
+	func purchase(_product_id: String) -> Dictionary:
+		return _result

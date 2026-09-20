@@ -1,5 +1,22 @@
 # Launch Readiness
 
+> ## Status update (implementation pass, this commit)
+>
+> All three blocking sections now have working code in the repo. Two parts genuinely cannot be
+> closed from inside this repo and still need the person who holds Supabase/store credentials —
+> they are called out here so they don't get lost:
+>
+> | Section | Code in repo | Still needs a human with credentials |
+> | --- | --- | --- |
+> | 1. Account deletion | Client flow + `delete-account` Edge Function | **Deploy** the function (`supabase functions deploy delete-account`) |
+> | 2. Purchase gate | Gate + `PurchaseService` + `verify-purchase` Edge Function; `is_premium` now defaults **false** | **Deploy** the function, create the `entitlements` table, configure **App Store Connect / Play Console products**, and vendor a Godot 4.7 **billing plugin** (see `PurchaseService`'s header). The Apple/Google receipt-verification calls in the Edge Function are honest stubs that **fail closed** until real credentials are set — nothing unlocks without them, by design |
+> | 3. Logging + analytics | `LogService`, `client_events` table DDL, funnel wired at its call sites | Create the `client_events` table in the Supabase SQL editor |
+>
+> SQL to run once, in the dashboard SQL editor: `Docs/sql/2026_client_events.sql` and
+> `Docs/sql/2026_entitlements.sql`. Deployment notes live in each function's own `README.md`.
+> Section 4's non-code items (RLS confirmation, privacy-policy wording, store-metadata
+> questionnaire) are still **unverified** — they need dashboard/App Store Connect access.
+
 **This is a hard gate, not a wishlist.** Spiritbound is not to be submitted (or resubmitted) to
 the App Store / Play Store until every section below has its **Definition of Done** met. This
 file exists because "add more features" and "safe to ship" turned out to be different questions

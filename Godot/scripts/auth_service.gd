@@ -207,12 +207,19 @@ static func delete_account(game: SpiritGame, on_done: Callable = Callable()) -> 
 		if on_done.is_valid(): on_done.call(true)
 		return
 
-	var save_res: Dictionary = await SupabaseClient.delete_player_save(game)
-	var lb_res: Dictionary = await SupabaseClient.delete_leaderboard_entries(game)
-	if not save_res.get("ok", false) or not lb_res.get("ok", false):
-		game._toast(game.t("ui.account_delete_failed_toast"), game.EMBER)
-		if on_done.is_valid(): on_done.call(false)
-		return
+	# Server-side half first (Docs/LAUNCH_READINESS.md Section 1): the delete-account Edge
+	# Function removes the auth.users record and this user's cloud rows using the service-role
+	# key, which never leaves the server. It needs the account to still exist to identify it, so
+	# it must run before sign-out below. Best-effort: if it isn't deployed yet, fall through to
+	# the client-scoped deletion, which is what Apple 5.1.1(v) practically requires.
+	var auth_res: Dictionary = await SupabaseClient.delete_auth_user(game)
+	if not auth_res.get("ok", false):
+		var save_res: Dictionary = await SupabaseClient.delete_player_save(game)
+		var lb_res: Dictionary = await SupabaseClient.delete_leaderboard_entries(game)
+		if not save_res.get("ok", false) or not lb_res.get("ok", false):
+			game._toast(game.t("ui.account_delete_failed_toast"), game.EMBER)
+			if on_done.is_valid(): on_done.call(false)
+			return
 
 	SupabaseClient.sign_out_client(game)
 	game.profile = SpiritSave.defaults(game.content)

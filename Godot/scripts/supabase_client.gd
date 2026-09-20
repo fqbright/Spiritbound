@@ -11,6 +11,7 @@ const SUPABASE_ANON_KEY: String = "sb_publishable_ntvm_D4g8ayE3G5TpY6JFw_IF-2ht2
 const SESSION_PATH: String = "user://spiritbound_session.json"
 const TABLE_PLAYER_SAVES: String = "player_saves"
 const TABLE_LEADERBOARDS: String = "leaderboards"
+const TABLE_CLIENT_EVENTS: String = "client_events"
 
 static var _current_session: Dictionary = {}
 static var _session_loaded: bool = false
@@ -353,6 +354,78 @@ static func delete_leaderboard_entries(node: Node = null) -> Dictionary:
 	if res.get("ok", false):
 		return {"ok": true, "error": ""}
 	return {"ok": false, "error": str(res.get("error", "Failed to delete leaderboard entries"))}
+
+# ------------------------------------------------------------------------------
+# Client events (Docs/LAUNCH_READINESS.md Section 3)
+# ------------------------------------------------------------------------------
+# Crash-adjacent errors and a small funnel, both into one insert-only table (see
+# Docs/sql/2026_client_events.sql). Fire-and-forget by design: a logging call must never block
+# or crash gameplay, so callers may ignore the returned dictionary entirely. The table is
+# insert-only under RLS — this never reads events back. user_id is nullable so guest /
+# pre-sign-in events still land.
+static func post_client_event(kind: String, name: String, detail: Dictionary = {}, node: Node = null) -> Dictionary:
+	if name.is_empty():
+		return {"ok": false, "error": "Empty event name"}
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_CLIENT_EVENTS
+	var token := get_access_token()
+	var headers := PackedStringArray(["Prefer: return=minimal"])
+	if not token.is_empty():
+		headers.append("Authorization: Bearer " + token)
+	var uid := get_user_id()
+	var body := {
+		"user_id": uid if not uid.is_empty() else null,
+		"kind": kind,
+		"name": name,
+		"detail": detail,
+		"app_version": str(ProjectSettings.get_setting("application/config/version", "")),
+		"platform": OS.get_name()
+	}
+	var res = await _http_request(url, HTTPClient.METHOD_POST, headers, body, node)
+	return {"ok": res.get("ok", false), "error": str(res.get("error", ""))}
+
+static func verify_purchase(product_id: String, receipt: String, transaction_id: String = "", node: Node = null) -> Dictionary:
+	# Calls the verify-purchase Edge Function (supabase/functions/verify-purchase/). That function
+	# holds the Apple/Google API credentials and is the only writer of public.entitlements - the
+	# client only ever sends its own bearer token and the receipt. See PurchaseService for why the
+	# client must not decide on its own that a purchase is legitimate.
+	# Returns {"ok": bool, "premium": bool, "error": String}: "ok" = the server answered
+	# authoritatively; "premium" = that answer was "this account owns the product". An unreachable
+	# function is ok:false, i.e. not verified, which unlocks nothing (failing closed on purpose).
+	var token := get_access_token()
+	var headers := PackedStringArray()
+	if not token.is_empty():
+		headers.append("Authorization: Bearer " + token)
+	var body := {
+		"product_id": product_id,
+		"receipt": receipt,
+		"transaction_id": transaction_id,
+		"platform": "android" if OS.get_name() == "Android" else "ios"
+	}
+	var res = await _http_request(SUPABASE_URL + "/functions/v1/verify-purchase", HTTPClient.METHOD_POST, headers, body, node)
+	if not res.get("ok", false):
+		return {"ok": false, "premium": false, "error": str(res.get("error", "Verify request failed"))}
+	var data = res.get("data", null)
+	if not (data is Dictionary):
+		return {"ok": false, "premium": false, "error": "Malformed verify response"}
+	var d: Dictionary = data
+	if not bool(d.get("ok", false)):
+		return {"ok": false, "premium": false, "error": str(d.get("error", "Verification rejected"))}
+	return {"ok": true, "premium": bool(d.get("premium", false)), "error": str(d.get("detail", ""))}
+
+static func delete_auth_user(node: Node = null) -> Dictionary:
+	# Calls the delete-account Edge Function (supabase/functions/delete-account/), the only place
+	# that ever touches the service-role key - it stays server-side and never ships in the client.
+	# Deliberately best-effort: the caller's account-deletion flow still completes locally when
+	# this isn't deployed yet or the network is down, which is what Apple 5.1.1(v) requires of the
+	# shipped client. Sends only the caller's own bearer token; the function derives the user id
+	# from that token, never from this request body.
+	var token := get_access_token()
+	if token.is_empty():
+		return {"ok": false, "error": "Not authenticated"}
+	var url := SUPABASE_URL + "/functions/v1/delete-account"
+	var headers := PackedStringArray(["Authorization: Bearer " + token])
+	var res = await _http_request(url, HTTPClient.METHOD_POST, headers, {}, node)
+	return {"ok": res.get("ok", false), "error": str(res.get("error", ""))}
 
 static func sync_save_two_way(local_profile: Dictionary, node: Node = null) -> Dictionary:
 	# Returns: {"ok": bool, "action": "none"|"uploaded"|"downloaded", "profile": Dictionary, "error": String}

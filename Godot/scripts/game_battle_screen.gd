@@ -1307,6 +1307,7 @@ var tutorial_step := 0
 func _show_battle_tutorial() -> void:
 	if g.overlay == null: return
 	tutorial_step = 0
+	LogService.event(LogService.EV_TUTORIAL_STARTED, {}, g)
 	_modal_backdrop("BattleTutorial", _finish_tutorial)
 	_render_tutorial_step()
 
@@ -1373,6 +1374,9 @@ func _tutorial_prev_step() -> void:
 func _finish_tutorial() -> void:
 	g.profile.tutorial_seen = true
 	SpiritSave.write(g.profile)
+	# Fired on both the "start" and "skip" exits on purpose — the funnel question is "did the
+	# player get past the tutorial", not "how did they dismiss it".
+	LogService.event(LogService.EV_TUTORIAL_COMPLETED, {}, g)
 	if g.overlay == null: return
 	var existing := g.overlay.get_node_or_null("BattleTutorial")
 	if existing: existing.queue_free()

@@ -258,7 +258,7 @@ func _career_stat_panel(border: Color, title: String, title_color: Color, rows: 
 # Career Codex (旅者典籍 / Phase 6): lifetime playstyle stats independent of any single run.
 # Deliberately reads victories/damage/gold straight from lifetime_stats and the highest Abyss
 # floor from profile.abyss_record rather than duplicating them into career_stats — see
-# _track_career_battle_stats()'s own comment in game.gd for why. Everything here only ever
+# _record_battle_result()'s own comment in game.gd for why. Everything here only ever
 # grows; there's no reset path, matching the "lifetime" framing.
 func _build_compendium_career(list: VBoxContainer) -> void:
 	var cs: Dictionary = g.profile.get("career_stats", {})
@@ -2166,7 +2166,7 @@ func _has_claimable_season_pass_reward() -> bool:
 	var current_lvl: int = clampi(1 + int(xp / 200), 1, 20)
 	var claimed_free: Array = sp.get("claimed_free", [])
 	var claimed_premium: Array = sp.get("claimed_premium", [])
-	var is_premium: bool = bool(sp.get("is_premium", true))
+	var is_premium: bool = bool(sp.get("is_premium", false))
 	for l in range(1, current_lvl + 1):
 		if not claimed_free.has(l): return true
 		if is_premium and not claimed_premium.has(l): return true
@@ -2265,7 +2265,7 @@ func _claim_all_season_pass() -> void:
 	var current_lvl: int = clampi(1 + int(xp / 200), 1, 20)
 	var claimed_free: Array = sp.get("claimed_free", []).duplicate()
 	var claimed_premium: Array = sp.get("claimed_premium", []).duplicate()
-	var is_premium: bool = bool(sp.get("is_premium", true))
+	var is_premium: bool = bool(sp.get("is_premium", false))
 	for l in range(1, current_lvl + 1):
 		var r := _get_season_pass_rewards(l)
 		if not claimed_free.has(l):
@@ -2280,6 +2280,34 @@ func _claim_all_season_pass() -> void:
 	g._toast(g.t("ui.season_pass_all_claimed_toast"), g.GOLD)
 	show_season_pass()
 
+func _buy_season_pass() -> void:
+	# Purchase gate (Docs/LAUNCH_READINESS.md Section 2). The unlock decision is not made here:
+	# PurchaseService sends the receipt to the verify-purchase Edge Function and only a verified
+	# answer flips is_premium. No provider wired / no network / server says no all mean "locked".
+	g._toast(g.t("ui.season_pass_purchase_pending"), g.MUTED)
+	var res: Dictionary = await PurchaseService.purchase(g.profile, g)
+	if bool(res.get("verified", false)) and PurchaseService.has_premium(g.profile):
+		g._toast(g.t("ui.season_pass_purchase_success"), g.GOLD)
+	elif str(res.get("error", "")) == "no_provider":
+		g._toast(g.t("ui.season_pass_purchase_unavailable"), g.EMBER)
+	else:
+		g._toast(g.t("ui.season_pass_purchase_failed"), g.EMBER)
+	show_season_pass()
+
+func _restore_season_pass() -> void:
+	# Re-derives the entitlement from account state (stored receipt re-verified, or the server's
+	# own record on a fresh install) instead of trusting local state. Also revokes on an
+	# authoritative "you don't own this" answer, so a refund doesn't leave the track open.
+	g._toast(g.t("ui.season_pass_purchase_pending"), g.MUTED)
+	var res: Dictionary = await PurchaseService.restore(g.profile, g)
+	if PurchaseService.has_premium(g.profile):
+		g._toast(g.t("ui.season_pass_restore_done"), g.GOLD)
+	elif str(res.get("error", "")) == "no_provider":
+		g._toast(g.t("ui.season_pass_purchase_unavailable"), g.EMBER)
+	else:
+		g._toast(g.t("ui.season_pass_restore_none"), g.MUTED)
+	show_season_pass()
+
 func show_season_pass() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = show_quests
@@ -2291,7 +2319,7 @@ func show_season_pass() -> void:
 	var current_lvl: int = clampi(1 + int(xp / 200), 1, 20)
 	var claimed_free: Array = sp.get("claimed_free", [])
 	var claimed_premium: Array = sp.get("claimed_premium", [])
-	var is_premium: bool = bool(sp.get("is_premium", true))
+	var is_premium: bool = bool(sp.get("is_premium", false))
 
 	# Top summary card: Level + XP + Claim All button
 	var top_card := PanelContainer.new()
@@ -2314,6 +2342,8 @@ func show_season_pass() -> void:
 	top_info.add_child(g._label(g.tf("ui.season_pass_level_fmt", current_lvl), 14, g.GOLD))
 	var xp_in_level: int = xp % 200 if current_lvl < 20 else 200
 	top_info.add_child(g._label(g.tf("ui.season_pass_xp_fmt", [xp_in_level, 200]), 10, g.JADE))
+	if not is_premium:
+		top_info.add_child(g._label(g.t("ui.season_pass_premium_hint"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var claim_all_btn := g._button(g.t("ui.season_pass_claim_all"), _claim_all_season_pass, g.EMBER, Vector2(100, 36))
 	claim_all_btn.name = "SeasonPassClaimAllBtn"
@@ -2321,6 +2351,38 @@ func show_season_pass() -> void:
 	claim_all_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top_row.add_child(claim_all_btn)
 	page.add_child(top_card)
+
+	# Purchase gate (Docs/LAUNCH_READINESS.md Section 2). Shown only while the premium track is
+	# locked; both buttons route through PurchaseService, the one place allowed to unlock it.
+	# Restore is not optional — Apple checks for it on any app with non-consumable purchases.
+	if not is_premium:
+		var shop_card := PanelContainer.new()
+		var sstyle := g._panel(Color("0d1e24"), 12, g.GOLD)
+		sstyle.content_margin_left = 12; sstyle.content_margin_right = 12
+		sstyle.content_margin_top = 8; sstyle.content_margin_bottom = 8
+		shop_card.add_theme_stylebox_override("panel", sstyle)
+		var shop_row := HBoxContainer.new()
+		shop_row.add_theme_constant_override("separation", 10)
+		shop_card.add_child(shop_row)
+
+		var info2 := VBoxContainer.new()
+		info2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info2.add_theme_constant_override("separation", 2)
+		info2.add_child(g._label(g.t("ui.season_pass_premium"), 12, g.GOLD))
+		info2.add_child(g._label(g.t("ui.season_pass_premium_hint"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		shop_row.add_child(info2)
+
+		var buy_btn := g._button(g.t("ui.season_pass_buy"), _buy_season_pass, Color("9e6b28"), Vector2(110, 36))
+		buy_btn.name = "SeasonPassBuyBtn"
+		buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		shop_row.add_child(buy_btn)
+
+		var restore_btn := g._button(g.t("ui.season_pass_restore"), _restore_season_pass, g.PANEL, Vector2(84, 36))
+		restore_btn.name = "SeasonPassRestoreBtn"
+		restore_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		shop_row.add_child(restore_btn)
+
+		page.add_child(shop_card)
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true

@@ -3052,8 +3052,41 @@ func _run() -> void:
 	await process_frame
 	var claim_all_btn: Node = game.root.find_child("SeasonPassClaimAllBtn", true, false)
 	check(claim_all_btn != null, "SeasonPassClaimAllBtn renders in season pass screen")
+	# LAUNCH_READINESS Section 2: the premium track must not be free. A brand-new profile gets
+	# is_premium == false, so the premium rows are locked until a verified purchase / restore.
+	# Assert against the schema default, not game.profile: this harness reuses a persisted
+	# on-disk save, so game.profile can legitimately still carry an old is_premium:true.
+	var fresh_prof: Dictionary = SpiritSave.defaults(game.content)
+	var fresh_sp: Dictionary = fresh_prof.get("season_pass", {})
+	check(not bool(fresh_sp.get("is_premium", false)), "a fresh profile's premium track is not pre-unlocked")
+	# LAUNCH_READINESS Section 3: first_seen_day must be stamped at launch or the day2/day7
+	# return funnel can never compute an offset.
+	check(fresh_prof.has("first_seen_day"), "save schema carries first_seen_day for the return funnel")
 	check(game.root.find_child("SeasonPassTier_1", true, false) != null, "SeasonPassTier_1 renders")
 	check(game.root.find_child("SeasonPassTier_20", true, false) != null, "SeasonPassTier_20 renders")
+
+	# LAUNCH_READINESS Section 2: while the premium track is locked the player must have both a
+	# way to buy it and a way to restore a previous purchase (Apple checks for Restore Purchases
+	# on any app with non-consumable purchases). Force the locked state first — this harness
+	# reuses a persisted on-disk save, so game.profile may still carry a pre-Section-2
+	# is_premium:true — then re-render and assert. The buttons are deliberately NOT clicked here:
+	# with a billing provider wired a click could open a real platform purchase sheet, which a
+	# headless suite must never do. The gate's actual behavior (an absent or unverified purchase
+	# grants nothing, restore re-derives, a refund revokes) is asserted in test_runner.gd.
+	var prev_premium: bool = bool(game.profile.season_pass.get("is_premium", false))
+	game.profile.season_pass.is_premium = false
+	game.show_season_pass()
+	await process_frame
+	check(game.root.find_child("SeasonPassBuyBtn", true, false) != null, "SeasonPassBuyBtn renders while the premium track is locked")
+	check(game.root.find_child("SeasonPassRestoreBtn", true, false) != null, "SeasonPassRestoreBtn renders (Restore Purchases entry point)")
+	var premium_rows_locked := true
+	for tier_idx in range(1, 21):
+		if game.root.find_child("ClaimPremTierBtn_%d" % tier_idx, true, false) != null:
+			premium_rows_locked = false
+	check(premium_rows_locked, "no premium-tier Claim button renders while the account has not bought the pass")
+	game.profile.season_pass.is_premium = prev_premium
+	game.show_season_pass()
+	await process_frame
 
 	# 2. Deck Code Export & Import
 	game.show_deck()

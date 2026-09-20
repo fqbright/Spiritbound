@@ -451,7 +451,12 @@ func _init() -> void:
 
 func _ready() -> void:
 	set_process_input(true)
+	# Crash-adjacent logging (Docs/LAUNCH_READINESS.md Section 3): records the session-start
+	# marker, and uploads the previous session's log tail if that session didn't exit cleanly.
+	# Headless (the test runner) is skipped inside LogService itself — see its begin_session().
+	LogService.begin_session(self)
 	profile = SpiritSave.load_profile(content)
+	_track_return_days()
 	lang = str(profile.get("language", "zh-Hans"))
 	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 2.0)
 	muted = bool(profile.get("music_muted", false))
@@ -721,7 +726,7 @@ func _claim_quest(list_name: String, quest_id: String) -> void:
 
 func _add_season_xp(amount: int) -> void:
 	if not profile.get("season_pass") is Dictionary:
-		profile.season_pass = {"season_id":1, "season_name":"灵火初醒", "xp":0, "claimed_free":[], "claimed_premium":[], "is_premium":true}
+		profile.season_pass = {"season_id":1, "season_name":"灵火初醒", "xp":0, "claimed_free":[], "claimed_premium":[], "is_premium":false}
 	var sp: Dictionary = profile.season_pass
 	var current_xp: int = int(sp.get("xp", 0))
 	var old_lvl: int = clampi(1 + int(current_xp / 200), 1, 20)
@@ -852,7 +857,32 @@ func _create_account(raw_name: String) -> void:
 	show_map()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST: SpiritSave.write(profile)
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		SpiritSave.write(profile)
+		# Clean shutdown → clear the session marker, so the next launch doesn't read this normal
+		# exit as an unclean one. See LogService / Docs/LAUNCH_READINESS.md Section 3.
+		LogService.end_session_cleanly()
+
+# Day-2 / day-7 return funnel (Docs/LAUNCH_READINESS.md Section 3). A whole-day bucket derived
+# from local unix time, matching how the rest of this repo's daily systems already count days.
+# Reported once per milestone per save, so relaunching the same day cannot double-count it.
+func _track_return_days() -> void:
+	var today: int = int(Time.get_unix_time_from_system() / 86400)
+	var first: int = int(profile.get("first_seen_day", -1))
+	if first < 0:
+		profile.first_seen_day = today
+		SpiritSave.write(profile)
+		return
+	var reported: Array = profile.get("return_days_reported", [])
+	var offset: int = today - first
+	var milestone: int = 0
+	if offset == 1 and not reported.has(1): milestone = 1
+	elif offset == 7 and not reported.has(7): milestone = 7
+	if milestone == 0: return
+	reported.append(milestone)
+	profile.return_days_reported = reported
+	SpiritSave.write(profile)
+	LogService.event(LogService.EV_DAY2_RETURN if milestone == 1 else LogService.EV_DAY7_RETURN, {}, self)
 
 func _safe_top() -> int:
 	var safe := DisplayServer.get_display_safe_area()
@@ -3023,6 +3053,14 @@ func _record_battle_result(won: bool) -> void:
 	else:
 		cs.defeats = int(cs.get("defeats", 0)) + 1
 		cs.current_win_streak = 0
+
+	# Minimal analytics (Docs/LAUNCH_READINESS.md Section 3) — a couple of funnel milestones only,
+	# deliberately not an exhaustive instrumentation. Fire-and-forget; never blocks gameplay.
+	if won and int(cs.get("victories", 0)) == 1:
+		LogService.event(LogService.EV_FIRST_BATTLE_WON, {"stage": current_stage}, self)
+	if won and current_stage >= 25 and not bool(profile.get("stage_25_reached", false)):
+		profile.stage_25_reached = true
+		LogService.event(LogService.EV_STAGE_25_REACHED, {"stage": current_stage}, self)
 
 	var hero_key: String = str(profile.get("hero_class", "fox_spirit"))
 	cs.favorite_hero = hero_key
