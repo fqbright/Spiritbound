@@ -169,11 +169,11 @@ const SHOP_STOCK_COUNT := 6
 # Stock and the day's sale slot are derived from the day number rather than stored, so
 # they need no save-file field and can't drift out of sync with the daily quest reset.
 func _shop_period() -> Dictionary:
-	var day: int = int(Time.get_unix_time_from_system()) / g.DAY_SECONDS
+	var day: int = g._current_day()
 	return g.content.roll_shop_stock(day, SHOP_STOCK_COUNT)
 
 func _shop_reset_at() -> int:
-	var day: int = int(Time.get_unix_time_from_system()) / g.DAY_SECONDS
+	var day: int = g._current_day()
 	return (day + 1) * g.DAY_SECONDS
 
 # Escalating cost is the direct fix for "just buy the same card forever": each copy already
@@ -1119,7 +1119,12 @@ func _show_import_deck_dialog() -> void:
 			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
 			return
 		var imported_cards: Array = test_json.data
-		if imported_cards.size() < 15:
+		# Exactly 25, matching _confirm_deck()'s own gate on a manually-built deck — a code is
+		# unsigned base64 JSON a player can hand-edit, so without this an edited or malformed
+		# code could install a deck of any size (bypassing _confirm_deck() entirely, since
+		# import writes profile.deck directly) and silently break the 25-card invariant every
+		# other deck-affecting system in this codebase assumes.
+		if imported_cards.size() != 25:
 			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
 			return
 		var counts: Dictionary = {}
@@ -1268,7 +1273,7 @@ func _card_build_score(card: Dictionary) -> float:
 	for effect in card.effects:
 		match effect.operation:
 			"damage": score += float(effect.amount) * 2.2 * attack_double
-			"shield": score += float(effect.amount) * 1.6
+			"shield": score += float(effect.amount) * 2.0
 			"heal": score += float(effect.amount) * 1.0
 			"draw": score += float(effect.amount) * 3.0
 			"energy": score += float(effect.amount) * 4.0
@@ -1284,6 +1289,12 @@ func _card_build_score(card: Dictionary) -> float:
 		"pierce": score += 3.0
 		"stun": score += 5.0
 		"recoverExhaust", "recycleDiscard": score += 4.0
+
+	# Boomerang/Reverb/Overload (Phase 7) live as top-level card fields, not effects or
+	# `special`, so without these cases they'd silently score as plain vanilla cards.
+	if bool(card.get("boomerang", false)): score += 3.5
+	if bool(card.get("reverb", false)): score *= 1.5
+	score -= float(int(card.get("overload", 0))) * 2.5
 
 	score += {"Rare": 4.0, "Uncommon": 2.0, "Common": 1.0}.get(card.get("rarity", "Common"), 0.0)
 	score += float(int(g.profile.upgrades.get(card.id, 0))) * 6.0

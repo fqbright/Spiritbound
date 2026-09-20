@@ -8,3 +8,4 @@ Godot/tests/snapshots/*.png
 Godot/tests/snapshots/*.png.import
 Godot/tests/snapshots/baselines/*.png.import
 Godot/tests/snapshots/diffs/*.png
+Godot/tests/gut/results.xml

@@ -25,6 +25,50 @@ var selected_rune := ""
 var muted := false
 var lang := "zh-Hans"
 var resolving := false
+# Bumped by begin_battle() (a new battle starts) and _leave_battle() (the current one ends) —
+# a cancellation token for _resolve_play()'s long await chain (card-fly, buff/heal/shield
+# animations, a per-enemy attack loop, then show_battle()/_maybe_end_turn()). Without it, a
+# stale _resolve_play() coroutine that was still mid-animation when the player left (a loss, a
+# manual retreat, anything reaching _leave_battle()) would resume once its timer/tween fires
+# regardless, and its tail's show_battle() call unconditionally wipes whatever screen is
+# current — silently replacing the map (or wherever _leave_battle() navigated to) with the old
+# battle's UI. See _resolve_play()'s own guard for where this is checked.
+var battle_session := 0
+# Bumped by _clear() itself — the one shared choke point every screen transition goes through
+# (show_map/show_camp/show_battle/show_shop/... all call it). A general-purpose cancellation
+# token for any fire-and-forget coroutine that survives past a point where the player could
+# plausibly navigate elsewhere before it finishes — see _travel_to()'s own guard (tapping a
+# distant stage pin starts a multi-second hop animation with no input lock; tapping Camp/
+# Quests/another pin mid-animation used to leave that stale coroutine to unconditionally call
+# show_event()/begin_battle() on whatever screen the player had already moved to once its tween
+# finished) for the shape of bug this exists to prevent. battle_session above solves the same
+# problem for _resolve_play() specifically (and also resets g.resolving, which this doesn't) —
+# this is the general version for everything else.
+var screen_generation := 0
+# -1 (the default) means "disabled" — every begin_*_battle() function seeds SpiritCombat from
+# _battle_seed() below instead of inlining Time.get_unix_time_from_system() itself, the same
+# formula duplicated across 7 call sites (begin_battle, begin_boss_rush_battle,
+# begin_curse_run_battle, begin_sandbox_battle, begin_abyss_battle, begin_world_event_battle,
+# begin_phantom_arena) until this was added. A real player's shuffle and flavor-modifier roll
+# differing every battle is intended, not a bug — but that same non-determinism produced two
+# separately-diagnosed flakiness bugs in one session before either was traced back to this
+# exact line (ui_smoke.gd's finishing-blow banner check, and visual_snapshots.gd's battle-
+# screen capture — see AGENTS.md's Traps section for both). Set this to a fixed value before
+# calling any begin_*_battle() function to make its shuffle, flavor modifier, and enemy count
+# fully reproducible instead of hand-patching combat state after the fact per-test; never
+# touched by real gameplay.
+var test_seed_override := -1
+# Same shape as test_seed_override above, for the OTHER wall-clock-driven non-determinism
+# source in this codebase: "today" as a day-index, used by _current_day() below to roll the
+# shop's daily stock/sale/rune/relic (game_shop_deck_screen.gd's _shop_period()/_shop_reset_at()),
+# Daily Trial, Phantom Arena, and idle-harvest's fast-claim cooldown. Found the same way
+# test_seed_override was: visual_snapshots.gd's shop-screen capture depends on _shop_period(),
+# so its baseline silently bakes in whatever the real calendar day was on capture day and drifts
+# out from under the Pixel-Diff gate the next time the date actually rolls over — a slower-
+# motion version of the exact same "wall-clock content defeats a visual-diff threshold" bug
+# already fixed for battles (see test_seed_override's own comment). -1 means "disabled" (real
+# gameplay); set to a fixed day index before capturing/asserting anything day-rotation-dependent.
+var test_day_override := -1
 var loadout_tab := "equipment"
 var pending_rewards: Dictionary = {}
 var selected_card := -1
@@ -36,6 +80,7 @@ var in_daily_trial := false
 var in_weekly_challenge := false
 var in_draft_battle := false
 var in_boss_rush := false
+var in_curse_run := false
 var in_sandbox := false
 var sandbox_stage := 0
 var compendium_tab := "cards"
@@ -53,6 +98,13 @@ var deck_filter_kind: String = "all"
 var deck_filter_element: String = "all"
 var deck_search_query: String = ""
 var in_phantom_arena: bool = false
+var in_world_event: bool = false
+var in_ghost_arena: bool = false
+# Set by game_camp_screen.gd's leaderboard-row duel button right before calling
+# begin_ghost_arena_battle() — the identity/strength of whichever real leaderboard entry the
+# player chose to duel. See content.ghost_arena_encounter()'s own comment for why this becomes
+# a synthesized Encounter rather than a literal replay.
+var ghost_arena_target: Dictionary = {}
 var current_screen_name: String = "map"
 var clipboard_cache: String = ""
 var _back_action := Callable()
@@ -408,6 +460,7 @@ func _ready() -> void:
 	_ensure_quests_current()
 	_ensure_daily_trial_current()
 	_ensure_weekly_challenge_current()
+	_ensure_world_event_current()
 	_ensure_login_reward_current()
 	var should_play_intro := not bool(profile.get("intro_seen", false)) and DisplayServer.get_name() != "headless"
 	if should_play_intro:
@@ -423,6 +476,10 @@ func _ready() -> void:
 
 const DAY_SECONDS := 86400
 const WEEK_SECONDS := 604800
+# Phase 9 — World Events: a 4-week rotation per the plan's own "Local Deterministic Calendar"
+# spec, one period longer than WEEK_SECONDS for exactly the reason DAY_SECONDS/WEEK_SECONDS
+# already exist separately — each mode's own natural cadence gets its own named constant.
+const MONTH_SECONDS := 28 * DAY_SECONDS
 
 # Rerolls whichever list has aged past its period. period_seed is the period index itself
 # (today's day number, this week's week number) so every reroll for the same period is
@@ -447,7 +504,7 @@ func _ensure_quests_current() -> void:
 # for, once "now" moves past it the run resets to stage 0 — lifetime badges/best_stage are
 # untouched, only the in-progress run.
 func _ensure_daily_trial_current() -> void:
-	var day: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var day: int = _current_day()
 	var previous: Dictionary = profile.get("daily_trial_record", {})
 	if int(previous.get("day", -1)) != day:
 		var prev_day: int = int(previous.get("day", -1))
@@ -488,6 +545,21 @@ func _ensure_weekly_challenge_current() -> void:
 			"stage": 0,
 			"badges": int(previous.get("badges", 0)),
 			"best_stage": int(previous.get("best_stage", 0)),
+		}
+		SpiritSave.write(profile)
+
+# Phase 9: unlike Daily Trial/Weekly Challenge, a World Event has nothing to "roll" — which
+# event is active is a pure function of the period index (content.world_event_for_period()), so
+# the only state this resets is "has this period's one-time badge bonus been claimed yet."
+# Historical badges (profile.world_event_record.badges) always carry over across periods.
+func _ensure_world_event_current() -> void:
+	var period: int = int(Time.get_unix_time_from_system()) / MONTH_SECONDS
+	var previous: Dictionary = profile.get("world_event_record", {})
+	if int(previous.get("period", -1)) != period:
+		profile.world_event_record = {
+			"period": period,
+			"claimed": false,
+			"badges": previous.get("badges", []).duplicate(),
 		}
 		SpiritSave.write(profile)
 
@@ -570,6 +642,7 @@ const KEYWORD_KEYS: Array[String] = [
 	"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
 	"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
 	"echo", "siphon", "resonance", "poison",
+	"boomerang", "reverb", "overload",
 ]
 
 # Bumps progress on every not-yet-complete quest of this type in both lists. Called from
@@ -595,6 +668,52 @@ func _advance_quest(quest_type: String, amount: int) -> void:
 	SpiritSave.write(profile)
 	if any_completed: _toast(t("ui.quest_ready_toast"), GOLD)
 	_refresh_achievements()
+
+# Career Codex (旅者典籍): permanent playstyle/lifetime stats independent of the period-scoped
+# quest system above. Deliberately does NOT duplicate what lifetime_stats/abyss_record already
+# track (victories == lifetime_stats.win_battles, total damage == lifetime_stats.deal_damage,
+# total gold == lifetime_stats.earn_gold, highest Abyss floor == profile.abyss_record) — only
+# what nothing else does: win/loss streaks, per-battle totals pulled from combat.state.stats,
+# and which hero/cards actually get played.
+func _track_career_battle_stats() -> void:
+	if not profile.get("career_stats") is Dictionary: profile.career_stats = {}
+	if combat == null: return
+	var cs: Dictionary = profile.career_stats
+	var stats: Dictionary = combat.state.get("stats", {})
+	cs.total_shield_gained = int(cs.get("total_shield_gained", 0)) + int(stats.get("shield_gained", 0))
+	cs.total_cards_played = int(cs.get("total_cards_played", 0)) + int(stats.get("cards_played", 0))
+	if not cs.get("favorite_cards") is Dictionary: cs.favorite_cards = {}
+	var play_counts: Dictionary = stats.get("card_play_counts", {})
+	for card_id in play_counts:
+		cs.favorite_cards[card_id] = int(cs.favorite_cards.get(card_id, 0)) + int(play_counts[card_id])
+
+# Called once per win from the top of _grant_stage_rewards(), covering every win path
+# (campaign, Abyss, Boss Rush, Daily/Weekly Trial, Draft Arena, Phantom Arena) uniformly —
+# g.combat is still the just-finished battle's state at that point, before the next begin_battle().
+func _track_career_win() -> void:
+	_track_career_battle_stats()
+	var cs: Dictionary = profile.career_stats
+	cs.current_win_streak = int(cs.get("current_win_streak", 0)) + 1
+	cs.longest_win_streak = maxi(int(cs.get("longest_win_streak", 0)), int(cs.current_win_streak))
+	var hero_id: String = str(profile.hero_class)
+	if not cs.get("favorite_hero") is Dictionary: cs.favorite_hero = {}
+	cs.favorite_hero[hero_id] = int(cs.favorite_hero.get(hero_id, 0)) + 1
+	SpiritSave.write(profile)
+
+# Called from _leave_battle() when g.combat.state.phase == "lost" specifically — a voluntary
+# retreat is not a defeat and must not break the streak (see _track_career_retreat() below).
+func _track_career_defeat() -> void:
+	_track_career_battle_stats()
+	profile.career_stats.defeats = int(profile.career_stats.get("defeats", 0)) + 1
+	profile.career_stats.current_win_streak = 0
+	SpiritSave.write(profile)
+
+# Called from _leave_battle() for every other way a battle ends (a manual retreat mid-fight) —
+# still credits the shield/cards/favorite-card totals for what actually happened this battle,
+# just without touching the win/loss streak either way.
+func _track_career_retreat() -> void:
+	_track_career_battle_stats()
+	SpiritSave.write(profile)
 
 # Achievement progress readers, one per ACHIEVEMENTS "kind" — most kinds just read an existing
 # permanent profile field directly (nothing to duplicate), "stat" is the one kind backed by
@@ -658,6 +777,22 @@ func _add_season_xp(amount: int) -> void:
 	sp.level = new_lvl
 	if new_lvl > old_lvl:
 		_toast(tf("ui.season_pass_levelup", new_lvl), GOLD)
+	SpiritSave.write(profile)
+
+# Shared by every place a Draft Arena run ends: _abandon_draft() (CampScreen), the
+# DRAFT_WIN_CAP Grand Champion ending (RewardsScreen's _grant_stage_rewards()), and the
+# DRAFT_LOSS_CAP ending (BattleScreen's _leave_battle()). All three must reset the same
+# fields or the next run inherits a stale round/deck/current_pool from the run that just
+# finished — see AGENTS.md's Draft Arena section for the corruption this used to cause.
+func _reset_draft_run() -> void:
+	var draft: Dictionary = profile.get("draft_arena", {})
+	draft.active = false
+	draft.round = 1
+	draft.deck = []
+	draft.current_pool = []
+	draft.wins = 0
+	draft.losses = 0
+	profile.draft_arena = draft
 	SpiritSave.write(profile)
 
 func show_account_setup() -> void:
@@ -781,7 +916,20 @@ func _safe_bottom() -> int:
 			return int(round(float(inset) * 844.0 / float(win_h)))
 	return 22
 
+# See test_seed_override's own comment for why this exists. Every begin_*_battle() function
+# calls this instead of inlining Time.get_unix_time_from_system() itself.
+func _battle_seed() -> int:
+	if test_seed_override >= 0: return test_seed_override
+	return int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+
+# See test_day_override's own comment for why this exists. Every call site that used to inline
+# int(Time.get_unix_time_from_system()) / DAY_SECONDS calls this instead.
+func _current_day() -> int:
+	if test_day_override >= 0: return test_day_override
+	return int(Time.get_unix_time_from_system()) / DAY_SECONDS
+
 func _clear() -> void:
+	screen_generation += 1
 	for child in get_children():
 		if child is AudioStreamPlayer: continue
 		child.queue_free()
@@ -1344,6 +1492,29 @@ func _toast(message: String, color := TEXT) -> void:
 	overlay.add_child(toast)
 	var tween := create_tween(); tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.95); tween.tween_property(toast,"modulate:a",0.0,.35); tween.tween_callback(toast.queue_free)
 
+# One-time "you just unlocked X" toast the moment a gated Camp feature's threshold is first
+# crossed, so a player discovers Compendium/Daily Trial/Weekly Challenge/Boss Rush/Abyss/
+# Difficulty Tiers/Curse Run as they unlock instead of only by noticing a new tab appeared.
+# Call after anything that can move profile.unlocked or profile.difficulty forward (a campaign
+# win, a difficulty tier pick) — see SpiritContent.FEATURE_UNLOCKS' own comment for why entries
+# are grouped by threshold rather than one call per feature. A no-op once every entry has fired
+# once; safe to call liberally rather than trying to reason about exactly which call sites can
+# possibly cross a threshold.
+func _check_feature_unlocks() -> void:
+	var seen: Array = profile.get("feature_unlocks_seen", [])
+	var changed := false
+	for entry in SpiritContent.FEATURE_UNLOCKS:
+		var id: String = str(entry.id)
+		if seen.has(id): continue
+		var current: int = int(profile.unlocked) if str(entry.kind) == "unlocked" else int(profile.difficulty)
+		if current >= int(entry.threshold):
+			_toast(t(str(entry.toast_key)), GOLD)
+			seen.append(id)
+			changed = true
+	if changed:
+		profile.feature_unlocks_seen = seen
+		SpiritSave.write(profile)
+
 # Thin delegators onto BattleScreen (scripts/game_battle_screen.gd) — see MapScreen's header
 # comment (game_map_screen.gd) for why composition rather than inheritance, and game.gd's own
 # MapScreen delegator block above for why these keep their original bare names.
@@ -1351,6 +1522,7 @@ func _modifier(seed: int, stage: int) -> Dictionary: return _battle_screen._modi
 func begin_battle(index: int) -> void: _battle_screen.begin_battle(index)
 func show_battle() -> void: _battle_screen.show_battle()
 func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool) -> void: _battle_screen._apply_card_foil(node, rarity, upgraded)
+func _build_player_stage() -> Control: return _battle_screen._build_player_stage()
 func _flash_hit(sprite: CanvasItem, color := Color.WHITE, duration := 0.22) -> void: _battle_screen._flash_hit(sprite, color, duration)
 func _animate_player_curse() -> void: await _battle_screen._animate_player_curse()
 func _animate_player_shield_gain(amount: int) -> void: await _battle_screen._animate_player_shield_gain(amount)
@@ -1418,6 +1590,9 @@ func _finish_reward() -> void: _rewards_screen._finish_reward()
 func show_reward_details() -> void: _rewards_screen.show_reward_details()
 func show_battle_log() -> void: _rewards_screen.show_battle_log()
 func show_run_recap() -> void: _rewards_screen.show_run_recap()
+func _build_recap_poster_control(recap_data: Dictionary) -> Control: return _rewards_screen._build_recap_poster_control(recap_data)
+func _capture_recap_image(recap_data: Dictionary) -> Image: return await _rewards_screen._capture_recap_image(recap_data)
+func _export_recap_poster(recap_data: Dictionary) -> String: return await _rewards_screen._export_recap_poster(recap_data)
 func _collect_card(card: Dictionary) -> void: _rewards_screen._collect_card(card)
 func _smart_add_card(card: Dictionary) -> void: _rewards_screen._smart_add_card(card)
 func show_event(index: int, kind: String) -> void: _rewards_screen.show_event(index, kind)
@@ -1466,12 +1641,21 @@ func show_challenges() -> void: _camp_screen.show_challenges()
 func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
 func begin_boss_rush_battle() -> void: _camp_screen.begin_boss_rush_battle()
+# Pre-existing gap, not introduced by Phase 10: begin_abyss_battle() had no delegator at all,
+# so it was only ever reachable via a button callback bound inside game_camp_screen.gd itself
+# — uncallable as `game.begin_abyss_battle()` from any other file, tests included, until now.
+func begin_abyss_battle() -> void: _camp_screen.begin_abyss_battle()
+func begin_curse_run_battle() -> void: _camp_screen.begin_curse_run_battle()
+func begin_world_event_battle() -> void: _camp_screen.begin_world_event_battle()
 func begin_sandbox_battle(stage: int) -> void: _camp_screen.begin_sandbox_battle(stage)
 func show_abyss_boon_draft() -> void: _camp_screen.show_abyss_boon_draft()
 func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
 func begin_phantom_arena() -> void: _camp_screen.begin_phantom_arena()
+func begin_ghost_arena_battle() -> void: _camp_screen.begin_ghost_arena_battle()
+func _start_ghost_duel(ghost_name: String, char_id: String, category: String, score: int) -> void: _camp_screen._start_ghost_duel(ghost_name, char_id, category, score)
 func show_leaderboard(category: String = "abyss") -> void: _camp_screen.show_leaderboard(category)
+func show_friends_modal() -> void: _camp_screen.show_friends_modal()
 
 func _submit_abyss_record(floor_num: int) -> void:
 	if floor_num <= 0: return
@@ -1820,6 +2004,11 @@ func show_treasury_inspector() -> void:
 
 func enter_samsara() -> void:
 	var prev: int = int(profile.get("samsara_count", 0))
+	# Mirrors _samsara_section()'s own gate (which controls whether SamsaraEnterBtn is even
+	# reachable) so this stays correct even if something ever calls this directly without going
+	# through that button — the required tier escalates with every cycle so a player can't just
+	# repeat the same tier indefinitely once it stops being the hardest one unlocked.
+	if not (int(profile.unlocked) >= 250 and int(profile.difficulty) >= (5 + prev)): return
 	var new_count: int = prev + 1
 	profile.samsara_count = new_count
 	var s_bonuses: Dictionary = content.samsara_bonuses(new_count)
@@ -1827,7 +2016,13 @@ func enter_samsara() -> void:
 	profile.unlocked = 0
 	profile.position = 0
 	profile.claimed_stage_events = []
-	profile.health = clampi(60 + int(s_bonuses.get("max_hp", 0)), 1, 100)
+	# Not bonus-adjusted: every other battle-end site in the game (win/loss/leave, across every
+	# mode) flatly resets this same field to 60 regardless of hero mastery or samsara max_hp
+	# bonuses (begin_battle() always passes a hardcoded 60 into combat.create() too — the real
+	# bonus is layered on top there via hero_bonuses, never through this display-only field), so
+	# a bonus-adjusted value here would just silently drop back to a plain 60 the moment the
+	# player finished their very next battle of any kind.
+	profile.health = 60
 	SpiritSave.write(profile)
 	_advance_quest("samsara", 1)
 	_refresh_achievements()
@@ -1931,6 +2126,73 @@ func show_samsara_modal() -> void:
 	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_box.add_child(confirm_btn)
 	vbox.add_child(btn_box)
+
+# Account deletion confirmation (Docs/LAUNCH_READINESS.md Section 1) — deliberately its own
+# modal rather than nested inside SettingsModal, mirroring how show_auth_modal() is also opened
+# via _close_settings() first rather than stacking on top of it, so there's only ever one modal
+# on overlay at a time.
+func show_delete_account_modal() -> void:
+	var existing: Node = overlay.get_node_or_null("DeleteAccountModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		return
+
+	var modal := _modal_dialog("DeleteAccountModal", func():
+		var m: Node = overlay.get_node_or_null("DeleteAccountModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "DeleteAccountModalPanel"
+	var vp_w: int = int(get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(300, vp_w - 32), 0)
+	panel.add_theme_stylebox_override("panel", _panel(Color("1a0f0f"), 14, Color("963228")))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	pad.add_child(vbox)
+
+	vbox.add_child(_label(t("ui.account_delete_modal_title"), 16, Color("ff6b5c"), HORIZONTAL_ALIGNMENT_CENTER))
+	vbox.add_child(_label(t("ui.account_delete_modal_desc"), 10, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var btn_box2 := HBoxContainer.new()
+	btn_box2.add_theme_constant_override("separation", 8)
+	var cancel_btn2 := _button(t("ui.cancel"), func():
+		var m: Node = overlay.get_node_or_null("DeleteAccountModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	, MUTED, Vector2(100, 38))
+	cancel_btn2.name = "DeleteAccountCancelBtn"
+	cancel_btn2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_box2.add_child(cancel_btn2)
+
+	var confirm_btn2 := _button(t("ui.account_delete_confirm_btn"), func():
+		var m: Node = overlay.get_node_or_null("DeleteAccountModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+		SpiritAuth.delete_account(self, func(ok):
+			if ok: show_account_setup()
+			else: show_settings()
+		)
+	, Color("963228"), Vector2(160, 38))
+	confirm_btn2.name = "DeleteAccountConfirmBtn"
+	confirm_btn2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_box2.add_child(confirm_btn2)
+	vbox.add_child(btn_box2)
 
 func show_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
@@ -2152,6 +2414,18 @@ func show_settings() -> void:
 		sync_row.add_child(signout_btn)
 
 		account_box.add_child(sync_row)
+
+		# Account deletion (Docs/LAUNCH_READINESS.md Section 1) — Apple Guideline 5.1.1(v)
+		# requires an in-app deletion path for any app offering account creation, which this one
+		# does via Apple/Google/email sign-in. Gated to cloud-linked accounts only, matching the
+		# guideline's own scope: a guest never created an account in the first place.
+		var delete_account_btn := _button(t("ui.account_delete_btn"), func():
+			_close_settings()
+			show_delete_account_modal()
+		, Color("2a0f0f"), Vector2(0, 36))
+		delete_account_btn.name = "DeleteAccountBtn"
+		account_box.add_child(delete_account_btn)
+		account_box.add_child(_label(t("ui.account_delete_desc"), 8, Color("8a5a5a"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	# 4c. Cinematic Intro Video Replay
 	var intro_box := VBoxContainer.new()
@@ -2471,7 +2745,7 @@ func _change_text_scale(scale_value: float) -> void:
 	show_settings()
 
 func _ensure_phantom_arena_current() -> void:
-	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var today_idx: int = _current_day()
 	if not profile.has("phantom_arena") or not (profile.phantom_arena is Dictionary):
 		profile.phantom_arena = {"day": today_idx, "wins_today": 0, "claimed_today": false}
 	elif int(profile.phantom_arena.get("day", -1)) != today_idx:
@@ -2511,7 +2785,7 @@ func claim_idle_harvest() -> int:
 
 func fast_idle_harvest() -> int:
 	var harvest: Dictionary = profile.get("idle_harvest", {})
-	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var today_idx: int = _current_day()
 	var last_day: int = int(harvest.get("last_fast_claim_day", -1))
 	if last_day == today_idx:
 		_toast(t("ui.idle_harvest_fast_done"), MUTED)
@@ -2734,7 +3008,7 @@ func show_idle_harvest_modal() -> void:
 	claim_btn.disabled = acc_gold <= 0
 	list.add_child(claim_btn)
 
-	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var today_idx: int = _current_day()
 	var harvest_dict: Dictionary = profile.get("idle_harvest", {})
 	var fast_claimed: bool = int(harvest_dict.get("last_fast_claim_day", -1)) == today_idx
 	var fast_btn := _button(t("ui.idle_harvest_fast_done") if fast_claimed else t("ui.idle_harvest_fast"), func():
@@ -2757,7 +3031,7 @@ func diagnose_battle_defeat() -> Dictionary:
 		total_cost += int(card.get("cost", 1))
 		var is_shield := false
 		for eff in card.get("effects", []):
-			if str(eff.get("op", "")) == "shield":
+			if str(eff.get("operation", "")) == "shield":
 				is_shield = true
 				break
 		if is_shield:
@@ -3021,5 +3295,9 @@ func _card_description(card: Dictionary) -> String:
 				parts.append(content.ui(key, lang) % int(effect.amount))
 	var special := str(card.get("special", ""))
 	if not special.is_empty(): parts.append(content.ui("desc.special.%s" % special, lang))
+	if card.get("boomerang", false): parts.append(content.ui("desc.boomerang", lang))
+	if card.get("reverb", false): parts.append(content.ui("desc.reverb", lang))
+	var overload_amt := int(card.get("overload", 0))
+	if overload_amt > 0: parts.append(content.ui("desc.overload", lang) % overload_amt)
 	var sep := " · " if lang == "en" else "，"
 	return sep.join(parts)

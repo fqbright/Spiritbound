@@ -141,6 +141,25 @@ func run() -> void:
 	var utility := content.card("foxBlessing")
 	check(game_inst._card_build_score(attacker) > game_inst._card_build_score(utility), "a reliable attacker outscores a narrow utility card of the same cost")
 
+	# === PHASE 10: BATTLE RECAP SHARE CARD (POSTER CONTROL TREE) ===
+	# _build_recap_poster_control() only reads its recap_data argument plus g.content/pure
+	# helpers (_get_character_texture/_card_color/_label/_panel) — none of g.combat/g.profile
+	# — so it builds correctly even on an instance never added to a tree, same as
+	# _card_build_score() above.
+	var recap_sample: Dictionary = {
+		"hero_sprite": "fox", "hero_name": "测试英雄",
+		"boss_name": "测试首领", "location": "测试地点", "turns": 7,
+		"damage_dealt": 42, "cards_played": 5, "shield_gained": 10, "deck_highlights": ["strike", "moonfang"],
+	}
+	var poster: Control = game_inst._build_recap_poster_control(recap_sample)
+	check(poster != null and poster.name == "RecapPoster", "the recap poster's Control tree builds successfully")
+	check(poster.size == Vector2(RewardsScreen.RECAP_POSTER_SIZE), "the recap poster is sized to the documented fixed 9:16-ish dimensions")
+	var poster_stats: Node = poster.find_child("RecapPosterStats", true, false)
+	check(poster_stats != null, "the recap poster's stat row exists")
+	var poster_deck: Node = poster.find_child("RecapPosterDeck", true, false)
+	check(poster_deck != null and poster_deck.get_child_count() == 2, "the recap poster's deck-highlight row renders one badge per supplied card")
+	poster.free()
+
 	game_inst.free()
 
 	# Costs were 1 on every card but two, so 3 energy never bound against the 2-play cap —
@@ -196,9 +215,11 @@ func run() -> void:
 	# The full Monte Carlo trajectory lives in balance_probe.gd, restored as a permanent
 	# suite (`./run_tests.sh --balance`, or `--balance-quick` for CI). Unlike these static
 	# pins, it plays every stage with the real heuristic AI, gathers rewards through the real
-	# _smart_add_card, and fails if chapters 1-4 are not lossless or the run walls before
-	# chapter 11 — so the two together catch both a flattened curve and a curve that is
-	# merely unplayable, which the pinned numbers can't see.
+	# _grant_stage_rewards()/_smart_add_card()/_card_build_score() plus a farming loop on top
+	# (free rest/event upgrades, rune-set socketing, one shop buy a chapter), and fails if
+	# chapters 1-4/1-10 are not lossless or the run walls before a measured floor (chapter 35
+	# full / chapter 17 quick) — so the two together catch both a flattened curve and a curve
+	# that is merely unplayable, which the pinned numbers can't see.
 	var boss1: Dictionary = content.encounters[4]
 	var boss10: Dictionary = content.encounters[49]
 	var boss20: Dictionary = content.encounters[99]
@@ -260,6 +281,47 @@ func run() -> void:
 	var hp_after_first: int = int(reso_run.state.enemies[0].health)
 	reso_run.play(0, 0)
 	check(hp_after_first - int(reso_run.state.enemies[0].health) == 5, "Resonance rune scales damage with previously played elements count")
+
+	# === PHASE 7: BOOMERANG / REVERB / OVERLOAD KEYWORDS ===
+	for id in ["emberBoomerang", "stoneRebound", "windReverb", "spiritReverb", "fireOverload", "poisonOverload"]:
+		check(not content.card(id).is_empty(), "%s (Phase 7 keyword card) exists in the card pool" % id)
+
+	# Boomerang (回旋): instead of going to discard/exhaust, the card returns straight to hand
+	# at the start of next turn, bypassing the draw pile entirely.
+	var boomerang_run := SpiritCombat.new(content)
+	boomerang_run.create(90, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {})
+	_force_hand(boomerang_run, "emberBoomerang")
+	boomerang_run.play(0, 0)
+	check(int(boomerang_run.state.enemies[0].health) == 100 - 6, "emberBoomerang deals its 6 damage on play")
+	check(boomerang_run.state.hand.is_empty() and boomerang_run.state.discard.is_empty() and boomerang_run.state.exhaust.is_empty(), "a played Boomerang card sits in none of hand/discard/exhaust — it's queued instead")
+	check(boomerang_run.state.boomerang_queue.size() == 1, "the played Boomerang card is queued to return next turn")
+	boomerang_run.end_turn()
+	check(boomerang_run.state.hand.any(func(i): return str(i.card_id) == "emberBoomerang"), "the Boomerang card is back in hand at the start of next turn")
+	check(boomerang_run.state.boomerang_queue.is_empty(), "the boomerang queue drains once the card returns")
+
+	# Reverb (余韵): a full-value free recast queued for the start of next turn — distinct from
+	# the pre-existing "echo" rune (immediate, same-turn, half value) so the two never collide.
+	var reverb_run := SpiritCombat.new(content)
+	reverb_run.create(91, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {})
+	_force_hand(reverb_run, "windReverb")
+	reverb_run.play(0, 0)
+	check(int(reverb_run.state.enemies[0].health) == 100 - 6, "windReverb deals its 6 damage immediately")
+	check(reverb_run.state.reverb_queue.size() == 1, "windReverb queues a free recast for next turn")
+	reverb_run.end_turn()
+	check(int(reverb_run.state.enemies[0].health) == 100 - 12, "windReverb's queued recast deals another free 6 damage at the start of next turn (12 total)")
+	check(reverb_run.state.reverb_queue.is_empty(), "the reverb queue drains once it fires")
+
+	# Overload (过载): an immediate burst with a next-turn energy debt, floored at 1 the same way
+	# titanBell's own growth-cancelling discount never goes negative.
+	var overload_run := SpiritCombat.new(content)
+	overload_run.create(92, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {})
+	_force_hand(overload_run, "fireOverload")
+	overload_run.play(0, 0)
+	check(int(overload_run.state.enemies[0].health) == 100 - 11, "fireOverload deals its full 11 damage immediately, no cost paid up front beyond its own energy")
+	check(int(overload_run.state.overload_pending) == 2, "fireOverload queues a 2-energy debt for next turn")
+	overload_run.end_turn()
+	check(int(overload_run.state.energy) == 1, "turn 2's baseline 2 energy minus fireOverload's 2-energy debt floors at 1, not 0 (got %d)" % int(overload_run.state.energy))
+	check(int(overload_run.state.overload_pending) == 0, "the overload debt clears once it's been paid")
 
 	# === 12 EQUIPMENT COMPREHENSIVE COVERAGE ===
 	var ember_run := SpiritCombat.new(content)
@@ -461,13 +523,45 @@ func run() -> void:
 		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
 			invalid_cards += 1
 	var curse_cards: Array = content.cards.filter(func(c): return c.get("rarity", "") == "Curse")
-	check(invalid_cards == 0 and content.cards.size() == 47 and curse_cards.size() == 2, "all 45 collectible cards have valid costs/effects and 2 curses exist")
+	check(invalid_cards == 0 and content.cards.size() == 53 and curse_cards.size() == 2, "all 51 collectible cards have valid costs/effects and 2 curses exist")
+
+	var collect_all_ach: Dictionary = SpiritContent.ACHIEVEMENTS.filter(func(a): return a.id == "collect_all")[0]
+	check(int(collect_all_ach.target) == content.cards.size() - curse_cards.size(), "collect_all achievement target (%d) tracks the live non-Curse card count (%d), not a stale literal" % [int(collect_all_ach.target), content.cards.size() - curse_cards.size()])
 
 	var invalid_encs := 0
 	for enc in content.encounters:
 		if int(enc.health) <= 0 or int(enc.damage) <= 0:
 			invalid_encs += 1
 	check(invalid_encs == 0, "all 250 encounters have positive health and damage")
+
+	# 2026-09-17 balance revalidation (Docs/ARCHITECTURE.md's "250-stage difficulty curve"):
+	# tests/balance_probe.gd (a from-scratch AI-driven playthrough sim, rebuilt after the
+	# original was lost — see that file's header) found a real, reproducible wall at chapter
+	# 19: an elite fight with 2 adds (3 enemies total) plus a "crits every 2nd attack"
+	# mechanic, on top of Band 3's own steep per-chapter growth, killed a smart-built deck in
+	# 4 turns across every retry. Root cause was two compounding factors landing in the same
+	# few chapters: Band 3's 0.22/chapter additive growth (nearly double Band 2's 0.12), and
+	# elites gaining a second add at chapter>=15 — square in the middle of Band 3 rather than
+	# at a band boundary. Fixed by trimming Band 3's growth to 0.16/chapter and moving the
+	# elite add threshold to chapter>=21 (Band 4's start, where "needs farmed gear" already
+	# means multi-enemy fights are expected). Re-running the probe confirmed chapters 1-19
+	# clear reliably afterward; chapter 20's Great Boss (the first of the 5 scripted-Phase-2
+	# capstones, intentionally "the hardest single fight in their neighborhood" per
+	# _chapter_mechanics' own comment) remains a wall for a no-farming baseline build — that
+	# is Band 4's own documented intent ("needs runes/equipment/relics from earlier farming,
+	# not skill alone"), not a bug, and wasn't chased further; see the probe's own output for
+	# how band 4 behaves past that point. These two assertions pin the fix so it can't
+	# silently regress back to the version that produced the chapter-19 wall.
+	check(content._chapter_factor(20) > 3.0 and content._chapter_factor(20) < 3.7, "chapter 20's cumulative difficulty factor (%.2f) stays in the revalidated Band 3 range — the old 0.22/chapter growth put it at 4.16" % content._chapter_factor(20))
+	check(content._chapter_adds(19, 3, false) == 1 and content._chapter_adds(21, 3, false) == 2, "an elite's second add starts at chapter 21 (Band 4), not chapter 15 (mid-Band-3) where it used to stack with Band 3's own steep scaling")
+
+	# C2 follow-up: profile.difficulty (A0-A5+) used to have zero effect on actual combat
+	# stats despite its own UI text claiming otherwise — see content.difficulty_modifier()'s
+	# header comment. Tier 0 must stay a true no-op (the balance probe above validated the
+	# base curve at zero extra scaling, and every existing save defaults to difficulty 0).
+	check(content.difficulty_modifier(0).is_empty(), "difficulty tier 0 (A0) applies no combat modifier — the balance-probe-validated baseline must not retroactively get harder")
+	var tier5_mod: Dictionary = content.difficulty_modifier(5)
+	check(is_equal_approx(float(tier5_mod.health_scale), 1.6) and int(tier5_mod.damage_bonus) == 5 and is_equal_approx(float(tier5_mod.reward_scale), 1.5), "difficulty tier 5 (A5) scales health/damage/reward by the documented amount (got health_scale=%.2f, damage_bonus=%d, reward_scale=%.2f)" % [float(tier5_mod.health_scale), int(tier5_mod.damage_bonus), float(tier5_mod.reward_scale)])
 
 	var corrupt_save := SpiritSave.defaults(content)
 	corrupt_save.deck = ["strike", "strike"]
@@ -482,14 +576,16 @@ func run() -> void:
 	var expected_keywords: Array[String] = [
 		"damage", "shield", "heal", "draw", "burn", "focus", "vulnerable",
 		"weak", "strength", "pierce", "cleave", "critical", "stun", "energy",
-		"echo", "siphon", "resonance"
+		"echo", "siphon", "resonance", "poison",
+		"boomerang", "reverb", "overload"
 	]
 	var missing_kw := 0
 	for kw in expected_keywords:
 		var entry: Dictionary = SpiritContent.UI_TEXT.get("kw." + kw, {})
 		if entry.is_empty() or str(entry.get("zh-Hans", "")).is_empty() or str(entry.get("en", "")).is_empty():
 			missing_kw += 1
-	check(missing_kw == 0, "all 17 core combat keywords have bilingual descriptions in UI_TEXT")
+	check(missing_kw == 0, "all 21 core combat keywords have bilingual descriptions in UI_TEXT")
+	check(expected_keywords == SpiritGame.KEYWORD_KEYS, "test's expected keyword list stays in sync with game.gd's KEYWORD_KEYS (pill-scanning uses the latter directly)")
 
 	# Pass / end turn mechanics check
 	var pass_combat := SpiritCombat.new(content)
@@ -795,6 +891,80 @@ func run() -> void:
 	check(int(trial_mod.state.enemies[0].damage) == 20, "daily trial damage_mult doubles the boss's damage (10 -> 20)")
 	check(int(trial_mod.state.enemies[1].damage) == int(round((2.0 + 100 / 3) * 2.0)), "daily trial damage_mult also doubles an add's damage")
 
+	# === PHASE 8: CURSE RUN MUTATOR MODIFIER KEYS ===
+	for id in SpiritContent.MUTATORS.map(func(m): return str(m.id)):
+		check(not content.mutator(id).is_empty(), "%s (Curse Run mutator) exists in SpiritContent.MUTATORS" % id)
+	check(SpiritContent.MUTATORS.size() == 10, "Curse Run ships exactly 10 mutators")
+
+	# Glass Cannon: player_max_hp caps max HP downward regardless of the usual 60 default.
+	var glass_run := SpiritCombat.new(content)
+	glass_run.create(310, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"player_max_hp": 30})
+	check(int(glass_run.state.player.max_health) == 30 and int(glass_run.state.player.health) == 30, "Glass Cannon's player_max_hp caps both max and current HP to 30 (got max=%d hp=%d)" % [int(glass_run.state.player.max_health), int(glass_run.state.player.health)])
+
+	# Glass Cannon / Berserker's Pact: player_dmg_mult scales the player's own outgoing damage.
+	var dmgmult_run := SpiritCombat.new(content)
+	dmgmult_run.create(311, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"player_dmg_mult": 1.5})
+	_force_hand(dmgmult_run, "strike")
+	dmgmult_run.play(0, 0)
+	check(int(dmgmult_run.state.enemies[0].health) == 100 - 9, "player_dmg_mult scales the player's damage (strike's 6 * 1.5 = 9)")
+
+	# Mirror World: swaps max HP between player and boss at battle start.
+	var mirror_world_run := SpiritCombat.new(content)
+	mirror_world_run.create(312, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"mirror_hp": true})
+	check(int(mirror_world_run.state.player.max_health) == 100 and int(mirror_world_run.state.player.health) == 100, "mirror_hp gives the player the boss's 100 max HP")
+	check(int(mirror_world_run.state.enemies[0].max_health) == 60 and int(mirror_world_run.state.enemies[0].health) == 60, "mirror_hp gives the boss the player's original 60 max HP")
+
+	# No Mercy: card-based heal effects do nothing, without touching other heal sources.
+	var no_mercy_run := SpiritCombat.new(content)
+	no_mercy_run.create(313, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"no_heal": true})
+	no_mercy_run.state.player.health = 40
+	_force_hand(no_mercy_run, "renewal")
+	no_mercy_run.play(0, -1)
+	check(int(no_mercy_run.state.player.health) == 40, "no_heal nullifies renewal's card-based heal (stays at 40)")
+
+	# Fewer Draws: turn draw reduced by 1, floored at 1 so the hand can never fully stall.
+	var fewer_draws_run := SpiritCombat.new(content)
+	fewer_draws_run.create(314, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"draw_penalty": 1})
+	check(fewer_draws_run.state.hand.size() == 5, "fewer_draws does not touch the opening hand (still 5)")
+	fewer_draws_run.end_turn()
+	check(fewer_draws_run.state.hand.size() == 6, "draw_penalty reduces turn 2's draw from 2 to 1 (5+1=6, got %d)" % fewer_draws_run.state.hand.size())
+
+	# Energy Famine: a hard cap that holds even after several turns' worth of normal growth.
+	var famine_run := SpiritCombat.new(content)
+	famine_run.create(315, encounter(100, 0), content.raw.startingDeck, 60, {}, [], {}, {"energy_cap": 2})
+	for i in 6: famine_run.end_turn()
+	check(int(famine_run.state.energy) == 2, "energy_cap holds energy at 2 even after 6 turns of normal growth (turn %d, got %d)" % [int(famine_run.state.turn), int(famine_run.state.energy)])
+
+	# === PHASE 9: WORLD EVENTS (ROTATING 4-WEEK THEMED TRIAL) ===
+	check(SpiritContent.WORLD_EVENTS.size() == 4, "World Events ships exactly 4 rotating themes")
+	# world_event_for_period() is a pure function of the period integer alone (no wall-clock
+	# reads inside it — see content.gd's own comment on why), so it's testable at any period,
+	# including ones that don't correspond to "now", without mocking the clock at all.
+	check(content.world_event_for_period(0).id == content.world_event_for_period(0).id, "the same period always resolves to the same event")
+	var ev_a := content.world_event_for_period(5)
+	var ev_b := content.world_event_for_period(5 + SpiritContent.WORLD_EVENTS.size())
+	check(str(ev_a.id) == str(ev_b.id), "the rotation wraps around cleanly after a full cycle through all 4 events (period 5 == period 5+4)")
+	var ev_neg := content.world_event_for_period(-1)
+	check(not str(ev_neg.get("id", "")).is_empty(), "a negative period index still resolves to a valid event, no crash or empty result")
+
+	var we_enc := content.world_event_encounter(2, 10)
+	var we_ev := content.world_event_for_period(2)
+	check(str(we_enc.art) == str(we_ev.art), "world_event_encounter's art matches period 2's actual themed event")
+	check(int(we_enc.chapter) == 103, "world event encounters use their own sentinel chapter 103, distinct from campaign/daily-trial/phantom-arena")
+
+	var we_mod := content.world_event_modifier(2)
+	check(not str(we_mod.get("name", "")).is_empty() and not str(we_mod.get("detail", "")).is_empty(), "world_event_modifier carries display text so show_battle()'s modifier badge doesn't read a missing property")
+
+	# Confirm a specific event's modifier actually reaches a real battle, same shape as the
+	# daily trial's damage_mult check above.
+	var storm_period := -1
+	for p in SpiritContent.WORLD_EVENTS.size():
+		if str(content.world_event_for_period(p).id) == "storm_judge": storm_period = p
+	check(storm_period >= 0, "storm_judge is reachable at some period index")
+	var we_combat := SpiritCombat.new(content)
+	we_combat.create(316, content.world_event_encounter(storm_period, 20), content.raw.startingDeck, 60, {}, [], {}, content.world_event_modifier(storm_period))
+	check(int(we_combat.state.enemies[0].damage) == int(round(int(content.world_event_encounter(storm_period, 20).damage) * 1.4)), "storm_judge's damage_mult (1.4x) reaches a real world event battle")
+
 	check(SpiritContent.DAILY_TRIAL_STAGES == 15, "the Daily Trial is 15 stages")
 	var trial_stage1 := content.daily_trial_encounter(1)
 	var trial_stage15 := content.daily_trial_encounter(15)
@@ -1040,6 +1210,29 @@ func run() -> void:
 	check(int(p_enc.chapter) == 102, "phantom arena encounter uses chapter 102 sentinel")
 	check(int(p_enc.health) > 0 and int(p_enc.damage) > 0, "phantom arena encounter scales health and damage")
 
+	# Ghost Arena tests (E4): a real leaderboard row synthesized into a Phantom-Arena-shaped
+	# Encounter (see content.ghost_arena_encounter()'s own comment) rather than a literal replay.
+	var ghost_enc: Dictionary = content.ghost_arena_encounter("TestGhost", "sentinel", "abyss", 20)
+	check(int(ghost_enc.chapter) == 103, "ghost arena encounter uses its own chapter 103, distinct from abyss (99) and phantom arena (102)")
+	check(str(ghost_enc.name) == "TestGhost" and str(ghost_enc.name_en) == "TestGhost", "ghost arena encounter's name is the real player's name verbatim in both languages")
+	check(str(ghost_enc.art) == "sentinel", "ghost arena encounter's art is overridden to the ghost's own character_id")
+	check(int(ghost_enc.health) > 0 and int(ghost_enc.damage) > 0, "ghost arena encounter has valid scaled stats")
+	var ghost_enc_weak: Dictionary = content.ghost_arena_encounter("Weak", "fox", "abyss", 2)
+	var ghost_enc_strong: Dictionary = content.ghost_arena_encounter("Strong", "fox", "abyss", 40)
+	check(int(ghost_enc_strong.health) > int(ghost_enc_weak.health), "a ghost recorded at a higher abyss floor is a tougher encounter (%d > %d)" % [int(ghost_enc_strong.health), int(ghost_enc_weak.health)])
+	check(int(content._ghost_difficulty_level("abyss", 20)) == 20, "abyss scores map 1:1 to a difficulty level (already a floor number)")
+	check(int(content._ghost_difficulty_level("daily_trial", 5000)) == 50, "daily_trial scores are coarsely normalized down to a comparable level")
+	check(int(content._ghost_difficulty_level("samsara", 3)) == 15, "samsara scores (cycle counts) are scaled up to a comparable level")
+
+	# Progressive difficulty tier unlocking: A0-A5 used to all become selectable the instant
+	# unlocked>=25, with no further gate — this table makes each tier require its own stage
+	# threshold instead (see content.gd's own comment on DIFFICULTY_TIER_UNLOCK_STAGE for why).
+	check(int(content.difficulty_tier_unlock_stage(0)) == 0, "A0 is always available (threshold 0)")
+	check(int(content.difficulty_tier_unlock_stage(1)) == 25, "A1's threshold matches the difficulty section's own pre-existing overall unlock gate")
+	check(int(content.difficulty_tier_unlock_stage(2)) < int(content.difficulty_tier_unlock_stage(3)), "each tier's threshold is strictly higher than the one before it")
+	check(int(content.difficulty_tier_unlock_stage(5)) == 200, "A5 (the highest non-samsara tier) requires real, late-game campaign progress")
+	check(int(content.difficulty_tier_unlock_stage(6)) == int(content.difficulty_tier_unlock_stage(5)), "a samsara-extended tier past A5 clamps to A5's own threshold (samsara has its own, much stronger gate — a full 250-stage clear)")
+
 	# Multi-currency & Soulbound & Exchange tests
 	var new_prof := SpiritSave.defaults(content)
 	check(int(new_prof.get("spirit_jade", 0)) == 10, "profile defaults include 10 Spirit Jade")
@@ -1146,7 +1339,10 @@ func run() -> void:
 	var samsara_game := SpiritGame.new()
 	samsara_game.content = content
 	samsara_game.profile = SpiritSave.defaults(content)
-	samsara_game.profile.unlocked = 50
+	# enter_samsara() guards its own eligibility (unlocked>=250 AND difficulty>=5+count) rather
+	# than trusting only _samsara_section()'s button-visibility gate — must satisfy it here too.
+	samsara_game.profile.unlocked = 250
+	samsara_game.profile.difficulty = 5
 	samsara_game.profile.position = 50
 	samsara_game.profile.claimed_stage_events = [5, 10]
 	var init_gold: int = int(samsara_game.profile.gold)
@@ -1156,19 +1352,58 @@ func run() -> void:
 	check(int(samsara_game.profile.position) == 0, "enter_samsara resets campaign map position to stage 0")
 	check(samsara_game.profile.claimed_stage_events.is_empty(), "enter_samsara clears claimed_stage_events for replayability")
 	check(int(samsara_game.profile.gold) == init_gold + 50, "enter_samsara awards +50 gold heritage")
-	check(int(samsara_game.profile.health) == 66, "enter_samsara resets health to new max HP (60 + 6 = 66)")
+	check(int(samsara_game.profile.health) == 60, "enter_samsara resets health to a flat 60, matching every other battle-end reset site (the real max_hp bonus reaches combat only through hero_bonuses, never this display-only field)")
 	check(samsara_game._achievement_progress({"kind":"samsara_count"}) == 1, "achievement reader tracks samsara_count correctly")
 	samsara_game.free()
 
-	# Difficulty A6 and Samsara Combat perks verification
-	var a6_combat := SpiritCombat.new(content)
-	var enc := encounter(100, 0)
-	var base_enc_hp: int = enc.health
-	a6_combat.create(1, enc, Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"difficulty": 6, "shield_start": 4, "draw_turn1": 1})
-	check(a6_combat.state.enemies[0].health == int(round(base_enc_hp * 1.25)), "A6 difficulty increases enemy health by 25%")
-	check(int(a6_combat.state.enemies[0].get("strength", 0)) == 2, "A6 difficulty gives enemies 2 starting strength")
-	check(a6_combat.state.player.shield == 4, "samsara starting shield applied in combat")
-	check(a6_combat.state.hand.size() == 6, "samsara turn 1 draw applied (5 base + 1 = 6)")
+	# Account deletion (Docs/LAUNCH_READINESS.md Section 1): the guest branch is a full local
+	# profile wipe with no network dependency, so it's tested end-to-end here with a throwaway
+	# SpiritGame instance (same isolation pattern as samsara_game above) rather than against
+	# ui_smoke.gd's shared instance, which every later section in that suite depends on keeping
+	# intact — SpiritSave.defaults() wipes gold/unlocked/deck/relics/everything, not just the
+	# account fields, so running it against a shared instance mid-suite would cascade failures
+	# through the rest of that file.
+	var delete_game := SpiritGame.new()
+	delete_game.content = content
+	delete_game.profile = SpiritSave.defaults(content)
+	delete_game.profile.account.provider = "guest"
+	delete_game.profile.account.user_id = ""
+	delete_game.profile.gold = 99999
+	delete_game.profile.unlocked = 40
+	var delete_ok: Array = [false, false]
+	SpiritAuth.delete_account(delete_game, func(ok): delete_ok[0] = true; delete_ok[1] = ok)
+	check(delete_ok[0] and delete_ok[1], "delete_account() completes synchronously and successfully for a guest (nothing cloud-side to fail)")
+	check(int(delete_game.profile.gold) == 30, "a guest's local profile resets to fresh defaults (gold) on deletion")
+	check(int(delete_game.profile.unlocked) == 0, "a guest's local profile resets to fresh defaults (campaign progress) on deletion")
+	delete_game.free()
+
+	# The cloud-linked branch must NOT touch profile/session state on a failed delete (no real
+	# Supabase auth session exists in this headless environment, so SupabaseClient.
+	# delete_player_save()'s own is_authenticated() guard fails fast) — a player whose deletion
+	# fails partway through must still be able to retry, not be left logged out with no save.
+	var delete_game2 := SpiritGame.new()
+	delete_game2.content = content
+	delete_game2.profile = SpiritSave.defaults(content)
+	delete_game2.profile.account.provider = "apple"
+	delete_game2.profile.account.user_id = "fake_uid_no_real_session"
+	delete_game2.profile.gold = 12345
+	var delete_ok2: Array = [false, false]
+	SpiritAuth.delete_account(delete_game2, func(ok): delete_ok2[0] = true; delete_ok2[1] = ok)
+	check(delete_ok2[0] and not delete_ok2[1], "delete_account() reports failure for a cloud-linked account with no real auth session")
+	check(SpiritSave.is_cloud_linked(delete_game2.profile), "a failed cloud deletion leaves the account linked rather than signing it out")
+	check(int(delete_game2.profile.gold) == 12345, "a failed cloud deletion does not touch the local profile")
+	delete_game2.free()
+
+	# Samsara Combat perks verification: shield_start/draw_turn1 flow through hero_bonuses, the
+	# same mechanism Hero Mastery perks already use (see _current_hero_mastery_bonuses()) — A6+
+	# difficulty's own real combat effect (health_scale/damage_bonus) is a completely separate
+	# mechanism (content.difficulty_modifier(), fed into combat.create()'s modifier parameter,
+	# not hero_bonuses) verified end to end via game.begin_battle() in ui_smoke.gd instead, since
+	# it depends on SpiritGame wiring active_modifier together, not just SpiritCombat alone.
+	var samsara_combat := SpiritCombat.new(content)
+	samsara_combat.create(1, encounter(100, 0), Array(content.raw.startingDeck), 60, {}, [], {}, {}, [], {"shield_start": 4, "draw_turn1": 1})
+	check(samsara_combat.state.player.shield == 4, "samsara starting shield applied in combat")
+	check(samsara_combat.state.hand.size() == 6, "samsara turn 1 draw applied (5 base + 1 = 6)")
 
 	# Translations for new features
 	check(content.ui("ui.samsara_title", "zh-Hans") == "轮回仙途 · 逆天重修", "samsara title localized in Chinese")

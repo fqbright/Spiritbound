@@ -312,6 +312,48 @@ static func upload_player_save(save_dict: Dictionary, node: Node = null) -> Dict
 		return {"ok": true, "error": ""}
 	return {"ok": false, "error": str(res.get("error", "Failed to upload cloud save"))}
 
+# Account deletion (Docs/LAUNCH_READINESS.md Section 1): removes this user's own rows from
+# both cloud tables. Must be called BEFORE sign_out_client()/clear_session() — it needs the
+# still-valid access token so the request is scoped to "delete my own row" by the user's own
+# auth, the same way fetch_player_save()/upload_player_save() already work, rather than needing
+# any elevated key. Deleting the underlying auth.users record itself needs a privileged
+# service-role call from a trusted server context and is deliberately NOT done here — see this
+# function's own call site in game.gd for why that boundary matters.
+static func delete_player_save(node: Node = null) -> Dictionary:
+	if not is_authenticated():
+		return {"ok": false, "error": "Not authenticated"}
+	var uid := get_user_id()
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_PLAYER_SAVES + "?user_id=eq." + uid
+	var headers := PackedStringArray(["Authorization: Bearer " + get_access_token()])
+	var res = await _http_request(url, HTTPClient.METHOD_DELETE, headers, null, node)
+	if int(res.get("code", 0)) == 401:
+		var ref = await refresh_session(node)
+		if ref.get("ok", false):
+			headers = PackedStringArray(["Authorization: Bearer " + get_access_token()])
+			res = await _http_request(url, HTTPClient.METHOD_DELETE, headers, null, node)
+	if res.get("ok", false):
+		return {"ok": true, "error": ""}
+	return {"ok": false, "error": str(res.get("error", "Failed to delete cloud save"))}
+
+# submit_score() inserts a new row per submission (no on_conflict upsert), so a single account
+# can have accumulated many rows across categories/attempts over time — this deletes all of
+# them in one request via the same user_id filter, not just the most recent one.
+static func delete_leaderboard_entries(node: Node = null) -> Dictionary:
+	if not is_authenticated():
+		return {"ok": false, "error": "Not authenticated"}
+	var uid := get_user_id()
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_LEADERBOARDS + "?user_id=eq." + uid
+	var headers := PackedStringArray(["Authorization: Bearer " + get_access_token()])
+	var res = await _http_request(url, HTTPClient.METHOD_DELETE, headers, null, node)
+	if int(res.get("code", 0)) == 401:
+		var ref = await refresh_session(node)
+		if ref.get("ok", false):
+			headers = PackedStringArray(["Authorization: Bearer " + get_access_token()])
+			res = await _http_request(url, HTTPClient.METHOD_DELETE, headers, null, node)
+	if res.get("ok", false):
+		return {"ok": true, "error": ""}
+	return {"ok": false, "error": str(res.get("error", "Failed to delete leaderboard entries"))}
+
 static func sync_save_two_way(local_profile: Dictionary, node: Node = null) -> Dictionary:
 	# Returns: {"ok": bool, "action": "none"|"uploaded"|"downloaded", "profile": Dictionary, "error": String}
 	if not is_authenticated():
@@ -394,6 +436,33 @@ static func submit_score(category: String, score: int, player_name: String, char
 	}
 	var res = await _http_request(url, HTTPClient.METHOD_POST, headers, body, node)
 	return {"ok": res.get("ok", false), "data": res.get("data"), "error": str(res.get("error", ""))}
+
+# Friend-scoped leaderboard view (E3 Part 2): same table and row shape as fetch_leaderboard(),
+# just filtered to a specific set of user_ids (a player's own id plus their added friends')
+# instead of the global top-N. No new table needed — profile.friends (save_store.gd) is a
+# plain local/cloud-synced list of {user_id, name} the player builds by pasting each other's
+# account.user_id, and this only ever reads rows that fetch_leaderboard()'s own public listing
+# already exposes to anyone. Unlike fetch_leaderboard(), an empty or failed result must NOT
+# fall back to the seeded sample data — showing fabricated "friends" would be actively
+# misleading, so callers render the real empty state instead (see show_leaderboard()).
+static func fetch_leaderboard_for_users(category: String, user_ids: Array, node: Node = null) -> Dictionary:
+	if user_ids.is_empty():
+		return {"ok": true, "entries": [], "error": "", "offline": false}
+	var encoded: Array = []
+	for uid in user_ids:
+		encoded.append(str(uid).uri_encode())
+	var id_list := ",".join(encoded)
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_LEADERBOARDS + "?category=eq." + category + "&user_id=in.(" + id_list + ")&order=score.desc,created_at.asc"
+	var token := get_access_token()
+	var headers := PackedStringArray()
+	if not token.is_empty():
+		headers.append("Authorization: Bearer " + token)
+	var res = await _http_request(url, HTTPClient.METHOD_GET, headers, null, node)
+	if res.get("ok", false):
+		var data = res.get("data")
+		if data is Array:
+			return {"ok": true, "entries": data, "error": "", "offline": false}
+	return {"ok": false, "entries": [], "error": str(res.get("error", "")), "offline": true}
 
 static func _get_fallback_leaderboard(category: String) -> Array:
 	var list: Array = []

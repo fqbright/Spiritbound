@@ -242,6 +242,87 @@ func _build_compendium_bestiary(list: VBoxContainer) -> void:
 # same check game_map_screen.gd's _add_map_chapter uses) rather than a separate discovery
 # flag, so a fresh save's Chronicle tab fills in exactly as fast as the player actually travels
 # — no migration needed for existing saves either, since it reads progress already there.
+func _career_stat_panel(border: Color, title: String, title_color: Color, rows: Array[String]) -> Control:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", g._panel(Color("10221c"), 12, border))
+	var pad := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 12)
+	panel.add_child(pad)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 4)
+	pad.add_child(stack)
+	stack.add_child(g._label(title, 14, title_color))
+	for row in rows: stack.add_child(g._label(row, 11, g.TEXT))
+	return panel
+
+# Career Codex (旅者典籍 / Phase 6): lifetime playstyle stats independent of any single run.
+# Deliberately reads victories/damage/gold straight from lifetime_stats and the highest Abyss
+# floor from profile.abyss_record rather than duplicating them into career_stats — see
+# _track_career_battle_stats()'s own comment in game.gd for why. Everything here only ever
+# grows; there's no reset path, matching the "lifetime" framing.
+func _build_compendium_career(list: VBoxContainer) -> void:
+	var cs: Dictionary = g.profile.get("career_stats", {})
+	var lifetime: Dictionary = g.profile.get("lifetime_stats", {})
+	var victories: int = int(lifetime.get("win_battles", 0))
+	var defeats: int = int(cs.get("defeats", 0))
+	var total_runs: int = victories + defeats
+	var win_rate: int = int(round(100.0 * float(victories) / float(maxi(1, total_runs)))) if total_runs > 0 else 0
+
+	list.add_child(_career_stat_panel(g.JADE, g.t("ui.career_overview_title"), g.GOLD, [
+		g.tf("ui.career_total_battles_fmt", total_runs),
+		g.tf("ui.career_win_rate_fmt", win_rate),
+		g.tf("ui.career_longest_streak_fmt", int(cs.get("longest_win_streak", 0))),
+		g.tf("ui.career_abyss_floor_fmt", int(g.profile.get("abyss_record", 0))),
+	]))
+
+	var style_rows: Array[String] = [
+		g.tf("ui.career_total_damage_fmt", int(lifetime.get("deal_damage", 0))),
+		g.tf("ui.career_cards_played_fmt", int(cs.get("total_cards_played", 0))),
+		g.tf("ui.career_shield_gained_fmt", int(cs.get("total_shield_gained", 0))),
+	]
+	var fav_hero: Dictionary = cs.get("favorite_hero", {})
+	if not fav_hero.is_empty():
+		var best_hero_id := ""
+		var best_hero_wins := -1
+		for hero_id in fav_hero:
+			if int(fav_hero[hero_id]) > best_hero_wins:
+				best_hero_wins = int(fav_hero[hero_id])
+				best_hero_id = str(hero_id)
+		style_rows.append(g.tf("ui.career_favorite_hero_fmt", [g.content.hero_name(g.content.hero_class(best_hero_id), g.lang), best_hero_wins]))
+	var fav_cards: Dictionary = cs.get("favorite_cards", {})
+	if not fav_cards.is_empty():
+		var best_card_id := ""
+		var best_card_count := -1
+		for card_id in fav_cards:
+			if int(fav_cards[card_id]) > best_card_count:
+				best_card_count = int(fav_cards[card_id])
+				best_card_id = str(card_id)
+		var best_card: Dictionary = g.content.card(best_card_id)
+		if not best_card.is_empty():
+			style_rows.append(g.tf("ui.career_favorite_card_fmt", [g.content.text(best_card.nameKey, g.lang), best_card_count]))
+	list.add_child(_career_stat_panel(Color("6a8fbd"), g.t("ui.career_style_title"), Color("8fb8ff"), style_rows))
+
+	var hof_panel := PanelContainer.new()
+	hof_panel.name = "CareerHallOfFame"
+	hof_panel.add_theme_stylebox_override("panel", g._panel(Color("10221c"), 12, g.GOLD))
+	var hof_pad := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]: hof_pad.add_theme_constant_override("margin_%s" % side, 12)
+	hof_panel.add_child(hof_pad)
+	var hof_stack := VBoxContainer.new()
+	hof_stack.add_theme_constant_override("separation", 6)
+	hof_pad.add_child(hof_stack)
+	hof_stack.add_child(g._label(g.t("ui.career_hof_title"), 14, g.GOLD))
+	var hof: Array = cs.get("hall_of_fame", [])
+	if hof.is_empty():
+		hof_stack.add_child(g._label(g.t("ui.career_hof_empty"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	else:
+		for i in range(hof.size() - 1, -1, -1):
+			var entry: Dictionary = hof[i]
+			var hero_display: String = g.content.hero_name(g.content.hero_class(str(entry.get("hero_class", ""))), g.lang)
+			var relic_count: int = int(entry.get("relics", []).size())
+			hof_stack.add_child(g._label(g.tf("ui.career_hof_entry_fmt", [int(entry.get("chapter", 0)), hero_display, int(entry.get("turns", 0)), relic_count]), 10, g.JADE))
+	list.add_child(hof_panel)
+
 func _build_compendium_chronicle(list: VBoxContainer) -> void:
 	var chapter_count: int = SpiritContent.CHAPTER_NAMES_ZH.size()
 	var unlocked_n: int = clampi(int(g.profile.unlocked) / 5 + 1, 0, chapter_count)
@@ -932,11 +1013,14 @@ func _build_camp_character(list: VBoxContainer) -> void:
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_leaderboard_entry_section())
+	list.add_child(_friends_section())
+	list.add_child(_world_event_section())
 	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
 	list.add_child(_daily_trial_section())
 	list.add_child(_weekly_challenge_section())
 	list.add_child(_boss_rush_section())
+	list.add_child(_curse_run_section())
 	list.add_child(_sandbox_section())
 	list.add_child(_abyss_section())
 	list.add_child(_difficulty_tier_section())
@@ -958,20 +1042,72 @@ func _difficulty_tier_section() -> Control:
 	if not unlocked:
 		section.add_child(g._label("🔒 " + g.t("ui.lock_clears_ch5"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_CENTER, true))
 		return section
-	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 6)
-	var max_tier := 6 if int(g.profile.get("samsara_count", 0)) > 0 else 5
-	for value in (max_tier + 1):
-		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(0,40))
+	# C2: each Samsara cycle raises the max selectable tier by one past the original A0-A5
+	# ceiling (see content.difficulty_modifier() for why tier now actually matters — it used
+	# to be purely cosmetic). HFlowContainer instead of HBoxContainer so an arbitrary number
+	# of tiers (a player who cycles through samsara many times) wraps onto more rows instead of
+	# squeezing ever-thinner on a fixed 390px-wide screen. Uncapped rather than a flat "A6 once
+	# and never again" ceiling, so a later samsara cycle keeps raising the stakes instead of
+	# repeating the same A6 tier forever.
+	var max_tier: int = 5 + int(g.profile.get("samsara_count", 0))
+	# Only reveal tiers the player has actually earned instead of opening all of A0-A5 (and any
+	# samsara-extended tiers) the instant this section's own overall gate unlocks — A5 alone is
+	# +60% enemy HP and +5 flat damage (see content.difficulty_modifier()), a real risk to hand a
+	# player only 25 stages in with no guardrail at all. maxi() against profile.difficulty
+	# grandfathers in whatever a player already selected under the old all-at-once behavior (or
+	# any samsara-extended tier past 5, which is its own much stronger gate) — this can only ever
+	# reveal tiers going forward, never retroactively hide one a player already has active.
+	var eligible_max_tier: int = int(g.profile.difficulty)
+	for t in range(1, max_tier + 1):
+		if int(g.profile.unlocked) >= g.content.difficulty_tier_unlock_stage(t):
+			eligible_max_tier = maxi(eligible_max_tier, t)
+	eligible_max_tier = mini(eligible_max_tier, max_tier)
+	var row := HFlowContainer.new()
+	row.name = "DifficultyTierRow"
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
+	row.alignment = FlowContainer.ALIGNMENT_CENTER
+	for value in eligible_max_tier + 1:
+		var button := g._button("A%d"%value, func(): g.profile.difficulty=value; g._check_feature_unlocks(); SpiritSave.write(g.profile); show_camp(), Color("245247") if value==g.profile.difficulty else Color("17363e"), Vector2(46,40))
 		button.name = "DifficultyTierBtn_A%d" % value
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; row.add_child(button)
+		# A tier the player hasn't actually selected yet gets a small marker so a newly-earned
+		# option doesn't just silently blend in among the others — the one-time toast from
+		# _check_feature_unlocks() covers the moment it unlocks, this covers every visit after
+		# until they actually try it.
+		if value > int(g.profile.difficulty):
+			g._add_notification_dot(button, Vector2(46, 40))
+		row.add_child(button)
 	section.add_child(row)
-	var desc_text := g.t("ui.camp_tier_a6_desc") if int(g.profile.difficulty) == 6 else g.t("ui.camp_desc")
-	section.add_child(g._label(desc_text, 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	# Capped at 5: a tier past 5 is samsara-gated (full 250-stage clear, not a stage threshold at
+	# all — see ui.camp_tier_samsara_unlocked/ui.samsara_locked_desc below), and
+	# difficulty_tier_unlock_stage() clamps any tier past the table's end to its last real entry
+	# (200), so without this cap a player already at eligible_max_tier=5 with one samsara cycle
+	# done (max_tier=6) would see a stale "clear stage 200" hint for a tier that stage progress
+	# alone can never actually unlock.
+	if eligible_max_tier < mini(5, max_tier):
+		section.add_child(g._label(g.tf("ui.camp_tier_next_unlock", g.content.difficulty_tier_unlock_stage(eligible_max_tier + 1)), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+	if max_tier > 5:
+		section.add_child(g._label(g.tf("ui.camp_tier_samsara_unlocked", max_tier), 10, Color("ff6b9d"), HORIZONTAL_ALIGNMENT_CENTER, true))
+	section.add_child(g._label(g.t("ui.camp_desc"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 	return section
 
+# C2: Samsara (轮回) — eligibility is deliberately just these two already-tracked signals (full
+# 250-stage clear + challenge tier currently at the max tier this many samsara cycles have
+# unlocked) rather than also gating on hero mastery level: mastery is per-hero, so gating on it
+# would arbitrarily punish a player who tried multiple archetypes. profile.difficulty is a
+# freely-switchable "what am I fighting at right now" setting rather than a per-tier clear
+# ladder, so this reads as "cleared the whole campaign, and currently set to the hardest tier
+# samsara has unlocked so far" rather than a literal historical proof of having beaten every
+# stage specifically at that tier — the closest verifiable signal this save shape already has.
+# The required tier itself escalates with samsara_count (content.difficulty_modifier() is what
+# makes that requirement mean something now, rather than a free re-tap of the same button) —
+# this replaces an earlier OR-based check (unlocked >= 249 OR difficulty >= 5) that became
+# trivially true forever after the first cycle, letting every later one repeat off the same
+# button with no re-escalation.
 func _samsara_section() -> Control:
 	var samsara_cnt: int = int(g.profile.get("samsara_count", 0))
-	var can_samsara: bool = int(g.profile.unlocked) >= 249 or int(g.profile.get("difficulty", 0)) >= 5 or samsara_cnt > 0
+	var required_tier: int = 5 + samsara_cnt
+	var can_samsara: bool = int(g.profile.unlocked) >= 250 and int(g.profile.difficulty) >= required_tier
 	var panel := PanelContainer.new()
 	panel.name = "SamsaraSection"
 	panel.add_theme_stylebox_override("panel", g._panel(Color("0f1922"), 10, g.JADE if can_samsara else Color("22363e")))
@@ -1016,7 +1152,7 @@ func _samsara_section() -> Control:
 		enter_btn.name = "SamsaraEnterBtn"
 		btn_row.add_child(enter_btn)
 	else:
-		vbox.add_child(g._label(g.t("ui.samsara_lock_hint"), 9, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		vbox.add_child(g._label(g.tf("ui.samsara_locked_desc", required_tier), 9, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var lb_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("samsara"), Color("1a3c48"), Vector2(100, 36))
 	lb_btn.name = "SamsaraLeaderboardBtn"
@@ -1246,6 +1382,58 @@ func _phantom_arena_section() -> Control:
 
 	left.add_child(btn_row)
 	return panel
+
+# Phase 9 — World Events: unlike every other side mode's `enter → win/lose → gold` shape, which
+# is active is a pure function of a rotating 4-week period (content.world_event_for_period()),
+# not a choice or a daily/weekly reset roll. Repeatable at any time, like Phantom Arena/Sandbox,
+# with a permanent per-event cosmetic badge (profile.world_event_record.badges) auto-granted on
+# the first win of each period, mirroring Curse Run's own badge shape (Phase 8) rather than
+# Phantom Arena's separate manual chest-claim button — one fewer button, and this file already
+# has that exact "auto-grant on win" pattern proven out.
+func _world_event_section() -> Control:
+	g._ensure_world_event_current()
+	var period: int = int(g.profile.world_event_record.get("period", 0))
+	var ev: Dictionary = g.content.world_event_for_period(period)
+	var badges: Array = g.profile.world_event_record.get("badges", [])
+	var ev_color: Color = Color(str(ev.get("color", "ffffff")))
+	var bg_col := Color("1a1420")
+	var frame := _split_card_frame("res://assets/banners/banner_world_event.png", true, bg_col, ev_color, 132.0)
+	var panel: PanelContainer = frame.panel
+	panel.name = "WorldEventSection"
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.content.ui(str(ev.get("nameKey", "")), g.lang), 15, ev_color, HORIZONTAL_ALIGNMENT_LEFT))
+	left.add_child(g._label(g.t("ui.world_event_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	left.add_child(g._label(g.content.ui(str(ev.get("descKey", "")), g.lang), 9, Color("d8c8ff"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	left.add_child(g._label(g.tf("ui.world_event_badges_fmt", badges.size()), 9, Color("ff6b9d")))
+
+	var enter_btn := g._button(g.t("ui.world_event_enter"), begin_world_event_battle, ev_color.darkened(0.5), Vector2(140, 36))
+	enter_btn.name = "WorldEventEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
+
+	return panel
+
+func begin_world_event_battle() -> void:
+	g._ensure_world_event_current()
+	var period: int = int(g.profile.world_event_record.get("period", 0))
+	g.in_world_event = true
+	var enc: Dictionary = g.content.world_event_encounter(period, int(g.profile.unlocked))
+	g.current_stage = 0
+	g.active_modifier = g.content.world_event_modifier(period)
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	var seed_val := g._battle_seed()
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	if g._mark_discovered("bestiary", str(enc.name)):
+		g._grant_bestiary_discovery_bonus(enc)
+	g.pre_battle_health = 60
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
 
 func _daily_trial_section() -> Control:
 	g._ensure_daily_trial_current()
@@ -1579,7 +1767,7 @@ func begin_boss_rush_battle() -> void:
 	var loop: int = (floor_num - 1) / boss_indices.size()
 	g.in_boss_rush = true
 	g.current_stage = idx
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = {
 		"id": "boss_rush", "name": "连战淬炼", "name_en": "Gauntlet Tempering",
 		"detail": "敌人生命 +%d%%，攻击 +%d" % [int(loop * 25), loop], "detail_en": "Enemy HP +%d%%, ATK +%d" % [int(loop * 25), loop],
@@ -1592,6 +1780,123 @@ func begin_boss_rush_battle() -> void:
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
 		g._grant_bestiary_discovery_bonus(g.content.encounters[idx])
+	g.pre_battle_health = 60
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+# Phase 8: Curse Run — an opt-in, self-selected handicap (SpiritContent.MUTATORS) fought as an
+# escalating floor gauntlet, reusing content.abyss_encounter()'s own scaling rather than a new
+# formula. Progress (floor/record) is tracked per mutator id, not shared, since switching from
+# an easy mutator to e.g. Glass Cannon at a high floor would otherwise dump a fragile 30-max-HP
+# build straight into a floor scaled for a full-HP one. A loss costs only the attempt, same
+# "attempt vs. run" split every other side mode here already uses (see _leave_battle()).
+func _curse_run_section() -> Control:
+	var unlocked: bool = int(g.profile.difficulty) >= 2
+	var bg_col := Color("1a1020") if unlocked else Color("181210")
+	var border_col := Color("c9a6ff") if unlocked else Color("2a3d42")
+	var frame := _split_card_frame("res://assets/banners/banner_curse_run.png", unlocked, bg_col, border_col, 196.0)
+	var panel: PanelContainer = frame.panel
+	panel.name = "CurseRunSection"
+	var left: VBoxContainer = frame.left
+
+	left.add_child(g._label(g.t("ui.curse_run_title"), 15, Color("c9a6ff") if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+	if not unlocked:
+		left.add_child(g._label("🔒 " + g.t("ui.curse_run_locked"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var enter_btn := g._button("🔒 " + g.t("ui.locked"), begin_curse_run_battle, Color("221a2a"), Vector2(160, 36))
+		enter_btn.name = "CurseRunEnterBtn"
+		enter_btn.disabled = true
+		enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		left.add_child(enter_btn)
+		return panel
+
+	left.add_child(g._label(g.t("ui.curse_run_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var curse_run: Dictionary = g.profile.get("curse_run", {})
+	var selected_id: String = str(curse_run.get("selected", ""))
+	var cleared: Array = curse_run.get("cleared", [])
+
+	var picker := HFlowContainer.new()
+	picker.name = "CurseRunPicker"
+	picker.add_theme_constant_override("h_separation", 6)
+	picker.add_theme_constant_override("v_separation", 6)
+	for m in SpiritContent.MUTATORS:
+		var mid: String = str(m.id)
+		var is_sel: bool = mid == selected_id
+		var badge_text: String = ("✓ " if cleared.has(mid) else "") + g.content.ui(str(m.nameKey), g.lang)
+		var mbtn := g._button(badge_text, func(): _select_curse_mutator(mid), Color(str(m.color)).darkened(0.15 if is_sel else 0.7), Vector2(0, 32))
+		mbtn.name = "CurseMutatorBtn_%s" % mid
+		if is_sel: mbtn.add_theme_color_override("font_color", Color.BLACK)
+		picker.add_child(mbtn)
+	left.add_child(picker)
+
+	if selected_id.is_empty():
+		left.add_child(g._label(g.t("ui.curse_run_choose"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	else:
+		var sel: Dictionary = g.content.mutator(selected_id)
+		left.add_child(g._label(g.content.ui(str(sel.get("descKey", "")), g.lang), 9, Color("d8c8ff"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		var floor_num: int = int(curse_run.get("floors", {}).get(selected_id, 1))
+		var record_num: int = int(curse_run.get("records", {}).get(selected_id, 0))
+		var stats := HBoxContainer.new()
+		stats.add_theme_constant_override("separation", 12)
+		stats.add_child(g._label(g.tf("ui.curse_run_floor_fmt", floor_num), 10, g.GOLD))
+		stats.add_child(g._label(g.tf("ui.curse_run_record_fmt", record_num), 10, g.JADE))
+		left.add_child(stats)
+
+	left.add_child(g._label(g.tf("ui.curse_run_cleared_fmt", cleared.size()), 9, Color("ff6b9d")))
+
+	var enter_btn := g._button(g.t("ui.curse_run_enter"), begin_curse_run_battle, Color("4a285d"), Vector2(160, 36))
+	enter_btn.name = "CurseRunEnterBtn"
+	enter_btn.disabled = selected_id.is_empty()
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(enter_btn)
+
+	return panel
+
+func _select_curse_mutator(id: String) -> void:
+	var curse_run: Dictionary = g.profile.get("curse_run", {})
+	curse_run.selected = id
+	g.profile.curse_run = curse_run
+	SpiritSave.write(g.profile)
+	show_challenges()
+
+func begin_curse_run_battle() -> void:
+	var curse_run: Dictionary = g.profile.get("curse_run", {})
+	var selected: String = str(curse_run.get("selected", ""))
+	var m: Dictionary = g.content.mutator(selected)
+	if m.is_empty():
+		g._toast(g.t("ui.curse_run_choose"))
+		return
+	g.in_curse_run = true
+	var floor_num: int = int(curse_run.get("floors", {}).get(selected, 1))
+	g.current_stage = 0
+	var enc: Dictionary = g.content.abyss_encounter(floor_num)
+	var seed := g._battle_seed()
+	# active_modifier doubles as the modifier dict combat.create() reads (player_max_hp,
+	# player_dmg_mult, energy_cap, mirror_hp, extra_enemy, damage_mult, no_heal, draw_penalty —
+	# whichever the selected mutator carries) and the battle screen's modifier badge, which
+	# reads name/name_en/detail/detail_en unconditionally (see content.daily_trial_modifier()'s
+	# own trap note on this exact requirement).
+	g.active_modifier = m.duplicate(true)
+	g.active_modifier["name"] = g.content.ui(str(m.get("nameKey", "")), "zh-Hans")
+	g.active_modifier["name_en"] = g.content.ui(str(m.get("nameKey", "")), "en")
+	g.active_modifier["detail"] = g.content.ui(str(m.get("descKey", "")), "zh-Hans")
+	g.active_modifier["detail_en"] = g.content.ui(str(m.get("descKey", "")), "en")
+	# Haunted Deck/Ironclad Will are deliberately handled here rather than as combat.gd modifier
+	# keys — one is a deck-composition change, the other an equipment-list change, neither of
+	# which combat.gd needs its own generic hook for when the call site can just build the right
+	# input in the first place.
+	var deck: Array = g.profile.deck.duplicate()
+	if m.get("haunted_deck", false): deck.append("decay_blight")
+	var relics_for_run: Array = [] if m.get("no_relics", false) else g.profile.relics
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	g.combat.create(seed, enc, deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, relics_for_run, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	if g._mark_discovered("bestiary", str(enc.name)):
+		g._grant_bestiary_discovery_bonus(enc)
 	g.pre_battle_health = 60
 	g.advancing_to_reward = false
 	g.selected_card = -1
@@ -1644,7 +1949,7 @@ func _sandbox_section() -> Control:
 func begin_sandbox_battle(stage: int) -> void:
 	g.in_sandbox = true
 	g.current_stage = clampi(stage, 0, int(g.profile.unlocked))
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = {}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
@@ -1665,7 +1970,7 @@ func begin_abyss_battle() -> void:
 	var floor_num: int = int(g.profile.get("abyss_floor", 1))
 	var enc: Dictionary = g.content.abyss_encounter(floor_num)
 	g.current_stage = 0
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+	var seed := g._battle_seed()
 	g.active_modifier = g._modifier(seed, floor_num)
 	g.active_modifier["boons"] = g.profile.get("abyss_boons", []).duplicate()
 	g.combat = SpiritCombat.new(g.content)
@@ -1690,7 +1995,7 @@ func begin_phantom_arena() -> void:
 	g.active_modifier = {}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	var seed_val := int(Time.get_unix_time_from_system())
+	var seed_val := g._battle_seed()
 	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
@@ -1701,6 +2006,46 @@ func begin_phantom_arena() -> void:
 	g.selected_card = -1
 	g.show_battle()
 	g._maybe_end_turn()
+
+# E4 "async ghost battle": g.ghost_arena_target is set by a leaderboard row's duel button
+# (_start_ghost_duel below) right before this is called — see content.ghost_arena_encounter()'s
+# own comment for the full design rationale. Otherwise identical to begin_phantom_arena() above:
+# the player's own real deck/relics/equipment/mastery, only the opponent Encounter differs.
+func begin_ghost_arena_battle() -> void:
+	g.in_ghost_arena = true
+	var ghost: Dictionary = g.ghost_arena_target
+	var enc: Dictionary = g.content.ghost_arena_encounter(str(ghost.get("name", "无名修士")), str(ghost.get("character_id", "fox")), str(ghost.get("category", "abyss")), int(ghost.get("score", 1)))
+	# Carried onto ghost_arena_target (rather than recomputed from category+score again) so
+	# _grant_stage_rewards()'s win branch can scale gold off the exact same resolved difficulty
+	# this encounter actually used, without reaching back into content.gd's normalization helper.
+	g.ghost_arena_target.level = int(enc.level)
+	g.current_stage = 0
+	g.active_modifier = {}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	var seed_val := g._battle_seed()
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	# Deliberately skips _mark_discovered("bestiary", ...)/_grant_bestiary_discovery_bonus():
+	# enc.name here is an arbitrary, unbounded real player name (not one of a finite, completable
+	# set of real monsters or Phantom Arena's 4 fixed NPCs), so treating each newly-seen name as a
+	# "new bestiary discovery" would hand out its one-time 20-gold/6-mastery-XP bonus over and
+	# over — once per unique leaderboard name ever duelled, with no cap. Found before this shipped
+	# by checking what that call actually does, the same way AGENTS.md's own economy traps got
+	# caught: read the function before assuming its name matches its safety.
+	g.pre_battle_health = 60
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+# Bound via .bind() from show_leaderboard()'s per-row duel button rather than captured directly
+# in a per-iteration button lambda — same reasoning as _set_leaderboard_scope's own comment.
+func _start_ghost_duel(ghost_name: String, char_id: String, category: String, score: int) -> void:
+	g.ghost_arena_target = {"name": ghost_name, "character_id": char_id, "category": category, "score": score}
+	_close_leaderboard_modal()
+	begin_ghost_arena_battle()
 
 func begin_daily_trial() -> void:
 	g._maybe_show_tutorial("daily_trial")
@@ -2162,7 +2507,7 @@ func _show_draft_pick_phase() -> void:
 		trow.add_child(tinfo)
 
 		var cname := g.content.text(card.nameKey, g.lang)
-		tinfo.add_child(g._label("%s (%d 费)" % [cname, int(card.cost)], 13, g.TEXT))
+		tinfo.add_child(g._label(g.tf("ui.draft_card_cost_fmt", [cname, int(card.cost)]), 13, g.TEXT))
 		tinfo.add_child(g._label(g._card_description(card), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 		var pick_btn := g._button(g.t("ui.claim"), func(): _pick_draft_card(card_id), g.EMBER, Vector2(74, 38))
@@ -2174,7 +2519,7 @@ func _show_draft_pick_phase() -> void:
 
 	# Current Deck summary at bottom
 	var current_deck: Array = draft.get("deck", [])
-	content_col.add_child(g._label("当前牌组 (%d/15 张): %s" % [current_deck.size(), ", ".join(current_deck)], 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	content_col.add_child(g._label(g.tf("ui.draft_deck_progress_fmt", [current_deck.size(), ", ".join(current_deck)]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 func _pick_draft_card(card_id: String) -> void:
 	var draft: Dictionary = g.profile.draft_arena
@@ -2215,12 +2560,12 @@ func _show_draft_battle_ready() -> void:
 	card.add_child(col)
 
 	col.add_child(g._label(g.tf("ui.draft_win_fmt", [wins, losses]), 15, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
-	col.add_child(g._label("竞技场牌组 (15张):", 12, g.TEXT))
+	col.add_child(g._label(g.t("ui.draft_deck_label"), 12, g.TEXT))
 
 	var deck: Array = draft.get("deck", [])
 	col.add_child(g._label(", ".join(deck), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
-	var start_battle_btn := g._button("迎战第 %d 位灵界对手" % (wins + 1), _start_draft_battle, g.EMBER, Vector2(0, 44))
+	var start_battle_btn := g._button(g.tf("ui.draft_next_opponent_fmt", wins + 1), _start_draft_battle, g.EMBER, Vector2(0, 44))
 	start_battle_btn.name = "DraftStartBattleBtn"
 	col.add_child(start_battle_btn)
 
@@ -2238,14 +2583,7 @@ func _start_draft_battle() -> void:
 	g.begin_battle(stage_idx)
 
 func _abandon_draft() -> void:
-	var draft: Dictionary = g.profile.draft_arena
-	draft.active = false
-	draft.round = 1
-	draft.deck = []
-	draft.current_pool = []
-	draft.wins = 0
-	draft.losses = 0
-	SpiritSave.write(g.profile)
+	g._reset_draft_run()
 	show_challenges()
 
 func _leaderboard_entry_section() -> Control:
@@ -2266,12 +2604,263 @@ func _leaderboard_entry_section() -> Control:
 
 	return panel
 
+func _friends_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "FriendsSection"
+	panel.custom_minimum_size = Vector2(0, 96)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("101d25"), 12, g.JADE))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 8)
+
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.friends_title") + " 👥", 14, g.JADE, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.friends_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	top_row.add_child(title_box)
+
+	var open_btn := g._button(g.t("ui.friends_manage_btn"), func(): show_friends_modal(), Color("225046"), Vector2(100, 34))
+	open_btn.name = "FriendsManageBtn"
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_row.add_child(open_btn)
+	vbox.add_child(top_row)
+
+	var friend_list: Array = g.profile.get("friends", [])
+	vbox.add_child(g._label(g.tf("ui.friends_count", [friend_list.size(), SpiritContent.FRIEND_LIST_MAX]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+
+	return panel
+
+# Only letters/digits/underscore/hyphen: covers a real Supabase auth UUID and the
+# "apple_"/"google_"-prefixed sandbox ids alike, while rejecting anything that could smuggle
+# extra characters into the user_id=in.(...) filter this code is pasted into (see
+# SupabaseClient.fetch_leaderboard_for_users) — belt-and-suspenders alongside that function's
+# own uri_encode() on every id.
+func _is_valid_friend_code(code: String) -> bool:
+	if code.length() < 6 or code.length() > 64: return false
+	for i in code.length():
+		var c := code.unicode_at(i)
+		var is_upper := c >= 65 and c <= 90
+		var is_lower := c >= 97 and c <= 122
+		var is_digit := c >= 48 and c <= 57
+		var is_symbol := c == 95 or c == 45 # '_' or '-'
+		if not (is_upper or is_lower or is_digit or is_symbol): return false
+	return true
+
+func _remove_friend(fid: String, list: VBoxContainer) -> void:
+	var current: Array = g.profile.get("friends", [])
+	for j in current.size():
+		if str(current[j].get("user_id", "")) == fid:
+			current.remove_at(j)
+			break
+	g.profile.friends = current
+	SpiritSave.write(g.profile)
+	g._toast(g.t("ui.friends_removed_toast"), g.MUTED)
+	_rebuild_friends_list(list)
+
+func _add_friend(code_input: LineEdit, nickname_input: LineEdit, list: VBoxContainer) -> void:
+	var raw_code := code_input.text.strip_edges()
+	var nickname := nickname_input.text.strip_edges()
+	if raw_code.is_empty():
+		g._toast(g.t("ui.friends_add_err_empty"), g.EMBER)
+		return
+	if not _is_valid_friend_code(raw_code):
+		g._toast(g.t("ui.friends_add_err_invalid"), g.EMBER)
+		return
+	var my_id: String = str(g.profile.get("account", {}).get("user_id", ""))
+	if not my_id.is_empty() and raw_code == my_id:
+		g._toast(g.t("ui.friends_add_err_self"), g.EMBER)
+		return
+	var current: Array = g.profile.get("friends", [])
+	for f in current:
+		if str(f.get("user_id", "")) == raw_code:
+			g._toast(g.t("ui.friends_add_err_duplicate"), g.EMBER)
+			return
+	if current.size() >= SpiritContent.FRIEND_LIST_MAX:
+		g._toast(g.t("ui.friends_add_err_full"), g.EMBER)
+		return
+	current.append({"user_id": raw_code, "name": nickname})
+	g.profile.friends = current
+	SpiritSave.write(g.profile)
+	code_input.text = ""
+	nickname_input.text = ""
+	g._toast(g.t("ui.friends_added_toast"), g.GOLD)
+	_rebuild_friends_list(list)
+
+func _rebuild_friends_list(list: VBoxContainer) -> void:
+	for ch in list.get_children():
+		list.remove_child(ch)
+		ch.queue_free()
+	var friends: Array = g.profile.get("friends", [])
+	if friends.is_empty():
+		list.add_child(g._label(g.t("ui.friends_empty_list"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		return
+	for i in friends.size():
+		var f: Dictionary = friends[i]
+		var fid: String = str(f.get("user_id", ""))
+		var fname: String = str(f.get("name", ""))
+		if fname.is_empty(): fname = fid.substr(0, mini(10, fid.length()))
+
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", g._panel(Color("14242e") if i % 2 == 0 else Color("0f1c24"), 6, Color("1a3543")))
+		var row_h := HBoxContainer.new()
+		row_h.add_theme_constant_override("separation", 6)
+		var n_lbl := g._label(fname, 11, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+		n_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		n_lbl.clip_text = true
+		row_h.add_child(n_lbl)
+		var remove_btn := g._button("✕", _remove_friend.bind(fid, list), Color("3a1c1c"), Vector2(30, 30))
+		remove_btn.name = "FriendsRemoveBtn_" + fid
+		row_h.add_child(remove_btn)
+		row.add_child(row_h)
+		list.add_child(row)
+
+func _close_friends_modal() -> void:
+	if g.overlay == null: return
+	var existing: Node = g.overlay.get_node_or_null("FriendsModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_friends_modal() -> void:
+	_close_friends_modal()
+
+	var modal := g._modal_dialog("FriendsModal", func(): _close_friends_modal())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "FriendsModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(340, vp_w - 24), 480)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0a1419"), 14, g.JADE))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(g._label(g.t("ui.friends_modal_title") + " 👥", 15, g.JADE, HORIZONTAL_ALIGNMENT_LEFT))
+	header_row.add_child(title_box)
+	var close_btn := g._button("✕", func(): _close_friends_modal(), Color("223640"), Vector2(32, 32))
+	close_btn.name = "FriendsCloseBtn"
+	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	# My Code panel
+	var code_panel := PanelContainer.new()
+	code_panel.add_theme_stylebox_override("panel", g._panel(Color("0f222b"), 8, g.GOLD))
+	var code_pad := MarginContainer.new()
+	for s in ["left", "right"]: code_pad.add_theme_constant_override("margin_%s" % s, 8)
+	for s in ["top", "bottom"]: code_pad.add_theme_constant_override("margin_%s" % s, 6)
+	code_panel.add_child(code_pad)
+	vbox.add_child(code_panel)
+
+	if SpiritSave.is_cloud_linked(g.profile):
+		var code_row := HBoxContainer.new()
+		code_row.add_theme_constant_override("separation", 6)
+		code_pad.add_child(code_row)
+		var my_code: String = str(g.profile.get("account", {}).get("user_id", ""))
+		var code_box := VBoxContainer.new()
+		code_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		code_box.add_theme_constant_override("separation", 2)
+		code_box.add_child(g._label(g.t("ui.friends_my_code_label"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+		var code_lbl := g._label(my_code, 11, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+		code_lbl.clip_text = true
+		code_box.add_child(code_lbl)
+		code_row.add_child(code_box)
+		var copy_btn := g._button(g.t("ui.friends_copy_btn"), func():
+			g._clipboard_set(my_code)
+			g._toast(g.t("ui.friends_code_copied"), g.GOLD)
+		, Color("17363e"), Vector2(64, 34))
+		copy_btn.name = "FriendsCopyCodeBtn"
+		code_row.add_child(copy_btn)
+	else:
+		var link_col := VBoxContainer.new()
+		link_col.add_theme_constant_override("separation", 6)
+		code_pad.add_child(link_col)
+		link_col.add_child(g._label(g.t("ui.friends_need_link"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		var link_btn := g._button(g.t("ui.settings_account"), func():
+			_close_friends_modal()
+			g.show_settings()
+		, Color("1a2f36"), Vector2(0, 34))
+		link_btn.name = "FriendsLinkAccountBtn"
+		link_col.add_child(link_btn)
+
+	# Add Friend row
+	var add_row := HBoxContainer.new()
+	add_row.add_theme_constant_override("separation", 6)
+
+	var code_input := LineEdit.new()
+	code_input.name = "FriendsCodeInput"
+	code_input.placeholder_text = g.t("ui.friends_code_placeholder")
+	code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	code_input.custom_minimum_size = Vector2(0, 36)
+	add_row.add_child(code_input)
+
+	var nickname_input := LineEdit.new()
+	nickname_input.name = "FriendsNicknameInput"
+	nickname_input.placeholder_text = g.t("ui.friends_nickname_placeholder")
+	nickname_input.custom_minimum_size = Vector2(90, 36)
+	add_row.add_child(nickname_input)
+	vbox.add_child(add_row)
+
+	# Friends list
+	var scroll := TouchScrollContainer.new()
+	scroll.name = "FriendsScroll"
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 220
+	vbox.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.name = "FriendsList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+
+	var add_btn := g._button(g.t("ui.friends_add_btn"), _add_friend.bind(code_input, nickname_input, list), g.EMBER, Vector2(0, 38))
+	add_btn.name = "FriendsAddBtn"
+	vbox.add_child(add_btn)
+
+	_rebuild_friends_list(list)
+
 func _close_leaderboard_modal() -> void:
 	if g.overlay == null: return
 	var existing: Node = g.overlay.get_node_or_null("LeaderboardModal")
 	if existing != null:
 		if existing.get_parent(): existing.get_parent().remove_child(existing)
 		existing.queue_free()
+
+# Bound via .bind() from show_leaderboard()'s scope-toggle buttons rather than captured
+# directly in a per-iteration button lambda — matches the same .bind(cat_id) convention the
+# category tabs just below it already use, since .bind() evaluates scope_id immediately as a
+# normal argument instead of relying on lambda-closure-over-loop-variable semantics.
+func _set_leaderboard_scope(scope_id: String, current_scope: Array, update_view: Callable, current_category: Array) -> void:
+	current_scope[0] = scope_id
+	update_view.call(current_category[0])
 
 func show_leaderboard(default_category: String = "abyss") -> void:
 	_close_leaderboard_modal()
@@ -2314,6 +2903,15 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header_row.add_child(close_btn)
 	vbox.add_child(header_row)
+
+	# Scope Toggle: Global vs Friends (E3 Part 2) — friends scope filters the same table to
+	# just the player's own id plus profile.friends via SupabaseClient.fetch_leaderboard_for_users.
+	var scope_row := HBoxContainer.new()
+	scope_row.name = "LeaderboardScopeRow"
+	scope_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(scope_row)
+	var scope_buttons: Dictionary = {}
+	var current_scope: Array = ["global"]
 
 	# Category Tabs
 	var tab_row := HBoxContainer.new()
@@ -2373,6 +2971,10 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 			var b: Button = tab_buttons.get(c)
 			if b != null:
 				b.add_theme_stylebox_override("normal", g._panel(Color("225046") if c == cat else Color("122228"), 6, g.GOLD if c == cat else Color("2a434d")))
+		for sc in ["global", "friends"]:
+			var sb: Button = scope_buttons.get(sc)
+			if sb != null:
+				sb.add_theme_stylebox_override("normal", g._panel(Color("225046") if sc == current_scope[0] else Color("122228"), 6, g.GOLD if sc == current_scope[0] else Color("2a434d")))
 		for ch in list.get_children():
 			list.remove_child(ch)
 			ch.queue_free()
@@ -2383,7 +2985,17 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 			my_pad.remove_child(ch)
 			ch.queue_free()
 
-		var res: Dictionary = await SupabaseClient.fetch_leaderboard(cat, 50, g)
+		var res: Dictionary
+		if current_scope[0] == "friends":
+			var my_id: String = str(g.profile.get("account", {}).get("user_id", ""))
+			var friend_ids: Array = []
+			if not my_id.is_empty(): friend_ids.append(my_id)
+			for f in g.profile.get("friends", []):
+				var fid: String = str(f.get("user_id", ""))
+				if not fid.is_empty() and not friend_ids.has(fid): friend_ids.append(fid)
+			res = await SupabaseClient.fetch_leaderboard_for_users(cat, friend_ids, g)
+		else:
+			res = await SupabaseClient.fetch_leaderboard(cat, 50, g)
 		if not is_instance_valid(list) or not list.is_inside_tree(): return
 
 		for ch in list.get_children():
@@ -2392,7 +3004,8 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 
 		var entries: Array = res.get("entries", [])
 		if entries.is_empty():
-			list.add_child(g._label(g.t("ui.leaderboard_empty"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+			var empty_key := "ui.leaderboard_friends_empty" if current_scope[0] == "friends" else "ui.leaderboard_empty"
+			list.add_child(g._label(g.t(empty_key), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		else:
 			for i in entries.size():
 				var entry: Dictionary = entries[i]
@@ -2442,6 +3055,11 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 				var s_lbl := g._label(score_str, 11, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
 				s_lbl.custom_minimum_size.x = 90
 				row_h.add_child(s_lbl)
+
+				# E4: duel this entry as a synthesized encounter (see content.ghost_arena_encounter()).
+				var duel_btn := g._button("⚔", _start_ghost_duel.bind(name_str, char_id, cat, score_num), Color("3a1c1c"), Vector2(26, 26))
+				duel_btn.name = "GhostDuelBtn_%d" % i
+				row_h.add_child(duel_btn)
 
 				row.add_child(row_h)
 				list.add_child(row)
@@ -2526,6 +3144,18 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 		tab_row.add_child(btn)
 
 	refresh_btn.pressed.connect(func(): update_view.call(current_category[0]))
+
+	var scope_names := {
+		"global": g.t("ui.leaderboard_scope_global"),
+		"friends": g.t("ui.leaderboard_scope_friends"),
+	}
+	for scope_id in ["global", "friends"]:
+		var sbtn := g._button(scope_names[scope_id], Callable(), Color("122228"), Vector2(0, 28))
+		sbtn.name = "LeaderboardScope_" + scope_id
+		sbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sbtn.pressed.connect(_set_leaderboard_scope.bind(scope_id, current_scope, update_view, current_category))
+		scope_buttons[scope_id] = sbtn
+		scope_row.add_child(sbtn)
 
 	update_view.call(default_category)
 

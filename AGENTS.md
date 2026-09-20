@@ -12,49 +12,91 @@ A portrait mobile card-battler in Godot 4.7.2. Read this before changing anythin
 | `Godot/scripts/game_battle_screen.gd` | `BattleScreen` — the battle screen itself, hand/card rendering (including the enlarged peek and targeting/damage-preview), combat animation, the first-battle tutorial. |
 | `Godot/scripts/game_rewards_screen.gd` | `RewardsScreen` — reward granting, the reward-details/chest-opening screens, Compendium discovery bookkeeping, hero mastery XP, the rest/merchant/event stage flow. |
 | `Godot/scripts/game_shop_deck_screen.gd` | `ShopDeckScreen` — the shop, deck-purge/upgrade rituals, deck builder + auto-build scoring, equipment/rune loadout tabs. |
-| `Godot/scripts/game_camp_screen.gd` | `CampScreen` — the Compendium catalog tabs, Camp (hero archetypes, difficulty tiers, relics), Quests, and the Daily Trial/Weekly Challenge/Abyss entry points. |
+| `Godot/scripts/game_camp_screen.gd` | `CampScreen` — the Compendium catalog tabs, Camp (hero archetypes, difficulty tiers, relics), Quests, and the Daily Trial/Weekly Challenge/Abyss/Draft Arena/Boss Rush/Phantom Arena/Sandbox entry points. |
 | `Godot/scripts/game_icon.gd`, `game_intent_icon.gd`, `game_hand_card.gd`, `game_touch_scroll_container.gd`, `game_dizzy_stars.gd` | Self-contained UI classes (`class_name`, globally resolvable) that used to be nested inside `game.gd`. `HandCard` already took its game-instance back-reference as a plain field before the split; the other four never touch outer state at all. |
 | `Godot/scripts/content.gd` | Card/equipment/rune/relic data and all UI strings. |
 | `Godot/scripts/save_store.gd` | Local profile, versioned for a future cloud sync. |
 | `Godot/data/core.json` | Card definitions and balance numbers. |
 | `Godot/tests/test_runner.gd` | Rules-engine regression suite. |
 | `Godot/tests/ui_smoke.gd` | Headless walk over every screen and a full combat turn. |
-| `Godot/tests/balance_probe.gd` | 250-stage balance trajectory bot — plays the whole campaign with the heuristic AI and fails if the four-band curve drifts (see `Docs/ARCHITECTURE.md`). |
-| `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them. |
+| `Godot/tests/balance_probe.gd` | 250-stage balance trajectory bot — drives the real `game.gd` reward/deck-building pipeline (not a duplicated formula) through a full campaign run, with a diligent farming loop (free rest/event upgrades, rune-set socketing, one shop buy per chapter) layered on top, and fails CI if the four-band curve regresses below a measured floor (see `Docs/ARCHITECTURE.md`). `--gold`/`./run_tests.sh --balance-gold` reruns the same trajectory gold-constrained instead of topped-up, as a diagnostic (not yet gated) read on whether the economy, not just combat, stays beatable. |
+| `Godot/addons/gut/` | Vendored [GUT](https://github.com/bitwes/Gut) (Godot Unit Test) framework, v9.4.0. Third-party code — don't hand-edit; re-vendor from upstream instead. |
+| `Godot/tests/gut/test_*.gd` | GUT-based tests (`extends GutTest`, `assert_*` methods) — the newer, framework-backed alternative to this repo's older hand-rolled `check()`-style suites above. New test files here are auto-discovered by filename (`test_*.gd`), no registration needed. |
+| `Godot/tools/generate_monsters.gd` | Offline, one-time art-generation tool — composited the 125 monster portraits under `Godot/assets/characters/monsters/` from base creature art (sourced from the otherwise-abandoned `Expo/assets/` prototype images below), elemental grading, biome backgrounds, VFX overlays, and tier frames. Not part of any test run; re-run by hand only if the monster set itself needs regenerating. |
+| `Sources/`, `App/`, `Tests/`, `Expo/` | Abandoned Swift and React Native prototypes. Ignore them — except as one-time raw art source material for `Godot/tools/generate_monsters.gd` above, which is the only thing in this repo that still reads from `Expo/`. |
 | `Docs/ARCHITECTURE.md` | Why the code is shaped this way. Read it before a structural change. |
 | `Docs/GROWTH_ROADMAP.md` | Retention/growth feature backlog, ordered by impact. Check this for what's in progress before starting new feature work. |
+| `Docs/LAUNCH_READINESS.md` | **Hard gate on submitting/resubmitting this app.** Account deletion, a real purchase gate for the season pass, and crash/error logging + minimal analytics — none of which exist in this repo yet. Read this before any App Store/Play Store submission work, and before touching `game.gd`'s `season_pass`/`is_premium` handling or anything account-deletion-adjacent. |
 
 ## Verifying a change
 
 Every agent working on this repository **MUST** run the automated verification suite before submitting any commit:
 
 ```bash
-./run_tests.sh                 # Core suites: test_runner + ui_smoke + e2e_playthrough
-./run_tests.sh --all           # All 7 suites: core + balance + chaos monkey + leak profiler + pixel-diff
+./run_tests.sh                 # Core suites: test_runner + ui_smoke + e2e_playthrough + balance_probe + gut
+./run_tests.sh --all           # All 8 suites: core + chaos monkey + leak profiler + pixel-diff
 ./run_tests.sh --monkey        # Chaos Monkey stress tests (500+ random taps & invalid plays)
 ./run_tests.sh --leaks         # Memory & ObjectDB leak profiler (zero unbounded leaks)
-./run_tests.sh --diff          # Visual Pixel-Diff baseline comparison (sub-pixel regression)
+./run_tests.sh --diff          # Recaptures the 7 screens and diffs them against baseline
 ./run_tests.sh --balance       # 250-stage balance trajectory bot (full, byte-reproducible)
 ./run_tests.sh --balance-quick # Same bot, retry-capped (~1s) — the CI-friendly form
-./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots
+./run_tests.sh --gut           # GUT suite alone (tests/gut/test_*.gd)
+./run_tests.sh --snapshots     # Generates/refreshes 390x844 mobile screenshots (no diff/gate)
+./run_tests.sh --refresh-baselines  # Recaptures and promotes to Pixel-Diff's committed baselines
 ```
+`--diff` and `--refresh-baselines` need a real rendering driver (`get_image()` returns null
+under `--headless`'s dummy renderer), so unlike every other suite here they run without
+`--headless`, against whatever `DISPLAY` is already set — a real desktop session locally, or
+Xvfb's virtual one in CI (see `.github/workflows/ci.yml`). Locally without a display: `xvfb-run
+-a --server-args="-screen 0 400x900x24" ./run_tests.sh --diff`. **The Xvfb screen must be at
+least as tall as the game's 390x844 portrait viewport** — see the Traps section below for what
+a shorter one does.
 
 Individual suite commands:
 ```bash
-godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (575 checks)
+godot --headless --path Godot/ --script res://tests/test_runner.gd      # rules & balance regression (655 checks)
 godot --headless --path Godot/ --script res://tests/ui_smoke.gd         # screens + unblocked clickability + battle turn
 godot --headless --path Godot/ --script res://tests/e2e_playthrough.gd  # full multi-stage campaign playthrough bot
 godot --headless --path Godot/ --script res://tests/balance_probe.gd    # 250-stage balance trajectory bot
+godot --headless --path Godot/ -s addons/gut/gut_cmdln.gd -- -gdir=res://tests/gut -gexit  # GUT suite
 godot --headless --path Godot/ --script res://tests/chaos_monkey.gd     # chaos monkey stress test
 godot --headless --path Godot/ --script res://tests/leak_checker.gd     # memory and object leak profiler
-godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # visual pixel-diff test
-godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # mobile visual snapshot generator
+godot --path Godot/ --rendering-driver opengl3 -s tests/visual_snapshots.gd # capture the 7 current screens (needs a real/Xvfb display)
+godot --headless --path Godot/ --script res://tests/pixel_diff_test.gd  # diff those against Godot/tests/snapshots/baselines/
 ```
 
-All suites must pass with **0 failures**.
+**Adding a new GUT test**: create `Godot/tests/gut/test_<name>.gd` with `extends GutTest`, one
+`func test_<description>():` per case, using GUT's `assert_eq`/`assert_true`/`assert_not_null`/etc.
+No registration step needed — `-gdir=res://tests/gut` auto-discovers every `test_*.gd` file there.
+After adding the file, run `godot --headless --path Godot/ --import` once so Godot's class cache
+picks up the new script before running it (see the CI trap above for why this matters).
+
+All suites must pass with **0 failures**. GitHub CI (`.github/workflows/ci.yml`) runs `./run_tests.sh --all` (all 8 suites) on every push/PR to `main`, wrapped in `xvfb-run` (installed as its own CI step) so the Pixel-Diff suite's screen capture has a display to render into, after an explicit `godot --headless --path Godot/ --import` step (see the CI trap above — skip that step and every suite fails before running a single check) — the extra suites beyond core cost well under two minutes combined, so there's no reason CI should run less than everything.
+
+**Visual regression is a real, automated gate, not just manual inspection.** The Pixel-Diff
+suite (step 8 of `--all`) recaptures all 7 core screens and diffs each against a committed
+baseline in `Godot/tests/snapshots/baselines/`, using perceptual color-tolerance + morphological
+clustering (ignores anti-aliasing/font-hinting jitter, catches real layout/content changes) —
+see `Godot/tests/pixel_diff_test.gd`. This used to be dead weight: the suite's own diffing logic
+and the committed baselines were both real, but nothing ever generated a *current* snapshot in
+CI (`--snapshots` wasn't part of `--all`, and needs a real rendering driver `--headless` can't
+provide), so every screen silently skipped on every run, forever. Fixed by folding capture into
+the diff suite itself and running the whole thing under Xvfb in CI — see git history around
+2026-09-19 for the measured per-screen noise floor (run-to-run variance with zero real changes)
+that the per-screen thresholds in `pixel_diff_test.gd` are set against; if a threshold ever looks
+suspiciously tight against a fresh noise-floor measurement, loosen it rather than let the gate
+flake, the same lesson `balance_probe.gd`'s CI-vs-full retry split and this file's own flaky-test
+traps below already teach for other suites.
+
+**If a UI change is intentional, refresh the baselines it affects**: `./run_tests.sh
+--refresh-baselines`, then `godot --headless --path Godot/ --import`, then confirm `--diff`
+passes, then review and commit the changed `Godot/tests/snapshots/baselines/*.png` yourself —
+this step trusts that today's capture is correct, it does not check that for you. If `--diff`
+fails and you *didn't* mean to change that screen, don't refresh — read the saved diff image
+under `Godot/tests/snapshots/diffs/` first; that's the whole point of the gate.
 
 **Visual Verification Without Physical iPhone**:
-Run `./run_tests.sh --snapshots` to generate pixel-accurate 390x844 mobile frames in `Godot/tests/snapshots/` (`01_map_screen.png`, `02_battle_screen.png`, `03_rewards_screen.png`, `04_shop_screen.png`, `05_deck_screen.png`, `06_camp_screen.png`, `07_treasury_inspector.png`). Inspect these images to verify mobile UI layout, text truncation, and layer alignment without needing a physical phone attached.
+Run `./run_tests.sh --snapshots` to generate pixel-accurate 390x844 mobile frames in `Godot/tests/snapshots/` (`01_map_screen.png`, `02_battle_screen.png`, `03_rewards_screen.png`, `04_shop_screen.png`, `05_deck_screen.png`, `06_camp_screen.png`, `07_treasury_inspector.png`) for eyeballing without gating on baseline diff. Inspect these images to verify mobile UI layout, text truncation, and layer alignment without needing a physical phone attached.
 
 **The iOS Simulator cannot run this project.** The official Godot 4.7.2 iOS export
 templates ship a simulator library containing only an x86_64 slice, so there is nothing
@@ -74,7 +116,12 @@ attached, use `./run_tests.sh --snapshots` to inspect the rendered mobile frames
    the headless suites possible. Keep game rules out of `game.gd` too where you can.
 3. **Every user-facing string goes in `UI_TEXT` in `content.gd` with both `zh-Hans` and
    `en`.** Never hardcode text in `game.gd`.
-4. **Do not commit `Godot/.godot/` or `Godot/tests/snapshots/*.png`** — snapshots are generated locally for inspection.
+4. **Do not commit `Godot/.godot/` or the loose current screenshots directly under
+   `Godot/tests/snapshots/*.png`** — those are regenerated by every `--diff`/`--snapshots`/
+   `--refresh-baselines` run and gitignored. **Do** commit `Godot/tests/snapshots/baselines/*.png`
+   when you deliberately refresh them (see "Visual regression is a real, automated gate" above) —
+   those are the committed reference the Pixel-Diff suite gates every CI run against, not
+   scratch output.
 5. **Always run `./run_tests.sh` before committing.** A commit with failing checks will be rejected by git hooks and GitHub CI.
 6. **Always consult and leverage the workspace skills in `.agents/skills/`**:
    - Modifying UI, GDScript, or screen layouts: Consult `.agents/skills/godot-game-dev/SKILL.md`.
@@ -162,6 +209,185 @@ Every one of these produced a wrong screen with no error in the log. They are th
   layered with `expand_mode`/`stretch_mode`, and if a diagnosis like this is ever needed again,
   add a test asserting the node's actual `.size` matches the parent instead of just asserting
   the node exists — existence alone missed this bug for two whole rounds.
+- **A new `in_<mode>` battle-exclusivity flag needs a branch in `_leave_battle()`, not just the
+  win path.** `game.gd` has one `in_X` boolean per side mode (Sandbox, Daily Trial, Weekly
+  Challenge, Draft Arena, Boss Rush, Abyss, Phantom Arena) so `_grant_stage_rewards()` can route
+  a win to that mode's own reward logic instead of the campaign's. It is easy to wire up the win
+  path and forget the loss/retreat one: `_leave_battle()` needs its own explicit branch clearing
+  the same flag, or a loss leaves it stuck `true` for the rest of the session — nothing crashes
+  or logs when this happens. From then on every later battle (any mode, campaign included)
+  silently misroutes through that mode's reward branch in `_grant_stage_rewards()`; for Draft
+  Arena specifically it's worse, because `begin_battle()`'s `battle_deck` check reads
+  `g.in_draft_battle` unconditionally, so every later battle also gets built from the stale
+  draft deck instead of the real 25-card one. Both `in_draft_battle` and `in_weekly_challenge`
+  shipped with exactly this gap — found only by reading `_leave_battle()` end to end and
+  noticing which flags it didn't mention among the ones it did. `ui_smoke.gd` now forces a loss
+  for every mode (`game.combat.state.phase = "lost"; game._leave_battle()`) and checks the flag
+  actually clears; copy that shape for the next new mode instead of trusting the win path alone.
+- **A fire-and-forget coroutine's tail runs even after the state it started with is gone.**
+  `_attempt_play_card()` calls `_resolve_play()` without `await` (so the caller returns
+  immediately while the animation plays out) — a pattern used throughout the battle screen. If
+  the player leaves battle (`_leave_battle()`, a loss or a manual retreat) while that coroutine
+  is still suspended mid-animation, Godot resumes it anyway once its timer/tween fires,
+  regardless of what else has happened meanwhile — there is no implicit cancellation. Its tail
+  used to call `show_battle()` unconditionally, which wipes whatever screen is *currently*
+  showing, so a moment after the player navigated away the old battle screen would silently
+  reappear over the map. `g.resolving` (every play-a-card check's busy guard) had the same
+  problem: it was only ever cleared from inside that same tail, so a coroutine that never
+  reached it left card-play blocked for the rest of the session, exactly the "stuck flag"
+  shape above just for a boolean instead of an `in_<mode>` var. Fixed with `g.battle_session`,
+  a counter bumped by both `begin_battle()` and `_leave_battle()`: `_resolve_play()` captures it
+  synchronously at entry (before its first `await`, while it's still guaranteed correct) and
+  checks it again right before the one call in its tail that touches the screen, bailing out if
+  the session has moved on — and both bump sites also reset `g.resolving` directly rather than
+  trusting the coroutine to get there. Any new fire-and-forget coroutine that survives past a
+  point where the player could plausibly navigate away needs the same kind of check before it
+  touches shared screen state, not just a `is_instance_valid()` guard on the nodes it animates
+  (that prevents a crash; it does not prevent the tail from acting on stale state). The exact
+  same shape turned up independently in `_travel_to()` (`game_map_screen.gd`): tapping a distant
+  stage pin starts a fixed 2-second (or, across a chapter crossing, longer) hop animation with
+  no input lock, so tapping Camp/Quests/another pin mid-hop used to leave the interrupted
+  coroutine to call `show_event()`/`begin_battle()` on whatever screen the player had already
+  moved to. Rather than a second bespoke counter, this one uses `g.screen_generation` — bumped
+  by `_clear()` itself, the one shared choke point every screen transition already goes through
+  — as a general-purpose version of the same cancellation-token pattern `battle_session` uses
+  for battle specifically. One trap in reusing it: a branch that itself calls a function
+  starting with its own `_clear()` (e.g. `show_chapter_transition()`) must not capture the
+  generation *before* that call — its own clear already bumps the counter, so a value captured
+  first is stale before the real wait even begins. `show_chapter_transition()`'s branch is left
+  unguarded by `screen_generation` for exactly this reason; it already has its own equivalent
+  protection (`is_instance_valid()` checks on its own transition nodes), which doesn't have this
+  problem because it's inside the same function as the `_clear()` call, not outside it.
+- **CI had been failing on every single push for this project's entire history, and nobody had
+  looked.** Every headless test script references global `class_name` types (`SpiritContent`,
+  `SpiritCombat`, `SpiritGame`, `SpiritSave`, and — once GUT was added — `GutTest`). Godot only
+  resolves those from a generated cache under `Godot/.godot/`, which is gitignored and so never
+  exists on a fresh checkout. `.github/workflows/ci.yml` checked out the repo, installed Godot,
+  and went straight to `./run_tests.sh` with no import step in between — so `godot --headless -s
+  tests/test_runner.gd` failed immediately with a wall of "Identifier ... not declared in the
+  current scope" parse errors, before a single `check()` call ever ran, on every run, for the
+  life of the project (confirmed against this repo's own Actions history — every run failed in
+  ~10 seconds, far too fast to have reached the test suite at all). This is exactly why AGENTS.md
+  already told agents to run `godot --headless --path Godot/ --editor --quit` after adding
+  images: that command also happens to populate this same cache, so any agent who ran the full
+  verification loop locally first (as instructed) never saw the failure — only a from-scratch CI
+  checkout, which no one was actually reading the logs of, ever hit it. Fixed with a dedicated
+  `godot --headless --path Godot/ --import` step (the purpose-built headless equivalent — "starts
+  the editor, waits for any resources to be imported, then quits," no display needed) added to
+  `ci.yml` before the test-suite step. Verified by reproducing the exact failure locally first
+  (delete `Godot/.godot/` entirely, confirm the same parse errors appear character-for-character),
+  then confirming the fix resolves it before pushing — the same revert-and-reconfirm discipline
+  this file already asks for elsewhere, applied to CI infrastructure instead of game code. If you
+  ever see this exact error shape in a fresh environment (a new sandbox, a new CI runner, a
+  teammate's first clone), this is almost certainly why — run the import step, not `--editor`
+  interactively, and don't assume "it works on my machine" means CI will agree, since your
+  machine already has a warm cache from every previous run you've done.
+- **An undersized Xvfb virtual screen produces a real-looking layout bug that isn't one.**
+  While wiring the Pixel-Diff suite's screen capture into CI, an early attempt used `xvfb-run
+  --server-args="-screen 0 640x480x24"` — wider than the game's 390x844 portrait viewport, but
+  shorter. The resulting map-screen capture showed the bottom nav dock floating in the vertical
+  middle of the screen instead of docked at the bottom, which looked exactly like the kind of
+  anchor bug this file's own "Anchor presets resolve against the minimum size at call time" trap
+  describes — except the dock's anchoring code was already correct (verified by finding it
+  renders at the right position, stably, across 80 frames under `--headless`'s dummy driver).
+  The actual cause: the dock's `anchor_top`/`anchor_bottom` math resolves against whatever height
+  the real window *is*, not the game's configured resolution, and an X11 window capped at 480px
+  tall is not 844px tall no matter what the project settings say. Re-running with a screen at
+  least as tall as the viewport (400x900 was used) fixed it immediately, no code changes needed.
+  If a snapshot/screenshot capture under a fresh Xvfb setup ever shows a bottom- or edge-anchored
+  element in the wrong place, check the virtual screen's dimensions before touching any layout
+  code — the same way the CI-cache trap above says to suspect the cache before suspecting new
+  test logic.
+- **A screen that's non-deterministic in content, not just in a few noisy pixels, can eat an
+  entire visual-diff threshold on its own.** Validating the Pixel-Diff suite's new Xvfb capture
+  pipeline meant comparing two independent back-to-back captures of the same 7 screens with
+  nothing else changed — the run-to-run noise floor a real threshold has to sit above. Six
+  screens landed under 0.1%; the battle screen landed at 2.25%, against a 2.5% threshold, because
+  `begin_battle()`'s draw shuffle (and occasionally its flavor modifier) is seeded from wall-clock
+  time — see this file's own note on that seed elsewhere — so the captured hand (and sometimes
+  the enemy count) genuinely differed every single capture, not just by a few anti-aliased
+  pixels. `pixel_diff_test.gd`'s color-tolerance-plus-clustering de-noiser is built to absorb
+  rendering jitter; it has no way to absorb "this is a legitimately different screen." Fixed in
+  `visual_snapshots.gd` by forcing a fixed hand and enemy count right after `begin_battle(0)` and
+  re-rendering, the same "poke combat state directly for determinism" pattern already used
+  elsewhere (see `ui_smoke.gd`'s finishing-blow banner test) — not by loosening the threshold,
+  which would have shipped a gate one unlucky roll away from flaking on an unrelated PR. Both
+  fixes predate `SpiritGame.test_seed_override`/`_battle_seed()` (added right after, once it was
+  clear this was the second bug from the same root cause in one session — see the next entry)
+  and were left as-is rather than retrofitted: they force an exact scenario (a specific enemy
+  count, revive disabled) that a fixed seed alone wouldn't guarantee without also solving for
+  which seed value avoids every non-determinism source, which is a real but different property
+  than "reproducible." A **new** test that just needs the whole battle reproducible — not a
+  specific forced scenario — should set `test_seed_override` before calling any `begin_*_battle()`
+  function instead of reinventing either of these two patches.
+- **The same wall-clock-seed idiom above wasn't unique to `begin_battle()` — it was
+  independently copy-pasted into 6 more battle-launch functions**, all in `game_camp_screen.gd`:
+  `begin_boss_rush_battle`, `begin_curse_run_battle`, `begin_sandbox_battle`,
+  `begin_abyss_battle`, `begin_world_event_battle`, `begin_phantom_arena` (`begin_daily_trial`/
+  `begin_weekly_challenge` are fine — they seed from `day`/`week * 1000 + stage`, not wall-clock
+  milliseconds, so they're already reproducible within the same day/week). `begin_abyss_battle`
+  even feeds its seed into the same `_modifier()` whose "swarm"/"rebirth" rolls caused the two
+  bugs above, meaning the identical flake was one GUT test or snapshot away from being
+  rediscovered from scratch for Abyss, Boss Rush, Sandbox, or either arena. Deduplicated into one
+  `SpiritGame._battle_seed()` (`game.gd`), which all 7 sites now call instead of inlining
+  `Time.get_unix_time_from_system()` themselves, plus `test_seed_override` (default `-1`,
+  meaning "disabled" — real gameplay is unaffected) so any current or future test can make any of
+  these 7 modes' shuffle, flavor modifier, and enemy count fully reproducible with one line set
+  before calling the relevant `begin_*_battle()`, instead of discovering the same non-determinism
+  the hard way per mode. Covered by `tests/gut/test_battle_seed_override.gd`.
+- **The same wall-clock idiom had a slower-motion twin: `int(Time.get_unix_time_from_system()) /
+  DAY_SECONDS`, independently inlined at 6 call sites** (`game.gd`'s `_ensure_daily_trial_current`,
+  `_ensure_phantom_arena_current`, `fast_idle_harvest`, and its idle-harvest-modal builder;
+  `game_shop_deck_screen.gd`'s `_shop_period`/`_shop_reset_at`). Unlike the per-battle millisecond
+  seed above, this one doesn't flake between two captures taken moments apart — it only changes
+  once the real calendar day rolls over — so it survived the entire Xvfb/Pixel-Diff validation
+  effort undetected and only surfaced when the sandbox's real clock actually crossed a day
+  boundary mid-session: the shop screen's baseline (`04_shop_screen.png`, driven by
+  `roll_shop_stock(day, ...)`) suddenly failed Pixel-Diff at 9%+ diff with no code change at all,
+  because its rotating stock/sale/rune/relic had rolled to the new day. Same root cause and same
+  fix shape as the battle seed: deduplicated into one `SpiritGame._current_day()`, all 6 sites now
+  call instead of inlining the formula, plus `test_day_override` (default `-1`, same "disabled"
+  convention) so a test can pin "today" the same way `test_seed_override` pins a battle's seed.
+  `visual_snapshots.gd` sets `test_day_override = 20000` once, globally, before any of the 7
+  screens are captured — cheap insurance since only the shop screen actually reads it, but nothing
+  stops a future capturable screen from reading `_current_day()` too. If a Pixel-Diff baseline ever
+  fails with no corresponding code change, check whether the real calendar day moved since that
+  baseline was captured before assuming a real regression — this is the second time in one session
+  wall-clock content has silently eaten a visual-diff threshold from underneath a passing baseline,
+  just on a different clock granularity than the first.
+- **A "backfill if this field is entirely missing" migration guard stops protecting you the
+  moment the table it backfills from grows a new entry.** `save_store.gd`'s migration for
+  `feature_unlocks_seen` (an array of `SpiritContent.FEATURE_UNLOCKS` ids already marked "seen"
+  so `game._check_feature_unlocks()` doesn't re-toast something a player unlocked ages ago)
+  originally only ran its backfill loop `if not parsed.has("feature_unlocks_seen")` — correct
+  for a save from before the field existed, but silent for a save that already had the field
+  from an earlier version of the game once `FEATURE_UNLOCKS` itself grew new entries (exactly
+  what happened when per-tier difficulty-unlock entries were added). An existing player already
+  well past a new entry's threshold would have gotten that entry's toast fired for real on their
+  very next qualifying action, having never been backfilled, since the field-presence check had
+  already been satisfied by the OLD version's entries. Fixed by making the backfill loop run
+  unconditionally on every load instead — idempotent (an id already in the array is skipped), so
+  there's no cost to always checking every current `FEATURE_UNLOCKS` entry against the loaded
+  profile's stats rather than only reasoning about "was this field missing." Any future table
+  with the same shape (a persisted "already seen/claimed/granted" id list checked against a
+  growable data table) needs backfill logic that survives the table growing, not just logic that
+  survives the field being absent — check the whole table on every load, not just once.
+- **Many `show_*_modal()` functions toggle closed if already open, rather than refreshing.**
+  `show_settings()`, `show_samsara_modal()`, `show_delete_account_modal()`, and others share the
+  same opening shape: check `overlay.get_node_or_null("SomeModal")`, and if it already exists,
+  remove/free it and `return` immediately — they never fall through to rebuild it. This is the
+  right behavior for a literal tap-to-toggle button, but it silently breaks any code (test or
+  otherwise) that calls one of these a second time expecting it to redraw with new state: the
+  second call just closes it, and every subsequent `find_child()` against that modal fails on a
+  null reference with no indication of why. Bit `ui_smoke.gd`'s account-deletion tests
+  directly — `show_settings()` was called to "reopen with a new fake-linked account," but a
+  handler earlier in the same flow (`sign_out`'s own callback) had already left a `SettingsModal`
+  open, so the second `show_settings()` call just closed it, and the next line crashed on
+  `null.find_child()`. The fix is always `_close_settings()` (or the equivalent close helper)
+  immediately before the `show_*_modal()` call whenever you need a guaranteed-fresh reopen, not
+  a toggle — every existing call site that does this already follows exactly that
+  close-then-show two-step (see `open_auth_btn`'s handler in `show_settings()` for a
+  same-file example); a bare second call to the `show_*` function is never enough on its own.
 
 ## Game rules worth knowing before touching balance
 
@@ -193,8 +419,9 @@ Every one of these produced a wrong screen with no error in the log. They are th
 - A card with any `target: "opponent"` effect aims at enemies; everything else aims at the
   player. `_is_attack` (damage only) drives damage bonuses; `_targets_opponent` drives
   targeting. Conflating them either loses pure-debuff cards or wastes Focus on them.
-- 47 cards (40 collectible across 18/19/3 one-/two-/three-costs, plus 5 starters and 2
-  curses), 250 stages across 50 chapters, a four-band difficulty curve (see
+- 53 cards (46 collectible across 22/21/3 one-/two-/three-costs, plus 5 starters and 2
+  curses — the Phase 7 boomerang/reverb/overload keyword cards brought the collectible pool up
+  from 40), 250 stages across 50 chapters, a four-band difficulty curve (see
   Docs/ARCHITECTURE.md), and three enemy debuffs beyond burn/stun: `vulnerable` (+50% damage
   taken) and `weak` (-25% damage dealt), both decaying by one enemy turn; `poison`
   (`enemy.poison`), Miasma Witch's signature status, deals its stack count as damage every
@@ -325,6 +552,24 @@ The visual presentation blends high-detail painted assets with procedural vector
     back to back, cycling through `content.boss_rush_boss_indices(unlocked)` and escalating
     enemy health/damage each full loop back through the same pool. A loss costs only the
     current bout, not the streak (`profile.boss_rush_floor`/`boss_rush_record`).
+  - **Curse Run (`begin_curse_run_battle`, `SpiritContent.MUTATORS`)**: an opt-in, self-selected
+    handicap gauntlet unlocked at Ascension Tier A2+ (`profile.difficulty >= 2`) — pick one of
+    10 mutators (Glass Cannon, Energy Famine, Mirror World, Haunted Deck, Ironclad Will, Elite
+    Gauntlet, Barren Harvest, Berserker's Pact, No Mercy, Fewer Draws) and fight an escalating
+    floor gauntlet built on `content.abyss_encounter()`'s own scaling, with that mutator's
+    combat.gd modifier keys layered on top (`player_max_hp`/`player_dmg_mult`/`energy_cap`/
+    `mirror_hp`/`no_heal`/`draw_penalty` are new, generic keys added for this; `extra_enemy`/
+    `damage_mult` reuse existing ones). Progress (`profile.curse_run.floors`/`records`) is
+    tracked per mutator rather than shared, since switching mutators mid-climb would otherwise
+    dump a fragile build (e.g. Glass Cannon's 30-HP cap) into a floor scaled for a completely
+    different handicap. Reaching floor `SpiritContent.CURSE_RUN_BADGE_FLOOR` (5) with a given
+    mutator unlocks that mutator's permanent cosmetic badge (`profile.curse_run.cleared`), shown
+    as a checkmark on its own picker button from then on. `Haunted Deck`/`Ironclad Will` are
+    handled entirely at the battle-launch call site (an extra `decay_blight` spliced into a
+    duplicated battle-only deck array; an empty relics array) rather than as combat.gd modifier
+    keys, since neither needs a new generic engine hook when the call site can just build the
+    right input directly. Same "attempt vs. run" loss handling as every other side mode here —
+    see this file's own trap entry on `_leave_battle()` needing an explicit branch per mode.
   - **Sandbox (`begin_sandbox_battle`)**: zero-stakes practice bout against any stage already
     reached, picked via a stage stepper in Camp's Challenges tab. Always a full 60 HP
     regardless of real campaign health, grants no rewards, and never writes `profile.health`
@@ -348,6 +593,35 @@ The visual presentation blends high-detail painted assets with procedural vector
     chest unlocks after your first win of the day. A loss is inert — full HP restored, no
     streak or floor tracked, closer to Sandbox's "repeatable side activity" than Abyss's
     escalating gauntlet.
+  - **World Events / "世界活动" (`begin_world_event_battle`, `content.WORLD_EVENTS`)**: a
+    themed duel that rotates every 4 weeks — which of the 4 events (Ember Lord/Frost Widow/
+    Withered King/Storm Judge) is active is a pure function of a period index
+    (`content.world_event_for_period(period)`), computed from wall-clock time only at the one
+    call site that needs to (`game._ensure_world_event_current()`), the same seed-in/
+    pure-function-out split `daily_trial_tags()` already uses so this is testable at any period
+    without mocking the clock. Each event's combat.gd modifier is built entirely from keys
+    other modes already added (`damage_bonus`/`extra_enemy`/`damage_mult`/`no_heal`/
+    `health_scale`) — no new engine surface for this feature. Freely repeatable like Phantom
+    Arena/Sandbox (no floor or streak), with a permanent per-event cosmetic badge
+    (`profile.world_event_record.badges`) auto-granted on the first win of each 4-week period,
+    mirroring Curse Run's badge shape (Phase 8) rather than Phantom Arena's separate
+    manual-claim chest button.
+  - **Spirit Draft Arena / "灵界轮抽竞技场" (`show_spirit_draft`, `profile.draft_arena`)**: a
+    7-round 3-pick-1 card draft — each round offers 3 random cards excluding Starter and Curse
+    rarities — building a 15-card deck on top of a fixed 8-card seed (4 `strike` + 4 `ward`).
+    Once the deck is complete (`draft.active = true`), it's a gauntlet against escalating
+    campaign encounters (stage index `wins * 2`, capped at the last encounter) that ends at
+    `SpiritContent.DRAFT_WIN_CAP` (6) wins — a "Grand Champion" toast plus a 500-gold/
+    200-season-XP bonus on top of the normal per-win payout — or `SpiritContent.DRAFT_LOSS_CAP`
+    (3) losses, whichever comes first. Like Sandbox/Phantom Arena/Boss Rush, it reuses the
+    player's real profile (relics/equipment/mastery/upgrades) rather than a synthetic loadout —
+    only the deck itself is swapped, in `begin_battle()`'s `battle_deck` check (`g.in_draft_battle`
+    and `draft_arena.deck.size() >= 15`). Every way a run can end — the win cap, the loss cap,
+    and abandoning it early from the battle-ready screen — must reset the same fields
+    (`active`/`round`/`deck`/`current_pool`/`wins`/`losses`) back to their fresh-save shape, or
+    the next run inherits a stale one; `SpiritGame._reset_draft_run()` is the one shared place
+    that does it, so a new ending never needs to remember the shape by hand (see this file's
+    "Traps" section for the stuck-flag bug this mode shipped with before that helper existed).
   - **A cleared stage can never be re-fought — this is a real, enforced gate, not just a
     warning label.** Tapping an already-cleared pin (`_on_pin_pressed()` → `_is_replay(index)`)
     opens `_show_replay_mode_prompt()`, which offers only informational shortcuts (Cultivate/
@@ -408,9 +682,14 @@ The visual presentation blends high-detail painted assets with procedural vector
     already-owned items as discovered without a migration pass. Curse cards
     (`rarity == "Curse"`) are excluded from the card tab — they're enemy-inflicted battle
     hazards nothing ever "collects", and including them would leave a permanently
-    uncompletable entry. Bestiary entries are the 5 `SpiritContent.ENEMIES` (not one per
-    chapter — every chapter/boss reuses this same pool of 5 sprites via
-    `_art_key_for_enemy`), marked discovered the moment a battle starts against them.
+    uncompletable entry. Bestiary entries are `SpiritContent.ENEMIES` — 125 unique monsters (25
+    per realm × 5 realms, each with bilingual lore, an `element`, a `tint` color, and a
+    `tier` 1-4 of Minion/Elite/Boss/Cataclysm that drives both its battle-screen presentation
+    (aura ring, boss crown, screen-shake on entry) and its Compendium name prefix), resolved
+    from an encounter's `art`/`art_key` field by `_art_key_for_enemy` and rendered as a
+    standalone portrait (`res://assets/characters/monsters/<key>.png`) rather than the older
+    fixed 3x3 atlas — see `Godot/tools/generate_monsters.gd` for the offline art-generation
+    tool behind them. Marked discovered the moment a battle starts against that monster.
   - **Hero Mastery (`content.HERO_MASTERY_PERKS` / `mastery_bonuses()`)**: every battle win
     grants `profile.hero_masteries[hero_id].xp` to whichever hero is currently equipped
     (boss kills worth double, campaign replays halved — see `_grant_mastery_xp` in
@@ -444,14 +723,14 @@ The visual presentation blends high-detail painted assets with procedural vector
 
 ## Handoff & verification notes for future agents
 
-- **Verifying changes**:
-  ```bash
-  ./run_tests.sh        # core: test_runner (rules) + ui_smoke (screens) + e2e_playthrough
-  ./run_tests.sh --all  # everything, including the 250-stage balance trajectory bot
-  ```
-  Everything must pass without failures before committing. For the difficulty curve
-  specifically, read `Docs/BALANCE_REVALIDATION.md` — it explains the curve's current
-  measured state and the standing suggestions for extending the balance bot.
+- **Verifying changes**: see "Verifying a change" near the top of this file for the full
+  `./run_tests.sh` command set. Don't duplicate suite names/check counts here — they drift out
+  of sync with reality otherwise, which is exactly how this note once ended up pointing at only
+  2 of what are now 8 suites with a check count hundreds stale. For the balance curve
+  specifically, `Docs/ARCHITECTURE.md`'s "250-stage difficulty curve" section is the canonical
+  account of its current measured state; `Docs/BALANCE_REVALIDATION.md` has the fuller
+  write-up of one rebuild of that suite plus a standing backlog of suggestions for extending it
+  further.
 - **Deploying to iOS**:
   Run `./deploy_ios.sh --full-export` with the iPhone unlocked and connected. If the screen is locked, `devicectl` reports `unavailable`.
 - **Importing newly added images**:

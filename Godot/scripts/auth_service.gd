@@ -185,3 +185,37 @@ static func sign_out(game: SpiritGame, on_done: Callable = Callable()) -> void:
 	game._toast(game.t("ui.auth_sign_out_confirm"), game.MUTED)
 	if on_done.is_valid():
 		on_done.call(true)
+
+# Account deletion (Docs/LAUNCH_READINESS.md Section 1). Order matters: the cloud deletes below
+# must happen while the account is still authenticated, since sign_out_client() immediately
+# clears the access token they need — mirrors fetch_player_save()/upload_player_save()'s own
+# "delete my own row" scoping via the user's own bearer token, not any elevated key. On a
+# request failure, deliberately does NOT sign out or touch the local profile: a player whose
+# deletion failed halfway through must still be able to retry, not be left in a half-deleted,
+# logged-out state with no way back. Does NOT delete the underlying Supabase auth.users record
+# itself — that needs a privileged service-role call from a trusted server context (a Supabase
+# Edge Function, or a backend endpoint), which must never receive that key from this client. If
+# that server-side piece exists separately, call it before this (it needs the account to still
+# exist to identify which one to remove); this function only ever needs its own bearer token.
+static func delete_account(game: SpiritGame, on_done: Callable = Callable()) -> void:
+	if not SpiritSave.is_cloud_linked(game.profile):
+		# Nothing cloud-side to remove for a guest — just clear local progress the same way a
+		# linked account's deletion would, so both paths end at the same fresh state.
+		game.profile = SpiritSave.defaults(game.content)
+		SpiritSave.write(game.profile)
+		game._toast(game.t("ui.account_delete_success_toast"), game.GOLD)
+		if on_done.is_valid(): on_done.call(true)
+		return
+
+	var save_res: Dictionary = await SupabaseClient.delete_player_save(game)
+	var lb_res: Dictionary = await SupabaseClient.delete_leaderboard_entries(game)
+	if not save_res.get("ok", false) or not lb_res.get("ok", false):
+		game._toast(game.t("ui.account_delete_failed_toast"), game.EMBER)
+		if on_done.is_valid(): on_done.call(false)
+		return
+
+	SupabaseClient.sign_out_client(game)
+	game.profile = SpiritSave.defaults(game.content)
+	SpiritSave.write(game.profile)
+	game._toast(game.t("ui.account_delete_success_toast"), game.GOLD)
+	if on_done.is_valid(): on_done.call(true)

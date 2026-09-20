@@ -296,6 +296,38 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	# Regression check for a real race found this session: _travel_to() is invoked fire-and-
+	# forget (no await) from _on_pin_pressed(), with no input lock during its up-to-2-second hop
+	# animation — tapping Camp/Quests/another pin mid-travel used to leave the interrupted
+	# coroutine to unconditionally call show_event()/begin_battle() on whatever screen the
+	# player had already moved to once its tween finished, silently yanking them into a battle
+	# they didn't ask for at that moment. Fixed with g.screen_generation (bumped by g._clear(),
+	# the one shared choke point every screen transition goes through) — same shape as
+	# _resolve_play()'s battle_session fix, see AGENTS.md's "fire-and-forget coroutine" trap.
+	var saved_unlocked_race: int = int(game.profile.unlocked)
+	var saved_position_race: int = int(game.profile.position)
+	game.profile.unlocked = 2
+	game.profile.position = 0
+	game.current_map_chapter = 0
+	game.traveler.position = game._map_point(0) - Vector2(0, 26)
+	game._travel_to(2)
+	await process_frame
+	game.camp_tab = "character"
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("BeginnerRecBadge", true, false) != null, "navigating to Camp mid-travel actually shows Camp")
+	Engine.time_scale = 20.0
+	await create_timer(2.2).timeout
+	Engine.time_scale = 1.0
+	await process_frame
+	check(int(game.profile.position) == 0, "an abandoned mid-flight travel does not silently advance profile.position once its tween finishes")
+	check(game.root.find_child("PlayerSprite", true, false) == null, "an abandoned mid-flight travel does not start a battle over whatever screen the player navigated to")
+	check(game.root.find_child("BeginnerRecBadge", true, false) != null, "Camp is still the screen showing after the abandoned travel's tween finishes")
+	game.profile.unlocked = saved_unlocked_race
+	game.profile.position = saved_position_race
+	game.show_map()
+	await process_frame
+
 	section("== next-stage travel snaps the map back to the player's real chapter first ==")
 	var saved_pos_travel_sync: int = int(game.profile.position)
 	var saved_unlocked_travel_sync: int = int(game.profile.unlocked)
@@ -1347,10 +1379,22 @@ func _run() -> void:
 	var recap_boss_name: String = str(recap_boss_encounter.get("name_en", recap_boss_encounter.name)) if game.lang == "en" else str(recap_boss_encounter.name)
 	check(_find_label_text(game.root, game.tf("ui.run_recap_defeated_fmt", recap_boss_name)), "the recap card names the boss actually defeated")
 	check(game.root.find_child("RunRecapStats", true, false) != null, "the recap card shows the battle-performance stat row")
+	check(_find_label_text(game.root, game.tf("ui.recap_turns", int(game.combat.state.turn))), "the recap card's stat row shows turns taken (Phase 10)")
 	check(game.root.find_child("RunRecapDeckHighlights", true, false) != null, "the recap card shows deck highlights")
+
+	# Phase 10: the Share button now actually renders and captures a poster via an off-screen
+	# SubViewport, rather than the previous stub that just toasted "saved" without saving
+	# anything. ViewportTexture.get_image() reads back null under this suite's own
+	# `godot --headless` dummy renderer (confirmed empirically — no real framebuffer to read
+	# back from), so this is the one place the graceful-degradation path is exercised for
+	# real, not just reasoned about; a real device with a real GPU takes the success path.
 	var recap_share_btn: Button = game.root.find_child("RunRecapShareBtn", true, false) as Button
 	check(recap_share_btn != null, "RunRecapShareBtn exists to share run recap")
 	recap_share_btn.pressed.emit()
+	# _capture_recap_image() awaits exactly 2 process_frame calls internally before the toast
+	# fires; wait a couple extra to be safely past that.
+	for _wait_frame in 4: await process_frame
+	check(_find_label_containing(game.overlay, game.t("ui.run_recap_save_unavailable")), "tapping Share under headless's dummy renderer surfaces the 'capture unavailable' toast instead of silently failing or crashing")
 	var recap_done_btn: Button = game.root.find_child("RunRecapDoneBtn", true, false) as Button
 	check(recap_done_btn != null, "RunRecapDoneBtn exists to return to the reward flow")
 	recap_done_btn.pressed.emit()
@@ -1377,6 +1421,58 @@ func _run() -> void:
 	game.profile.position = saved_position
 	game.profile.claimed_stage_events = saved_claimed_events
 	game.profile.relics = saved_relics
+
+	# Phase 10: Abyss milestones (floor % 5 == 0) are recap-worthy too, per the plan's literal
+	# spec ("after Great Boss defeats and Abyss milestones") — same show_run_recap() screen,
+	# but reading recap_encounter baked into pending_rewards rather than g.current_stage, which
+	# begin_abyss_battle() leaves at its Abyss placeholder of 0 (resolving straight to
+	# g.content.encounters[0], the wrong chapter-1 stage, is exactly the bug baking the
+	# encounter into pending_rewards at grant-time avoids).
+	var saved_abyss_floor: int = int(game.profile.get("abyss_floor", 1))
+	var saved_abyss_record: int = int(game.profile.get("abyss_record", 0))
+	var saved_boon_draft: bool = game.pending_boon_draft
+	game.profile.abyss_floor = 5
+	game.begin_abyss_battle()
+	await process_frame
+
+	# Regression test for a real, pre-existing bug found while making begin_abyss_battle()
+	# callable directly (it had no game.gd delegator at all until this phase — see game.gd's
+	# own comment there): _modifier()'s ~48%-of-the-time empty {} result gets a "boons" key
+	# added unconditionally right after, turning it non-empty with no name/detail fields at
+	# all. Confirmed this crashed _build_player_stage() (a bare Dictionary "name"/"detail" key
+	# access, then a null child handed to add_child()) on roughly every other real Abyss
+	# battle — timing-dependent on the exact millisecond seed, which is exactly why no prior
+	# test had ever reproduced it. Fixed by checking "has a name" there rather than "isn't
+	# empty"; verified deterministically here instead of trusting a random seed to hit it.
+	game.active_modifier = {"boons": []}
+	# _build_player_stage() empirically returns null on this exact bug (a runtime Dictionary
+	# key-access error aborts it mid-function despite its declared "-> Control" return type,
+	# confirmed by reproducing it directly before writing this fix) — show_battle() then
+	# hands that null to add_child(), a second, louder error. Checking the direct return value
+	# catches the bug precisely; game.root.get_child_count() > 0 does not, since show_battle()
+	# adds plenty of other, unrelated children both before and after this one call.
+	check(game._build_player_stage() != null, "an active_modifier with bookkeeping keys but no name/detail (the exact shape begin_abyss_battle() can produce) does not crash _build_player_stage() into returning null")
+
+	var abyss_recap_encounter: Dictionary = game.content.abyss_encounter(5)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(bool(game.pending_rewards.get("abyss_milestone", false)), "reaching Abyss floor 5 (a multiple of 5) flags the win as recap-worthy")
+	check(game.pending_boon_draft, "floor 5 still also offers the pre-existing boon draft, unaffected by the new recap flag alongside it")
+	game.pending_boon_draft = false
+	game.show_reward_details()
+	await process_frame
+	var abyss_recap_btn: Button = game.root.find_child("ViewRunRecapBtn", true, false) as Button
+	check(abyss_recap_btn != null, "ViewRunRecapBtn also renders after an Abyss milestone win")
+	abyss_recap_btn.pressed.emit()
+	await process_frame
+	check(_find_label_text(game.root, game.tf("ui.run_recap_defeated_fmt", str(abyss_recap_encounter.name))), "the Abyss-triggered recap names the actual Abyss floor boss, not stage 0's campaign encounter")
+	check(_find_label_text(game.root, game.tf("ui.recap_turns", int(game.combat.state.turn))), "the Abyss-triggered recap also shows turns taken")
+	game.show_reward_details()
+	await process_frame
+
+	game.profile.abyss_floor = saved_abyss_floor
+	game.profile.abyss_record = saved_abyss_record
+	game.pending_boon_draft = saved_boon_draft
 
 	# All 11 relics now have painted icons (relic_<id>.png), same treatment equipment/runes
 	# already had — _relic_icon_badge() should use the real art, not its drawn-sigil fallback.
@@ -1683,6 +1779,17 @@ func _run() -> void:
 					break
 	check(found_keyword_pill, "keyword tooltip pills exist in enlarged card face")
 	big_face.queue_free()
+
+	section("== Phase 7 keyword pills: boomerang/reverb/overload ==")
+	for entry in [["emberBoomerang", "Boomerang"], ["windReverb", "Reverb"], ["fireOverload", "Overload"]]:
+		var kw_card_id: String = str(entry[0])
+		var kw_pill_text: String = str(entry[1])
+		var kw_card: Dictionary = game.content.card(kw_card_id)
+		var kw_face: Panel = game._big_card_face(kw_card, "")
+		game.root.add_child(kw_face)
+		var kw_btn := _find_button_containing(kw_face, kw_pill_text)
+		check(kw_btn != null, "%s shows a %s keyword pill in the enlarged card face" % [kw_card_id, kw_pill_text])
+		kw_face.queue_free()
 
 	# ── Phase 2 feature tests ──
 	section("== shop card purge service ==")
@@ -2028,6 +2135,138 @@ func _run() -> void:
 	await process_frame
 	check(_find_label_containing(game.root, "Lv.1"), "hero archetypes section shows the reached mastery level")
 
+	# C2: 轮回 (Samsara / Reincarnation) — this block mutates a chunk of profile state (unlocked,
+	# position, difficulty, samsara_count, health, gold, claimed_stage_events) to exercise the
+	# locked path, the eligible path, and a real end-to-end reset, so every touched field is
+	# saved before and restored straight after — the same shared-profile discipline this suite's
+	# F1/digest entries already established. This design (see AGENTS.md/GROWTH_ROADMAP.md for the
+	# merge history behind it — two independently-built prestige systems landed on the same
+	# roadmap item) deliberately does NOT reset deck/collection/relics/equipment/runes, unlike
+	# the alternate implementation it replaced, so this block also proves those survive a cycle
+	# untouched rather than saving/restoring them purely defensively.
+	var saved_unlocked_sm: int = int(game.profile.unlocked)
+	var saved_position_sm: int = int(game.profile.position)
+	var saved_difficulty_sm: int = int(game.profile.difficulty)
+	var saved_samsara_count_sm: int = int(game.profile.get("samsara_count", 0))
+	var saved_health_sm: int = int(game.profile.health)
+	var saved_gold_sm: int = int(game.profile.gold)
+	var saved_events_sm: Array = game.profile.claimed_stage_events.duplicate()
+
+	# SamsaraSection lives in the "challenges" tab (DifficultyTierRow's neighbor), not "character".
+	game.camp_tab = "challenges"
+	game.profile.samsara_count = 0
+	game.profile.unlocked = 249
+	game.profile.difficulty = 0
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("SamsaraSection", true, false) != null, "SamsaraSection renders in the challenges tab even before eligibility")
+	check(game.root.find_child("SamsaraEnterBtn", true, false) == null, "SamsaraEnterBtn does NOT appear at unlocked=249/difficulty=0 — the discarded OR-based rule would have allowed this; the merged rule requires unlocked>=250 AND difficulty>=5")
+
+	game.profile.unlocked = 250
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("SamsaraEnterBtn", true, false) == null, "SamsaraEnterBtn still locked at unlocked=250 alone — difficulty must also reach the required tier")
+
+	game.profile.difficulty = 5
+	game.show_camp()
+	await process_frame
+	var samsara_enter_btn: Button = game.root.find_child("SamsaraEnterBtn", true, false) as Button
+	check(samsara_enter_btn != null, "SamsaraEnterBtn appears once BOTH unlocked>=250 AND difficulty>=5 hold")
+
+	# Mutate deck/collection/relics/equipment/runes away from the starting shape so the
+	# survives-untouched assertions below actually prove something, then restore them regardless
+	# of what the checks find.
+	var saved_deck_sm: Array = game.profile.deck.duplicate()
+	var saved_collection_sm: Dictionary = game.profile.collection.duplicate(true)
+	var saved_relics_sm: Array = game.profile.relics.duplicate()
+	var saved_equip_owned_sm: Array = game.profile.equipment_owned.duplicate()
+	var saved_equip_slots_sm: Dictionary = game.profile.equipment_slots.duplicate(true)
+	var saved_rune_inv_sm: Dictionary = game.profile.rune_inventory.duplicate(true)
+	game.profile.deck = ["strike", "strike"]
+	game.profile.collection = {"strike": 2}
+	game.profile.relics = ["cursedTome"]
+	game.profile.equipment_owned = ["emberBlade"]
+	game.profile.equipment_slots = {"weapon": "emberBlade"}
+	game.profile.rune_inventory = {"swift": 1}
+	game.profile.position = 123
+	game.profile.claimed_stage_events = [1, 2, 3]
+
+	game.enter_samsara()
+	await process_frame
+	check(int(game.profile.samsara_count) == 1, "enter_samsara increments samsara_count")
+	check(int(game.profile.unlocked) == 0, "enter_samsara resets unlocked back to stage 0")
+	check(int(game.profile.position) == 0, "enter_samsara resets position back to stage 0")
+	check(game.profile.claimed_stage_events.is_empty(), "enter_samsara clears claimed_stage_events")
+	check(int(game.profile.health) == 60, "enter_samsara resets health to a flat 60, matching every other battle-end reset site")
+	check(game.profile.deck == ["strike", "strike"], "enter_samsara does NOT reset the deck (narrower reset scope than the discarded design)")
+	check(game.profile.collection == {"strike": 2}, "enter_samsara does NOT reset the card collection")
+	check(game.profile.relics == ["cursedTome"], "enter_samsara does NOT reset relics")
+	check(game.profile.equipment_owned == ["emberBlade"], "enter_samsara does NOT reset owned equipment")
+	check(game.profile.equipment_slots == {"weapon": "emberBlade"}, "enter_samsara does NOT reset equipped slots")
+	check(game.profile.rune_inventory == {"swift": 1}, "enter_samsara does NOT reset the rune inventory")
+	check(int(game.profile.difficulty) == 5, "enter_samsara leaves the selected challenge tier untouched so the next cycle doesn't re-climb it")
+
+	game.profile.deck = saved_deck_sm
+	game.profile.collection = saved_collection_sm
+	game.profile.relics = saved_relics_sm
+	game.profile.equipment_owned = saved_equip_owned_sm
+	game.profile.equipment_slots = saved_equip_slots_sm
+	game.profile.rune_inventory = saved_rune_inv_sm
+
+	# enter_samsara() also guards its own eligibility (mirrors _samsara_section()'s gate) rather
+	# than trusting only the UI button's visibility — confirm calling it again immediately (now
+	# ineligible, since unlocked just reset to 0) is a safe no-op, not a second free cycle.
+	game.enter_samsara()
+	await process_frame
+	check(int(game.profile.samsara_count) == 1, "enter_samsara is a no-op when called while ineligible (guards itself, not just the UI button)")
+
+	# Each samsara cycle raises the difficulty ladder's ceiling by one tier past A5, uncapped —
+	# and the NEXT cycle's eligibility now requires that raised ceiling, not a flat A5, or a
+	# player could cycle indefinitely by re-tapping the same A5 button forever.
+	game.profile.unlocked = 250
+	game.show_camp()
+	await process_frame
+	var tier_row: Control = game.root.find_child("DifficultyTierRow", true, false) as Control
+	check(tier_row != null and tier_row.get_child_count() == 7, "one samsara cycle raises the tier ladder to A0-A6 (7 buttons), not just the original A0-A5")
+
+	game.profile.difficulty = 5
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("SamsaraEnterBtn", true, false) == null, "after one cycle, being at A5 is no longer enough for the next cycle — the requirement escalated to A6")
+	game.profile.difficulty = 6
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("SamsaraEnterBtn", true, false) != null, "moving up to the newly-required A6 makes the next cycle available again")
+
+	# The tier ladder used to be purely cosmetic (see content.difficulty_modifier()'s header
+	# comment) — a real player tapping A5 got zero actual extra challenge. Confirm a selected
+	# tier now actually reaches combat: begin_battle() merges it into active_modifier, which
+	# combat.create() reads as health_scale/damage_bonus. A per-stage random flavor modifier can
+	# also contribute to the same fields, so assert the tier's own floor rather than an exact
+	# value (flavor can only add on top, never reduce below the tier's contribution). Bumped
+	# directly to samsara_count=2 (past the shield-blessing milestone, content.samsara_bonuses())
+	# to also confirm that blessing reaches a real battle through the same hero_bonuses hook Hero
+	# Mastery uses, not just the pure content.samsara_bonuses() dict in isolation.
+	game.profile.samsara_count = 2
+	game.begin_battle(0)
+	await process_frame
+	check(float(game.active_modifier.get("health_scale", 1.0)) >= 1.72 - 0.001, "difficulty A6 contributes at least its own health_scale (1.0 + 6*0.12) to the battle's active_modifier (got %.2f)" % float(game.active_modifier.get("health_scale", 1.0)))
+	check(int(game.active_modifier.get("damage_bonus", 0)) >= 6, "difficulty A6 contributes at least its own damage_bonus to the battle's active_modifier (got %d)" % int(game.active_modifier.get("damage_bonus", 0)))
+	check(int(game.combat.state.player.shield) >= 4, "samsara level 2's +4 starting shield blessing reaches a real battle")
+	game._leave_battle()
+	await process_frame
+
+	var merged_bonuses_sm: Dictionary = game._current_hero_mastery_bonuses()
+	check(int(merged_bonuses_sm.get("max_hp", 0)) >= 6, "samsara's max_hp blessing is merged into the hero_bonuses dict combat.create() receives")
+
+	game.profile.unlocked = saved_unlocked_sm
+	game.profile.position = saved_position_sm
+	game.profile.difficulty = saved_difficulty_sm
+	game.profile.samsara_count = saved_samsara_count_sm
+	game.profile.health = saved_health_sm
+	game.profile.gold = saved_gold_sm
+	game.profile.claimed_stage_events = saved_events_sm
+
 	# Daily Trial: force a fresh day so the run starts at stage 0, then drive it through to
 	# completion via the same "force phase to won, then grant rewards" shortcut the pre-existing
 	# replay test above uses, rather than actually playing out 15 full battles.
@@ -2105,6 +2344,19 @@ func _run() -> void:
 	check(int(game.profile.gold) > w_gold_before, "winning a challenge stage grants gold")
 	check(not game.in_weekly_challenge, "_grant_stage_rewards clears in_weekly_challenge after granting")
 
+	# The exact same "stuck true forever" bug this session found and fixed for Draft Arena
+	# below also existed here — _leave_battle() had no in_weekly_challenge branch at all, so a
+	# loss or retreat left the flag stuck true, silently misrouting every later battle's
+	# rewards (any mode, win or lose) through this challenge's reward branch in
+	# _grant_stage_rewards() instead of the real one, for the rest of the session.
+	game.begin_weekly_challenge()
+	await process_frame
+	check(game.in_weekly_challenge, "re-entering weekly challenge works for the next stage")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_weekly_challenge, "_leave_battle clears in_weekly_challenge on a loss")
+	check(int(game.profile.weekly_challenge_record.stage) == 1, "a loss keeps the current stage instead of resetting the streak")
+
 	for i in range(2, SpiritContent.WEEKLY_CHALLENGE_STAGES + 1):
 		game.begin_weekly_challenge()
 		game.combat.state.phase = "won"
@@ -2155,6 +2407,58 @@ func _run() -> void:
 	game._leave_battle()
 	check(not game.in_boss_rush, "_leave_battle clears in_boss_rush on a loss")
 	check(int(game.profile.boss_rush_floor) == 2, "a loss keeps the current bout number instead of resetting the streak")
+
+	section("== growth roadmap: Phase 8 curse run mutator challenge ==")
+	game.profile.difficulty = 0
+	game.profile.unlocked = 5
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.curse_run_title", game.lang)), "Curse Run section renders in the challenges screen")
+	var curse_locked_btn: Button = game.root.find_child("CurseRunEnterBtn", true, false) as Button
+	check(curse_locked_btn != null and curse_locked_btn.disabled, "CurseRunEnterBtn is disabled before reaching Ascension Tier A2")
+
+	game.profile.difficulty = 2
+	game.show_camp()
+	await process_frame
+	var glass_btn: Button = game.root.find_child("CurseMutatorBtn_glass_cannon", true, false) as Button
+	check(glass_btn != null, "CurseMutatorBtn_glass_cannon exists once Curse Run unlocks")
+	glass_btn.pressed.emit()
+	await process_frame
+	check(str(game.profile.curse_run.selected) == "glass_cannon", "tapping a mutator badge selects it")
+	var curse_enter_btn: Button = game.root.find_child("CurseRunEnterBtn", true, false) as Button
+	check(curse_enter_btn != null and not curse_enter_btn.disabled, "CurseRunEnterBtn becomes enabled once a mutator is selected")
+
+	game.begin_curse_run_battle()
+	await process_frame
+	check(game.in_curse_run, "begin_curse_run_battle() enters curse run mode")
+	check(int(game.combat.state.player.max_health) == 30, "Glass Cannon's player_max_hp reaches a real battle (30)")
+	var curse_gold_before: int = int(game.profile.gold)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(int(game.profile.curse_run.floors.get("glass_cannon", 1)) == 2, "winning advances glass_cannon's own floor")
+	check(int(game.profile.curse_run.records.get("glass_cannon", 0)) == 1, "winning records the deepest floor reached for that mutator")
+	check(int(game.profile.gold) > curse_gold_before, "winning a curse run floor grants gold")
+	check(not game.in_curse_run, "_grant_stage_rewards clears in_curse_run after granting")
+
+	# Badge floor: reaching SpiritContent.CURSE_RUN_BADGE_FLOOR unlocks a permanent per-mutator
+	# badge, shown as a checkmark on that mutator's own picker badge from then on.
+	game.profile.curse_run.floors["glass_cannon"] = SpiritContent.CURSE_RUN_BADGE_FLOOR
+	game.begin_curse_run_battle()
+	await process_frame
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(game.profile.curse_run.cleared.has("glass_cannon"), "reaching the badge floor unlocks glass_cannon's permanent badge")
+
+	# The exact same stuck-flag shape AGENTS.md documents for every other side mode: a loss
+	# must clear in_curse_run without resetting that mutator's own floor.
+	game.begin_curse_run_battle()
+	await process_frame
+	var floor_before_loss: int = int(game.profile.curse_run.floors.get("glass_cannon", 1))
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_curse_run, "_leave_battle clears in_curse_run on a loss")
+	check(int(game.profile.curse_run.floors.get("glass_cannon", 1)) == floor_before_loss, "a loss keeps the current floor instead of resetting it")
 
 	section("== growth roadmap: sandbox / practice mode ==")
 	game.profile.unlocked = 20
@@ -2243,14 +2547,55 @@ func _run() -> void:
 	var phantom_claim_btn_after: Button = game.root.find_child("PhantomArenaClaimBtn", true, false) as Button
 	check(phantom_claim_btn_after != null and phantom_claim_btn_after.disabled, "the chest button is disabled once already claimed today")
 
+	section("== growth roadmap: Phase 9 rotating world event ==")
+	game.profile.world_event_record = {"period": -1, "claimed": false, "badges": []}
+	game.camp_tab = "challenges"
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("WorldEventSection", true, false) != null, "World Event section renders in the challenges tab")
+	var we_enter_btn: Button = game.root.find_child("WorldEventEnterBtn", true, false) as Button
+	check(we_enter_btn != null, "WorldEventEnterBtn exists in the challenges tab")
+	var current_ev: Dictionary = game.content.world_event_for_period(int(game.profile.world_event_record.period))
+	check(_find_label_containing(game.root, game.content.ui(str(current_ev.nameKey), game.lang)), "the currently active event's own theme name renders in its section")
+
+	var we_gold_before: int = int(game.profile.gold)
+	we_enter_btn.pressed.emit()
+	await process_frame
+	check(game.in_world_event, "WorldEventEnterBtn's begin_world_event_battle() starts a world event battle")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_world_event, "_grant_stage_rewards clears in_world_event after granting")
+	check(int(game.profile.gold) > we_gold_before, "winning a world event battle grants gold")
+	check(bool(game.profile.world_event_record.claimed), "the first win of this period marks its bonus as claimed")
+	check(game.profile.world_event_record.badges.has(str(current_ev.id)), "the first win of this period unlocks that event's permanent badge")
+
+	# A second win the same period must not re-toast or double-append the same badge id.
+	game.begin_world_event_battle()
+	await process_frame
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(game.profile.world_event_record.badges.count(str(current_ev.id)) == 1, "winning again the same period does not duplicate the already-earned badge")
+
+	# World Event has no floor/streak state at all, so a loss just needs to clear the flag —
+	# same stuck-flag shape AGENTS.md documents for every other side mode.
+	game.begin_world_event_battle()
+	await process_frame
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_world_event, "_leave_battle clears in_world_event on a loss")
+
 	section("== defeat diagnosis: recommended action is visually distinguished ==")
 	# diagnose_battle_defeat()'s "action" field used to be computed and never read by the
 	# screen that displays its tip — both buttons rendered in the same color regardless of
 	# which one was actually recommended. A deck this thin on shield cards (2, under the
 	# threshold of 3) with a low average cost (all 1-cost) deterministically recommends
-	# "deck" over the generic "cultivate" fallback.
+	# "deck" over the generic "cultivate" fallback. Uses "ward" (the real starter shield
+	# card) rather than a made-up id — a fictitious "defend" id here used to silently crash
+	# _card_view() with "Invalid access to property or key 'id'" the moment the hand
+	# rendered (content.card() returns {} for an unknown id), invisibly, since nothing here
+	# asserts on the absence of a SCRIPT ERROR.
 	var saved_deck_for_diagnosis: Array = game.profile.deck.duplicate()
-	game.profile.deck = ["strike", "strike", "defend", "defend"]
+	game.profile.deck = ["strike", "strike", "ward", "ward"]
 	game.current_stage = 0
 	game.begin_battle(0)
 	await process_frame
@@ -2273,6 +2618,17 @@ func _run() -> void:
 		check(tune_style is StyleBoxFlat and cult_style is StyleBoxFlat and (tune_style as StyleBoxFlat).bg_color != (cult_style as StyleBoxFlat).bg_color, "the recommended action's button is visually distinguished from the other one, not identically colored")
 		check((tune_style as StyleBoxFlat).bg_color == game.GOLD, "the recommended action (Tune Deck) specifically gets the emphasized gold color")
 	game._leave_battle()
+
+	# Regression check for a real bug found while touching this section: diagnose_battle_defeat()
+	# was reading each effect's "op" key, but every card's effects actually use "operation" (see
+	# combat.gd's _resolve_effects) — so shield_cards silently counted 0 for every deck in the
+	# game, always, for every player, making the "you lack shield cards" tip fire regardless of
+	# the deck's real shield count. A deck with 3 real shield cards (at the "not thin" threshold)
+	# must fall through to the generic tip instead of the low-shield one.
+	game.profile.deck = ["ward", "ward", "ward", "strike"]
+	var diag_with_shields: Dictionary = game.diagnose_battle_defeat()
+	check(str(diag_with_shields.get("action", "")) == "cultivate", "a deck with 3 real shield cards is no longer misdiagnosed as shield-poor (op vs operation key-name regression)")
+
 	game.profile.deck = saved_deck_for_diagnosis
 
 	section("== achievements ==")
@@ -2315,6 +2671,95 @@ func _run() -> void:
 		else: found_unlocked_badge_bright = true
 	check(found_locked_badge_dim, "a locked achievement's medal badge renders dimmed")
 	check(found_unlocked_badge_bright, "an unlocked achievement's medal badge renders at full brightness")
+
+	section("== feature-unlock discoverability toasts ==")
+	# game._check_feature_unlocks() fires a one-time "New!" toast the moment profile.unlocked or
+	# profile.difficulty first crosses a gated feature's threshold (SpiritContent.FEATURE_UNLOCKS),
+	# so a player discovers Compendium/Daily Trial/Abyss/Curse Run/etc. instead of only noticing a
+	# new tab appeared. Save/restore every field it reads or writes.
+	var saved_unlocked_fu: int = int(game.profile.unlocked)
+	var saved_difficulty_fu: int = int(game.profile.difficulty)
+	var saved_seen_fu: Array = game.profile.get("feature_unlocks_seen", []).duplicate()
+
+	game.profile.feature_unlocks_seen = []
+	game.profile.unlocked = 5
+	game.profile.difficulty = 0
+	game._check_feature_unlocks()
+	check(_find_label_containing(game.overlay, game.t("ui.unlock_ch1_toast")), "crossing unlocked=5 the first time surfaces the chapter-1-features unlock toast")
+	check(game.profile.feature_unlocks_seen.has("ch1_features"), "crossing unlocked=5 marks ch1_features as seen")
+	check(not game.profile.feature_unlocks_seen.has("abyss"), "unlocked=5 has not yet crossed abyss's own threshold of 10")
+
+	# A second call at the same progress must not re-append an already-seen id or crash.
+	var seen_count_after_first: int = game.profile.feature_unlocks_seen.size()
+	game._check_feature_unlocks()
+	check(game.profile.feature_unlocks_seen.size() == seen_count_after_first, "re-checking at the same progress does not re-append an already-seen id")
+
+	# The "kind":"difficulty" branch reads profile.difficulty instead, independent of unlocked.
+	game.profile.difficulty = 2
+	game._check_feature_unlocks()
+	check(game.profile.feature_unlocks_seen.has("curse_run"), "crossing difficulty=2 marks curse_run as seen, independent of the unlocked-stage thresholds")
+
+	game.profile.unlocked = saved_unlocked_fu
+	game.profile.difficulty = saved_difficulty_fu
+	game.profile.feature_unlocks_seen = saved_seen_fu
+
+	section("== progressive difficulty tier unlocking ==")
+	# A0-A5 (and any samsara-extended tiers) used to all become selectable the instant the
+	# section's own overall gate (unlocked>=25) opened, with zero further guardrail — A5 alone
+	# is +60% enemy HP and +5 flat damage (content.difficulty_modifier()). Each tier now needs
+	# its own campaign-progress threshold (content.difficulty_tier_unlock_stage()) to appear at
+	# all, grandfathering in whatever a player already had selected.
+	var saved_unlocked_dt: int = int(game.profile.unlocked)
+	var saved_difficulty_dt: int = int(game.profile.difficulty)
+	var saved_samsara_dt: int = int(game.profile.get("samsara_count", 0))
+	game.camp_tab = "challenges"
+
+	game.profile.unlocked = 25
+	game.profile.difficulty = 0
+	game.profile.samsara_count = 0
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A0", true, false) != null, "A0 is always shown")
+	check(game.root.find_child("DifficultyTierBtn_A1", true, false) != null, "A1 is shown once unlocked reaches its own threshold (25)")
+	check(game.root.find_child("DifficultyTierBtn_A2", true, false) == null, "A2 is hidden entirely (not just disabled) before unlocked reaches its threshold (50)")
+	var a0_btn: Node = game.root.find_child("DifficultyTierBtn_A0", true, false)
+	check(a0_btn != null and a0_btn.find_child("NotificationDot", true, false) == null, "the currently-active default tier (A0) never shows a 'new, untried' marker")
+	var a1_btn: Node = game.root.find_child("DifficultyTierBtn_A1", true, false)
+	check(a1_btn != null and a1_btn.find_child("NotificationDot", true, false) != null, "a newly-eligible, not-yet-selected tier (A1) is visibly marked so it doesn't blend in")
+	check(_find_label_containing(game.root, game.tf("ui.camp_tier_next_unlock", 50)), "a hint names the stage that unlocks the next tier")
+
+	game.profile.unlocked = 50
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A2", true, false) != null, "A2 appears once unlocked reaches 50")
+	check(game.root.find_child("DifficultyTierBtn_A3", true, false) == null, "A3 stays hidden until unlocked reaches 100")
+
+	var a1_select_btn: Button = game.root.find_child("DifficultyTierBtn_A1", true, false) as Button
+	if a1_select_btn != null:
+		tap_button(a1_select_btn, "DifficultyTierBtn_A1")
+		await process_frame
+		check(int(game.profile.difficulty) == 1, "tapping a tier button selects it")
+		var a1_btn_after: Node = game.root.find_child("DifficultyTierBtn_A1", true, false)
+		check(a1_btn_after != null and a1_btn_after.find_child("NotificationDot", true, false) == null, "selecting a tier clears its own 'new, untried' marker")
+		var a2_btn_after: Node = game.root.find_child("DifficultyTierBtn_A2", true, false)
+		check(a2_btn_after != null and a2_btn_after.find_child("NotificationDot", true, false) != null, "a higher, still-untried tier keeps its marker after a lower one is selected")
+
+	# Grandfathering: a save that already has difficulty=4 selected (from before this system
+	# existed, or from a later point in the same playthrough) must keep seeing A4 even if
+	# unlocked alone no longer would have unlocked it on its own — this can only ever reveal
+	# tiers going forward, never retroactively hide one a player already has active.
+	game.profile.unlocked = 30
+	game.profile.difficulty = 4
+	game.show_camp()
+	await process_frame
+	check(game.root.find_child("DifficultyTierBtn_A4", true, false) != null, "an already-selected tier (A4) stays visible even below its own threshold (150) — no regression for existing players")
+	check(game.root.find_child("DifficultyTierBtn_A5", true, false) == null, "grandfathering only preserves the tier actually selected, it does not also reveal the next one above it")
+
+	game.profile.unlocked = saved_unlocked_dt
+	game.profile.difficulty = saved_difficulty_dt
+	game.profile.samsara_count = saved_samsara_dt
+	game.show_map()
+	await process_frame
 
 	section("== phase 3: settings, deck filters, colorblind glyphs, victory recap & hard replays ==")
 	# F2: Settings modal
@@ -2378,6 +2823,57 @@ func _run() -> void:
 	check(not SpiritSave.is_cloud_linked(game.profile), "account unlinks back to guest on SignOut")
 	settings_modal = game.overlay.get_node_or_null("SettingsModal")
 	check(settings_modal.find_child("SignInWithAppleBtn", true, false) != null, "SignInWithAppleBtn returns after sign out")
+
+	# Account deletion (Docs/LAUNCH_READINESS.md Section 1). The guest full-profile-wipe branch
+	# is deliberately NOT exercised here — it would wipe gold/unlocked/deck/relics on this
+	# shared `game` instance that every later section in this file depends on; see its own
+	# isolated test in test_runner.gd instead. This only covers UI wiring and the safe
+	# (no-op-on-failure) cloud-linked path.
+	check(settings_modal.find_child("DeleteAccountBtn", true, false) == null, "a guest sees no Delete Account option — nothing was created to delete")
+	SupabaseClient.clear_session()
+	game.profile.account.provider = "apple"
+	game.profile.account.user_id = "test_delete_uid_do_not_have_real_session"
+	# show_settings() toggles closed if a SettingsModal is already open (it still is, from
+	# sign_out's own _close_settings()+show_settings() reopen above) — close it first so this
+	# actually reopens fresh with the new account state instead of just closing it.
+	game._close_settings()
+	game.show_settings()
+	await process_frame
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
+	var delete_account_btn := settings_modal.find_child("DeleteAccountBtn", true, false) as Button
+	check(delete_account_btn != null, "a cloud-linked account sees the Delete Account option")
+	if delete_account_btn != null:
+		tap_button(delete_account_btn, "DeleteAccountBtn")
+		await process_frame
+		check(game.overlay.find_child("SettingsModal", true, false) == null, "opening the delete confirmation closes Settings first rather than stacking modals")
+		var delete_modal: Node = game.overlay.find_child("DeleteAccountModal", true, false)
+		check(delete_modal != null, "DeleteAccountModal opens on tap")
+		if delete_modal != null:
+			var delete_cancel_btn := delete_modal.find_child("DeleteAccountCancelBtn", true, false) as Button
+			check(delete_cancel_btn != null, "DeleteAccountCancelBtn exists")
+			if delete_cancel_btn != null:
+				tap_button(delete_cancel_btn, "DeleteAccountCancelBtn")
+				await process_frame
+				check(game.overlay.find_child("DeleteAccountModal", true, false) == null, "cancelling closes the confirmation modal")
+				check(str(game.profile.account.user_id) == "test_delete_uid_do_not_have_real_session", "cancelling the confirmation leaves the account untouched")
+
+	game.show_delete_account_modal()
+	await process_frame
+	var delete_confirm_btn := game.overlay.find_child("DeleteAccountConfirmBtn", true, false) as Button
+	check(delete_confirm_btn != null, "DeleteAccountConfirmBtn exists")
+	if delete_confirm_btn != null:
+		tap_button(delete_confirm_btn, "DeleteAccountConfirmBtn")
+		await process_frame
+		check(str(game.profile.account.user_id) == "test_delete_uid_do_not_have_real_session", "confirming with no real auth session (this headless test never has one) fails gracefully and leaves the account intact rather than signing out or wiping the shared profile")
+
+	game.profile.account.provider = "guest"
+	game.profile.account.user_id = ""
+	# Same toggle concern as above: the failed-deletion callback (delete_account's on_done)
+	# already reopened SettingsModal on failure, so close before reopening fresh here too.
+	game._close_settings()
+	game.show_settings()
+	await process_frame
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
 
 	var settings_close := settings_modal.find_child("SettingsCloseBtn", true, false) as Button
 	check(settings_close != null, "SettingsCloseBtn exists")
@@ -2582,6 +3078,39 @@ func _run() -> void:
 	await process_frame
 	check(game.overlay.find_child("DeckImportModal", true, false) == null, "DeckImportModal closes after successful import")
 
+	# Regression check for a real validation gap found this session: the size check on import
+	# only required >= 15 cards, not exactly 25 — the same screen's own manual _confirm_deck()
+	# refuses anything but exactly 25 (deck.size() != 25), so a hand-crafted or malformed
+	# shared deck code (codes are unsigned base64 JSON, trivial to edit) could silently install
+	# a 15-24 or 26+ card deck, bypassing that invariant entirely since import writes
+	# profile.deck directly without ever going through _confirm_deck()'s own gate.
+	game.profile.collection["strike"] = 100
+	var deck_before_bad_size: Array = game.profile.deck.duplicate()
+	var bad_size_deck_20: Array = []
+	for i in 20: bad_size_deck_20.append("strike")
+	var short_code: String = "SPB1:%s" % Marshalls.utf8_to_base64(JSON.stringify(bad_size_deck_20))
+	game.show_deck()
+	await process_frame
+	(game.root.find_child("DeckImportBtn", true, false) as Button).pressed.emit()
+	await process_frame
+	(game.overlay.find_child("DeckCodeInput", true, false) as LineEdit).text = short_code
+	(game.overlay.find_child("DeckImportConfirmBtn", true, false) as Button).pressed.emit()
+	await process_frame
+	check(game.overlay.find_child("DeckImportModal", true, false) != null, "a 20-card deck code is rejected (wrong size), import modal stays open")
+	check(game.profile.deck == deck_before_bad_size, "a rejected undersized deck code does not change profile.deck")
+
+	var bad_size_deck_30: Array = []
+	for i in 30: bad_size_deck_30.append("strike")
+	var long_code: String = "SPB1:%s" % Marshalls.utf8_to_base64(JSON.stringify(bad_size_deck_30))
+	(game.overlay.find_child("DeckCodeInput", true, false) as LineEdit).text = long_code
+	(game.overlay.find_child("DeckImportConfirmBtn", true, false) as Button).pressed.emit()
+	await process_frame
+	check(game.overlay.find_child("DeckImportModal", true, false) != null, "a 30-card deck code is rejected (wrong size), import modal stays open")
+	check(game.profile.deck == deck_before_bad_size, "a rejected oversized deck code does not change profile.deck")
+	var stale_import_modal: Node = game.overlay.get_node_or_null("DeckImportModal")
+	if stale_import_modal: stale_import_modal.queue_free()
+	await process_frame
+
 	# 3. Spirit Draft Arena
 	game.show_challenges()
 	await process_frame
@@ -2601,6 +3130,110 @@ func _run() -> void:
 	var draft_deck: Array = game.profile.get("draft_arena", {}).get("deck", [])
 	check(draft_deck.has(first_card_id), "picked card is added to arena draft deck")
 	check(int(game.profile.draft_arena.round) == 2, "draft round advances to 2 after pick")
+
+	# Fast-forward past the remaining picks (one real pick already proved above) to a
+	# battle-ready 15-card deck, the same shape _pick_draft_card() leaves after round 7.
+	while draft_deck.size() < 15:
+		draft_deck.append(first_card_id)
+	game.profile.draft_arena.deck = draft_deck
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	game.profile.draft_arena.current_pool = []
+	game.show_spirit_draft()
+	await process_frame
+	var draft_start_btn: Node = game.root.find_child("DraftStartBattleBtn", true, false)
+	check(draft_start_btn != null, "a battle-ready draft run shows DraftStartBattleBtn")
+	(draft_start_btn as Button).pressed.emit()
+	await process_frame
+	check(game.in_draft_battle, "DraftStartBattleBtn starts a draft battle")
+	var draft_battle_cards: int = game.combat.state.draw.size() + game.combat.state.hand.size() + game.combat.state.discard.size() + game.combat.state.exhaust.size()
+	check(draft_battle_cards == 15, "a draft battle is built from the 15-card draft deck, not the real campaign deck")
+
+	# The bug this session found: _leave_battle() had no in_draft_battle branch at all, so a
+	# loss or retreat left the flag stuck true forever, silently swapping every later battle's
+	# deck (campaign battles included) for this stale 15-card draft deck. Confirm a loss
+	# clears the flag and increments losses, and that a subsequent ordinary campaign battle
+	# is unaffected.
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_draft_battle, "_leave_battle clears in_draft_battle on a loss")
+	check(int(game.profile.draft_arena.losses) == 1, "a loss increments the draft run's loss count")
+	game.begin_battle(0)
+	await process_frame
+	var normal_battle_cards: int = game.combat.state.draw.size() + game.combat.state.hand.size() + game.combat.state.discard.size() + game.combat.state.exhaust.size()
+	check(normal_battle_cards == game.profile.deck.size(), "a stuck in_draft_battle flag no longer corrupts an ordinary campaign battle's deck after a draft loss")
+	game._leave_battle()
+
+	# Losing SpiritContent.DRAFT_LOSS_CAP times in a row ends the run and resets it exactly
+	# like _abandon_draft() does (round/deck/current_pool/wins/losses all back to their fresh
+	# shape) via the shared g._reset_draft_run() helper, so the next run starts clean instead
+	# of inheriting a "round 8, deck already has 15 cards" leftover from the run that just
+	# ended — the second corruption bug this session found and fixed.
+	game.profile.draft_arena.deck = draft_deck.duplicate()
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	game.profile.draft_arena.losses = 0
+	SpiritSave.write(game.profile)
+	for i in range(SpiritContent.DRAFT_LOSS_CAP):
+		game.in_draft_battle = true
+		game.begin_battle(0)
+		game.combat.state.phase = "lost"
+		game._leave_battle()
+	check(not game.in_draft_battle, "in_draft_battle is clear after the run-ending loss")
+	check(int(game.profile.draft_arena.losses) == 0, "reaching DRAFT_LOSS_CAP resets losses back to 0 for the next run")
+	check(not bool(game.profile.draft_arena.active), "reaching DRAFT_LOSS_CAP ends the run (active resets to false)")
+	check(int(game.profile.draft_arena.round) == 1, "reaching DRAFT_LOSS_CAP resets round back to 1 for the next run")
+	check(game.profile.draft_arena.deck.is_empty(), "reaching DRAFT_LOSS_CAP resets the deck so the next run starts from the 8-card starter shape")
+
+	# Winning SpiritContent.DRAFT_WIN_CAP times must reset the same fields — before this
+	# session's fix, the Grand Champion ending only set active=false and left round/deck/
+	# current_pool stale, corrupting the next run started right after a win.
+	game.profile.draft_arena.deck = draft_deck.duplicate()
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	game.profile.draft_arena.wins = SpiritContent.DRAFT_WIN_CAP - 1
+	game.profile.draft_arena.losses = 0
+	SpiritSave.write(game.profile)
+	game.in_draft_battle = true
+	game.begin_battle(0)
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_draft_battle, "_grant_stage_rewards clears in_draft_battle after the win that hits DRAFT_WIN_CAP")
+	check(not bool(game.profile.draft_arena.active), "reaching DRAFT_WIN_CAP ends the run (active resets to false)")
+	check(int(game.profile.draft_arena.wins) == 0, "reaching DRAFT_WIN_CAP resets wins back to 0 for the next run")
+	check(int(game.profile.draft_arena.round) == 1, "reaching DRAFT_WIN_CAP resets round back to 1 for the next run")
+	check(game.profile.draft_arena.deck.is_empty(), "reaching DRAFT_WIN_CAP resets the deck for the next run")
+
+	# Regression check for a separate, smaller bug found in the same audit: 4 labels in the
+	# draft pick/battle-ready screens were hardcoded Chinese-only literals (AGENTS.md rule 2
+	# violation) instead of going through UI_TEXT — silently un-translated for an English
+	# player. Moved to ui.draft_card_cost_fmt/draft_deck_progress_fmt/draft_deck_label/
+	# draft_next_opponent_fmt; confirm the English text actually renders now.
+	game._change_language("en")
+	game.profile.draft_arena.deck = draft_deck.duplicate()
+	game.profile.draft_arena.round = 1
+	game.profile.draft_arena.active = false
+	game.profile.draft_arena.current_pool = []
+	SpiritSave.write(game.profile)
+	game.show_spirit_draft()
+	await process_frame
+	var en_pool: Array = game.profile.draft_arena.current_pool
+	var en_card: Dictionary = game.content.card(str(en_pool[0]))
+	var en_cost_label: String = game.content.ui("ui.draft_card_cost_fmt", "en") % [game.content.text(en_card.nameKey, "en"), int(en_card.cost)]
+	check(_find_label_text(game.root, en_cost_label), "draft pick tile's cost label is in English, not hardcoded Chinese")
+	var en_deck: Array = game.profile.draft_arena.deck
+	var en_progress_label: String = game.content.ui("ui.draft_deck_progress_fmt", "en") % [en_deck.size(), ", ".join(en_deck)]
+	check(_find_label_text(game.root, en_progress_label), "draft deck-progress label is in English")
+	game.profile.draft_arena.round = 8
+	game.profile.draft_arena.active = true
+	SpiritSave.write(game.profile)
+	game.show_spirit_draft()
+	await process_frame
+	check(_find_label_text(game.root, game.content.ui("ui.draft_deck_label", "en")), "draft battle-ready deck label is in English")
+	var en_start_btn: Button = game.root.find_child("DraftStartBattleBtn", true, false) as Button
+	check(en_start_btn != null and "Face Spirit Opponent" in en_start_btn.text, "draft next-opponent button is in English")
+	game._change_language("zh-Hans")
+	await process_frame
 
 	section("== visual assets: painted challenge banners & card back ==")
 	game.show_quests()
@@ -2907,12 +3540,157 @@ func _run() -> void:
 			if tab_daily != null:
 				tap_button(tab_daily, "LeaderboardTab_daily_trial")
 				await process_frame
+			# E3 Part 2: Global/Friends scope toggle. Switching scope kicks off a real
+			# SupabaseClient network fetch inside show_leaderboard()'s update_view closure (same
+			# fire-and-forget shape the existing category tabs above already exercise without
+			# awaiting the fetch itself) — only structural existence and that tapping it doesn't
+			# crash are asserted here, not fetched content, since that content depends on network
+			# reachability this suite can't rely on.
+			var scope_global: Control = lb_modal.find_child("LeaderboardScope_global", true, false) as Control
+			var scope_friends: Control = lb_modal.find_child("LeaderboardScope_friends", true, false) as Control
+			check(scope_global != null, "LeaderboardScope_global toggle exists")
+			check(scope_friends != null, "LeaderboardScope_friends toggle exists")
+			if scope_friends != null:
+				tap_button(scope_friends, "LeaderboardScope_friends")
+				await process_frame
+				check(lb_modal.is_inside_tree(), "switching to the Friends scope does not close or crash the leaderboard modal")
 			if lb_close != null:
 				tap_button(lb_close, "LeaderboardCloseBtn")
 				await process_frame
 				check(game.overlay.find_child("LeaderboardModal", true, false) == null, "LeaderboardModal closed on close tap")
 		game.show_map()
 		await process_frame
+
+	section("== friends leaderboard management (E3 Part 2) ==")
+	# All of _add_friend()/_remove_friend()/_rebuild_friends_list() (game_camp_screen.gd) are
+	# purely local — no network call — unlike the leaderboard fetch above, so this can assert on
+	# actual behavior deterministically instead of just structural existence.
+	var saved_account_friends: Dictionary = game.profile.account.duplicate(true)
+	var saved_friends_list: Array = game.profile.get("friends", []).duplicate(true)
+
+	game.profile.account.provider = "guest"
+	game.profile.account.user_id = ""
+	game.profile.friends = []
+	game.show_challenges()
+	await process_frame
+	var friends_sec: Node = game.root.find_child("FriendsSection", true, false)
+	check(friends_sec != null, "FriendsSection exists in challenges list")
+	var friends_open_btn: Control = game.root.find_child("FriendsManageBtn", true, false) as Control
+	check(friends_open_btn != null, "FriendsManageBtn exists in FriendsSection")
+	if friends_open_btn != null:
+		tap_button(friends_open_btn, "FriendsManageBtn")
+		await process_frame
+		var f_modal: Node = game.overlay.find_child("FriendsModal", true, false)
+		check(f_modal != null, "FriendsModal opened on tap")
+		if f_modal != null:
+			check(f_modal.find_child("FriendsLinkAccountBtn", true, false) != null, "a guest (not cloud-linked) sees a prompt to sign in instead of their own code")
+			check(f_modal.find_child("FriendsCopyCodeBtn", true, false) == null, "a guest has no code to copy")
+			check(_find_label_containing(f_modal, game.t("ui.friends_empty_list")), "an empty friends list shows its own empty-state message")
+			var f_close: Control = f_modal.find_child("FriendsCloseBtn", true, false) as Control
+			if f_close != null:
+				tap_button(f_close, "FriendsCloseBtn")
+				await process_frame
+				check(game.overlay.find_child("FriendsModal", true, false) == null, "FriendsModal closed on close tap")
+
+	# Now a cloud-linked account with a stable, shareable code.
+	game.profile.account.provider = "apple"
+	game.profile.account.user_id = "owner_code_123456"
+	game.show_friends_modal()
+	await process_frame
+	var f_modal2: Node = game.overlay.find_child("FriendsModal", true, false)
+	check(f_modal2 != null, "FriendsModal reopens via the game.gd delegator")
+	if f_modal2 != null:
+		check(f_modal2.find_child("FriendsLinkAccountBtn", true, false) == null, "a cloud-linked account has no sign-in prompt")
+		var copy_btn: Control = f_modal2.find_child("FriendsCopyCodeBtn", true, false) as Control
+		check(copy_btn != null, "a cloud-linked account can copy its own code")
+		if copy_btn != null:
+			tap_button(copy_btn, "FriendsCopyCodeBtn")
+			check(game._clipboard_get() == "owner_code_123456", "copying the code puts the account's real user_id on the clipboard")
+
+		var friend_code_input: LineEdit = f_modal2.find_child("FriendsCodeInput", true, false) as LineEdit
+		var nick_input: LineEdit = f_modal2.find_child("FriendsNicknameInput", true, false) as LineEdit
+		var add_btn: Control = f_modal2.find_child("FriendsAddBtn", true, false) as Control
+		check(friend_code_input != null and nick_input != null and add_btn != null, "the add-friend inputs and button exist")
+		if friend_code_input != null and nick_input != null and add_btn != null:
+			friend_code_input.text = ""
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_empty")), "submitting an empty code surfaces an error toast")
+			check(game.profile.friends.is_empty(), "an empty-code submission adds nothing")
+
+			friend_code_input.text = "bad code!"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_invalid")), "a code with disallowed characters is rejected")
+			check(game.profile.friends.is_empty(), "an invalid-format code adds nothing")
+
+			friend_code_input.text = "owner_code_123456"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_self")), "a player cannot add their own code as a friend")
+			check(game.profile.friends.is_empty(), "adding one's own code adds nothing")
+
+			friend_code_input.text = "friend_code_abcdef"
+			nick_input.text = "TestFriend"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_added_toast")), "a valid new code is accepted")
+			check(game.profile.friends.size() == 1 and str(game.profile.friends[0].get("user_id","")) == "friend_code_abcdef", "the accepted friend is stored with its code")
+			check(friend_code_input.text.is_empty(), "the code input clears itself after a successful add")
+			var remove_btn: Control = f_modal2.find_child("FriendsRemoveBtn_friend_code_abcdef", true, false) as Control
+			check(remove_btn != null, "the newly added friend appears in the list with a remove button")
+
+			friend_code_input.text = "friend_code_abcdef"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_duplicate")), "adding the same code twice is rejected")
+			check(game.profile.friends.size() == 1, "a duplicate submission does not add a second entry")
+
+			if remove_btn != null:
+				tap_button(remove_btn, "FriendsRemoveBtn_friend_code_abcdef")
+				check(_find_label_containing(game.overlay, game.t("ui.friends_removed_toast")), "removing a friend surfaces a confirmation toast")
+				check(game.profile.friends.is_empty(), "removing the only friend empties the list")
+				check(_find_label_containing(f_modal2, game.t("ui.friends_empty_list")), "the list shows its empty-state message again after the last friend is removed")
+
+		var f_close2: Control = f_modal2.find_child("FriendsCloseBtn", true, false) as Control
+		if f_close2 != null:
+			tap_button(f_close2, "FriendsCloseBtn")
+			await process_frame
+
+	game.profile.account = saved_account_friends
+	game.profile.friends = saved_friends_list
+	game.show_map()
+	await process_frame
+
+	section("== ghost arena: duel a leaderboard entry (E4) ==")
+	# combat.gd only models deck-vs-encounter, not deck-vs-deck (see content.ghost_arena_
+	# encounter()'s own comment), so this doesn't wait on show_leaderboard()'s real, async
+	# SupabaseClient fetch to render a row's duel button — the same reason the leaderboard
+	# section above never asserts on fetched row content either — and instead calls
+	# _start_ghost_duel()/begin_ghost_arena_battle() directly, exactly like begin_phantom_arena()
+	# is tested directly rather than through a tapped button.
+	game.show_challenges()
+	await process_frame
+	var ghost_gold_before: int = int(game.profile.gold)
+	game.show_leaderboard("abyss")
+	await process_frame
+	var ghost_lb_modal: Node = game.overlay.find_child("LeaderboardModal", true, false)
+	check(ghost_lb_modal != null, "LeaderboardModal opens ahead of the ghost-duel check")
+	game._start_ghost_duel("TestGhost", "sentinel", "abyss", 20)
+	await process_frame
+	check(game.overlay.find_child("LeaderboardModal", true, false) == null, "starting a ghost duel closes the leaderboard modal")
+	check(game.in_ghost_arena, "_start_ghost_duel begins a ghost arena battle")
+	check(game.ghost_arena_target.get("name","") == "TestGhost", "ghost_arena_target records the duelled entry's identity")
+	check(game.combat != null and game.combat.state.enemies.size() > 0 and int(game.combat.state.enemies[0].get("max_health", 0)) > 0, "the ghost battle has a real, scaled enemy")
+	check(str(game.combat.state.enemies[0].get("name","")) == "TestGhost", "the ghost battle's enemy is named after the duelled entry")
+	game.combat.state.phase = "won"
+	game._grant_stage_rewards()
+	check(not game.in_ghost_arena, "_grant_stage_rewards clears in_ghost_arena after granting")
+	check(int(game.profile.gold) > ghost_gold_before, "winning a ghost duel grants gold")
+
+	# Loss path, mirroring the phantom-arena shortcut test's own shape (ghost_arena_target is
+	# still set from the win test above, so this reuses the same synthesized ghost).
+	game.begin_ghost_arena_battle()
+	await process_frame
+	check(game.in_ghost_arena, "begin_ghost_arena_battle() starts a ghost arena battle directly")
+	game.combat.state.phase = "lost"
+	game._leave_battle()
+	check(not game.in_ghost_arena, "leaving the ghost arena battle cleans up its state")
 
 	# 1d. Cultivation Meridian Modal
 	game.show_camp()
@@ -3041,7 +3819,159 @@ func _run() -> void:
 	game.battle_speed = 1.0
 	await process_frame
 
-	# 2b. Event Auto-Selection
+	# 2b. Auto-Battle actually plays more than one card (user-reported bug: auto-battle only
+	# ever auto-played the very first card of the battle, then silently stopped). Root cause
+	# was _resolve_play() calling show_battle() (whose own internal "if auto_battle_active:
+	# _maybe_step_auto_battle()" branch is the only re-trigger point) while g.resolving was
+	# still true — _maybe_step_auto_battle()'s guard clause always bailed, and nothing else
+	# ever re-invoked it, so the chain died after card 1. Fixed by re-checking only after
+	# g.resolving is genuinely reset back to false. Uses the real starting deck (guaranteed
+	# all 1-cost, per AGENTS.md, so turn 1's energy affords at least 2 plays) rather than
+	# whatever the shared profile's deck has drifted to by this point in the suite, and a
+	# sped-up battle_speed so a full auto-played battle doesn't slow this suite down.
+	var saved_deck_autobattle: Array = game.profile.deck.duplicate()
+	var saved_speed_autobattle: float = game.battle_speed
+	game.profile.deck = game.content.raw.startingDeck.duplicate()
+	game.battle_speed = 50.0
+	game.toggle_auto_battle(true)
+	game.begin_battle(0)
+	await process_frame
+
+	var second_card_guard := 0
+	while game.combat != null and game.combat.state.phase == "player" and int(game.combat.state.stats.get("cards_played", 0)) < 2 and second_card_guard < 200:
+		await create_timer(0.05).timeout
+		second_card_guard += 1
+	check(game.combat != null and int(game.combat.state.stats.get("cards_played", 0)) >= 2, "auto-battle plays a second card once the first one resolves, not just the first (regression check: was stuck at exactly 1)")
+
+	# Let the fully-automated battle run to completion with zero manual card plays, proving
+	# the re-trigger chain carries the whole fight rather than just squeezing out one extra card.
+	var win_guard := 0
+	while game.combat != null and game.combat.state.phase == "player" and win_guard < 400:
+		await create_timer(0.05).timeout
+		win_guard += 1
+	var pre_stop_cards_played: int = int(game.combat.state.stats.get("cards_played", 0)) if game.combat != null else -1
+	check(game.combat != null and game.combat.state.phase == "won", "auto-battle alone (no manual card plays) carries the battle all the way to a win (%d cards played)" % pre_stop_cards_played)
+
+	# DIAGNOSTIC: does auto-battle's "Auto Push" cross-stage chain (_finish_reward()'s own
+	# "if auto_battle_active: begin_battle(next_idx)" branch, reached via the chest-opening
+	# flow after a win) actually continue into the next stage's battle with no manual tap?
+	# Never previously verified here — the check below this comment used to call
+	# stop_auto_battle() immediately after the win, before the chest-opening chain even had a
+	# chance to run, so this exact continuation was untested.
+	var first_stage_cleared: int = int(game.current_stage)
+	var stage2_guard := 0
+	while game.auto_battle_active and int(game.current_stage) == first_stage_cleared and stage2_guard < 200:
+		await create_timer(0.05).timeout
+		stage2_guard += 1
+	check(int(game.current_stage) != first_stage_cleared, "auto-battle's Auto Push chain advances to the next stage automatically after a win, with no manual tap")
+	if int(game.current_stage) != first_stage_cleared:
+		var stage2_card_guard := 0
+		while game.combat != null and game.combat.state.phase == "player" and int(game.combat.state.stats.get("cards_played", 0)) < 1 and stage2_card_guard < 200:
+			await create_timer(0.05).timeout
+			stage2_card_guard += 1
+		check(game.combat != null and int(game.combat.state.stats.get("cards_played", 0)) >= 1, "auto-battle plays at least one card in the automatically-advanced next stage too")
+
+	game.stop_auto_battle("manual")
+	# combat.state.phase flips to "won" synchronously the instant the killing blow lands —
+	# well before _resolve_play()'s own animation chain for that card (still holding
+	# g.resolving true) actually finishes, including the finishing-blow banner sequence.
+	# Leaving immediately here would free the battle screen while that coroutine is still
+	# suspended mid-tween — same settle-before-leaving idiom e2e_playthrough.gd's
+	# _simulate_battle() already uses after its own win/loss loop, for the same reason.
+	var autobattle_settle_wait := 0.0
+	while game.resolving and autobattle_settle_wait < 5.0:
+		await create_timer(0.1).timeout
+		autobattle_settle_wait += 0.1
+
+	game.profile.deck = saved_deck_autobattle
+	game.battle_speed = saved_speed_autobattle
+	game._leave_battle()
+	await process_frame
+
+	# 2c. Regression check for a second bug the fix above surfaced: leaving battle (tapping
+	# "⌂") immediately after a killing blow. combat.state.phase flips to "won" synchronously
+	# the instant the hit lands, well before _resolve_play()'s finishing-blow banner sequence
+	# actually finishes — and the win/loss outcome screen (the only place the "⌂" button goes
+	# away) doesn't replace the battle screen until that whole chain completes, so a real
+	# player really can tap leave while it's still animating. This used to free g.overlay's
+	# children out from under the still-suspended _animate_finishing_blow() coroutine,
+	# crashing with "Cannot call method 'queue_free' on a previously freed instance." Fixed
+	# with is_instance_valid() guards there (game_battle_screen.gd), the same pattern
+	# show_chapter_transition()'s fix already uses. As with that fix, the real proof is "no
+	# SCRIPT ERROR in a full run's log" (confirmed by temporarily reverting the guards and
+	# re-running) — this check() is the closest a check() gets, confirming the game is at
+	# least left in a working state.
+	# Deliberately left at normal (1.0) battle_speed for this one check, not sped up like the
+	# tests above: _animate_finishing_blow()'s whole sequence is a fixed ~1.2s of real tween
+	# time, and the point of this test is to land inside that window, not race past it — a
+	# sped-up sequence can finish faster than a single process_frame, making the window too
+	# narrow to reliably hit rather than just making the test faster.
+	game.begin_battle(0)
+	await process_frame
+	# Force a guaranteed-lethal, guaranteed-attack card into hand[0] rather than trusting
+	# whatever the opening draw happens to contain (the draw shuffle is seeded from wall-clock
+	# time in begin_battle(), so it isn't deterministic run to run) — "strike" is a plain
+	# 1-cost, 6-damage hit to the opponent (core.json), always affordable on turn 1.
+	game.combat.state.hand[0] = {"uid": 90001, "card_id": "strike"}
+	# begin_battle()'s per-battle flavor modifier is seeded from wall-clock time (see its own
+	# comment in game_battle_screen.gd), so every single call — this one included — has a real,
+	# non-deterministic chance of rolling one of two options that stop a single lethal hit from
+	# ending the battle: "swarm" (+1 enemy — killing only enemies[0] leaves a second one alive)
+	# and "rebirth" (each defeated enemy has a 45% chance to revive at 35% health instead of
+	# actually dying — see combat.gd's `if not enemy.revived and state.revives > 0 and
+	# rng.randf() < state.revive_chance` branch). Either way _living_count() never reaches 0,
+	# combat.state.phase never reaches "won", and _animate_enemy_hit() correctly (by its own
+	# documented condition) never calls _animate_finishing_blow() at all — so the banner this
+	# test is waiting for simply never gets created. That is not a bug in the animation code; it
+	# was this test's own unstated assumption that a single hit always ends the battle, which
+	# these rolls violate often enough in combination to matter (~9.6% swarm + ~4.3% rebirth
+	# revive, confirmed by instrumenting and reproducing each independently). Neutralize both:
+	# force every other enemy already dead so the one hit this test lands is always the last
+	# living one, and zero out the revive mechanic so that hit's death always sticks.
+	for i in game.combat.state.enemies.size():
+		game.combat.state.enemies[i].health = 1 if i == 0 else 0
+	game.combat.state.revive_chance = 0.0
+	game.combat.state.revives = 0
+	game._attempt_play_card(0, 0)
+	# Wait for _animate_finishing_blow() to actually be mid-sequence (its banner node exists)
+	# rather than guessing a delay — the banner is created right at the top of that function,
+	# well before any of its awaits, so its presence confirms the coroutine is now suspended
+	# somewhere in the vulnerable window this test means to hit.
+	var banner_guard := 0
+	while game.overlay.get_node_or_null("FinishingBlowBanner") == null and game.resolving and banner_guard < 1800:
+		await process_frame
+		banner_guard += 1
+	check(game.overlay.get_node_or_null("FinishingBlowBanner") != null, "finishing-blow banner appears mid-sequence, confirming this test actually reaches the vulnerable window")
+	game._leave_battle()
+	await process_frame
+	check(game.root != null and game.root.get_child_count() > 0, "leaving battle mid-finishing-blow-animation does not crash or leave a broken screen")
+	# _leave_battle() now bumps g.battle_session and resets g.resolving itself (see game.gd's
+	# comment on battle_session) rather than leaving both for the interrupted _resolve_play()'s
+	# own tail to eventually clear — so resolving is already false immediately, synchronously,
+	# not just eventually once that stale coroutine happens to finish.
+	check(not game.resolving, "_leave_battle() clears g.resolving immediately, not just once the interrupted coroutine's own tail eventually runs")
+	game.show_map()
+	await process_frame
+	check(game.root.find_child("MapAutoPushBtn", true, false) != null, "navigating to the map right after leaving mid-animation actually shows the map")
+	# The interrupted _resolve_play() still has its own tail to run (a couple more delays, then
+	# its own show_battle()/_maybe_end_turn() calls) even though the guards above make its
+	# nested _animate_finishing_blow() return early — this used to redraw a stale battle screen
+	# over the map a moment later, since that tail called show_battle() unconditionally with no
+	# way to tell "the player already left". Fixed by _resolve_play() capturing g.battle_session
+	# at entry and checking it again right before show_battle(): _leave_battle()'s bump above
+	# means the captured value no longer matches, so the stale tail now returns instead of
+	# calling show_battle(). Give that tail's remaining real-time delays a generous window to
+	# actually fire (rather than just not crashing within one frame) before checking the map is
+	# still intact — this is the regression check for that fix.
+	var post_leave_wait := 0.0
+	while post_leave_wait < 3.0:
+		await create_timer(0.1).timeout
+		post_leave_wait += 0.1
+	check(game.root.find_child("MapAutoPushBtn", true, false) != null, "the stale _resolve_play() tail does not redraw the battle screen over the map once it finishes")
+	check(game.root.find_child("PlayerSprite", true, false) == null, "no battle-only PlayerSprite reappears on the map from the stale coroutine's tail")
+	check(not game.resolving, "g.resolving stays false through the stale coroutine's whole remaining tail")
+
+	# 2d. Event Auto-Selection
 	game.battle_speed = 10.0
 	game.toggle_auto_battle(true)
 	game.show_event(3, "rest")
@@ -3058,7 +3988,7 @@ func _run() -> void:
 	game.battle_speed = 1.0
 	await process_frame
 
-	# 2b. Auto battle speed cycling continuity and restart verification
+	# 2e. Auto battle speed cycling continuity and restart verification
 	game.begin_battle(0)
 	await process_frame
 	var auto_btn2: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
@@ -3111,7 +4041,6 @@ func _run() -> void:
 	game._leave_battle()
 	await process_frame
 
-
 	# 3. Map Auto Push Button
 	game.show_map()
 	await process_frame
@@ -3126,11 +4055,12 @@ func _run() -> void:
 	var samsara_sec: Node = game.root.find_child("SamsaraSection", true, false)
 	check(samsara_sec != null, "SamsaraSection renders in Camp challenges tab")
 
-	game.profile.unlocked = 249
+	game.profile.unlocked = 250
+	game.profile.difficulty = 5
 	game.show_camp()
 	await process_frame
 	var samsara_enter := game.root.find_child("SamsaraEnterBtn", true, false) as Button
-	check(samsara_enter != null, "SamsaraEnterBtn appears when campaign unlocked >= 249")
+	check(samsara_enter != null, "SamsaraEnterBtn appears when unlocked >= 250 AND difficulty >= 5")
 	game.show_samsara_modal()
 	await process_frame
 	var samsara_dialog: Node = game.overlay.find_child("SamsaraModal", true, false)

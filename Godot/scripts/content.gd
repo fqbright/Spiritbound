@@ -536,6 +536,26 @@ const LOGIN_REWARD_TIERS = [
 	{"days":7,"reward":100},
 ]
 
+# One-time "you just unlocked X" toasts (game._check_feature_unlocks()) for every gated Camp
+# feature — otherwise a player only ever discovers Daily Trial/Abyss/Curse Run/etc. by noticing
+# a new tab appeared. `kind` picks which profile field the threshold compares against
+# ("unlocked" = campaign stage index, "difficulty" = challenge tier). Grouped by threshold
+# rather than one entry per feature: Compendium, Daily Trial, Weekly Challenge, and Boss Rush
+# all gate on the same `unlocked >= 5` (see their own _*_section() functions in
+# game_camp_screen.gd), so they fire one combined toast — _toast() has no queue and always
+# renders at the same fixed position, so four separate calls back to back would visually stack
+# on top of each other, not display in sequence.
+const FEATURE_UNLOCKS = [
+	{"id":"ch1_features","kind":"unlocked","threshold":5,"toast_key":"ui.unlock_ch1_toast"},
+	{"id":"abyss","kind":"unlocked","threshold":10,"toast_key":"ui.unlock_abyss_toast"},
+	{"id":"difficulty_tiers","kind":"unlocked","threshold":25,"toast_key":"ui.unlock_difficulty_toast"},
+	{"id":"curse_run","kind":"difficulty","threshold":2,"toast_key":"ui.unlock_curse_run_toast"},
+	{"id":"tier_a2","kind":"unlocked","threshold":50,"toast_key":"ui.unlock_tier_a2_toast"},
+	{"id":"tier_a3","kind":"unlocked","threshold":100,"toast_key":"ui.unlock_tier_a3_toast"},
+	{"id":"tier_a4","kind":"unlocked","threshold":150,"toast_key":"ui.unlock_tier_a4_toast"},
+	{"id":"tier_a5","kind":"unlocked","threshold":200,"toast_key":"ui.unlock_tier_a5_toast"},
+]
+
 const RELICS = [
 	{"id":"foxCharm","icon":"✦","icon_mark":"flame","color":"ffb765","zh":"绯狐护符","en":"Fox Charm","detail":"第 2 回合额外获得 1 点能量。","detail_en":"Gain 1 extra Energy on Turn 2."},
 	{"id":"starShard","icon":"✧","icon_mark":"sparkle","color":"a2d9ff","zh":"碎星石","en":"Star Shard","detail":"每回合第一张攻击牌额外造成 2 点伤害。","detail_en":"First attack each turn deals +2 damage."},
@@ -624,6 +644,16 @@ const RELIC_RESONANCES = [
 # lives here, purely as a UI/economy rule, so a card can be Spirit-Smithed to +1 once and,
 # on a later rest-site visit, Awakened to +2, then no further.
 const MAX_CARD_UPGRADE := 2
+
+# Draft Arena (see game_camp_screen.gd's show_spirit_draft() and game_battle_screen.gd's
+# _leave_battle()): a run ends either in a Grand Champion toast at DRAFT_WIN_CAP wins or a
+# run-completed toast at DRAFT_LOSS_CAP losses. Both paths must reset the same fields
+# _abandon_draft() resets (round/deck/current_pool/wins/losses) so the next run starts clean.
+const DRAFT_WIN_CAP := 6
+const DRAFT_LOSS_CAP := 3
+# Caps profile.friends so a pasted-code-in-a-loop mistake (or a griefing attempt) can't grow the
+# leaderboards' `user_id=in.(...)` PostgREST filter into an unbounded URL.
+const FRIEND_LIST_MAX := 50
 
 const RUNES = [
 	{"id":"swift","icon":"»","icon_mark":"chevrons","zh":"迅捷","en":"Swift","detail":"每回合第一次使用免费（返还其能量费用）。","detail_en":"First play each turn is free (refunds its Energy cost).","color":"78e9ff"},
@@ -775,6 +805,38 @@ func active_rune_sets(card_runes: Dictionary) -> Array:
 		if has_all:
 			active.append(s.id)
 	return active
+
+# Phase 8 — Curse Run: opt-in, self-selected handicaps for Ascension 2+ players chasing a
+# harder fight and a permanent per-mutator badge (profile.curse_run.cleared). Two of the plan's
+# named mutators don't map onto this game's actual systems as written — see
+# Docs/GROWTH_ROADMAP.md's progress log for the substitutions (Draft Only -> Ironclad Will) and
+# why. Every key below is either a modifier combat.gd already reads for another mode
+# (extra_enemy, damage_mult) or a small, generic new one added specifically for this phase (see
+# combat.gd's own comments at each read site) — a mutator is data, not a new engine branch,
+# same principle AGENTS.md documents for encounter mechanics and card effects. `no_relics` and
+# `haunted_deck` are handled entirely at the battle-launch call site (an empty relics array / an
+# extra decay_blight spliced into the battle-only deck copy), not in combat.gd at all.
+const MUTATORS: Array[Dictionary] = [
+	{"id":"glass_cannon","nameKey":"mutator.glass_cannon.name","descKey":"mutator.glass_cannon.desc","color":"ff6b6b","player_max_hp":30,"player_dmg_mult":1.5},
+	{"id":"energy_famine","nameKey":"mutator.energy_famine.name","descKey":"mutator.energy_famine.desc","color":"6ee3ff","energy_cap":2},
+	{"id":"mirror_world","nameKey":"mutator.mirror_world.name","descKey":"mutator.mirror_world.desc","color":"c9a6ff","mirror_hp":true},
+	{"id":"haunted_deck","nameKey":"mutator.haunted_deck.name","descKey":"mutator.haunted_deck.desc","color":"9f7bd1","haunted_deck":true},
+	{"id":"ironclad_will","nameKey":"mutator.ironclad_will.name","descKey":"mutator.ironclad_will.desc","color":"b8c4c9","no_relics":true},
+	{"id":"elite_gauntlet","nameKey":"mutator.elite_gauntlet.name","descKey":"mutator.elite_gauntlet.desc","color":"ff9a4c","extra_enemy":1},
+	{"id":"barren_harvest","nameKey":"mutator.barren_harvest.name","descKey":"mutator.barren_harvest.desc","color":"d4b26a","reward_mult":0.5},
+	{"id":"berserkers_pact","nameKey":"mutator.berserkers_pact.name","descKey":"mutator.berserkers_pact.desc","color":"e34d4d","player_dmg_mult":1.3,"damage_mult":1.3},
+	{"id":"no_mercy","nameKey":"mutator.no_mercy.name","descKey":"mutator.no_mercy.desc","color":"7a7a8c","no_heal":true},
+	{"id":"fewer_draws","nameKey":"mutator.fewer_draws.name","descKey":"mutator.fewer_draws.desc","color":"8affc2","draw_penalty":1},
+]
+# Floor at which a mutator's permanent "cleared" badge unlocks — modest and achievable (matches
+# a single chapter's length) since the badge is meant to reward trying every mutator at least
+# once, not grinding any single one deep.
+const CURSE_RUN_BADGE_FLOOR := 5
+
+func mutator(id: String) -> Dictionary:
+	for m in MUTATORS:
+		if m.id == id: return m
+	return {}
 
 func _init() -> void:
 	var file := FileAccess.open("res://data/core.json", FileAccess.READ)
@@ -1211,12 +1273,12 @@ const ACHIEVEMENTS = [
 	{"id":"greatboss5","kind":"stat","stat":"defeat_great_boss","target":5,"tier":"gold","nameKey":"ach.greatboss5.name","descKey":"ach.greatboss5.desc"},
 	{"id":"rune_play50","kind":"stat","stat":"play_runed_cards","target":50,"tier":"silver","nameKey":"ach.rune_play50.name","descKey":"ach.rune_play50.desc"},
 	{"id":"collect20","kind":"card_collection","target":20,"tier":"bronze","nameKey":"ach.collect20.name","descKey":"ach.collect20.desc"},
-	# target == cards.size() (all of them collectible today, since decay_blight/void_curse
-	# currently live in core.json's "statuses" array rather than "cards" — see the spawned
-	# task about moving them). If that move happens, this target must drop by 2 (or the
-	# card_collection progress reader must start excluding rarity=="Curse"), or 100% collection
-	# becomes permanently impossible.
-	{"id":"collect_all","kind":"card_collection","target":39,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	# target must equal the number of non-Curse cards (profile.collection can never hold a
+	# Curse id — see AGENTS.md's Curse cards note — so that's the true max achievable value).
+	# This has drifted silently before as cards were added; test_runner.gd now asserts this
+	# target against the live count so a future addition fails loudly instead of quietly
+	# making "collect all" completable early.
+	{"id":"collect_all","kind":"card_collection","target":51,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
@@ -1425,6 +1487,48 @@ func phantom_arena_encounter(unlocked: int, seed_idx: int = 0) -> Dictionary:
 		"background": 2
 	}
 
+# Phase 9 — World Events: a rotating 4-week thematic event, computed purely from a `period`
+# integer (game.gd's _ensure_world_event_current() is the one place that turns wall-clock time
+# into that integer — see its own comment for why, mirroring daily_trial_tags()'s own
+# seed-in/pure-function-out shape so this can be tested at any period without mocking the
+# clock). Each event's `modifier` dict is built entirely from combat.gd keys already wired and
+# tested by Daily Trial/Boss Rush/Curse Run — no new engine surface for this phase at all.
+const WORLD_EVENTS: Array[Dictionary] = [
+	{"id":"ember_lord","nameKey":"event.ember_lord.name","descKey":"event.ember_lord.desc","color":"ff6b3d","art":"embercliff","modifier":{"damage_bonus":4}},
+	{"id":"frost_widow","nameKey":"event.frost_widow.name","descKey":"event.frost_widow.desc","color":"6ee3ff","art":"runebound","modifier":{"extra_enemy":1}},
+	{"id":"withered_king","nameKey":"event.withered_king.name","descKey":"event.withered_king.desc","color":"8a7a5a","art":"sentinel","modifier":{"no_heal":true,"health_scale":1.3}},
+	{"id":"storm_judge","nameKey":"event.storm_judge.name","descKey":"event.storm_judge.desc","color":"c9a6ff","art":"fox","modifier":{"damage_mult":1.4}},
+]
+
+func world_event_for_period(period: int) -> Dictionary:
+	var idx: int = ((period % WORLD_EVENTS.size()) + WORLD_EVENTS.size()) % WORLD_EVENTS.size()
+	return WORLD_EVENTS[idx]
+
+func world_event_encounter(period: int, unlocked: int) -> Dictionary:
+	var ev: Dictionary = world_event_for_period(period)
+	var effective_stage := clampi(unlocked, 1, 250)
+	return {
+		"chapter": 103, "level": effective_stage,
+		"health": 40 + effective_stage * 13,
+		"damage": 7 + int(effective_stage * 1.6),
+		"reward": 45 + effective_stage * 5,
+		"name": ui(str(ev.nameKey), "zh-Hans"), "name_en": ui(str(ev.nameKey), "en"), "art": str(ev.art),
+		"mechanics": {},
+		"adds": 0,
+		"background": 3
+	}
+
+# Battle screen's modifier badge reads name/name_en/detail/detail_en unconditionally — same
+# requirement content.daily_trial_modifier() already documents at its own definition.
+func world_event_modifier(period: int) -> Dictionary:
+	var ev: Dictionary = world_event_for_period(period)
+	var mod: Dictionary = ev.get("modifier", {}).duplicate(true)
+	mod["name"] = ui(str(ev.nameKey), "zh-Hans")
+	mod["name_en"] = ui(str(ev.nameKey), "en")
+	mod["detail"] = ui(str(ev.descKey), "zh-Hans")
+	mod["detail_en"] = ui(str(ev.descKey), "en")
+	return mod
+
 func hero_class(id: String) -> Dictionary:
 	for h in HERO_CLASSES:
 		if h.id == id: return h
@@ -1453,6 +1557,39 @@ func abyss_encounter(floor: int) -> Dictionary:
 		"adds": adds,
 		"background": bgs
 	}
+
+# E4 "async ghost battle": combat.gd only models deck-vs-encounter (see AGENTS.md — no PvP
+# engine exists here, and building one would be a far bigger lift than this feature needs), so
+# a duel against another player's real recorded run reuses the same "opponent as a flavor
+# Encounter" shape Phantom Arena already established with its 4 fixed PHANTOM_CULTIVATORS —
+# just with identity and strength sourced from a real submitted leaderboard row (game_camp_
+# screen.gd's show_leaderboard()) instead of fixed NPC data. No new backend table needed either:
+# player_name/character_id/category/score already round-trip through the existing public.
+# leaderboards table (see SupabaseClient.fetch_leaderboard()), which is everything this needs.
+# health/damage reuse abyss_encounter()'s own tuned curve (already validated by
+# balance_probe.gd) parameterized by a normalized "level" from _ghost_difficulty_level() below,
+# so a ghost recorded at real floor 40 hits about as hard as floor 40 actually does — this is
+# deliberately an approximation of "how strong was this run," not a move-by-move replay of it.
+func ghost_arena_encounter(ghost_name: String, ghost_char_id: String, category: String, score: int) -> Dictionary:
+	var level: int = clampi(_ghost_difficulty_level(category, score), 1, 250)
+	var enc: Dictionary = abyss_encounter(level)
+	enc.chapter = 103
+	# A real player's submitted name has no localized counterpart the way system-authored
+	# flavor text (PHANTOM_CULTIVATORS etc.) does, so it's shown as-is regardless of language.
+	enc.name = ghost_name
+	enc.name_en = ghost_name
+	enc.art = ghost_char_id
+	return enc
+
+# Every leaderboard category encodes score differently (see the _submit_*_record() call sites
+# in game.gd) — this doesn't attempt an exact decode, since the goal is only "roughly as strong
+# as the real thing," not reconstructing the original run.
+func _ghost_difficulty_level(category: String, score: int) -> int:
+	match category:
+		"abyss": return score
+		"daily_trial": return int(score / 100.0)
+		"samsara": return score * 5
+		_: return score
 
 func equipment(id: String) -> Dictionary:
 	for item in EQUIPMENT:
@@ -1602,7 +1739,9 @@ func roll_shop_stock(day_seed: int, count: int) -> Dictionary:
 #   21-50 (stages 101-250): needs runes/equipment/relics from earlier farming, not skill alone.
 # Tuned against tests/balance_probe.gd (run: ./run_tests.sh --balance) — see
 # Docs/ARCHITECTURE.md for the win-rate curve that came out of it and why these constants
-# ended up where they did.
+# ended up where they did. Band 3's 0.16 (was 0.22 until the 2026-09-17 revalidation) is the
+# fixed value — see that section and test_runner.gd's own pinning assertion for what the old
+# value broke.
 const BAND_1_END = 4
 const BAND_2_END = 10
 const BAND_3_END = 20
@@ -1615,9 +1754,54 @@ func _chapter_factor(chapter: int) -> float:
 		return base_a + float(chapter - BAND_1_END) * 0.12
 	if chapter <= BAND_3_END:
 		var base_b: float = _chapter_factor(BAND_2_END)
-		return base_b + float(chapter - BAND_2_END) * 0.22
+		return base_b + float(chapter - BAND_2_END) * 0.16
 	var base_c: float = _chapter_factor(BAND_3_END)
 	return base_c * pow(1.062, float(chapter - BAND_3_END))
+
+# C2 follow-up (2026-09-17): profile.difficulty (the A0-A5+ ladder in Camp) previously had
+# zero effect on actual combat, despite ui.camp_desc's own "更高挑战提高敌人生命与伤害"
+# ("higher tiers increase enemy HP & damage") claiming otherwise — it only ever shifted which
+# boss-equipment/elite-rune drops rotate to (_grant_stage_rewards()), a reward-variety knob,
+# not a difficulty one. Wired here for real. Extended past the old A5 ceiling to support C2's
+# Samsara (轮回): each samsara cycle raises the max selectable tier by one, uncapped (see
+# _samsara_section()'s "5 + samsara_count" eligibility, game_camp_screen.gd), so the escalating
+# tier ladder is now an actual escalating challenge ladder, not a cosmetic one, and Samsara has
+# somewhere real to send a player who has run out of harder content otherwise — every cycle
+# raises the bar again rather than a flat, one-time A6 ceiling.
+# Tier 0 (A0) is deliberately a no-op: tests/balance_probe.gd's revalidation (see
+# Docs/ARCHITECTURE.md) validated the base curve at zero extra scaling, and every existing
+# save already defaults to difficulty 0 — this must never retroactively make the validated
+# baseline harder.
+func difficulty_modifier(tier: int) -> Dictionary:
+	if tier <= 0: return {}
+	var hp_pct: int = int(round(float(tier) * 12.0))
+	var gold_pct: int = int(round(float(tier) * 10.0))
+	# Bilingual name/detail built directly into the dict rather than routed through UI_TEXT,
+	# matching game_battle_screen.gd's own _modifier() flavor-modifier pool and
+	# daily_trial_modifier()'s tag-synthesized text — both are procedurally generated content,
+	# not fixed static labels, so they carry both languages inline for the caller to pick from.
+	return {
+		"health_scale": 1.0 + float(tier) * 0.12, "damage_bonus": tier, "reward_scale": 1.0 + float(tier) * 0.1,
+		"name": "挑战等级 A%d" % tier, "name_en": "Challenge Tier A%d" % tier,
+		"detail": "敌人生命 +%d%%，伤害 +%d，金币 +%d%%" % [hp_pct, tier, gold_pct],
+		"detail_en": "Enemy HP +%d%%, damage +%d, gold +%d%%" % [hp_pct, tier, gold_pct],
+	}
+
+# Each tier from A1 up used to become selectable the instant _difficulty_tier_section()'s own
+# overall gate (unlocked>=25) opened — all the way to A5 at once, +60% enemy HP and +5 flat
+# damage per difficulty_modifier() above, with zero guardrail for a player only 25 stages in.
+# Progressive per-tier unlocking instead: A0 is always available (see difficulty_modifier()'s
+# own comment on why it's a no-op), and A1's threshold matches the section's own existing
+# unlocked>=25 gate exactly, so a first-time unlock still happens at the same moment as before —
+# only A2 and up are new gates. Tiers past A5 (Samsara's escalating ceiling) are governed
+# entirely by _difficulty_tier_section()'s own "5 + samsara_count" mechanism in
+# game_camp_screen.gd, not this table — reaching those already requires a full 250-stage clear,
+# a much stronger gate than any stage threshold here could add.
+const DIFFICULTY_TIER_UNLOCK_STAGE: Array[int] = [0, 25, 50, 100, 150, 200]
+
+func difficulty_tier_unlock_stage(tier: int) -> int:
+	if tier < DIFFICULTY_TIER_UNLOCK_STAGE.size(): return DIFFICULTY_TIER_UNLOCK_STAGE[tier]
+	return DIFFICULTY_TIER_UNLOCK_STAGE[DIFFICULTY_TIER_UNLOCK_STAGE.size() - 1]
 
 func _chapter_mechanics(chapter: int, is_great_boss: bool) -> Dictionary:
 	if chapter <= 2: return {}
@@ -1644,9 +1828,13 @@ func _chapter_adds(chapter: int, level: int, is_great_boss: bool) -> int:
 	var adds := 0
 	if level == 3:
 		# Elites: a real group fight from the deckbuilding band onward, which is exactly
-		# why the cleave finishers (stormArc/worldFlame/spiritNova) exist.
+		# why the cleave finishers (stormArc/worldFlame/spiritNova) exist. The second add used
+		# to start at chapter 15 — square in the middle of Band 3, where it stacked with that
+		# band's own steep per-chapter growth into an unwinnable wall (see the 2026-09-17
+		# revalidation note above _chapter_factor). Moved to chapter 21, Band 4's own start,
+		# where a second add is already part of what "needs farmed gear" means.
 		if chapter >= 3: adds += 1
-		if chapter >= 15: adds += 1
+		if chapter >= 21: adds += 1
 		if chapter >= 35: adds += 1
 	elif level in [1, 2]:
 		if chapter >= 6: adds += 1
@@ -1780,6 +1968,8 @@ const UI_TEXT = {
 	"ui.relic_resonance_req": {"zh-Hans":"共鸣法宝：%s", "en":"Resonance Relics: %s"},
 	"ui.relic_resonance_activated_toast": {"zh-Hans":"⚡ 激活共鸣：%s！", "en":"⚡ Resonance Activated: %s!"},
 	"ui.camp_desc": {"zh-Hans":"更高挑战提高敌人生命与伤害；Boss装备奖励会轮换。", "en":"Higher tiers boost enemy HP & ATK; Boss equipment rotates."},
+	"ui.camp_tier_samsara_unlocked": {"zh-Hans":"轮回已解锁至 A%d", "en":"Samsara has unlocked up to A%d"},
+	"ui.samsara_locked_desc": {"zh-Hans":"通关全部250关，并将挑战等级设为A%d后解锁", "en":"Clear all 250 stages with Challenge Tier set to A%d to unlock"},
 	"ui.thorns_toast": {"zh-Hans":"荆棘反伤 −%d", "en":"Thorns reflect −%d"},
 	"ui.quests_title": {"zh-Hans":"探险委托", "en":"Quest Commissions"},
 	"ui.quests_sub": {"zh-Hans":"每日与每周探险委派", "en":"Daily & weekly commissions"},
@@ -1878,6 +2068,9 @@ const UI_TEXT = {
 	"desc.special.stun": {"zh-Hans":"眩晕目标一回合", "en":"Stuns target for a turn"},
 	"desc.special.recoverExhaust": {"zh-Hans":"取回一张消耗牌", "en":"Return an exhausted card"},
 	"desc.special.recycleDiscard": {"zh-Hans":"回收弃牌堆至多2张", "en":"Recycle up to 2 discards"},
+	"desc.boomerang": {"zh-Hans":"回旋，回到手牌", "en":"Boomerang: returns to hand"},
+	"desc.reverb": {"zh-Hans":"余韵，下回合免费重施", "en":"Reverb: free recast next turn"},
+	"desc.overload": {"zh-Hans":"过载%d，下回合能量减少", "en":"Overload %d: next turn's energy is reduced"},
 	"ui.speed_toggle": {"zh-Hans":"%sx", "en":"%sx"},
 	"ui.pass_turn": {"zh-Hans":"空过", "en":"Pass"},
 	"kw.damage": {"zh-Hans":"伤害：对目标造成指定数值的生命值损失。受凝神(Focus)加成。", "en":"Damage: Deal the specified amount of HP loss to the target. Boosted by Focus."},
@@ -1898,6 +2091,9 @@ const UI_TEXT = {
 	"kw.echo": {"zh-Hans":"回响：卡牌效果有50%概率触发第二次。", "en":"Echo: 50% chance to trigger the card's effect a second time."},
 	"kw.siphon": {"zh-Hans":"虹吸：将造成伤害的25%转化为护盾。", "en":"Siphon: Converts 25% of damage dealt into Shield."},
 	"kw.resonance": {"zh-Hans":"共鸣：根据之前打出的同元素卡牌数量增加伤害。", "en":"Resonance: Increases damage based on previously played same-element cards."},
+	"kw.boomerang": {"zh-Hans":"回旋：打出后不会进入弃牌堆，而是在下回合开始时飞回手牌。", "en":"Boomerang: Instead of going to the discard pile, returns to your hand at the start of next turn."},
+	"kw.reverb": {"zh-Hans":"余韵：打出时会在下回合开始时免费再施放一次完整效果。", "en":"Reverb: Queues a free full-power recast of this card's effect for the start of next turn."},
+	"kw.overload": {"zh-Hans":"过载：立即产生强力效果，但会削减下回合的能量上限(最低降至1点)。", "en":"Overload: An immediate burst effect that reduces next turn's energy cap (floored at 1)."},
 	"ui.rest_title": {"zh-Hans":"灵火营地", "en":"Spirit Campfire"},
 	"ui.rest_prompt": {"zh-Hans":"温暖的灵火在荒野中升腾。选择一项仪式以助前路：", "en":"Warm spirit embers burn in the wild. Choose a ritual to aid your path:"},
 	"ui.rest_heal_choice": {"zh-Hans":"灵火调息 · 获得 ◆35 灵石", "en":"Spirit Rest · Gain ◆35 Gold"},
@@ -2075,6 +2271,21 @@ const UI_TEXT = {
 	"ui.compendium_tab_achievements": {"zh-Hans":"成就", "en":"Achievements"},
 	"ui.compendium_tab_chronicle": {"zh-Hans":"编年史", "en":"Chronicle"},
 	"ui.chronicle_locked": {"zh-Hans":"尚未抵达", "en":"Not yet reached"},
+	"ui.compendium_tab_career": {"zh-Hans":"典籍", "en":"Codex"},
+	"ui.career_overview_title": {"zh-Hans":"战绩概要", "en":"Lifetime Overview"},
+	"ui.career_style_title": {"zh-Hans":"战斗风格", "en":"Combat Style"},
+	"ui.career_hof_title": {"zh-Hans":"常胜卡组", "en":"Hall of Fame"},
+	"ui.career_total_battles_fmt": {"zh-Hans":"总战斗次数：%d", "en":"Total Battles: %d"},
+	"ui.career_win_rate_fmt": {"zh-Hans":"胜率：%d%%", "en":"Win Rate: %d%%"},
+	"ui.career_longest_streak_fmt": {"zh-Hans":"最长连胜：%d", "en":"Longest Win Streak: %d"},
+	"ui.career_abyss_floor_fmt": {"zh-Hans":"深渊最高层数：%d", "en":"Highest Abyss Floor: %d"},
+	"ui.career_total_damage_fmt": {"zh-Hans":"造成总伤害：%d", "en":"Total Damage Dealt: %d"},
+	"ui.career_cards_played_fmt": {"zh-Hans":"总出牌数：%d", "en":"Total Cards Played: %d"},
+	"ui.career_shield_gained_fmt": {"zh-Hans":"获得总护盾：%d", "en":"Total Shield Gained: %d"},
+	"ui.career_favorite_hero_fmt": {"zh-Hans":"最常用英雄：%s（%d 胜）", "en":"Favorite Hero: %s (%d wins)"},
+	"ui.career_favorite_card_fmt": {"zh-Hans":"最爱卡牌：%s（出牌 %d 次）", "en":"Favorite Card: %s (played %d times)"},
+	"ui.career_hof_entry_fmt": {"zh-Hans":"第%d章 · %s · 第%d回合 · %d件遗物", "en":"Chapter %d · %s · Turn %d · %d relics"},
+	"ui.career_hof_empty": {"zh-Hans":"尚未击败任何大首领", "en":"No Great Boss victories yet"},
 	"ui.camp_tab_character": {"zh-Hans":"角色", "en":"Character"},
 	"ui.camp_tab_challenges": {"zh-Hans":"挑战", "en":"Challenges"},
 	"ui.camp_tab_collection": {"zh-Hans":"收藏", "en":"Collection"},
@@ -2082,6 +2293,15 @@ const UI_TEXT = {
 	"ui.challenges_sub": {"zh-Hans":"每日试炼 · 每周挑战 · 无尽深渊 · 难度调控", "en":"Daily Trial · Weekly · Abyss · Difficulty"},
 	"ui.achievement_unlocked_toast": {"zh-Hans":"✦ 成就解锁：%s", "en":"✦ Achievement Unlocked: %s"},
 	"ui.achievement_locked": {"zh-Hans":"未解锁", "en":"Locked"},
+	"ui.unlock_ch1_toast": {"zh-Hans":"✦ 新功能解锁：驭灵秘典 · 每日试炼 · 每周主题挑战 · 首领连战！", "en":"✦ New: Spirit Compendium, Daily Trial, Weekly Challenge, Boss Rush!"},
+	"ui.unlock_abyss_toast": {"zh-Hans":"✦ 新玩法解锁：无尽深渊！", "en":"✦ New mode unlocked: Endless Abyss!"},
+	"ui.unlock_difficulty_toast": {"zh-Hans":"✦ 新功能解锁：挑战等级！", "en":"✦ New: Challenge Tiers unlocked!"},
+	"ui.unlock_tier_a2_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A2！", "en":"✦ New: Challenge Tier A2 available!"},
+	"ui.unlock_tier_a3_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A3！", "en":"✦ New: Challenge Tier A3 available!"},
+	"ui.unlock_tier_a4_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A4！", "en":"✦ New: Challenge Tier A4 available!"},
+	"ui.unlock_tier_a5_toast": {"zh-Hans":"✦ 新挑战解锁：难度等级 A5！", "en":"✦ New: Challenge Tier A5 available!"},
+	"ui.camp_tier_next_unlock": {"zh-Hans":"通关第%d关解锁更高难度", "en":"Clear stage %d to unlock the next tier"},
+	"ui.unlock_curse_run_toast": {"zh-Hans":"✦ 新玩法解锁：咒缚试炼！", "en":"✦ New mode unlocked: Curse Run!"},
 	"ach.win10.name": {"zh-Hans":"初出茅庐", "en":"First Steps"},
 	"ach.win10.desc": {"zh-Hans":"累计赢得 10 场战斗", "en":"Win 10 battles total"},
 	"ach.win50.name": {"zh-Hans":"身经百战", "en":"Battle-Tested"},
@@ -2179,6 +2399,30 @@ const UI_TEXT = {
 	"ui.leaderboard_loading": {"zh-Hans":"正在同步天机名录...", "en":"Fetching celestial rankings..."},
 	"ui.leaderboard_empty": {"zh-Hans":"暂无登榜记录，虚位以待！", "en":"No entries yet, awaiting heroes!"},
 	"ui.leaderboard_submit_toast": {"zh-Hans":"🏆 新纪录已登入封神榜！", "en":"🏆 New record published to Leaderboard!"},
+	"ui.leaderboard_scope_global": {"zh-Hans":"全服", "en":"Global"},
+	"ui.leaderboard_scope_friends": {"zh-Hans":"好友", "en":"Friends"},
+	"ui.leaderboard_friends_empty": {"zh-Hans":"暂无好友战绩，先添加好友吧", "en":"No friends on this board yet — add some first"},
+	"ui.ghost_arena_win_toast": {"zh-Hans":"✦ 击败虚影战绩！获得%d灵币", "en":"✦ Ghost defeated! +%d gold"},
+	"ui.friends_title": {"zh-Hans":"好友名录", "en":"Friends"},
+	"ui.friends_sub": {"zh-Hans":"添加好友代码，同榜比拼名次", "en":"Add a friend's code to compare rankings"},
+	"ui.friends_manage_btn": {"zh-Hans":"管理好友", "en":"Manage Friends"},
+	"ui.friends_modal_title": {"zh-Hans":"好友名录", "en":"Friends"},
+	"ui.friends_my_code_label": {"zh-Hans":"我的代码", "en":"My Code"},
+	"ui.friends_copy_btn": {"zh-Hans":"复制", "en":"Copy"},
+	"ui.friends_code_copied": {"zh-Hans":"代码已复制", "en":"Code copied"},
+	"ui.friends_need_link": {"zh-Hans":"登录账号后即可获得专属代码，供好友添加", "en":"Sign in to get your own code so friends can add you"},
+	"ui.friends_code_placeholder": {"zh-Hans":"好友代码", "en":"Friend's code"},
+	"ui.friends_nickname_placeholder": {"zh-Hans":"备注名（可选）", "en":"Nickname (optional)"},
+	"ui.friends_add_btn": {"zh-Hans":"添加好友", "en":"Add Friend"},
+	"ui.friends_add_err_empty": {"zh-Hans":"请输入好友代码", "en":"Enter a friend code"},
+	"ui.friends_add_err_invalid": {"zh-Hans":"代码格式无效", "en":"Invalid code format"},
+	"ui.friends_add_err_self": {"zh-Hans":"不能添加自己", "en":"You can't add yourself"},
+	"ui.friends_add_err_duplicate": {"zh-Hans":"该好友已添加", "en":"Already added"},
+	"ui.friends_add_err_full": {"zh-Hans":"好友数量已达上限", "en":"Friend list is full"},
+	"ui.friends_added_toast": {"zh-Hans":"✦ 好友已添加", "en":"✦ Friend added"},
+	"ui.friends_removed_toast": {"zh-Hans":"好友已移除", "en":"Friend removed"},
+	"ui.friends_empty_list": {"zh-Hans":"还没有好友，添加代码开始比拼吧", "en":"No friends yet — add a code to start comparing"},
+	"ui.friends_count": {"zh-Hans":"%d/%d 位好友", "en":"%d/%d friends"},
 	"ui.deck_filter_all": {"zh-Hans":"全部", "en":"All"},
 	"ui.deck_filter_attack": {"zh-Hans":"攻击", "en":"Attack"},
 	"ui.deck_filter_skill": {"zh-Hans":"技能", "en":"Skill"},
@@ -2193,6 +2437,7 @@ const UI_TEXT = {
 	"ui.deck_filter_elem_poison": {"zh-Hans":"毒", "en":"Poison"},
 	"ui.deck_search_placeholder": {"zh-Hans":"搜索卡牌名称或效果...", "en":"Search card name or text..."},
 	"ui.recap_title": {"zh-Hans":"✦ 战报数据回顾", "en":"✦ Battle Performance Recap"},
+	"ui.recap_turns": {"zh-Hans":"回合数: %d", "en":"Turns Taken: %d"},
 	"ui.recap_damage": {"zh-Hans":"造成伤害: %d", "en":"Damage Dealt: %d"},
 	"ui.recap_cards": {"zh-Hans":"出牌次数: %d", "en":"Cards Played: %d"},
 	"ui.recap_shield": {"zh-Hans":"获得护盾: %d", "en":"Shield Gained: %d"},
@@ -2212,6 +2457,18 @@ const UI_TEXT = {
 	"ui.auth_cloud_success": {"zh-Hans":"云端存档已成功更新！", "en":"Cloud save updated successfully!"},
 	"ui.auth_sign_out": {"zh-Hans":"退出账号", "en":"Sign Out"},
 	"ui.auth_sign_out_confirm": {"zh-Hans":"已退出账号，当前保留为本地游客数据。", "en":"Signed out. Retained as local guest data."},
+	# Pre-existing bug fix: show_samsara_modal()'s cancel button already calls t("ui.cancel"),
+	# but this key never existed in UI_TEXT or core.json's translations table, so it was
+	# rendering the literal string "ui.cancel" to real players instead of an actual label —
+	# found while looking for a confirmation-modal pattern to reuse for account deletion below.
+	"ui.cancel": {"zh-Hans":"取消", "en":"Cancel"},
+	"ui.account_delete_btn": {"zh-Hans":"删除账号", "en":"Delete Account"},
+	"ui.account_delete_desc": {"zh-Hans":"永久删除云端存档与排行榜记录，且无法撤销", "en":"Permanently deletes your cloud save and leaderboard records — cannot be undone"},
+	"ui.account_delete_modal_title": {"zh-Hans":"删除账号？", "en":"Delete Account?"},
+	"ui.account_delete_modal_desc": {"zh-Hans":"此操作将永久删除你的云端存档与排行榜记录，且无法撤销。本地进度也会重置为全新状态。", "en":"This permanently deletes your cloud save and leaderboard records — this cannot be undone. Local progress will also reset to a fresh state."},
+	"ui.account_delete_confirm_btn": {"zh-Hans":"确认删除", "en":"Delete Permanently"},
+	"ui.account_delete_success_toast": {"zh-Hans":"账号已删除", "en":"Account deleted"},
+	"ui.account_delete_failed_toast": {"zh-Hans":"删除失败，请检查网络后重试", "en":"Deletion failed — check your connection and try again"},
 	"ui.auth_quick_title": {"zh-Hans":"快捷登录", "en":"Quick Sign-In"},
 	"ui.auth_guest_start": {"zh-Hans":"以游客身份体验", "en":"Continue as Guest"},
 	"ui.auth_email_tab": {"zh-Hans":"邮箱登录", "en":"Email Sign In"},
@@ -2274,6 +2531,10 @@ const UI_TEXT = {
 	"ui.draft_victory_toast": {"zh-Hans":"轮抽斩获第 %d 胜！获得 %d 金币与通行证经验！", "en":"Draft victory %d! Earned %d gold and pass XP!"},
 	"ui.draft_grand_champion": {"zh-Hans":"✦ 恭喜达成六胜大圆满！荣膺灵界大宗师！", "en":"✦ 6-Win Grand Champion! Crowned Spirit Grandmaster!"},
 	"ui.draft_run_ended": {"zh-Hans":"轮抽试炼结束！最终战绩: %d 胜。", "en":"Draft run completed! Final record: %d wins."},
+	"ui.draft_card_cost_fmt": {"zh-Hans":"%s (%d 费)", "en":"%s (%d Cost)"},
+	"ui.draft_deck_progress_fmt": {"zh-Hans":"当前牌组 (%d/15 张): %s", "en":"Current Deck (%d/15): %s"},
+	"ui.draft_deck_label": {"zh-Hans":"竞技场牌组 (15张):", "en":"Arena Deck (15 Cards):"},
+	"ui.draft_next_opponent_fmt": {"zh-Hans":"迎战第 %d 位灵界对手", "en":"Face Spirit Opponent #%d"},
 	"desc.blaze_tempest": {"zh-Hans":"造成 %d 点伤害并施加 2 层灼烧。若目标处于灼烧状态，回复 1 点能量。", "en":"Deal %d damage and apply 2 Burn. If target is Burning, refund 1 Energy."},
 	"desc.toxic_quake": {"zh-Hans":"造成 %d 点伤害，施加 3 层剧毒，并根据目标剧毒层数获得等量护盾。", "en":"Deal %d damage, apply 3 Poison, and gain Shield equal to target's Poison."},
 	"desc.frost_surge": {"zh-Hans":"获得 %d 点护盾，抽 2 张牌，对所有敌人施加 1 层虚弱。", "en":"Gain %d Shield, draw 2 cards, and apply 1 Weak to all enemies."},
@@ -2286,7 +2547,10 @@ const UI_TEXT = {
 	"ui.run_recap_view_btn": {"zh-Hans":"查看战报分享卡", "en":"View Run Recap"},
 	"ui.run_recap_title": {"zh-Hans":"首领征服战报", "en":"Boss Conquest Recap"},
 	"ui.run_recap_defeated_fmt": {"zh-Hans":"击败了 %s", "en":"Defeated %s"},
-	"ui.run_recap_share_hint": {"zh-Hans":"长按截图，分享你的胜利吧！", "en":"Screenshot this card to share your victory!"},
+	"ui.run_recap_share_hint": {"zh-Hans":"点击上方按钮，将战报画卷保存为图片", "en":"Tap the button above to save this recap as an image"},
+	"ui.run_recap_save_unavailable": {"zh-Hans":"此设备暂不支持生成战报图片", "en":"Recap image capture isn't available on this device"},
+	"ui.recap_poster_title": {"zh-Hans":"战报画卷", "en":"Battle Recap"},
+	"ui.recap_poster_footer": {"zh-Hans":"Spiritbound", "en":"Spiritbound"},
 	"ui.run_recap_done": {"zh-Hans":"返回", "en":"Back"},
 	"ui.log_turn_fmt": {"zh-Hans":"── 第 %d 回合 ──", "en":"── Turn %d ──"},
 	"ui.log_card_damage_fmt": {"zh-Hans":"打出「%s」，造成 %d 点伤害", "en":"Played %s, dealt %d damage"},
@@ -2308,6 +2572,50 @@ const UI_TEXT = {
 	"ui.boss_rush_stage_label_fmt": {"zh-Hans":"首领连战 · 第 %d 场", "en":"Boss Rush · Bout %d"},
 	"ui.boss_rush_progress_reward_fmt": {"zh-Hans":"连战进度 %d 场，敌人愈发强大！", "en":"Boss Rush progress: %d bouts. Enemies grow stronger!"},
 	"ui.boss_rush_no_boss": {"zh-Hans":"尚未击败任何首领", "en":"No bosses reached yet"},
+	"ui.curse_run_title": {"zh-Hans":"咒缚试炼", "en":"Curse Run"},
+	"ui.curse_run_sub": {"zh-Hans":"选择一项诅咒，作为自我施加的挑战，层数越深敌人越强", "en":"Pick one curse as a self-imposed handicap — floors escalate the deeper you go"},
+	"ui.curse_run_locked": {"zh-Hans":"达到 A2 试炼难度后解锁", "en":"Unlocks at Ascension Tier A2"},
+	"ui.curse_run_choose": {"zh-Hans":"点选下方一项诅咒开始", "en":"Tap a curse below to begin"},
+	"ui.curse_run_floor_fmt": {"zh-Hans":"第 %d 层", "en":"Floor %d"},
+	"ui.curse_run_record_fmt": {"zh-Hans":"最高纪录 第 %d 层", "en":"Best: Floor %d"},
+	"ui.curse_run_enter": {"zh-Hans":"进入试炼", "en":"Enter Trial"},
+	"ui.curse_run_cleared_fmt": {"zh-Hans":"已获得徽章 %d / 10", "en":"Badges earned: %d / 10"},
+	"ui.curse_run_stage_label_fmt": {"zh-Hans":"咒缚试炼 · 第 %d 层", "en":"Curse Run · Floor %d"},
+	"ui.curse_run_badge_toast_fmt": {"zh-Hans":"「%s」徽章已解锁！", "en":"\"%s\" badge unlocked!"},
+	"mutator.glass_cannon.name": {"zh-Hans":"脆刃", "en":"Glass Cannon"},
+	"mutator.glass_cannon.desc": {"zh-Hans":"生命上限锁定为30，造成的伤害提高50%。", "en":"Max HP locked to 30; damage dealt +50%."},
+	"mutator.energy_famine.name": {"zh-Hans":"灵力枯竭", "en":"Energy Famine"},
+	"mutator.energy_famine.desc": {"zh-Hans":"能量上限永远锁定在2点，不再随回合增长。", "en":"Energy is locked at 2 every turn and never grows."},
+	"mutator.mirror_world.name": {"zh-Hans":"颠倒乾坤", "en":"Mirror World"},
+	"mutator.mirror_world.desc": {"zh-Hans":"战斗开始时与敌方首领互换生命上限。", "en":"Swaps max HP with the boss at battle start."},
+	"mutator.haunted_deck.name": {"zh-Hans":"百鬼夜行", "en":"Haunted Deck"},
+	"mutator.haunted_deck.desc": {"zh-Hans":"本场战斗的牌组中混入额外的腐朽枯萎诅咒牌。", "en":"An extra Decay Blight curse is shuffled into this battle's deck."},
+	"mutator.ironclad_will.name": {"zh-Hans":"钢铁意志", "en":"Ironclad Will"},
+	"mutator.ironclad_will.desc": {"zh-Hans":"本场战斗不可携带任何法宝。", "en":"No relics may be carried into this battle."},
+	"mutator.elite_gauntlet.name": {"zh-Hans":"精锐试炼", "en":"Elite Gauntlet"},
+	"mutator.elite_gauntlet.desc": {"zh-Hans":"每层额外增加一名敌人。", "en":"Adds one extra enemy to every floor."},
+	"mutator.barren_harvest.name": {"zh-Hans":"贫瘠之地", "en":"Barren Harvest"},
+	"mutator.barren_harvest.desc": {"zh-Hans":"本模式获得的灵石减半。", "en":"Gold earned from this mode is halved."},
+	"mutator.berserkers_pact.name": {"zh-Hans":"嗜血之约", "en":"Berserker's Pact"},
+	"mutator.berserkers_pact.desc": {"zh-Hans":"造成的伤害和受到的伤害都提高30%。", "en":"Damage dealt and damage taken are both +30%."},
+	"mutator.no_mercy.name": {"zh-Hans":"孤注一掷", "en":"No Mercy"},
+	"mutator.no_mercy.desc": {"zh-Hans":"本场战斗中卡牌回复效果完全失效。", "en":"Card-based healing effects do nothing this battle."},
+	"mutator.fewer_draws.name": {"zh-Hans":"缩衣节食", "en":"Fewer Draws"},
+	"mutator.fewer_draws.desc": {"zh-Hans":"每回合抽牌数量减少1张。", "en":"Draw 1 fewer card every turn."},
+	"event.ember_lord.name": {"zh-Hans":"烬王之季", "en":"Season of the Ember Lord"},
+	"event.ember_lord.desc": {"zh-Hans":"烈焰吞噬四野，敌人的攻击愈发凶猛。", "en":"Flames consume the land — enemies strike harder than ever."},
+	"event.frost_widow.name": {"zh-Hans":"寒霜之季", "en":"Season of the Frost Widow"},
+	"event.frost_widow.desc": {"zh-Hans":"刺骨寒霜召来额外的追随者。", "en":"Bitter frost summons an extra attendant."},
+	"event.withered_king.name": {"zh-Hans":"荒芜之季", "en":"Season of the Withered King"},
+	"event.withered_king.desc": {"zh-Hans":"荒芜的诅咒滋养着敌人，且封锁一切治愈。", "en":"A withering curse swells the foe's ranks and seals away all healing."},
+	"event.storm_judge.name": {"zh-Hans":"雷罚之季", "en":"Season of the Storm Judge"},
+	"event.storm_judge.desc": {"zh-Hans":"雷霆审判降临，敌方的每一次打击都更为致命。", "en":"Thunderous judgment falls — every enemy strike lands harder."},
+	"ui.world_event_title": {"zh-Hans":"世界活动", "en":"World Event"},
+	"ui.world_event_sub": {"zh-Hans":"每4周轮换一次的限时主题试炼，可反复挑战，每期首胜额外获得徽章", "en":"A themed trial rotating every 4 weeks — fight it as often as you like, first win each period earns a badge"},
+	"ui.world_event_enter": {"zh-Hans":"进入试炼", "en":"Enter Trial"},
+	"ui.world_event_stage_label_fmt": {"zh-Hans":"世界活动 · %s", "en":"World Event · %s"},
+	"ui.world_event_badges_fmt": {"zh-Hans":"已收集徽章 %d / 4", "en":"Badges collected: %d / 4"},
+	"ui.world_event_badge_toast_fmt": {"zh-Hans":"「%s」徽章已解锁！", "en":"\"%s\" badge unlocked!"},
 	"ui.awaken_btn": {"zh-Hans":"觉醒", "en":"Awaken"},
 	"ui.awakened_label": {"zh-Hans":"已觉醒", "en":"Awakened"},
 	"ui.awakened_toast_fmt": {"zh-Hans":"%s 已觉醒为 +2！", "en":"%s has Awakened to +2!"},
@@ -2350,7 +2658,7 @@ const UI_TEXT = {
 	"ui.phantom_arena_chest_toast": {"zh-Hans":"论剑宝匣开启：获得 %d 灵石！", "en":"Duel Chest: Gained %d Gold!"},
 	"ui.run_recap_deck_highlights": {"zh-Hans":"牌组核心亮点", "en":"Deck Highlights"},
 	"ui.run_recap_share_btn": {"zh-Hans":"保存/分享战报", "en":"Share / Save Recap"},
-	"ui.run_recap_saved_toast": {"zh-Hans":"战报已生成！截图即可分享给道友。", "en":"Recap generated! Screenshot to share with peers."},
+	"ui.run_recap_saved_toast": {"zh-Hans":"战报图片已保存！", "en":"Recap image saved!"},
 	"ui.currency_gold": {"zh-Hans":"金币", "en":"Gold"},
 	"ui.currency_jade": {"zh-Hans":"灵玉", "en":"Spirit Jade"},
 	"ui.currency_dust": {"zh-Hans":"灵尘", "en":"Spirit Dust"},
@@ -2462,7 +2770,6 @@ const UI_TEXT = {
 	"ui.samsara_blessing_draw": {"zh-Hans":"灵机顿悟: 首回合摸牌 +%d", "en":"Spiritual Insight: Turn 1 Card Draw +%d"},
 	"ui.samsara_blessing_gold": {"zh-Hans":"道基深厚: 轮回开局赠送灵石 +%d", "en":"Abundant Heritage: Rebirth Gold +%d"},
 	"ui.samsara_none": {"zh-Hans":"暂未入轮回，尚未激活加护。", "en":"Not yet reincarnated. No active blessings."},
-	"ui.samsara_lock_hint": {"zh-Hans":"🔒 通关第50章或难度A5后开启轮回", "en":"🔒 Clear Chapter 50 or Difficulty A5 to unlock"},
 	"ui.samsara_enter_btn": {"zh-Hans":"开启轮回 · 逆天改命", "en":"Enter Samsara"},
 	"ui.samsara_modal_title": {"zh-Hans":"六道轮回 · 涅槃重生", "en":"Samsara Rebirth Ceremony"},
 	"ui.samsara_modal_lore": {"zh-Hans":"散尽凡躯凡尘路，九死一生踏仙途。\n轮回将重置主线关卡进度，但你收集的所有卡牌、装备、灵石灵玉与流派修为将永驻道基！", "en":"Shed the mortal coil to ascend higher into the immortal path.\nReincarnation restarts campaign stages, while preserving all your cards, equipment, currencies, masteries, and memories!"},
@@ -2472,7 +2779,6 @@ const UI_TEXT = {
 	"ui.samsara_confirm_btn": {"zh-Hans":"确认轮回 · 散功再修", "en":"Confirm Reincarnation"},
 	"ui.samsara_toast_success": {"zh-Hans":"轮回成功！褪去凡胎，道行晋升为: %s", "en":"Reincarnation complete! Ascended to: %s"},
 	"ui.camp_tier_a6_name": {"zh-Hans":"A6 · 万劫归一", "en":"A6 · Cataclysm"},
-	"ui.camp_tier_a6_desc": {"zh-Hans":"万劫降临：敌人生命提升25%，开局获得2点力量", "en":"Cataclysm: Enemies have +25% HP and start with 2 Strength"},
 	"ach.samsara1.name": {"zh-Hans":"轮回证道", "en":"Path of Samsara"},
 	"ach.samsara1.desc": {"zh-Hans":"首次经历六道轮回，散功重修登临仙境", "en":"Complete your first Samsara reincarnation"},
 	"ui.meridian_title": {"zh-Hans":"灵脉修真", "en":"Cultivation Meridians"},

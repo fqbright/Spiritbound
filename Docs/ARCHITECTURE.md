@@ -124,69 +124,43 @@ to end on a chapter boundary rather than an arbitrary stage number:
 
 - Chapters 1-4 (stages 1-20): +8% per chapter. Meant to be clearable on autopilot.
 - Chapters 5-10 (stages 21-50): +12% per chapter. Card sequencing starts to matter.
-- Chapters 11-20 (stages 51-100): +22% per chapter. Needs a deliberately built deck.
+- Chapters 11-20 (stages 51-100): +16% per chapter (was +22% — see the 2026-09-17
+  revalidation below). Needs a deliberately built deck.
 - Chapters 21-50 (stages 101-250): ×1.062 per chapter, compounding. Meant to outpace
   whatever a straight-line playthrough brings with it — the intended levers past this point
-  are runes, equipment, relics from farming earlier stages, and later in-app purchases, not
-  better play.
+  are runes, equipment, relics from farming earlier stages, hero mastery, Samsara (see below),
+  and later in-app purchases, not better play.
 
 Every 10th chapter is a "great boss" combining three mechanics at once (shield regen,
-frequent crits, a below-half-health damage spike), scaling with the arc.
+frequent crits, a below-half-health damage spike), scaling with the arc, plus one of five
+unique scripted Phase 2 transitions below 50% HP (see AGENTS.md's D4 entry) — intentionally
+"the hardest single fight in their neighborhood," not a curve mistake if a straight-through
+build finds one hard.
 
-These constants did not come from guessing. `Godot/tests/test_runner.gd` has the cheap
-static version of the check — bosses at chapters 1/10/20/50 are pinned so the curve can't
-silently flatten — and `Godot/tests/balance_probe.gd` is the full trajectory bot
-(`./run_tests.sh --balance`), a permanent suite that plays a full
-pass through the campaign: a "decent but not optimizing" heuristic bot that reads each
-enemy's telegraphed intent to decide when to block, picks the better of the three reward
-cards by the same scoring the real auto-builder uses, and retries a loss up to eight times
-before giving up (there is no permadeath in this game — a loss only resets health — so
-getting stuck after eight losses is a real signal, not bad luck).
+These constants did not come from guessing. `Godot/tests/test_runner.gd` has the permanent,
+cheap version of the check — bosses at chapters 1/10/20/50 are pinned, plus (as of
+2026-09-17) `_chapter_factor(20)`'s value and the elite add-count at chapters 19/21, so the
+curve can't silently regress back to the version that broke chapter 19 — but the bands
+themselves are tuned against `Godot/tests/balance_probe.gd` (`./run_tests.sh --balance`, or
+`--balance-quick` for a retry-capped, ~1s CI-friendly run), a from-scratch AI-driven
+playthrough simulator (see below for why "from scratch"). It drives `combat.gd` directly (no
+`Main.tscn`/node instantiation at all — simulating all 250 stages takes well under a second),
+using `combat.ai_best_play()` as the in-battle decision-maker and the same `_card_build_score`
+formula (duplicated locally, like `_predict_damage` duplicates combat.gd's bonus arithmetic
+for the same reason) real reward-picking uses to grow the deck realistically stage by stage.
+Every seed is derived from the stage/attempt index rather than the clock — the same reason
+`begin_battle()`'s own time-seeded shuffle/`active_modifier` can't be used here — so a run is
+byte-reproducible; the full run prints a trajectory digest for pinning against regressions
+once the curve is considered frozen (off by default — see the probe's own header for why).
+For the fuller write-up of one parallel rebuild of this same suite, its guardrails, and a
+standing backlog of suggestions for extending it, see
+[BALANCE_REVALIDATION.md](BALANCE_REVALIDATION.md) — this section is the canonical account of
+what's actually merged and current; treat that doc as historical/supplementary context, not a
+second source of truth, if the two ever seem to disagree.
 
-**Revalidated against the always-full-HP rules.** The bot's original tuning above assumed
-`_grant_stage_rewards()` only restored full health on a *loss*, so a win carried accumulated
-damage into the next stage and a chapter had real attrition pressure. As of the "reset full HP
-per battle, remove inter-battle healing" change, **every** stage (win or lose) resets
-`profile.health` to a flat 60 (`game_rewards_screen.gd`'s campaign, Boss Rush, Abyss, Daily
-Trial, Weekly Challenge and Phantom Arena reward paths all do this unconditionally now, and
-`begin_battle()` passes a literal `60` into `combat.create()` rather than the profile's actual
-current health). That is a deliberate, confirmed decision (moving resource pressure from HP
-management onto the gold economy — AFK Harvest, Phantom Arena — instead), but it means the
-four-band curve above was tuned against a game that no longer existed in this one respect, so
-the curve was re-run against the current rules.
-
-`balance_probe.gd` is now a permanent suite (`./run_tests.sh --balance`, or `--balance-quick`
-for CI: the same trajectory with retries capped at one, which finishes in about a second). It
-plays the campaign stage by stage with the same heuristic AI the game's autopilot uses, tops up
-stamina and gold every stage so it measures *combat* difficulty rather than the economy, drafts
-the best of the same three reward options through the real `_smart_add_card`, and stops at the
-first stage it cannot clear. Every seed is derived from the stage and attempt index — never the
-clock, which is exactly the difference from `begin_battle()`'s time-seeded `active_modifier` —
-so a run is byte-reproducible (the full run prints a trajectory digest for pinning against
-regressions). The result, against current rules:
-
-(Re-measured after the Phase 4-5 merge added relic synergies, reforging and the talent tree;
-the first wall moved out from stage 92 to stage 99, which is the new systems helping rather
-than a regression. Digest `933924288`.)
-
-- **Chapters 1-4**: 12/12 won, zero losses, ~3.2 turns per win. Still "clearable on autopilot."
-- **Chapters 5-10**: 18/18 won, zero losses, ~4.4 turns per win. Still a gentle step up.
-- **Chapters 11-20**: the band starts biting about where it is supposed to — the bot cleared
-  chapters 11-16 cleanly, then lost and retried from around chapter 17 and walled at stage 99
-  (chapter 20) after exhausting its eight retries.
-
-So the *shape* the bands describe survives the always-full-HP change: the first ten chapters stay
-lossless for a non-optimizing approach, and a deliberately built deck (runes, equipment, mixing
-cost) is what carries a player past chapter ~11. What changed is the mechanism, not the landing:
-with no inter-battle attrition, the pressure that makes chapters 11-20 hard is now entirely
-*in-fight* — `_chapter_factor`'s +22%/chapter against a fixed 60-HP starting pool — rather than
-partly accumulated damage.
-
-For the full write-up — how the bot was rebuilt, the guardrails, the reproducibility digest, and
-the standing suggestions for extending it — see [BALANCE_REVALIDATION.md](BALANCE_REVALIDATION.md).
-
-That simulation is what caught two production bugs no other test did, both invisible until
-you actually tried to win with the deck the game itself would build:
+**2026-09-15: the original probe was deleted after its one-time use** (never survived in this
+repo's history) after finding and motivating fixes for two real production bugs, both
+invisible until someone actually tried to win with the deck the game itself would build:
 
 - **`_chapter_mechanics` had a "thorns" mechanic that combat.gd never read.** It had been in
   the encounter data since the original 50-stage version — every "thorns" enemy fought
@@ -195,20 +169,93 @@ you actually tried to win with the deck the game itself would build:
 - **`_card_build_score` — the function behind both "smart-build" and "smart-add" — scored
   almost pure rarity** (Rare +30, Common +12, a small cost penalty) with no regard for what a
   card actually does. It happily filled a 25-card deck with narrow Power/Tactic utility cards
-  (`foxBlessing`, `soulBrand`, `mountainSeal`) at the expense of reliable damage, and that
-  deck then lost repeatedly to an ordinary two-enemy chapter 7 boss — a fight nowhere near the
-  intended "needs deckbuilding" band. The simulation's own reward-picking reused this same
-  function, so the bug was pulling double duty: it was wrecking both the deck the bot built
-  and the cards it chose to add to it. Rewritten to score a card by what its effects are
-  actually worth (damage, shield, heal, the new statuses), with rarity and cost as minor
-  nudges rather than the dominant term. `test_runner.gd` now asserts a plain attacker
-  outscores a same-cost pure-utility card, so this can't quietly regress.
+  at the expense of reliable damage, and that deck then lost repeatedly to an ordinary
+  two-enemy chapter 7 boss — nowhere near the intended "needs deckbuilding" band. Rewritten to
+  score a card by what its effects are actually worth, with rarity and cost as minor nudges.
 
-After both fixes, the original run of that bot cleared chapters 1-10 without a single loss and
-won 43% of unassisted attempts through chapters 11-20 before its own greedy reward-picking
-produced a curve-broken, all-expensive-cards deck that couldn't combo two plays in a turn — a
-limitation of always taking the top-scoring card, not evidence the content is unbeatable. Re-run
-against the current always-full-HP rules, the permanent suite lands in the same place: chapters
-1-10 lossless, first wall at chapter 19. That matches the intent — an unassisted, non-optimizing
-approach should start to struggle right around the deckbuilding band, and a player making
-deliberate manual choices (mixing cost, socketing runes) has room the bot didn't use.
+**2026-09-16/17: the HP-reset change made that probe's own pass/fail signal obsolete before
+anyone re-ran it.** The original bot's "getting stuck after eight losses is a real signal"
+reasoning depended on a win carrying accumulated HP damage into the next stage — real
+attrition pressure across a chapter. Once every stage (win or lose) started resetting
+`profile.health` to a flat 60 (a deliberate, confirmed decision — moving resource pressure
+onto the gold economy, AFK Harvest, Phantom Arena instead — not reverted here), that
+reasoning stopped applying, and the curve went unvalidated against the game as it actually
+plays for the better part of two milestones.
+
+**2026-09-17: revalidated.** Rebuilding the probe from scratch (the deleted original's exact
+implementation didn't survive) and running it against the current rules found a real,
+reproducible wall: an elite fight at chapter 19 — 3 enemies (2 adds) plus a "crits every 2nd
+attack" mechanic — killed an AI-piloted, smart-built deck in 4 turns on every retry, no matter
+how many attempts. Root cause was two things compounding in the same handful of chapters
+rather than at a band boundary: Band 3's 0.22/chapter additive growth (nearly double Band 2's
+0.12) and elites gaining their second add at chapter 15 — square in the middle of Band 3
+rather than lining up with Band 4's own "multi-enemy fights are expected" territory. Fixed by
+trimming Band 3 to 0.16/chapter and moving the elite add threshold to chapter 21. Re-running
+confirmed chapters 1-19 now clear reliably (Band 1/2: 100% first-try; Band 3: 97% eventually
+cleared, 93% first-try, climbing from ~3 to ~6 average turns per win as the bands progress —
+the "increasingly needs investment" shape the four bands are supposed to have). Chapter 20's
+Great Boss remains an immediate wall for this probe's baseline build (no rune-set socketing,
+no merchant purchases, no Samsara bonuses, a single non-maxed hero) — expected, not a bug,
+since that's both an intentional capstone fight and the literal first stage of Band 4, whose
+own documented intent is "needs farming, not skill alone." Continuing the probe past that one
+wall (a diagnostic-only mode real players can't use, since progress can't skip an unbeaten
+stage) showed Band 4 collapsing hard soon after without a maturing build to match its
+compounding growth — consistent with "this band assumes investment," not itself re-tuned,
+since simulating the intended farming loop (Samsara cycles, hero mastery, AFK Harvest gold,
+socketed rune sets) was out of scope for this pass. If a future pass wants to actually validate
+Band 4, modeling that farming loop — not just retrying the same static build — is the
+prerequisite, the same way this pass's own fix depended on modeling deck growth realistically
+rather than assuming a fixed deck throughout.
+
+**2026-09-17 (follow-up): Band 4 revalidated with the farming loop modeled — no curve change
+needed.** The prior pass's "collapses hard soon after chapter 20" reading turned out to be
+mostly a probe limitation, not a curve problem. `balance_probe.gd` now takes the same free,
+zero-risk choices a diligent player would at every rest/event node (Purify a Starter filler
+card into an elite one, then Smith the best-scoring un-maxed card to +1/+2 — see AGENTS.md's
+"Campfire Rest Site Rituals"), sockets a `RUNE_SETS` pair the instant both halves drop from
+elites (Flame/Gale/Stone resonance active for the rest of the run instead of sitting unused in
+`rune_inventory` forever), and spends gold at a merchant node on the Shop Purge Service when a
+Starter still remains. First pass at re-running with just those three (no gold spent
+elsewhere) pushed the wall from chapter 20 to chapter 27 — real progress, but continuing past
+it showed the same total, non-recovering collapse as before, just later.
+
+The gap turned out to be the always-available Shop's randomized daily card stock
+(`roll_shop_stock()`), which the probe's header had listed as out of scope on the assumption
+its RNG couldn't be reproduced — wrong: given a seed it's fully deterministic (a shuffled-index
+pick plus one seeded roll for the sale slot), so it doesn't need a real day boundary, only a
+seed that varies. Feeding it the chapter number as a day-seed proxy and buying the single
+best-scoring affordable card once per chapter (`_maybe_shop_visit`) turned out to matter far
+more than the free rest/event choices: this build was sitting on 8,000+ idle gold with nothing
+else to spend it on (the free Smith/Purify choices cost nothing, and Shop Purge Service only
+absorbs gold while a Starter remains to convert), so a huge resource was going completely
+unused. With shop purchases included, the wall moved to chapter 39 (stage 193, an elite,
+reproducibly — every RNG in this probe is seeded) — Band 4 clears 55/56 stages (98%) up to that
+point at 95% first-try, and `CONTINUE_PAST_WALLS=true` shows the pattern past it is occasional
+retries needed rather than a second collapse (74/90 = 82% cleared through chapter 50, 72%
+first-try, avg attempts climbing gradually to 1.8/stage) — the same "increasingly needs
+investment, not suddenly impossible" shape the four bands are supposed to have, just compressed
+into the last quarter of Band 4 instead of appearing at its very first stage.
+
+Conclusion: **`_chapter_factor`'s ×1.062 Band 4 compounding is not changed by this pass.** A
+build using every free lever plus modest, realistic gold spending clears 78% of the entire
+250-stage campaign (chapter 39 of 50) at high reliability, and continues clearing most of the
+remainder with retries rather than hard-walling — consistent with the band's documented intent
+that its last stretch, not the whole band, is where "hero mastery, Samsara, and later in-app
+purchases, not better play" become the intended levers past free-to-play farming, rather than
+that gate applying from Band 4's very first stage. Simplifications still not modeled (Samsara
+bonuses, hero mastery beyond whatever XP a single run accumulates, AFK Harvest gold, more than
+one shop card bought per chapter) all push in the direction of clearing further still, so
+chapter 39 is a floor on what a real diligent player reaches, not a ceiling.
+
+**2026-09-19: gold-economy suggestion (BALANCE_REVALIDATION.md #1) confirms the finding above
+under a real, non-topped-up economy, not just the infinite-gold assumption.** `balance_probe.gd`
+gained a `--gold`/`--balance-gold` mode that runs the identical farmed trajectory without
+topping gold up to 9999 every stage — the farming loop's shop/merchant spends are for real,
+gated by whatever `_grant_stage_rewards()` has actually paid out. Result: chapter 37 (stage
+182) before its first wall, versus chapter 40 (stage 199) with gold assumed infinite — only a
+3-chapter gap — and the run still ends with 8,798 gold unspent. The always-available Shop
+apparently can't absorb gold nearly as fast as the campaign generates it even when nothing else
+competes for it, so "can a diligent player afford this deck" already has a comfortable yes;
+this mode is diagnostic only (no depth guardrail yet — see its own header) rather than a hard
+CI gate, both because one measurement isn't enough to responsibly floor a regression check
+against and because the answer it gave was reassuring rather than alarming.

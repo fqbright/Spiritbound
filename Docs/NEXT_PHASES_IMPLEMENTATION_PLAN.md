@@ -1,6 +1,6 @@
 # Next Phases Implementation Plan: Spiritbound Post-Launch Roadmap
 
-This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. Any successor agent can immediately pick up **Phase 6** or subsequent phases following the repository standards.
+This implementation plan lays out the next sequential phases of Spiritbound development, prioritized by **Impact / Effort Ratio** without requiring external backend servers. All 10 phases are now complete — see the Completed Phases Reference below. A successor agent picking this file up next should treat it as a template for how to structure a *new* roadmap (read `Docs/GROWTH_ROADMAP.md`'s progress log for the full history first), not as a source of further pending work.
 
 ---
 
@@ -10,100 +10,36 @@ This implementation plan lays out the next sequential phases of Spiritbound deve
 - ✅ **Phase 3**: Endless Abyss Mode Expansion & Modifiers
 - ✅ **Phase 4**: Equipment Reforging & Inscription System (器灵重铸与灵纹洗练)
 - ✅ **Phase 5**: Dynamic Relic Synergies & Combo Resonance (法宝共鸣系统)
-
----
-
-## Phase 6: Career Codex & Player Statistics Dashboard (旅者典籍 / 终生战绩看板)
-**Impact: Medium-High | Effort: Low | Backend: None (Pure Local Profile)**
-
-### 1. Goal Description
-Give players a dedicated, beautifully styled **Career Codex (旅者典籍)** tab in the Compendium / Camp screen, celebrating their lifetime achievements, playstyle tendencies, and run history.
-
-### 2. Architecture & Data Schema
-- **Profile Extension (`save_store.gd`)**:
-  - `profile.career_stats`:
-    - `total_runs`: int
-    - `victories`: int
-    - `defeats`: int
-    - `total_damage_dealt`: int
-    - `total_shield_gained`: int
-    - `elites_slain`: int
-    - `bosses_slain`: int
-    - `max_abyss_floor`: int
-    - `longest_win_streak`: int
-    - `current_win_streak`: int
-    - `total_gold_earned`: int
-    - `total_cards_played`: int
-    - `favorite_cards`: Dictionary (card_id -> play_count)
-    - `favorite_hero`: Dictionary (hero_id -> win_count)
-    - `hall_of_fame`: Array[Dictionary] (top 3 victorious run deck snapshots)
-- **Tracking Hooks (`combat.gd`, `game_rewards_screen.gd`)**:
-  - End of combat increments damage, shield, cards played.
-  - Stage victory/defeat updates streaks, win counts, and Hall of Fame records.
-
-### 3. UI Implementation (`game_camp_screen.gd`)
-- Add a 4th tab in the Compendium catalog: **"典籍" (Codex / Career)**.
-- Section 1: **战绩概要 (Lifetime Overview)** — Total battles, win rate %, longest win streak, highest Abyss floor.
-- Section 2: **战斗风格 (Combat Style)** — Total damage, cards played, favorite hero archetype badge.
-- Section 3: **常胜卡组 (Hall of Fame)** — Showcase top deck snapshots with card tiles and relic badges.
-
-### 4. Verification Plan
-- `test_runner.gd`: Assert stats tracking and lifetime counters increment correctly on combat actions and victory.
-- `ui_smoke.gd`: Assert Compendium 4th tab navigation and unblocked clickability.
-- `./run_tests.sh`: 0 failures across all 6 verification suites.
-
----
-
-## Phase 7: New Combat Keywords — Retain, Echo, Overload (新战斗词条系统)
-**Impact: High | Effort: Medium | Backend: None**
-
-### 1. Goal Description
-Expand combat depth and card variety by introducing 3 core keywords that create novel deckbuilding strategies:
-1. **留存 (Retain)**: The card is not discarded at the end of turn, remaining in hand until played.
-2. **灵响 (Echo)**: When played, queues an echo of its primary effect to cast for free at the start of the next player turn.
-3. **过载 (Overload)**: Provides an immediate explosive tempo effect (e.g. 0-cost or high power) but reduces maximum energy on the subsequent turn.
-
-### 2. Combat Rules Integration (`combat.gd`)
-- `end_turn()`: Retain cards stay in hand while other cards go to discard pile.
-- `start_turn()`: Drains `state.echo_queue`, firing queued abilities before normal play.
-- Overload counter reduces turn energy formula: `max(1, base_energy - state.overload_pending)`.
-
-### 3. Content Additions (`content.gd`, `core.json`)
-- Add 6 new cards (2 for each keyword) across elemental classes.
-- Add visual keyword tooltips and glowing badge frames.
-
----
-
-## Phase 8: Mutator & "Curse Run" Challenge Mode (咒缚流局 / 词缀挑战)
-**Impact: Medium-High | Effort: Medium | Backend: None**
-
-### 1. Goal Description
-Provide high-level players (unlocked at Ascension 2+) with 10 opt-in run mutators that alter fundamental game rules for higher challenge and prestige badges:
-- **Glass Cannon (脆刃)**: Max HP capped at 30, all attack damage +50%.
-- **Energy Famine (灵力枯竭)**: Energy capped at 2 every turn.
-- **Mirror World (颠倒乾坤)**: Swap Player and Enemy starting HP.
-- **Haunted Deck (百鬼夜行)**: At each rest site, 1 random card turns into a spectral curse.
-- **Draft Only (灵火轮选)**: All card rewards follow 3-pick-1 Spirit Draft rules.
-
-### 2. UI & Camp Integration
-- Camp Challenges tab gets a "咒缚挑战 (Curse Modifiers)" selector.
-- Mutator run completion yields exclusive cosmetic badges and titles.
-
----
-
-## Phase 9: Seasonal World Events & Rotating Modifiers (限时世界活动)
-**Impact: High | Effort: Medium-High | Backend: None (Local Deterministic Calendar)**
-
-### 1. Goal Description
-Rotating 4-week thematic world events (e.g. "Season of the Ember Lord") with unique stage route modifiers, limited challenge nodes, and cosmetic seasonal rewards.
-
----
-
-## Phase 10: Battle Recap Share Card Generator (战报画卷 / 社交分享)
-**Impact: High | Effort: Medium | Backend: None**
-
-### 1. Goal Description
-Off-screen `SubViewport` screenshot generator rendering a high-aesthetic 9:16 recap poster (Hero portrait, Boss defeated, turns taken, deck build, and QR code) after Great Boss defeats and Abyss milestones.
+- ✅ **Phase 6**: Career Codex & Player Statistics Dashboard (旅者典籍) — done 2026-09-19. Added
+  as a `career` Compendium tab (8 tabs total, not the 4 this plan assumed) reusing
+  `lifetime_stats`/`abyss_record` for counters that already existed elsewhere. See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
+- ✅ **Phase 7**: New Combat Keywords (新战斗词条系统) — done 2026-09-19. Shipped as **Boomerang
+  (回旋)**/**Reverb (余韵)**/**Overload (过载)** (plan's "Retain"/"Echo" renamed — Retain would be
+  a no-op here, Echo collides with the pre-existing rune of the same name) plus 6 new cards. See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account, including a live balance-scorer
+  gap this phase's own regression testing found and fixed.
+- ✅ **Phase 8**: Mutator & "Curse Run" Challenge Mode (咒缚流局) — done 2026-09-19. Shipped as
+  `SpiritContent.MUTATORS`, 10 opt-in handicaps fought as an Abyss-shaped floor gauntlet, gated
+  at Ascension Tier A2+. One named mutator ("Draft Only") didn't fit a gold-only-reward gauntlet
+  mode and was replaced with **Ironclad Will** (no relics allowed). See
+  `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
+- ✅ **Phase 9**: Seasonal World Events & Rotating Modifiers (世界活动) — done 2026-09-19.
+  Shipped as `SpiritContent.WORLD_EVENTS`, 4 themes rotating on a 4-week period computed from
+  wall-clock time (`game._ensure_world_event_current()`) but resolved by a pure function of that
+  period integer (`content.world_event_for_period()`), so it's testable at any period without
+  mocking the clock. Reuses every combat.gd modifier key Phases 1-8 already added — no new
+  engine surface. See `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
+- ✅ **Phase 10**: Battle Recap Share Card Generator (战报画卷) — done 2026-09-19. Most of this
+  had actually already shipped under an earlier "E2" milestone (`show_run_recap()` — hero
+  portrait, boss defeated, deck highlights); this phase added the 3 real gaps against the
+  plan's literal spec: turns taken, an Abyss-milestone trigger alongside the existing Great
+  Boss one, and — the actual "off-screen SubViewport screenshot generator" the plan names —
+  real image capture behind what had been a stub Share button that only toasted "saved"
+  without saving anything. Skipped the plan's QR code (no backend, nothing for it to point
+  at). Found and fixed 2 real pre-existing bugs while wiring the Abyss trigger: a missing
+  `game.gd` delegator for `begin_abyss_battle()`, and a ~48%-of-the-time crash in the battle
+  HUD's modifier badge. See `Docs/GROWTH_ROADMAP.md`'s progress log for the full account.
 
 ---
 

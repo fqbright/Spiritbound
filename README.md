@@ -64,7 +64,7 @@ The whole suite runs headlessly from the repository root:
 ./run_tests.sh --balance-quick # the same bot, retry-capped — the CI-friendly form
 ```
 
-`test_runner.gd` covers the rules engine (575 checks). `ui_smoke.gd` walks every
+`test_runner.gd` covers the rules engine (655 checks). `ui_smoke.gd` walks every
 screen and plays a full combat turn — it exists because the simulator is
 unavailable, and it asserts things that are hard to eyeball, for example that the
 damage preview equals the damage actually dealt and that enemies execute exactly

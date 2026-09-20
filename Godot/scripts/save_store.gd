@@ -28,7 +28,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"spirit_jade":10,"spirit_dust":0,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"equipment_tiers":{},"equipment_inscriptions":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[],"history":[]},"tutorial_seen":false,"tutorials_seen":{},"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"career_stats":{"total_battles":0,"victories":0,"defeats":0,"current_win_streak":0,"longest_win_streak":0,"total_damage_dealt":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"favorite_hero":"fox_spirit","favorite_cards":{},"hall_of_fame":[]},"achievements_unlocked":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]},"boss_rush_floor":1,"boss_rush_record":0,"text_scale":1.0,"idle_harvest":{"last_claim_time":0,"last_fast_claim_day":-1},"phantom_arena":{"day":-1,"wins_today":0,"claimed_today":false},"novice_journey":{"claimed":[]},"daily_first_win":{"day":-1,"claimed":false},"combat_consumables":{"strength":0,"focus":0,"energy":0},"stamina":{"current":100,"max":100,"last_regen_time":0},"samsara_count":0,"intro_seen":false,"meridians":{}}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"spirit_jade":10,"spirit_dust":0,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"collection":collection,"upgrades":{},"relics":[],"equipment_owned":[],"equipment_slots":{},"equipment_tiers":{},"equipment_inscriptions":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":{},"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[],"history":[]},"tutorial_seen":false,"tutorials_seen":{},"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"career_stats":{"total_battles":0,"victories":0,"defeats":0,"current_win_streak":0,"longest_win_streak":0,"total_damage_dealt":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"favorite_hero":"fox_spirit","favorite_cards":{},"hall_of_fame":[]},"achievements_unlocked":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]},"boss_rush_floor":1,"boss_rush_record":0,"text_scale":1.0,"idle_harvest":{"last_claim_time":0,"last_fast_claim_day":-1},"phantom_arena":{"day":-1,"wins_today":0,"claimed_today":false},"novice_journey":{"claimed":[]},"daily_first_win":{"day":-1,"claimed":false},"combat_consumables":{"strength":0,"focus":0,"energy":0},"stamina":{"current":100,"max":100,"last_regen_time":0},"samsara_count":0,"intro_seen":false,"meridians":{},"curse_run":{"selected":"","floors":{},"records":{},"cleared":[]},"world_event_record":{"period":-1,"claimed":false,"badges":[]},"feature_unlocks_seen":[],"friends":[]}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -113,6 +113,40 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 		base.daily_first_win = {"day":-1,"claimed":false}
 	if not base.get("combat_consumables") is Dictionary:
 		base.combat_consumables = {"strength":0,"focus":0,"energy":0}
+	if not base.get("curse_run") is Dictionary:
+		base.curse_run = {"selected":"","floors":{},"records":{},"cleared":[]}
+	else:
+		if not base.curse_run.has("selected"): base.curse_run.selected = ""
+		if not base.curse_run.get("floors") is Dictionary: base.curse_run.floors = {}
+		if not base.curse_run.get("records") is Dictionary: base.curse_run.records = {}
+		if not base.curse_run.get("cleared") is Array: base.curse_run.cleared = []
+	if not base.get("world_event_record") is Dictionary:
+		base.world_event_record = {"period":-1,"claimed":false,"badges":[]}
+	else:
+		if not base.world_event_record.has("period"): base.world_event_record.period = -1
+		if not base.world_event_record.has("claimed"): base.world_event_record.claimed = false
+		if not base.world_event_record.get("badges") is Array: base.world_event_record.badges = []
+	if not base.get("feature_unlocks_seen") is Array: base.feature_unlocks_seen = []
+	# Runs unconditionally on every load, not just when the field is entirely missing: a save
+	# from before this field existed has necessarily already lived past whatever unlock
+	# thresholds it currently exceeds, so those must be backfilled as "already seen" the same
+	# way — but a save that already HAS the field (from a previous version of this game) also
+	# needs each entry checked individually, because SpiritContent.FEATURE_UNLOCKS itself grows
+	# over time (this is exactly what happened when the per-tier A2-A5 entries were added after
+	# feature_unlocks_seen already shipped). Backfilling only on total absence would have missed
+	# those for every existing player already past stage 50/100/150/200 — their very next
+	# battle win would have fired 2-4 "New!" toasts back to back for tiers they'd had available
+	# for weeks, since _toast() has no queue (see game._check_feature_unlocks()'s own comment).
+	# Idempotent either way: an id already in the array is simply skipped, so this is safe to
+	# run every single load rather than only reasoning about it once at migration time.
+	var seen_unlocks: Array = base.feature_unlocks_seen
+	for entry in SpiritContent.FEATURE_UNLOCKS:
+		var unlock_id: String = str(entry.id)
+		if seen_unlocks.has(unlock_id): continue
+		var current: int = int(base.unlocked) if str(entry.kind) == "unlocked" else int(base.difficulty)
+		if current >= int(entry.threshold): seen_unlocks.append(unlock_id)
+	base.feature_unlocks_seen = seen_unlocks
+	if not base.get("friends") is Array: base.friends = []
 	if not base.get("stamina") is Dictionary:
 		base.stamina = {"current":100,"max":100,"last_regen_time":0}
 	else:

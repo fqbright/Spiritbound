@@ -123,25 +123,73 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   *Built on:* `content.gd` card `effects`/`special` data (no schema change). 226/0 rules
   unaffected (this is 100% a game.gd rendering concern — correctly zero rules-engine change),
   UI smoke +5 checks, 0 failures.
-- `[ ]` **B4 — 本地推送提醒 (local iOS notifications)**
-  Remind players when a login-streak day or daily quest is about to expire. **Needs a native
-  iOS bridge** (Godot has no built-in local-notification API) — likely a small GDExtension or
-  a plugin. Flag for a dedicated investigation spike before committing to an implementation
-  approach; this is the one item in this list that may need a design decision from the human
-  before an agent should just start coding it.
+- `[ ]` **B4 — 本地推送提醒 (local iOS notifications)** — investigation spike done 2026-09-17,
+  design sketched 2026-09-17, still blocked on a human decision to write and verify the native
+  half on a real Mac
+  Confirmed: Godot 4 has zero built-in local-notification API, `export_presets.cfg` has no
+  `plugins/` entry (no existing Godot iOS plugin scaffolding to extend), and the real iOS
+  build is a fresh Xcode project Godot generates into `Godot/build/ios/` on every
+  `--full-export` (`deploy_ios.sh`) — not the `App/Spiritbound.xcodeproj` AGENTS.md already
+  says to ignore as an abandoned prototype. A real fix needs a small Godot iOS plugin (Swift/
+  Obj-C wrapping `UNUserNotificationCenter`, registered via a `.gdip` descriptor) that an
+  agent session on this codebase cannot compile, link, or run: this environment has no
+  `xcodebuild`/`xcrun` at all (confirmed — this is a Linux sandbox, not the Mac the deploy
+  skill's own paths assume), and Godot's iOS export step itself requires the same toolchain.
+  Writing the native source blind, with no way to compile a single line of it before the user
+  tries it on their own Mac, is exactly the risk the original flag was warning about — so this
+  stays unimplemented pending a human decision, not because the design questions (what to
+  remind about, when) are hard. Per explicit user direction, a full design sketch (triggers,
+  scheduling lifecycle, the GDScript-facing API surface, the native plugin shape, exactly what
+  a future Mac session needs to write and wire up) was written instead of code — see the
+  "B4 design sketch" progress log entry below for the complete plan. **No code from that
+  sketch has been written** — not even the cross-platform GDScript stub the sketch itself
+  flags as safe to build headlessly — so implementation starts from zero whenever picked up.
   *Builds on:* nothing yet — new native surface.
-- `[x]` **C2 — 轮回 / New Game+ 机制 (Samsara Reincarnation Prestige)** — done 2026-09-17
-  Comprehensive prestige layer unlocked after clearing all 250 stages or Ascension 5:
-  - **Rebirth & Heritage**: resets campaign progress (`unlocked = 0`, `position = 0`, `claimed_stage_events = []`) while permanently preserving all card collections, upgrades, equipment, runes, relics, masteries, currencies (Gold, Jade, Dust, Stamina), and achievements.
-  - **Samsara Blessings (`content.samsara_bonuses()`)**: scaling permanent combat perks per rebirth level:
-    - Lv 1 ("凡蜕化灵"): +6 Max HP, +50 Gold heritage.
-    - Lv 2 ("太虚凝气"): +4 Starting Shield in every battle.
-    - Lv 3 ("灵机顿悟"): +1 Card Draw on Turn 1.
-    - Lv 4+ ("九转登仙"): +4 Max HP and +2 Starting Shield per additional tier.
-  - **New Ascension Tier A6 ("万劫归一 / Cataclysm")**: Enemies have +25% HP and start with 2 Strength. Unlocked once reincarnated at least once (`samsara_count >= 1`).
-  - **Samsara Section & Modal**: `_samsara_section()` in Camp Challenges tab displaying current realm title (`content.samsara_title()`) and active blessings, with `show_samsara_modal()` explaining preserved assets vs. resets.
-  - **Achievement**: Added "轮回证道" (`samsara1`) platinum achievement.
-  *Built on:* `content.samsara_bonuses()`, `game.enter_samsara()`, `show_samsara_modal()`, `_samsara_section()`.
+- `[x]` **C2 — 轮回 / New Game+ 机制 (Samsara Reincarnation)** — done 2026-09-17, merged 2026-09-18
+  Two independently-built implementations of this item landed in parallel — a human
+  collaborator's "Samsara" alongside this agent's own earlier "Rebirth" — and were merged into
+  one final design per explicit user direction, picking specific pieces from each side rather
+  than choosing one wholesale:
+  - **Eligibility** (this agent's design, kept): `profile.unlocked >= 250` (full clear) AND
+    `profile.difficulty >= 5 + samsara_count` (challenge tier at the max tier this many cycles
+    have unlocked so far, escalating every cycle) — not also gated on hero mastery level, since
+    mastery is per-hero and would arbitrarily punish trying multiple archetypes. Replaces the
+    collaborator's initial OR-based check (`unlocked >= 249 OR difficulty >= 5`), which became
+    trivially true forever after the first cycle and would have let every later one repeat off
+    the same button with no re-escalation.
+  - **Reset scope** (collaborator's design, kept): `game.enter_samsara()` resets only
+    `unlocked`, `position`, `claimed_stage_events`, and `health` — deck, card collection,
+    upgrades, equipment, runes, and relics are all deliberately left untouched. Narrower than
+    this agent's own initial design, which also wiped those back to a fresh starting deck.
+  - **Bonus formula** (collaborator's design, kept): `content.samsara_bonuses(count)`,
+    milestone-based rather than flat-per-cycle — Lv1 +6 max_hp/+50 gold, Lv2 +4
+    starting_shield, Lv3 +1 turn1_draw, Lv4+ an additional +4 max_hp/+2 starting_shield per
+    tier past 3 — applied through the same `hero_bonuses` hook hero mastery perks already use
+    in `combat.create()`, plus `content.samsara_title(count)`'s themed realm names ("凡体肉胎"
+    through "N转极境天仙").
+  - **Tier cap** (this agent's design, kept): uncapped rather than a flat "A6 once you've
+    cycled, never grows further" ceiling — each cycle raises the max selectable difficulty
+    tier by one past the original A0-A5 ceiling (`5 + samsara_count`). `content.
+    difficulty_modifier(tier)` (health_scale/damage_bonus/reward_scale, tier 0 a deliberate
+    no-op so the already-validated base curve can't retroactively get harder) is what makes
+    every tier including 6+ a real combat effect rather than the purely cosmetic selector
+    `profile.difficulty` used to be — shared groundwork both implementations built on, not
+    exclusive to either side.
+  - Two real bugs found and fixed while merging (see the merge's own progress log entry for
+    the full account): the collaborator's separate A6-specific `combat.gd` block (a flat +25%
+    enemy HP/+2 Strength, gated on `hero_bonuses.difficulty == 6`) was redundant with the
+    smoothly-scaling `difficulty_modifier()` mechanism above, and its "+2 Strength" half had no
+    effect at all — `enemy.strength` was set but never read anywhere in the engine, the same
+    "field set but never consulted" shape as this file's own `thorns` precedent — so the whole
+    block was removed rather than kept alongside the real mechanism. `enter_samsara()`'s
+    one-time `profile.health = clampi(60 + max_hp, ...)` was dead code too, since
+    `begin_battle()` always hardcodes a flat 60 into `combat.create()` regardless of
+    `profile.health`'s stored value (the real bonus reaches combat through `hero_bonuses.
+    max_hp`, never through this display-only field) — simplified to a flat 60, matching every
+    other battle-end reset site in the game.
+  *Built on:* `_current_hero_mastery_bonuses()` (`game_rewards_screen.gd`) as the single choke
+  point all 7 `combat.create()` call sites already share; `_modal_dialog()` for the confirm
+  prompt.
 - `[x]` **D4 — 大首领专属机制 (unique Great Boss phase mechanics)** — done 2026-09-15
   Each of the 5 Great Bosses (Chapters 10, 20, 30, 40, 50 at Stage 50, 100, 150, 200, 250)
   features a unique scripted Phase 2 transition when HP falls below 50%:
@@ -197,11 +245,22 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
   rewards and item/equipment drops). Supported via `begin_hard_replay(index)` and `is_hard_replay`.
   *Builds on:* `_show_replay_mode_prompt()`, `begin_hard_replay()`.
 - `[x]` **E1 — 试炼历史走势图 (local-only)** — done 2026-09-15
-  A simple vertical-bar trend line of `daily_trial_record.best_stage` over recent days (`DailyTrialTrendChart` in `game_camp_screen.gd`). Purely local data, bounded to `DAILY_TRIAL_HISTORY_LIMIT` entries via `_ensure_daily_trial_current()`.
-  *Builds on:* `daily_trial_record.history`, `_daily_trial_trend_chart()`.
+  A simple vertical-bar trend line of `daily_trial_record.best_stage` over recent days
+  (`_daily_trial_trend_chart()` in `game_camp_screen.gd`, `DailyTrialTrendChart`/`TrendBar_*`
+  nodes). Purely local data, bounded to `SpiritContent.DAILY_TRIAL_HISTORY_LIMIT` (30) entries
+  via `_ensure_daily_trial_current()`. The checkbox/log entry briefly drifted out of sync with
+  the code — a later 2026-09-17 audit found the feature (and its existing `ui_smoke.gd`
+  coverage) already fully shipped; no functional change came from that audit, just the roadmap
+  catching up to what already existed.
+  *Builds on:* `daily_trial_record.history`, `_stat_bar()`'s ProgressBar-as-a-styled-rect trick
+  oriented vertically.
 - `[x]` **E2 — 战报分享卡片 (local-only)** — done 2026-09-15
-  Composed screenshot-friendly `RunRecapCard` for Great Boss victories rendered client-side via `show_run_recap()` in `game_rewards_screen.gd`. Surfaces hero portrait, damage dealt, cards played, shields gained, deck highlights, and share hint.
-  *Builds on:* `combat.state.stats`, `show_run_recap()`.
+  `show_run_recap()` (`game_rewards_screen.gd`): a full "Boss Conquest Recap" screen (hero
+  portrait, damage dealt, cards played, shields gained, deck highlights, a share/save button)
+  shown via `ViewRunRecapBtn` after any Great Boss kill (`pending_rewards.great_boss_kill`).
+  Same doc-sync gap as E1, found and reconciled in the same 2026-09-17 audit — already had 7
+  `ui_smoke.gd` assertions covering the full flow.
+  *Builds on:* `combat.state.stats`, `_build_victory_recap_card()`'s stat-row pattern (A3).
 - `[x]` **F2 — 独立设置页面** — done 2026-09-15
   Consolidated settings into dedicated `show_settings()` modal accessible via `SettingsButton` (gear ⚙)
   in map top bar and Camp. Configures language, battle speed (1.0x / 1.5x / 2.0x), audio mute, and
@@ -235,10 +294,41 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 - `[x]` **E3 (Part 1) — Supabase 云端多方式登录与双向云存档**
   - 集成 Supabase REST API & Auth: 邮箱密码登录/注册、一键免密设备登录、Apple / Google 第三方 ID Token 认证。
   - 双向云存档同步 (`public.player_saves`): 时间戳自动比对与冲突消解、Token 自动刷新重试、离线沙盒安全回退。
-- `[ ]` **E3 (Part 2) — 好友排行榜** (待后续增加 `public.leaderboards` 表)
-- `[ ]` **E4 — 异步"幽灵对战"**
-  Recorded-run AI opponents need a backend to store and serve run recordings. Same blocker as
-  E3; sequence after it, not before.
+- `[x]` **E3 (Part 2) — 好友排行榜**
+  No new table needed — `public.leaderboards` (used by the Part 1-adjacent global leaderboard
+  already shipped on `origin/main`) is publicly readable by design, so a friend-scoped view is
+  just that same table filtered to a specific set of `user_id`s instead of the global top-N
+  (`SupabaseClient.fetch_leaderboard_for_users`). `profile.friends` (a plain `{user_id, name}`
+  list, cloud-synced for free since the whole profile already round-trips through
+  `public.player_saves`) is built by pasting a friend's `account.user_id` — the same stable id
+  their own scores are submitted under — through a "My Code"/"Add Friend" flow in a new
+  `FriendsModal` (`game_camp_screen.gd`), and a Global/Friends scope toggle in the existing
+  leaderboard modal switches which fetch function backs the same rendering path. Add/remove is
+  local-only (no server round-trip, no verification call) so it can't add latency or fail on a
+  flaky connection — an unresolvable or mistyped code just never shows up in the filtered
+  results, the same graceful-empty handling the global board already had for zero entries.
+  Friend codes require a cloud-linked account (a guest's submission id isn't stable across
+  sessions, so there'd be nothing durable to share); the modal shows a sign-in prompt instead of
+  a code for a guest account.
+- `[x]` **E4 — 异步"幽灵对战"**
+  Shipped as a duel against a *synthesized encounter* built from a real leaderboard row, not a
+  literal move-by-move replay — `combat.gd` only ever models deck-vs-encounter (see
+  `Godot/scripts/combat.gd`'s own "No UI" boundary and AGENTS.md's file table), so a true
+  deck-vs-deck PvP engine would be a far larger lift than this feature's value justifies, and
+  redefining the scope this way also meant it needed no new backend table after all: a
+  leaderboard row's existing `player_name`/`character_id`/`category`/`score` (already public via
+  `SupabaseClient.fetch_leaderboard()`, per E3 Part 2 above) is everything
+  `content.ghost_arena_encounter()` needs to build a Phantom-Arena-shaped opponent — reusing
+  `abyss_encounter()`'s own tuned health/damage curve, parameterized by a normalized difficulty
+  level from the entry's score, so a ghost recorded at real floor 40 hits about as hard as floor
+  40 actually does. A "⚔" duel button on each leaderboard row (`GhostDuelBtn_<rank>`,
+  `game_camp_screen.gd`) launches it with the player's own real deck/relics/equipment/mastery,
+  same as Phantom Arena; a win/loss is inert like Phantom Arena/Sandbox (gold reward, no
+  streak). One real bug caught before shipping: the normal per-battle bestiary-discovery-bonus
+  call (`_grant_bestiary_discovery_bonus()`, +20 gold/+6 mastery XP the first time an encounter
+  name is seen) had to be deliberately skipped here, since a ghost's name is an arbitrary,
+  unbounded real player name rather than one of a small fixed roster — leaving it wired up would
+  have made "duel every unique name on the leaderboard once" a free, uncapped gold/XP farm.
 
 ---
 
@@ -246,6 +336,868 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-20 — E4 (Ghost Arena) shipped, completing the three "gaming experience" follow-ups
+Last of the three (feature-unlock toasts and E3 Part 2 shipped just before this, same day).
+Reconsidered E4's own framing before writing any code: the roadmap entry above used to assume
+a full move-by-move run recording, which really would need a new backend table plus a new
+deck-vs-deck combat engine `combat.gd` doesn't have. Redefined it as a duel against a
+synthesized encounter (`content.ghost_arena_encounter()`) instead — see the roadmap entry above
+for the full design and the bestiary-discovery-bonus exploit caught and skipped before shipping.
+Zero new backend surface needed: everything reads fields the leaderboard already exposes.
+Covered by 8 new `test_runner.gd` pure-function checks (encounter scaling, difficulty
+normalization) and a full win/loss lifecycle test in `ui_smoke.gd` (calls
+`begin_ghost_arena_battle()`/`_start_ghost_duel()` directly rather than waiting on the
+leaderboard's real async fetch, for the same reason the pre-existing leaderboard test never
+asserts on fetched row content — see that section's own comment).
+
+### 2026-09-20 — Progressive difficulty tier unlocking (user-reported UX gap)
+User feedback: A0-A5 all became selectable the instant Camp's difficulty section itself
+unlocked (`unlocked>=25`), with zero further guardrail — A5 alone is +60% enemy HP and +5 flat
+damage (`content.difficulty_modifier()`), a real risk to hand a player only 25 stages in. Each
+tier now needs its own campaign-progress threshold
+(`content.difficulty_tier_unlock_stage()`: A1@25 — unchanged from the section's own prior
+overall gate — A2@50, A3@100, A4@150, A5@200; tiers past A5 stay governed entirely by Samsara's
+own much stronger "full 250-stage clear" gate, untouched). Grandfathers in whatever a player
+already had selected, so this can only reveal tiers going forward, never retroactively hide an
+existing player's own active one. A newly-eligible, not-yet-selected tier gets a small
+persistent marker (reusing `_add_notification_dot()`, the same one quests use) in addition to
+a one-time toast on first crossing (4 new `FEATURE_UNLOCKS` entries, reusing the toast system
+from earlier the same day).
+
+Found and fixed a real bug in that reuse: `save_store.gd`'s `feature_unlocks_seen` backfill only
+ever ran when the field was entirely absent, which missed the case of an *existing* save (one
+that already had the field from before this change) suddenly needing the 4 new tier entries
+backfilled too — without the fix, any player already past stage 50/100/150/200 would have gotten
+those toasts fired for real, back to back, on their very next win. See AGENTS.md's Traps section
+for the general lesson (a "field missing" migration guard doesn't survive the table it backfills
+from growing new entries).
+
+### 2026-09-20 — E3 Part 2 (friend leaderboards) shipped; found & fixed a second wall-clock-content trap
+First of the three "gaming experience" follow-ups (feature-unlock toasts shipped the same day,
+just before this) picked up in order. Investigated the roadmap's own "待后续增加 `public.leaderboards`
+表" note before writing any code and found it stale: that table already exists and already backs
+the global leaderboard shipped on `origin/main` — so this shipped with zero new backend schema,
+reusing `leaderboards` (filtered to specific `user_id`s instead of the global top-N) and
+`player_saves` (a new `profile.friends` field rides the existing whole-profile cloud sync for
+free). See the roadmap entry above for the shape.
+
+While getting a clean `--all` run to commit against, Pixel-Diff failed on the shop screen alone
+with no relevant code change — traced to the real calendar day having advanced mid-session, which
+rolls `roll_shop_stock()`'s output. This is the exact same "wall-clock content defeats a visual-
+diff threshold" bug class fixed for battle seeds the day before, just on a day-granularity clock
+instead of a millisecond one, which is why it survived that entire dedup pass undetected. Fixed
+the same way: deduplicated the 6 independent `int(Time.get_unix_time_from_system()) /
+DAY_SECONDS` call sites into `SpiritGame._current_day()` plus a `test_day_override` hook, pinned
+in `visual_snapshots.gd`, and refreshed the shop baseline. See AGENTS.md's Traps section for the
+full account — if a Pixel-Diff baseline ever fails with no matching code change, check the
+calendar before assuming a real regression.
+
+### 2026-09-19 — Deduplicated the wall-clock battle seed across 7 functions, added a test hook
+
+Follow-up to the same day's Xvfb/Pixel-Diff work: that entry's two bugs (`ui_smoke.gd`'s
+finishing-blow flake, the battle-screen visual-diff noise floor) shared one root cause —
+`begin_battle()` seeds `SpiritCombat` from `Time.get_unix_time_from_system() * 1000.0`, so its
+shuffle and flavor modifier genuinely differ every call. Checked whether that formula was unique
+to `begin_battle()`: it wasn't — `begin_boss_rush_battle`, `begin_curse_run_battle`,
+`begin_sandbox_battle`, `begin_abyss_battle`, `begin_world_event_battle`, and
+`begin_phantom_arena` (all `game_camp_screen.gd`) each independently copy-pasted the identical
+line, and `begin_abyss_battle` feeds it into the same swarm/rebirth-capable `_modifier()` that
+caused both bugs above — meaning the same flake was latent for any future test touching those 6
+modes, not fixed by either of that day's two patches.
+
+**Fixed**: extracted one `SpiritGame._battle_seed()` helper (`game.gd`) that all 7 sites now call
+instead of inlining the formula, plus `test_seed_override` (an `int`, default `-1` = disabled —
+zero behavior change for real players). Any current or future test can set it before calling any
+`begin_*_battle()` function to make that mode's shuffle, flavor modifier, and enemy count fully
+reproducible in one line, rather than rediscovering and hand-patching combat state per mode the
+way the day's two earlier fixes had to. Covered by
+`tests/gut/test_battle_seed_override.gd` (4 new assertions: defaults to wall-clock when disabled,
+returns the override verbatim, reproducible across repeated calls, and `0` is treated as a real
+override rather than falling through to "disabled" — an off-by-one every sentinel-value design
+like this risks). Deliberately did not retrofit the two earlier fixes to use it — they force a
+specific scenario (an exact enemy count, revive disabled), a different and in their case more
+directly useful property than "reproducible," so leaving them as dedicated patches was more
+honest than reaching for the new hook just because it now exists.
+
+Verified with a full `xvfb-run ... ./run_tests.sh --all` (all 8 suites green) plus 3 extra
+standalone `ui_smoke.gd` re-runs after a one-off, unrelated travel-timing flake surfaced on one
+run (`"a 2-stage journey takes ~TOTAL_TRAVEL_SECONDS"` — a real-wall-clock-duration assertion,
+a different mechanism from anything touched here, reproduced clean 3/3 afterward). Not
+investigated further since it's outside this change's scope, but worth knowing it exists if it
+resurfaces.
+
+### 2026-09-19 — Pixel-Diff visual regression wired into CI as a real, hard-gated check
+
+User asked for a broader pass on reducing manual verification. Found that the Pixel-Diff suite
+(`tests/pixel_diff_test.gd`) — real perceptual diffing logic, real committed baselines — had
+never actually compared anything in this project's history: its screen-capture step
+(`visual_snapshots.gd`) needs a real rendering driver (`get_image()` returns null under
+`--headless`'s dummy renderer, the same empirically-confirmed fact Phase 10's recap capture
+below hit independently), `--snapshots` was never part of `--all`, and CI only ever ran `--all`
+— so Test 3 silently skipped all 7 screens on every run, forever, leaving visual regressions
+catchable only by a human running `--snapshots` and eyeballing images by hand.
+
+**Fixed**: `run_tests.sh`'s Pixel-Diff suite (step 8) now captures fresh current screenshots
+immediately before diffing them, and CI (`ci.yml`) installs Xvfb and wraps `./run_tests.sh --all`
+in `xvfb-run` so that capture has a display to render into — Mesa's software rasterizer
+(llvmpipe) handles it fine, no GPU needed. Added `./run_tests.sh --refresh-baselines` so
+intentionally changing a screen's layout has a one-command path to update the committed
+baseline, rather than the manual copy/import dance this would otherwise require.
+
+**Two real traps found and fixed before trusting this as a hard gate** (both now documented in
+AGENTS.md's Traps section, since either would cost a future agent real time otherwise):
+1. An undersized Xvfb virtual screen (640x480 — shorter than the game's 390x844 viewport)
+   misplaced bottom-anchored UI in a way that looked exactly like a real layout bug. It wasn't;
+   the same element renders correctly and stably under `--headless`. Fixed by using a screen at
+   least as tall as the viewport (400x900).
+2. Validated determinism first, since a hard gate that's itself flaky is worse than no gate (see
+   the `ui_smoke.gd` finishing-blow fix elsewhere today for exactly how much a flaky check
+   erodes trust in the suite) — captured two independent back-to-back runs of all 7 screens and
+   diffed them against each other with zero code changes in between, to measure the real
+   run-to-run noise floor before picking anything final. Six screens landed under 0.1%; the
+   battle screen landed at 2.25% against a 2.5% threshold, because `begin_battle()`'s draw
+   shuffle (and occasionally its flavor modifier) is wall-clock-seeded, so the captured hand
+   (and sometimes enemy count) genuinely differed every run. Fixed in `visual_snapshots.gd` by
+   forcing a fixed hand/enemy-count right after `begin_battle(0)`, dropping the noise floor to
+   0.11% — not by loosening the threshold, which would have shipped a gate one unlucky roll from
+   flaking on an unrelated PR.
+
+All 7 baselines regenerated using this exact pipeline (so future CI captures are compared
+apples-to-apples, not against whatever rendering setup produced the old ones) and committed.
+Verified with two consecutive full `xvfb-run ... ./run_tests.sh --all` runs, both clean.
+
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 10: Battle Recap Share Card shipped
+Continuing the same user-directed march through Phases 6-10 — the last of the five.
+
+**Investigated before building anything, per this phase's own established habit**: an "E2"
+milestone (predating this Phases-6-10 push, already on `origin/main`) had already shipped most
+of the plan's ask — `show_run_recap()` renders hero portrait, boss defeated, and up to 3 deck
+highlight cards, entered via a `ViewRunRecapBtn` on the reward screen after a Great Boss kill
+(`pending_rewards.great_boss_kill`). Three real gaps remained against the plan's literal spec:
+1. **Turns taken** was never shown at all (only damage/cards/shield).
+2. **Abyss milestones** never triggered the recap — only Great Boss kills did.
+3. **The Share button was a pure stub** — `func(): g._toast(g.t("ui.run_recap_saved_toast"), g.GOLD)`
+   — it toasted "saved" without saving anything, and its own hint text told the player to
+   screenshot it themselves. This is the actual "Off-screen SubViewport screenshot generator"
+   the plan asks for, and it didn't exist.
+
+**What shipped**: `_build_recap_poster_control()` builds a dedicated 720x1280 9:16 poster
+(distinct from the compact on-screen `RunRecapCard`, which is laid out for a scrollable reward
+page, not a shareable image) reusing the same data. `_capture_recap_image()` renders it
+off-screen via a temporary `SubViewport` and reads back `ViewportTexture.get_image()`.
+`_export_recap_poster()` saves that to `user://recap_<epoch>.png` and toasts success/failure.
+**Confirmed empirically** (a standalone scratch script, cleaned up after) that
+`get_image()` returns null under `godot --headless`'s dummy rendering backend — logs an
+engine-level ERROR but does not raise a catchable GDScript exception — so every layer here
+treats a null image as "capture unavailable in this environment," never a crash; a real device
+with a real GPU takes the success path. **Not implemented**: the plan's QR code — this game has
+no backend and nothing for a code to point at, so it would be purely decorative; skipped as
+disproportionate scope, same call as Phase 8 skipping a full equippable-titles system.
+
+**Turns taken** added to both the on-screen card's stat row and the new poster
+(`ui.recap_turns`, read from `g.combat.state.turn`). **Abyss milestones** (`floor % 5 == 0`,
+the same threshold `pending_boon_draft` already uses) now also set
+`pending_rewards.abyss_milestone` alongside a `pending_rewards.recap_encounter` dict — boss
+name and location baked into **both languages** at grant time, in the same branch that already
+sets the flag, rather than re-derived from `g.current_stage` when the recap screen renders:
+an Abyss battle leaves `g.current_stage` at its placeholder of 0, which would otherwise resolve
+to chapter 1's campaign encounter instead of the actual floor just fought.
+
+**Two real, pre-existing bugs found and fixed while wiring the Abyss-milestone trigger** — both
+predate this phase entirely, surfaced only because reaching this exact code path
+(`begin_abyss_battle()`, called directly rather than through its own UI button) had apparently
+never been exercised by any prior test:
+1. **`begin_abyss_battle()` had no `game.gd` delegator at all.** Every other `begin_X_battle()`
+   side mode has one; this one didn't, so `game.begin_abyss_battle()` was a nonexistent-function
+   script error from any file other than `game_camp_screen.gd` itself — including every test.
+   Confirmed by reproducing it directly (a `SCRIPT ERROR: Invalid call` that aborts the calling
+   coroutine without ever reaching `quit()`, hanging the test process at ~0% CPU — the exact
+   "silent permanent hang" shape this file's own Traps section already documents, just from a
+   different root cause than the compile error that section describes). Fixed by adding the
+   missing delegator.
+2. **A real, timing-dependent crash in the battle HUD's modifier badge**, hit on roughly every
+   other real Abyss battle. `begin_abyss_battle()` does `g.active_modifier = g._modifier(seed,
+   floor_num); g.active_modifier["boons"] = [...]` — but `_modifier()` returns a plain `{}`
+   ~48% of the time (seed-dependent, seeded from `Time.get_unix_time_from_system()`), and
+   unconditionally adding a `"boons"` key afterward turns that `{}` non-empty with no
+   `name`/`name_en`/`detail`/`detail_en` fields at all. `_build_player_stage()`'s modifier
+   badge checked `if not g.active_modifier.is_empty():` — true here — then crashed on a bare
+   `.name` Dictionary-key access. This is the exact invariant `_apply_difficulty()`'s own
+   comment and `content.daily_trial_modifier()`'s own comment already document at length
+   (**"a modifier badge reads name/name_en/detail/detail_en unconditionally whenever
+   active_modifier isn't empty"**) — `begin_abyss_battle()` is simply the one call site that
+   never got the memo, and no test had ever rolled the unlucky seed. Fixed at the read site
+   rather than only the write site: changed the guard to check "has a name," not "isn't empty,"
+   so a future caller repeating this same mistake degrades gracefully instead of crashing.
+   Verified deterministically (`game.active_modifier = {"boons": []}` then calling
+   `_build_player_stage()` directly and checking it doesn't return null) rather than trusting a
+   random seed to reproduce it — confirmed the assertion actually catches the bug by reverting
+   the fix and re-running (a weaker first version of this check, `root.get_child_count() > 0`,
+   did *not* catch it — the crash's `add_child(null)` fallout is invisible at that level since
+   `show_battle()` adds plenty of other children both before and after the broken call).
+
+**A known, pre-existing flake, explicitly not this phase's to fix**: `./run_tests.sh --all`
+intermittently fails on an unrelated, already-fragile check
+("finishing-blow banner appears mid-sequence...") that races a real ~1.2s tween against a
+frame-count-bounded poll — its own comment already documents the tradeoff ("the point of this
+test is to land inside that window, not race past it"). Reproduced this same flake in the
+Phase 9 entry below too, before any of this phase's code existed, at a roughly similar rate
+(non-deterministic across repeated runs, unrelated in subject matter to recap posters) — logged
+here for visibility rather than silently ignored, but rebuilding an inherently timing-raced
+animation check is a separate, larger job than "add a share-recap feature."
+
+**Verification**: `test_runner.gd` now at 655/0 checks (the poster Control tree builds
+correctly and is sized/populated as documented). `ui_smoke.gd`: turns-taken now asserted in
+both the on-screen card and the poster; the Share button's headless "capture unavailable" path
+exercised for real (not just reasoned about, since this suite's own dummy renderer is exactly
+the null-image case); the Abyss-milestone trigger end-to-end (flag set, boon draft still
+offered alongside it, recap screen names the real floor boss, not stage 0's campaign
+encounter); the deterministic `active_modifier` crash regression above. Full `./run_tests.sh
+--all` green from a from-scratch `Godot/.godot/` state (confirmed clean on a repeat run after
+the one flaky hit described above), including the 250-stage balance probe holding at stage 192.
+
+This closes out all 5 phases (6-10) from `Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md` the user
+asked to be taken through in one continuous pass.
+
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 9: Rotating World Events shipped
+Continuing the same user-directed march through Phases 6-10.
+
+**Design**: the plan's own framing ("Local Deterministic Calendar") is the same
+seed-in/pure-function-out shape `daily_trial_tags(day_seed)`/`weekly_challenge_encounter()`
+already use, just at a 4-week cadence — `content.world_event_for_period(period)` takes the
+period as a plain integer and does no wall-clock reads itself, so it's testable at any period
+value without mocking `Time`. The one place that turns real time into that integer is
+`game._ensure_world_event_current()` (`MONTH_SECONDS := 28 * DAY_SECONDS`, mirroring
+`_ensure_weekly_challenge_current()`'s exact shape). Unlike Daily/Weekly Trial there's nothing
+to "roll" — which of the 4 events is active is fully determined by the period, so the only
+persisted state is "has this period's one-time badge already been claimed"
+(`profile.world_event_record = {period, claimed, badges}`); historical badges always carry over
+across periods, same as Curse Run's `cleared` array.
+
+**Reused rather than invented**: every event's combat.gd modifier (`damage_bonus`,
+`extra_enemy`, `damage_mult`, `no_heal`, `health_scale`) is a key some earlier mode already
+added and this session already tested — Phase 9 adds zero new combat.gd surface. The mode
+itself (`begin_world_event_battle`) is Phantom Arena's shape almost exactly (a repeatable
+single-boss duel, no floor/streak state), except the once-per-period cosmetic badge is
+auto-granted on the first win rather than needing a separate manual chest-claim button — Curse
+Run's badge shape (Phase 8) applied here instead, since it needed one fewer moving part and
+this file already had that exact pattern proven out two phases ago.
+
+**The 4 events** (`SpiritContent.WORLD_EVENTS`): Ember Lord (fire/`damage_bonus`), Frost Widow
+(water/`extra_enemy`), Withered King (poison/`no_heal`+`health_scale`), Storm Judge
+(gale/`damage_mult`) — themed names invented in the plan's own example's spirit ("Season of the
+Ember Lord" was the plan's literal sample name, kept verbatim as event 1), not tied to the 4
+hero classes specifically since this is a world-level event, not a hero-specific one.
+
+**Verification**: `test_runner.gd` now at 651/0 checks (event rotation determinism and
+wraparound at arbitrary period values, encounter/modifier shape checks, a real battle
+confirming storm_judge's damage_mult reaches combat state), `ui_smoke.gd` new World Event
+section (render, battle entry, win badge-grant, a second win not double-granting the same
+badge, and the loss/stuck-flag regression check). Full `./run_tests.sh --all` green from a
+from-scratch `Godot/.godot/` state — one run hit an unrelated, pre-existing flaky timing check
+("finishing-blow banner appears mid-sequence") that passed cleanly on two immediate re-runs
+with zero code changes in between, confirming it as pre-existing animation-timing flakiness
+rather than anything this phase touched.
+
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 8: Curse Run Mutators shipped
+Continuing the same user-directed march through Phases 6-10.
+
+**Substitution from the plan, deliberate**: the plan named 5 of its 10 mutators explicitly and
+left 5 unnamed ("+5 more"). One of the 5 named ones, "Draft Only" (all card rewards follow the
+3-pick-1 Spirit Draft rules), doesn't fit the mode this phase actually builds: Curse Run is an
+Abyss-shaped floor gauntlet with gold-only rewards (like Boss Rush/Abyss), never card rewards at
+all, so "Draft Only" has nothing to attach to here. Replaced with **Ironclad Will (钢铁意志)**:
+no relics may be carried into the run — a purist/prestige handicap in the same spirit, and zero
+new combat.gd surface (the battle-launch call site just passes `[]` instead of
+`g.profile.relics`). The other 4 named mutators (Glass Cannon, Energy Famine, Mirror World,
+Haunted Deck) ship as specified. The 5 unnamed slots became Elite Gauntlet, Barren Harvest,
+Berserker's Pact, No Mercy, and Fewer Draws — chosen specifically to reuse existing combat.gd
+modifier keys or reward-granting logic wherever possible (see below) rather than inventing 5
+more bespoke engine hooks.
+
+**Design**: `SpiritContent.MUTATORS` (10 entries) each carry combat.gd modifier keys directly —
+`extra_enemy`/`damage_mult` reuse what the Daily Trial already added; `player_max_hp`,
+`player_dmg_mult`, `mirror_hp`, `no_heal`, `draw_penalty`, `energy_cap` are new, small, generic
+read sites (one `if` each, in `create()`/`_resolve_effects()`/`end_turn()`) — see combat.gd's
+own comments at each site for exactly why and where. `no_relics`/`haunted_deck` are deliberately
+NOT combat.gd keys: they're a deck-composition change (splice an extra `decay_blight` into a
+duplicated battle-only copy of `profile.deck`) and an equipment-list change (pass `[]` instead
+of `profile.relics`), both fully expressible at the battle-launch call site
+(`begin_curse_run_battle()` in `game_camp_screen.gd`) with no new engine branch needed at all.
+Floors reuse `content.abyss_encounter()`'s existing scaling rather than a new formula. Progress
+(`profile.curse_run.floors`/`records`) is tracked **per mutator id**, not shared — switching
+from an easy mutator to Glass Cannon at a high floor would otherwise dump a fragile 30-max-HP
+build straight into a floor scaled for a full-HP one, which is a real correctness bug, not just
+a nice-to-have. A loss costs only the attempt (floor stays put), matching the same "attempt vs.
+run" split Abyss/Boss Rush/Daily Trial/Draft Arena already use — including the same
+`_leave_battle()` stuck-flag trap this file's AGENTS.md section documents at length; verified
+directly with the same "force a loss, check the flag clears" shape `ui_smoke.gd` already uses
+for every other mode. Unlock gate is `profile.difficulty >= 2` (Ascension Tier A2+, per the
+plan's literal wording) — deliberately a *different* gating dimension than every other side
+mode here (which gate on `profile.unlocked`, campaign stage progress), since Curse Run is meant
+to be a challenge for players who've already picked a high Ascension tier, not just cleared
+some stage count.
+
+**Cosmetic badges**: reaching `SpiritContent.CURSE_RUN_BADGE_FLOOR` (5) with a given mutator at
+least once permanently unlocks that mutator's badge (`profile.curse_run.cleared`), shown as a
+✓ prefix on its own picker button forever after — deliberately not score-ranked or repeatable,
+same "did you ever do this" spirit as Career Codex's Hall of Fame (Phase 6). No new "titles"
+subsystem was built for the plan's "cosmetic badges and titles" line — the picker badge's own
+checkmark carries the whole feature; a full equippable-title system felt like scope well beyond
+what 10 opt-in handicaps warrant.
+
+**Verification**: `test_runner.gd` now at 642/0 checks (new: existence checks for all 10
+mutators, one combat-rule assertion per new modifier key — player_max_hp, player_dmg_mult,
+mirror_hp, no_heal, draw_penalty, energy_cap), `ui_smoke.gd` new Curse Run section (render,
+locked-vs-unlocked, mutator selection via a real button tap, battle entry, win rewards, badge
+unlock, and the loss/stuck-flag regression check), full `./run_tests.sh --all` green from a
+from-scratch `Godot/.godot/` state.
+
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 7: New Combat Keywords shipped
+Continuing the same user-directed march through Phases 6-10.
+
+**Naming deviations from the plan, both deliberate**: the plan's "留存/Retain" literally means
+"not discarded at end of turn," but this game has no end-of-turn hand-discard at all (AGENTS.md
+already documents this: an unplayed hand persists and grows every turn by design) — so a
+literal Retain would be a silent no-op. Renamed to **Boomerang (回旋)**: the card returns to
+hand at the start of next turn instead of sitting in discard/exhaust, the closest real mechanic
+to what "protect this card" could mean here. Separately, the plan's "灵响/Echo" collides head-on
+with the pre-existing "echo" **rune** (`content.gd`'s RUNES array; immediate, same-turn,
+50%-value re-trigger — see `kw.echo`). Two different "Echo" mechanics with different math in the
+same game would be a real source of player confusion, so the new keyword is **Reverb (余韵)**: a
+full-value free recast queued for the *start of next turn*, not the same turn. Kept
+**Overload (过载)** as named.
+
+**combat.gd (state additions only, no node/Control code)**: `state.boomerang_queue`/
+`reverb_queue` (arrays) and `overload_pending` (int) added to `create()`'s initial state.
+`play()`: Boomerang takes priority over the cycle-rune/exhaust/discard placement chain (a card
+can't sensibly be both boomerang and exhaust — no shipped card combines them, and this isn't
+arbitrated further); Reverb captures this cast's own `bonus+resonance` into `reverb_queue` so
+the free recast next turn hits exactly as hard as this one did, not whatever bonuses happen to
+apply next turn; Overload accumulates into `overload_pending` (additive, so two Overload cards
+in one hand really do compound). `end_turn()`: drains `overload_pending` into next turn's
+energy via `maxi(1, ...)` — same floor-at-1 pattern `titanBell`'s growth-cancelling discount
+already uses — then drains `boomerang_queue` straight into hand and `reverb_queue` through a
+fresh `_resolve_effects()` call, re-targeting via `_smart_target()` rather than reusing the
+original target (which may already be dead by then, same reasoning `_smart_target()` exists
+for at all).
+
+**Two pre-existing bugs found and fixed while wiring the keyword-pill UI**
+(`_big_card_face()` in `game_battle_screen.gd`, `KEYWORD_KEYS` in `game.gd`): the pill scanner
+only ever checked `effect.get("special", [])` (a per-effect array) — but every card in
+`core.json` puts `special` as a *top-level string* (`card.special`, e.g. `spiritLance`'s
+`"special": "pierce"`), never as a per-effect array. That means the pill row had been silently
+never showing Pierce/Cleave/Critical/Stun/etc. for any card that carries them via `special`
+since the tooltip system shipped — `_card_description()` reads `card.special` correctly (so the
+rules text was always right), only the *tappable pill* was blind to it. Fixed by also checking
+`card.get("special", "")` directly. Also added the missing `"poison"` entry to
+`test_runner.gd`'s `expected_keywords` list (the `kw.poison` UI_TEXT already existed and was
+bilingual-complete; the test list just never got updated when Poison shipped) and added a check
+that the test's list and `game.gd`'s real `KEYWORD_KEYS` stay identical, so this can't drift
+again silently.
+
+**Content**: 6 new Universal-pool cards, 2 per keyword, across 5 elements — `emberBoomerang`
+(fire, 1-cost attack), `stoneRebound` (stone, 1-cost shield), `windReverb` (gale, 2-cost
+attack), `spiritReverb` (spirit, 2-cost Focus), `fireOverload` (fire, 1-cost 11-damage attack,
+overload 2), `poisonOverload` (poison, 1-cost damage+poison, overload 1). Base numbers follow
+the existing curve for their cost/rarity (same approach `spiritLance`/`piercingBolt` already
+use for Pierce — the keyword's own value is captured in the score bonus below, not by
+underpricing the card's raw stats). `content.gd` gained `kw.boomerang`/`kw.reverb`/
+`kw.overload` glossary entries and `desc.boomerang`/`desc.reverb`/`desc.overload` rules-text
+entries (both zh-Hans/en). `_card_build_score()` (`game_shop_deck_screen.gd`) gained cases for
+all 3 new top-level fields — per AGENTS.md's own warning, an unhandled field silently scores as
+zero, which would have made these cards invisible to smart-build/smart-add. `collect_all`
+achievement target bumped 45→51 (`test_runner.gd` already asserts this target tracks
+`content.cards.size() - curse_cards.size()` live rather than a stale literal, and that assertion
+is exactly what caught this).
+
+**A real, pre-existing balance-scorer weakness found via `balance_probe.gd`'s regression floor,
+unrelated to the new cards' own design**: adding 6 cards to `content.cards` — regardless of
+their own power level — shifts every downstream RNG-indexed roll (shop stock, chest/relic/
+equipment drops) for the rest of the 250-stage simulated run, because array-size changes ripple
+through anything doing `rng.randi() % array.size()` under a fixed seed. The first `--balance`
+run after adding the cards failed at stage 149 (needs >= 170), stuck on chapter 30's Great Boss.
+Debugging with a temporary per-step trace (deck contents, hand, decision, enemy HP each step —
+removed before commit) showed **none of the 6 new cards were anywhere in the deck** that
+failed — it was 25 slots of pure-damage Rares (`blaze_tempest`/`toxic_quake`/`soul_pyre`/
+`finalFlare`) with essentially no shield, one-shot by the boss+2-adds alpha strike. Confirmed by
+reverting only `core.json` (keeping every other Phase 7 change): the probe passes cleanly at
+stage 211. So the new cards didn't cause this — they only *exposed* a pre-existing fragility in
+`_card_build_score()`'s damage/shield weighting (`shield` scored at 1.6x vs `damage`'s 2.2x, so
+`_smart_add`'s "replace the lowest scorer" logic drifts a long simulated run toward an
+all-offense deck that occasionally can't survive a big hit). Since Phases 8-10 will add more
+content and would hit the same RNG-sensitivity again, fixed at the root rather than papering
+over this one seed: bumped `shield`'s weight from 1.6 to 2.0 in both `_card_build_score()`
+(`game_shop_deck_screen.gd`, the real one) and `_score_card()` (`balance_probe.gd`'s documented
+mirror — see its own file header for why it's duplicated rather than shared). Re-ran `--balance`
+after the change: stage 192 (chapter 39) — landing almost exactly back on this file's own
+documented 192-stage baseline, not just barely over the 170 floor, which reads as this being
+closer to the right weighting than 1.6 was, rather than an overcorrection. Also applied the same
+"Overload debt" awareness to `ai_best_play()`'s in-battle heuristic (it was scoring an Overload
+card's burst damage in full with zero counterweight for the energy debt it takes on) — didn't
+move this particular regression (none of the new cards were drawn in the failing run either
+way) but would have been a real gap the moment any Overload card actually gets picked. This is
+a live-balance-affecting change beyond Phase 7's own new content, flagged here explicitly for
+visibility rather than folded in silently.
+
+**Verification**: `test_runner.gd` now at 623/0 checks (new: 6 card-existence checks, Boomerang/
+Reverb/Overload combat-rule assertions, the keyword-list/KEYWORD_KEYS sync check), `ui_smoke.gd`
+new keyword-pill section covering all 3 new keywords, full `./run_tests.sh --all` green from a
+from-scratch `Godot/.godot/` state, including the 250-stage balance probe at stage 192/chapter
+39 (comfortably above the 170 regression floor).
+
+### 2026-09-19 — Docs/NEXT_PHASES_IMPLEMENTATION_PLAN.md Phase 6: Career Codex shipped
+Per user direction to work through the plan's Phases 6-10 in order. First synced this branch
+with `origin/main` (which had moved substantially since the last sync: Supabase auth/cloud
+save, global leaderboards, a Cultivation Meridian talent tree, Equipment Reforging, Relic
+Resonance, a cinematic intro, a combat SFX engine, and auto-battle fixes, plus the plan doc
+itself) — see the merge commit for the 4 real conflicts resolved.
+
+**Design deviation from the plan, deliberate**: the plan's `profile.career_stats` schema
+listed `total_runs`/`victories`/`total_damage_dealt`/`total_gold_earned`/`max_abyss_floor` as
+new fields, but `profile.lifetime_stats` (an existing generic stat-counter dict fed by
+`_advance_quest()`) and `profile.abyss_record` already track the exact same numbers
+(`win_battles`, `deal_damage`, `earn_gold`, and the Abyss floor record respectively).
+Duplicating them into `career_stats` would mean keeping two counters in sync for no reason —
+the Codex UI reads `lifetime_stats`/`abyss_record` directly for those, and `career_stats` only
+holds what genuinely didn't exist anywhere yet: `defeats`, `total_shield_gained`,
+`total_cards_played`, `elites_slain`/`bosses_slain`, `current_win_streak`/`longest_win_streak`,
+`favorite_cards`, `favorite_hero`, `hall_of_fame`. Also added the Codex as an 8th Compendium
+tab, not the "4th" the plan assumed — cards/gear/runes/relics/bestiary/achievements/chronicle
+already existed before this phase.
+
+**Tracking hooks**: `game._track_career_win()` is called once from the very first line of
+`_grant_stage_rewards()`, which covers all 7 win paths (campaign, Abyss, Boss Rush, Daily/
+Weekly Trial, Draft Arena, Phantom Arena) uniformly without needing a call in each branch.
+`game._track_career_defeat()`/`_track_career_retreat()` are called from `_leave_battle()`,
+branching on `combat.state.phase == "lost"` — per this file's own AGENTS.md trap entry on that
+function, it only ever fires for a loss or a manual retreat, never a win, so there's no
+double-counting risk between the two hook points. Hall of Fame keeps the most recent 3 Great
+Boss kills (not score-ranked by some invented quality metric — simplest thing that still
+delivers "show off a real run").
+
+**A real test-pollution bug found and fixed while writing ui_smoke.gd coverage**: simulating a
+Great Boss win to test the Hall of Fame calls the real `_grant_stage_rewards()` pipeline, which
+(same as for a real player) rolls a random boss relic into `profile.relics` among other side
+effects (gold/unlocked/position/claimed_stage_events) — an early version of this test left that
+relic (`cursedTome`, whose -2 HP/turn drains through shield first) sitting in the shared test
+profile, which then silently broke an unrelated, pre-existing samsara-shield assertion later in
+the same suite run. Fixed by snapshotting and restoring the *entire* profile around this
+section rather than guessing which fields `_grant_stage_rewards()` touches.
+
+**Verification**: `test_runner.gd` +25 checks (603/0, including a revert-and-reconfirm on the
+streak-reset-on-defeat logic), `ui_smoke.gd` new Career Codex section (also confirmed the
+pollution bug above by running 3x before the fix — consistent failure, not flaky — then 0
+failures after), full `./run_tests.sh --all` green from a from-scratch `Godot/.godot/` state.
+
+### 2026-09-18 — Merged two parallel C2 implementations (Rebirth + Samsara) into one design
+While syncing this branch with `origin/main` before pushing unrelated work, found a human
+collaborator had independently built a full "Samsara Reincarnation" prestige system on
+`origin/main` targeting the exact same roadmap item (C2) this session had already shipped
+earlier as "Rebirth" — different names, fields (`rebirth_count` vs `samsara_count`), and logic,
+both live at once. `git merge origin/main` produced real conflicts in `game_camp_screen.gd`,
+`save_store.gd`, and this file. Rather than pick one side wholesale, compared both
+implementations point by point and asked the user to choose per-dimension; the compact
+form the user replied with ("1和4用你的，其他保留协作者的" — mine for eligibility and the tier
+cap, the collaborator's for reset scope and the bonus formula) is what this entry documents
+implementing. See the C2 checklist entry above for the full merged design and its precise
+reasoning per dimension; short version of what changed from each side's original:
+- Eligibility tightened from the collaborator's OR-based check (which became trivially true
+  forever after one cycle) to this session's escalating AND-based one.
+- Reset scope narrowed from this session's full wipe (deck/collection/upgrades/relics/
+  equipment/runes) to the collaborator's narrower one (only unlocked/position/
+  claimed_stage_events/health) — the bigger behavior change of the two for a real player.
+- The bonus formula and realm titles are the collaborator's or unmodified.
+- The tier cap was un-flattened from the collaborator's fixed "A6 forever" back to this
+  session's uncapped `5 + samsara_count`, so a later cycle keeps raising the stakes.
+
+**Two real bugs found and fixed while reading both sides closely enough to merge them** (both
+pre-existing in whichever side introduced them, not introduced by the merge itself):
+1. The collaborator's A6-specific `combat.gd` block (`if hero_bonuses.get("difficulty",0)>=6:
+   enemy.health *= 1.25; enemy.strength += 2`) had a completely dead half — `enemy.strength` is
+   never read anywhere else in the engine (only `state.player.strength`, a different field on a
+   different dictionary, is), the same "a field is set but nothing ever reads it" shape this
+   file's own `thorns` precedent already warns about. The health-scaling half was also fully
+   redundant with this session's own `content.difficulty_modifier()`, which already scales
+   every tier including 6+ smoothly and for real (see that C2 entry's own bug writeup below).
+   Removed the whole block rather than keep two competing difficulty mechanisms.
+2. `enter_samsara()`'s one-time `profile.health = clampi(60 + max_hp, 1, 100)` was dead on
+   arrival: `begin_battle()` always hardcodes a flat `60` into `combat.create()`'s health
+   parameter regardless of `profile.health`'s stored value — the real max_hp bonus reaches
+   combat exclusively through `hero_bonuses.max_hp`, a completely different parameter. The
+   bonus-adjusted value would have silently reverted to a plain 60 the moment the player
+   finished their very next battle of any kind (every battle-end site in the game flatly resets
+   this same display-only field to 60). Simplified to match every other reset site instead of
+   computing a number that could never actually stick.
+Also added a defensive eligibility check inside `enter_samsara()` itself (mirroring
+`_samsara_section()`'s own gate) rather than trusting only the button's visibility — the
+original Rebirth design had the same single-layer gap, never caught because nothing ever
+called `_perform_rebirth()` except through its own gated button.
+
+**Test fallout**: this system had test coverage in four different suites (`ui_smoke.gd`,
+`test_runner.gd`, `e2e_playthrough.gd`, `leak_checker.gd`) referencing the now-deleted
+`RebirthBtn`/`RebirthConfirmModal`/`rebirth_count`/`rebirth_bonuses()` — all four rewritten to
+exercise the merged Samsara design instead (new AND-eligibility assertions including a
+deliberately-locked case the old OR-rule would have wrongly allowed, the narrower keeps-your-
+deck/relics/equipment/runes reset scope, the uncapped tier ladder, and the real
+`active_modifier.health_scale`/`damage_bonus` combat-integration check ported over unchanged
+since `difficulty_modifier()` itself didn't change). `test_runner.gd`'s own A6 combat check was
+trimmed to drop the two assertions for the now-removed enemy-health/strength mechanic while
+keeping the still-valid shield/draw-bonus ones.
+
+**A third bug, this time in the test suite itself, not the product**: `leak_checker.gd`'s new
+SamsaraModal churn test initially reported a false "25 orphaned nodes" leak. Root cause: the
+whole file compares every sub-test's post-churn node count against one shared `base_nodes`
+captured once at the very start while parked on the map screen — Test 2 and Test 3 both already
+knew to return to `show_map()` before measuring for exactly this reason, and the new Test 1b
+didn't, so it was really just measuring "Camp's Challenges tab (9 stacked sections) has more
+static nodes than the map" and misreporting that fixed offset as a leak. Confirmed with a
+scratch diagnostic script comparing raw node counts across screens before touching the real
+test. Fixed by capturing a fresh local baseline on the same tab immediately before the churn
+loop instead of reusing the unrelated shared one.
+
+Full `./run_tests.sh --all` (all 6 suites) green after every fix above: 377/0 rules checks,
+UI smoke/e2e/chaos-monkey/leak-profiler/pixel-diff all passing.
+
+### 2026-09-17 — Fresh audit continued: _travel_to() had the same tail-race as _resolve_play()
+Same audit session as the deck-code entry below. Read `game_map_screen.gd` end to end next
+(also untouched all session) and found the identical fire-and-forget coroutine race the
+`_resolve_play()` fix had already documented as a general risk, this time in map travel.
+
+`_travel_to()` is called fire-and-forget (no `await`) from `_on_pin_pressed()` (tapping a stage
+pin), and its hop-to-the-target-stage animation is a fixed 2 seconds (longer across a chapter
+crossing, via `show_chapter_transition()`) with no input lock stopping the player from tapping
+anything else meanwhile. Once that animation finished, the coroutine unconditionally called
+`show_event()`/`begin_battle()` for the tapped stage and wrote `profile.position` — regardless
+of whether the player had already navigated to Camp, Quests, Settings, or a different pin in
+the meantime. A player who tapped a distant pin then immediately tapped Camp would get silently
+yanked out of Camp and into a battle they didn't ask for a moment later, with `profile.position`
+also silently advancing to a stage they never actually walked to.
+
+Fixed with a new general-purpose primitive rather than a second bespoke counter:
+`g.screen_generation`, bumped once inside `_clear()` itself (the one shared choke point every
+`show_X()` screen transition already calls). `_travel_to()` captures it right before its
+risky await points and checks it again after each one, bailing out before `show_event()`/
+`begin_battle()`/writing `profile.position` if the player navigated elsewhere in the meantime.
+One real subtlety hit while writing this (see AGENTS.md's updated "fire-and-forget coroutine"
+entry for the full explanation): the chapter-crossing branch calls `show_chapter_transition()`,
+which calls `g._clear()` as its own first line — capturing `screen_generation` *before* that
+call and checking it after would make the check fail even in the ordinary, non-race case, since
+the function's own clear already bumps the counter. That branch is deliberately left unguarded
+by this mechanism; it already has its own correct protection (an existing `is_instance_valid()`
+check on the transition's own nodes, added for an earlier freed-node crash), which doesn't have
+the same problem because it lives inside the function whose own `_clear()` call is the one that
+matters.
+
+Added a `ui_smoke.gd` regression test: start a 2-hop same-chapter travel, immediately navigate
+to Camp before the hop tween finishes (using `Engine.time_scale = 20.0` to let the interrupted
+tween's remaining real-world duration elapse in a fraction of a second, the same technique the
+existing chapter-transition-skip test already uses), then confirm `profile.position` didn't
+silently advance, no `PlayerSprite` (a battle-only marker) appeared, and Camp is still the
+screen actually showing. Verified with revert-and-reconfirm: reverting just the final guard
+reproduced all 3 new failures immediately, nothing else, before restoring it. Full
+`./run_tests.sh --all` (6 suites, chaos monkey included) green afterward.
+
+### 2026-09-17 — Fresh audit: deck-code import could bypass the 25-card deck invariant
+With every roadmap item now done or explicitly blocked (B4 needs a Mac + a human decision
+already made once; E3/E4 need a backend), asked to do another deep-dive audit like the ones
+that found the Draft Arena and `_resolve_play()` bugs. Also fixed 4 hardcoded Chinese-only
+Draft Arena labels found while double-checking that feature's own code once more (`ui.
+draft_card_cost_fmt`/`draft_deck_progress_fmt`/`draft_deck_label`/`draft_next_opponent_fmt`
+now carry both languages; 4 new `ui_smoke.gd` checks confirm the English text renders).
+
+Read `game_shop_deck_screen.gd` end to end (untouched all session) looking for the same bug
+shapes already found elsewhere. `show_deck()`'s own manual editing enforces exactly 25 cards
+two different ways — `_deck_change()` refuses to add past 25, and `_confirm_deck()` refuses to
+save unless `deck.size() == 25` exactly — but `_show_import_deck_dialog()`'s deck-code import
+only ever checked `imported_cards.size() < 15`, no upper bound and not an exact match. A deck
+code is unsigned base64-encoded JSON (`SPB1:<base64>`) with no signature — trivial to hand-edit
+— and import writes `profile.deck` directly, never going through `_confirm_deck()`'s gate at
+all. A hand-edited or malformed shared code could silently install a 15-24 or 26+ card deck,
+breaking an invariant nearly every other deck-affecting system in this codebase assumes
+(`_smart_add`'s replace-when-full logic, the whole balance curve this session's
+`balance_probe.gd` work validated against, etc.) with no error shown to the player who imported
+it. Fixed by changing the check to `!= 25`, matching `_confirm_deck()` exactly.
+
+The existing `ui_smoke.gd` deck-code coverage only ever exercised the happy path (export your
+own 25-card deck, reimport it, confirm it succeeds) — never the rejection path at all. Added
+two new checks importing a 20-card and a 30-card code (both built from a card padded into
+`profile.collection` so the ownership check — which was already correct — doesn't also fire)
+and confirming both are rejected without touching `profile.deck`. Verified with revert-and-
+reconfirm: reverting to the old `< 15` check reproduced the bug immediately (the 20-card import
+actually succeeded, which then cascaded into a null-reference hang in the test's own reuse of
+the now-closed import modal for the second sub-test — informative, not a concern once the fix
+is in place) before restoring it. Full `./run_tests.sh` green afterward (one transient failure
+on an unrelated animation-timing check reproduced as flaky on a clean re-run too, matching this
+session's already-documented pre-existing flakiness class — not caused by this change).
+
+### 2026-09-17 — `_resolve_play()` tail-race fixed: a stale coroutine could redraw battle over the map
+Third and last of the three items from the same recommendation the two entries below cover.
+`ui_smoke.gd`'s own finishing-blow-crash regression test (added earlier this session) already
+had a comment admitting this exact gap: leaving battle mid-animation left the interrupted
+`_resolve_play()` coroutine's tail (a couple more real-time delays, then its own
+`show_battle()`/`await _maybe_end_turn()`) to run later regardless, "out of scope to fix here."
+`show_battle()` unconditionally wipes whatever screen is current, so once that tail actually
+fired — a moment after the player had already navigated to the map (or wherever `_leave_battle()`
+sent them) — it would silently redraw the abandoned battle screen back over it. Worse,
+`g.resolving` (the "a card is mid-animation" guard every play-a-card check consults) was never
+reset by `_leave_battle()` either, so if that tail's own `show_battle()` call happened to be
+skipped for any reason, `resolving` could stay stuck `true` for the rest of the session, quietly
+blocking every future card play the same way this session's Draft Arena fix (below) blocked
+future battles via a stuck mode flag — same root cause shape, different flag.
+
+Fixed with a `battle_session: int` counter on `SpiritGame` (a cancellation token): bumped by
+`begin_battle()` (a new battle starts) and `_leave_battle()` (the current one ends), both of
+which also now reset `g.resolving = false` directly rather than trusting the interrupted
+coroutine's own tail to get there. `_resolve_play()` captures `battle_session` synchronously at
+entry (before its first `await`, so the captured value is always correct for the battle the
+card was actually played in) and checks it again right before `show_battle()` — the one call in
+its tail that actually touches the screen — returning early if the session has moved on instead
+of redrawing.
+
+Verified with this session's usual revert-and-reconfirm: temporarily disabled the guard and
+both new `_leave_battle()`/`begin_battle()` reset lines, re-ran `ui_smoke.gd`, and confirmed 2
+of the 4 new/extended assertions on the existing finishing-blow-crash test failed exactly as
+expected (`g.resolving` no longer clears immediately on leave; the map gets replaced by a stale
+battle screen a few seconds later) before restoring the fix. Full `./run_tests.sh --all` (all 6
+suites — core, chaos monkey, leak profiler, pixel-diff) green afterward, since this touches a
+hot path (every card play) rather than an isolated feature.
+
+### 2026-09-17 — Band 4 farming-loop revalidation; Draft Arena's two stuck-flag bugs fixed
+Follow-up to a prior session's own recommendation ("what should we add/update/adjust next"),
+which had surfaced three items; user asked for all three to be done and fixed, with tests
+guaranteeing each can't regress. This entry covers the first two; the `_resolve_play()`
+tail-race fix is a separate entry below (or above, if you're reading this after it landed).
+
+**Draft Arena (`profile.draft_arena`, `show_spirit_draft`) was completely undocumented — zero
+mentions anywhere in AGENTS.md/this file/ARCHITECTURE.md — and auditing it end to end found two
+real corruption bugs, both now fixed and documented in AGENTS.md's own "Traps" section (see
+there for the generalized lesson: a new `in_<mode>` flag needs a `_leave_battle()` branch, not
+just a `_grant_stage_rewards()` win path):**
+1. `_leave_battle()` had no `in_draft_battle` branch at all — a loss or manual retreat left the
+   flag stuck `true` forever, silently swapping every later battle's deck (campaign included)
+   for the stale 15-card draft deck, since `begin_battle()`'s deck-swap check reads
+   `g.in_draft_battle` unconditionally. The identical gap existed for `in_weekly_challenge` —
+   found by reading `_leave_battle()` end to end and noticing which flags it didn't mention —
+   and got the same fix.
+2. The win-cap ("Grand Champion" at `DRAFT_WIN_CAP` = 6 wins) ending only set `draft.active =
+   false`, leaving `round`/`deck`/`current_pool` stale, so starting a new run right after
+   winning one inherited a corrupted "round 8, deck already has 15 cards" state. Extracted the
+   correct full reset (already used by `_abandon_draft()`) into a shared
+   `SpiritGame._reset_draft_run()`, used by all three ways a run can end now, including a new
+   `DRAFT_LOSS_CAP` (3 losses) ending that finally wires up the `ui.draft_run_ended` string,
+   which existed in `content.gd` but had never been referenced anywhere.
+Verified with this session's usual revert-and-reconfirm: temporarily disabled both new
+`_leave_battle()` branches and confirmed exactly the 8 new/changed `ui_smoke.gd` assertions
+failed, nothing else did, then restored them.
+
+**`balance_probe.gd` extended to model the farming loop the prior curve-revalidation pass had
+explicitly left out of scope** (see ARCHITECTURE.md's "250-stage difficulty curve" section for
+the full before/after numbers). Short version: the probe used to skip every rest/event/merchant
+node outright, meaning it modeled a player who never took a single one of the dozens of free
+Purify/Smith deck upgrades those nodes offer, never socketed a rune for its set bonus, and never
+spent any of the thousands of gold that piled up with nothing to spend it on. Modeling the free
+choices alone pushed the probe's wall from chapter 20 to chapter 27 but still collapsed hard
+after that; the real gap turned out to be the always-available Shop's daily card stock, which
+looked like unreproducible RNG but is actually fully deterministic given a seed — feeding it the
+chapter number as a day-seed proxy and buying one best-scoring affordable card per chapter moved
+the wall to chapter 39 of 50 (78% of the full campaign), with a healthy "occasional retries, not
+a hard collapse" shape the rest of the way per `CONTINUE_PAST_WALLS=true`. **Conclusion: no
+curve constants changed.** The band's own documented intent (its last stretch specifically,
+not the whole band, is meant to lean on hero mastery/Rebirth/IAP rather than pure play) is what
+the data now shows, not a tuning mistake — see ARCHITECTURE.md for the full reasoning.
+
+### 2026-09-17 — C2 deepened with real A6+ tiers; found profile.difficulty did nothing
+Same user direction as the curve revalidation below ("调整曲线跟C2都做了"): deepen C2 past its
+first pass, which had shipped without a new difficulty tier since building one meant first
+understanding how `profile.difficulty` (the A0-A5 selector in Camp) actually worked. Turned
+out it didn't, in the one sense that mattered: `ui.camp_desc` has always claimed "higher tiers
+increase enemy HP & damage," but grepping every `profile.difficulty` read site found only
+reward-rotation offsets (`_grant_stage_rewards()`'s boss-equipment/elite-rune picks) — nothing
+ever fed it into `combat.create()`'s modifier. Selecting A5 has always been purely cosmetic for
+actual combat difficulty, since the feature shipped.
+Fixed via `content.difficulty_modifier(tier)` — `health_scale`/`damage_bonus`/`reward_scale`
+scaling by tier, tier 0 a hard no-op (the difficulty-curve revalidation below specifically
+validated the base curve at zero extra scaling; this must never retroactively invalidate that)
+— merged with the existing per-stage random flavor modifier in a new `_apply_difficulty()`
+(`game_battle_screen.gd`), rather than one overwriting the other. Extended the ladder past A5:
+each Rebirth cycle raises the max selectable tier by one (`5 + rebirth_count`), and updated
+Rebirth's own eligibility to match (`difficulty >= 5 + rebirth_count`, escalating each cycle —
+a flat "A5 forever" requirement would let one rebirth repeat indefinitely off the same button
+now that tiers actually matter). `_difficulty_tier_section()` switched from `HBoxContainer` to
+`HFlowContainer` so an unbounded number of unlocked tiers wraps onto more rows instead of
+squeezing thinner forever on a 390px screen.
+**A real bug found and fixed while testing this**: giving the tier modifier its own
+`health_scale`/`damage_bonus` made `active_modifier` non-empty even when the random per-stage
+flavor modifier rolled empty (52% of the time) — but `_build_player_stage()`'s modifier badge
+reads `name`/`name_en`/`detail`/`detail_en` *unconditionally* whenever `active_modifier` isn't
+empty, the exact same invariant `content.daily_trial_modifier()`'s own comment already
+documents crashing on once before. Every difficulty-tier battle without a flavor modifier
+would have crashed that badge outright. Fixed by giving `difficulty_modifier()` its own
+bilingual name/detail (shown in-battle, so a selected tier's effect is now actually visible to
+the player too, not just numerically real) and having `_apply_difficulty()` combine both
+modifiers' display text when both are present rather than dropping one.
+Verified: `test_runner.gd` +2 checks (`difficulty_modifier(0)` is empty, `difficulty_modifier(5)`
+matches the documented formula), `ui_smoke.gd` +5 checks (tier ladder grows with rebirth_count,
+the escalating eligibility gate, the modifier's real combat effect), full `./run_tests.sh --all`
+green throughout (356 total rules checks).
+
+### 2026-09-17 — 250-stage difficulty curve revalidated, real chapter-19 wall found and fixed
+Per explicit user direction ("调整曲线跟C2都做了" — do both the curve revalidation and deepen
+C2). Not a growth-roadmap item itself, but directly answers the open question `Docs/
+ARCHITECTURE.md`'s "250-stage difficulty curve" section had been flagging since the HP-reset
+change: the curve was tuned against a probe that no longer exists and against rules that no
+longer apply, and nothing had re-run it. See that section for the full account; short version:
+rebuilt `tests/balance_probe.gd` from scratch (a from-scratch AI-driven playthrough sim, since
+the original didn't survive in this repo's history), found a real reproducible wall at chapter
+19 (a 3-enemy elite plus a crit mechanic killing a smart-built deck in 4 turns every retry),
+root-caused it to Band 3's growth rate (0.22/chapter) compounding with an elite's second-add
+threshold (chapter 15) landing in the same handful of chapters instead of at a band boundary,
+and fixed both (Band 3 → 0.16/chapter, elite second add → chapter 21). Chapters 1-19 now clear
+reliably; chapter 20's Great Boss remains a wall for a no-farming baseline, which matches
+Band 4's own documented intent ("needs farming, not skill alone") rather than indicating a
+bug — not chased further, since validating that properly needs simulating the actual farming
+loop (Rebirth, mastery, AFK Harvest, rune sets), not just retrying a static build.
+Verified: `test_runner.gd` +2 checks pinning the fix (354/0), full `./run_tests.sh --all`
+green throughout.
+Follow-on to the same day's investigation entry below, which confirmed this environment can't
+compile, link, or run any native iOS code. Asked how to proceed (leave it blocked / write the
+native code untested anyway / sketch the design only); user chose the design sketch, explicitly
+without touching code. This entry is that sketch — implementation still starts from zero.
+
+**Triggers** (from this item's original one-line scope — "remind players when a login-streak
+day or daily quest is about to expire"):
+- Daily quest expiry: `profile.daily_reset_at` already marks the boundary; `_has_claimable_quest()`
+  already exists as the exact "is there something the player would lose" predicate — schedule a
+  reminder some hours before reset only when it returns true, so a fully-claimed player gets
+  nothing.
+- Login-streak expiry: `profile.login_reward` (days/claimed arrays, same `DAY_SECONDS` boundary
+  as quests) — remind if today's day-slot isn't logged yet and the day is close to rolling over.
+- Natural v2 extension, not required for a first cut: Daily Trial / Weekly Challenge streaks
+  (`daily_trial_record.streak`, same shape).
+
+**Scheduling lifecycle** — cancel-and-reschedule, not "schedule once":
+- Recompute and reschedule on backgrounding, via `game.gd`'s existing
+  `_notification(NOTIFICATION_WM_CLOSE_REQUEST)` handler (currently just calls
+  `SpiritSave.write(profile)` — this is the one existing hook that fires when it actually
+  matters, since a local notification only needs to fire while the app isn't running to remind
+  the player itself).
+- Every reschedule first cancels any pending Spiritbound notifications, then schedules fresh
+  ones from current state. Without this, claiming a quest and reopening/closing the app again
+  would leave a stale, already-resolved reminder pending.
+- Foreground (`_ready()`) cancels everything — no point reminding someone about something
+  while they're already looking at it.
+
+**GDScript-facing API surface** — a `SpiritNotify` wrapper is the one piece of this that IS
+safe to build and headlessly test without any native code at all, since it can be a pure
+no-op everywhere except a real iOS export:
+```gdscript
+# res://scripts/notify_bridge.gd — NOT written; sketch only
+class_name SpiritNotify
+static func request_permission() -> void: ...   # no-op off iOS
+static func schedule(id: String, title: String, body: String, fire_unix_time: int) -> void: ...
+static func cancel(id: String) -> void: ...
+static func cancel_all() -> void: ...
+```
+On an iOS export these forward to `Engine.get_singleton("SpiritIOSNotify")` (the native plugin
+singleton Godot's plugin system registers); everywhere else — headless tests included — they
+return immediately having done nothing. This split is what keeps `combat.gd`'s "no Control, no
+platform dependency" boundary intact one layer up in `game.gd`: nothing in `test_runner.gd`/
+`ui_smoke.gd` would ever need to know this system exists.
+
+**Native plugin shape** — the part that actually needs a Mac:
+- New `Godot/ios/plugins/spirit_notify/` per Godot 4's iOS plugin convention: a `.gdip`
+  descriptor + a Swift file wrapping `UNUserNotificationCenter`, registered as a Godot
+  singleton via the plugin registration macros.
+- Methods mirroring the GDScript surface 1:1: `requestPermission()`; `schedule(id, title, body,
+  fireUnixTime)` building a `UNMutableNotificationContent` + `UNTimeIntervalNotificationTrigger`
+  and calling `UNUserNotificationCenter.current().add(...)`; `cancel(id)` →
+  `removePendingNotificationRequests(withIdentifiers:)`; `cancelAll()` →
+  `removeAllPendingNotificationRequests()`.
+- No `UIBackgroundModes` entitlement needed — a locally-scheduled notification fires from the
+  OS regardless of whether the app is running, unlike a remote push.
+- `export_presets.cfg` needs a `plugins/plugin/spirit_notify=true`-shaped entry once the plugin
+  exists, the same way any other Godot iOS plugin gets opted into an export preset (there is
+  currently no `plugins/` entry at all — confirmed in the investigation entry below).
+
+**Copy**: both notification bodies go in `content.gd`'s `UI_TEXT` like every other user-facing
+string (AGENTS.md rule 2) even though a native call site consumes them, not a Control — the
+Swift wrapper would call `content.ui("push.quest_expiring", lang) % [...]` and hand the
+resulting string across the bridge, keeping every string in the one place translators look.
+
+**Suggested implementation order for whoever has Mac access**: build and headlessly-test the
+`SpiritNotify` no-op wrapper plus the two scheduling call sites first (this alone is fully
+verifiable in this sandbox and worth landing on its own) — only the native plugin itself and
+its export-preset wiring need to move to a real Mac session.
+
+### 2026-09-17 — Roadmap doc-sync audit, C2 New Game+ shipped, B4 investigated, 3 real bugs found
+Asked to implement "whatever's left in the growth roadmap and gaps." First step was
+re-verifying every open item against the actual code rather than trusting this file, since the
+last several sessions had already shown a pattern of real fixes landing without a matching
+checkbox or log entry (the 2026-09-16 entry's own "still not addressed" list, written after
+one such audit, was itself already stale by the time this session started — see below).
+
+**Discovered already fully implemented, just never checked off**: E1 (Daily Trial trend chart)
+and E2 (battle report share card) both exist in full, with complete `ui_smoke.gd` coverage
+already in place (7 assertions for E2, 3 for E1's chart alone). Marked `[x]` with a note rather
+than re-implementing. Also re-verified all 4 items the 2026-09-16 entry had flagged as "still
+not addressed" — 3 turned out to already be fixed by later, undocumented commits
+(`show_chapter_transition`'s freed-instance guard, `diagnose_battle_defeat`'s action-consuming
+UI, `spirit_curse_seal.png` wiring); only the "12 commits lacked tests" note was purely
+historical and needed no fix. See that entry's own strikethroughs for commit hashes.
+
+**C2 (轮回/New Game+) shipped** — see its checklist entry above for the exact design (what
+resets, what's kept, the reward formula) and reasoning. The short version: eligibility is
+`unlocked >= 250` and `difficulty >= 5` rather than a literal "beat A5" proof, because
+`profile.difficulty` is a freely-switchable "fighting at this tier right now" setting, not a
+per-tier clear ladder — there is no existing signal for "actually beat the campaign at A5
+specifically," and building one would be a much bigger feature than the roadmap's own framing
+implied. The reward reuses hero mastery's exact `hero_bonuses` mechanism rather than adding new
+combat.gd surface, which is why this shipped as a single `game_camp_screen.gd`-only change plus
+one line in `_current_hero_mastery_bonuses()`.
+
+**B4 (local iOS notifications) investigated, still not implemented** — confirmed this
+environment cannot compile, link, or run any native iOS code at all (no `xcodebuild`/`xcrun`;
+this is a Linux sandbox), and that Godot's own iOS export step needs the same toolchain. Writing
+a native Swift/GDExtension bridge with zero ability to compile a single line of it before the
+user's own Mac would be the first real test is exactly the risk the original entry's "may need
+a human decision" flag was about — so this stays open, not attempted blind. Flagged to the user
+directly rather than silently skipped or half-built.
+
+**Two real, previously-undiscovered bugs found while doing this audit** (both pre-existing, not
+introduced this session):
+1. `diagnose_battle_defeat()` (`game.gd`) checked `eff.get("op", "")` for the shield-card count,
+   but every card's effects actually key this field `"operation"` (`combat.gd`'s
+   `_resolve_effects` reads `effect.operation` directly). This meant `shield_cards` was silently
+   0 for every deck in the game, for every player, always — the "you lack shield cards" tip
+   could fire (or fail to be distinguished from a shield-healthy deck) regardless of the deck's
+   real composition. Fixed the key name; added a regression check in `ui_smoke.gd` with a
+   3-shield-card deck that must NOT get the low-shield diagnosis, which would have caught this
+   immediately.
+2. The same `ui_smoke.gd` test's own fixture deck used a fictitious `"defend"` card id (the
+   real starter shield card is `"ward"`) — `content.card()` returning `{}` for the unknown id
+   crashed `_card_view()`'s `card.id` access the moment the hand rendered, every single run,
+   with a `SCRIPT ERROR` that failed no `check()` and so was invisible in a green test run. Same
+   class of bug as `show_chapter_transition`'s freed-instance race above: a real error in the
+   log that no assertion catches. Fixed the fixture to use a real card id.
+
+**Also fixed**: `content.ACHIEVEMENTS`'s `collect_all` target was hardcoded to `39`, but the
+card pool has grown to 47 (45 collectible + 2 curse) since that number was last touched — this
+is the third time this exact literal has drifted (34 → 39 → now 45) as cards were added without
+anyone updating it, per this file's own D3/C1 entries below. Rather than fix the number a third
+time and leave the next drift equally silent, added a `test_runner.gd` assertion that checks the
+target against the live non-Curse card count directly, so the next card addition fails loudly
+instead of quietly making "collect every card" completable early. Also corrected AGENTS.md's
+stale "39 cards" prose mention to the real current count.
+
+**Verification**: `./run_tests.sh` (test_runner + ui_smoke + e2e_playthrough) run clean after
+every change in this session, not just at the end — 352/0 rules checks (+1 for the achievement
+target assertion), UI smoke +24 checks for C2 alone plus +1 for the shield-diagnosis regression,
+E2E playthrough unaffected. This session also installed Godot 4.7.2 itself into the sandbox
+(none of the prior sessions' claimed verification numbers could actually be re-run before this,
+since no `godot` binary existed here) — see this repo's own commit history around
+`e79d689`/this session's chat log if a future agent needs to redo that setup.
 
 ### 2026-09-18 — Auto-play battle speed continuity and resolving state reset fix
 Resolved critical issue where toggling or cycling battle speed (1x/1.5x/2x) halted auto-battle and locked combat resolving state:
@@ -401,25 +1353,32 @@ is unrelated):
   confirmed zero references anywhere, then deleted it. If you're ever about to delete an
   asset because grep found nothing, check `project.godot` too before trusting that.
 
-**Still not addressed, flagged for whoever picks this up next**:
-- `show_chapter_transition()` (`game_map_screen.gd`) throws "Cannot call method 'create_tween'
-  on a previously freed instance" under `ui_smoke.gd` — a real async race (a tween racing
-  against a later `_clear()`), not something introduced by this review's own changes (confirmed
-  present before any of this session's edits). It doesn't currently fail a specific `check()`,
-  so both suites still report all-green, but the underlying bug is real.
-- `diagnose_battle_defeat()`'s `action` field (`"deck"` vs `"cultivate"`) is computed but never
-  consumed — the defeat-diagnosis card shows both buttons unconditionally regardless of which
-  action was recommended.
-- `spirit_curse_seal.png` was painted for this batch's VFX set but never wired to anything —
-  the Curse cards (`decay_blight`/`void_curse`) and the enemy "curse" intent still have no
-  visual treatment.
-- The Fox Spirit rig's 4 textures (`fox_body`/`fox_tail`/`fox_orb`/`ground_aura`) and
-  `spirit_shield_crest.png` all ship at 1024×1024 despite rendering at roughly 40-95px on
-  screen — worth downscaling for app size/decode cost before this ships anywhere real.
-- Of the 12 commits, only 3 touched either test file — the visually biggest ones (the rig, the
-  VFX chain, the diagonal layout, all 3 map commits) shipped with zero new assertions, against
-  this project's own Rule #3. Both suites currently pass, but that's because nothing added by
-  those commits is being checked, not because it was verified against a written assertion.
+**Still not addressed, flagged for whoever picks this up next** — status re-checked
+2026-09-17, first 4 of these 5 were fixed by later commits without a progress-log entry
+(discovered while auditing this file against the actual code; see that date's entry):
+- ~~`show_chapter_transition()` ... "Cannot call method 'create_tween' on a previously freed
+  instance"~~ — **fixed** (commit `ab290fd`): the function now guards its post-`await` tail
+  with `is_instance_valid(transition_layer)`/`is_instance_valid(pin_container)`, and
+  `ui_smoke.gd`'s own test comments document the fix and how it was verified (temporarily
+  reverting the guard and confirming the error reappears).
+- ~~`diagnose_battle_defeat()`'s `action` field ... computed but never consumed~~ — **fixed**
+  (commit `1d2d52f`): `game_battle_screen.gd`'s defeat card now reads `recommended_action` and
+  colors the matching button gold.
+- ~~`spirit_curse_seal.png` ... never wired to anything~~ — **fixed** (commit `27df0e7`): wired
+  into `game_battle_screen.gd`'s enemy curse-intent rendering, with `ui_smoke.gd` coverage.
+- ~~The Fox Spirit rig's 4 textures ... all ship at 1024×1024~~ — **fixed** (commits `a028fc4`,
+  `ac4d294`): downscaled, then a follow-up fix for a scale regression the downscale itself
+  introduced.
+- Of the original 12 commits, only 3 touched either test file — still true as a historical
+  fact about that batch specifically, not an open item; everything added since carries its own
+  coverage per Rule #3.
+
+**Two more real bugs found and fixed 2026-09-17** while auditing this file against the actual
+code (see that date's progress log entry for the full account): `diagnose_battle_defeat()` was
+reading each effect's `"op"` key when every card's effects actually use `"operation"`
+(`combat.gd`'s `_resolve_effects`), so it silently counted 0 shield cards for every deck in the
+game, always; and a `ui_smoke.gd` test fixture used a fictitious `"defend"` card id that
+crashed hand rendering with a silent `SCRIPT ERROR` nothing asserted against.
 
 ### 2026-09-15 — game.gd split into 5 composed screen classes (user-requested tech debt)
 Not a report item — the user asked for this directly after `game.gd` grew to ~7200 lines

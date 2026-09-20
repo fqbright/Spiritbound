@@ -34,6 +34,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	state = {
 		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
+		"boomerang_queue":[],"reverb_queue":[],"overload_pending":0,
 		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
 		"relic_resonances":resonance_ids,
@@ -81,11 +82,6 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	if _has_relic("chaosPrism"):
 		for enemy in state.enemies:
 			enemy.shield += 6
-	if int(hero_bonuses.get("difficulty", 0)) >= 6:
-		for enemy in state.enemies:
-			enemy.health = int(round(enemy.health * 1.25))
-			enemy.max_health = int(round(enemy.max_health * 1.25))
-			enemy.strength = int(enemy.get("strength", 0)) + 2
 	# Hero Mastery: small always-on bonuses from the active hero's permanent Lv1-5 perks —
 	# the same battle-start/first-attack/per-turn hooks relics and equipment already use
 	# (see _resolve_effects, play(), end_turn()), just keyed off save-file progression
@@ -102,6 +98,20 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		if int(hero_bonuses.get("burn_start", 0)) > 0: enemy.burn += int(hero_bonuses.burn_start)
 		if int(hero_bonuses.get("vulnerable_start", 0)) > 0: enemy.vulnerable += int(hero_bonuses.vulnerable_start)
 		if int(hero_bonuses.get("poison_start", 0)) > 0: enemy.poison = int(enemy.get("poison", 0)) + int(hero_bonuses.poison_start)
+	# Curse Run mutators (Phase 8): applied last, after every other battle-start HP source, so
+	# Glass Cannon's cap and Mirror World's swap always reflect the final numbers rather than
+	# being clobbered by a relic/mastery bonus that happens to run afterward.
+	var mutator_max_hp: int = int(modifier.get("player_max_hp", 0))
+	if mutator_max_hp > 0:
+		state.player.max_health = mutator_max_hp
+		state.player.health = mini(state.player.health, mutator_max_hp)
+	if modifier.get("mirror_hp", false) and not state.enemies.is_empty():
+		var boss_max: int = int(state.enemies[0].max_health)
+		var player_max: int = int(state.player.max_health)
+		state.enemies[0].max_health = player_max
+		state.enemies[0].health = player_max
+		state.player.max_health = boss_max
+		state.player.health = boss_max
 	# Turn 1 is strictly 2 energy and 5 cards under all conditions, except cursedTome's own
 	# explicit "+1 draw / -2 HP every turn" and optional draw_turn1 elixir bonus.
 	var draw_bonus: int = int(hero_bonuses.get("draw_turn1", 0))
@@ -221,7 +231,12 @@ func play(hand_index: int, target_index := -1) -> bool:
 		state.energy += 1
 		state.gale_used = true
 	state.hand.remove_at(hand_index)
-	if rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
+	# Boomerang (回旋) takes priority over the normal discard/exhaust placement — the card isn't
+	# gone, it comes back to hand at the start of next turn (see end_turn()'s drain of
+	# boomerang_queue). No shipped card combines this with exhaust:true; a card marking both
+	# would be a content error, not something this needs to arbitrate.
+	if card.get("boomerang", false) and not card.exhaust: state.boomerang_queue.append(instance)
+	elif rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
 	elif card.exhaust: state.exhaust.append(instance)
 	else: state.discard.append(instance)
 	var bonus := int(state.upgrades.get(card.id,0))
@@ -244,6 +259,17 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
 	if rune == "echo" and state.phase == "player": dealt += _resolve_effects(card, target_index, bonus + resonance, .5)
+	# Reverb (余韵): a full free re-cast queued for the START of next turn, not this same turn —
+	# unlike the "echo" rune above (immediate, same turn, half value), so the two don't stack
+	# into one card doing the exact same thing twice under different names. Captures bonus+
+	# resonance now (this cast's own values) since the queued re-cast should hit exactly as hard
+	# as the original did, not be recomputed against next turn's (possibly different) state.
+	if card.get("reverb", false): state.reverb_queue.append({"card_id": card.id, "bonus": bonus + resonance})
+	# Overload (过载): the drawback is a next-turn energy debt, not anything paid now — see
+	# end_turn()'s drain of overload_pending, floored at 1 energy the same way titanBell's own
+	# growth-cancelling discount never goes negative.
+	var overload_amount: int = int(card.get("overload", 0))
+	if overload_amount > 0: state.overload_pending = int(state.get("overload_pending", 0)) + overload_amount
 	if rune == "chain" and harmful:
 		var other := _other_target(target_index)
 		if other >= 0: dealt += _damage_enemy(other, maxi(1, int(round(_base_damage(card, bonus + resonance) * .4))), false)
@@ -344,6 +370,10 @@ func end_turn() -> void:
 	if _has_relic("titanBell"): energy_growth = 0
 	state.energy = 2 + energy_growth
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
+	var overload_due: int = int(state.get("overload_pending", 0))
+	if overload_due > 0:
+		state.energy = maxi(1, state.energy - overload_due)
+		state.overload_pending = 0
 	var kept_shield: int = 0
 	if _has_resonance("res_sun_moon"):
 		kept_shield = state.player.shield
@@ -369,10 +399,35 @@ func end_turn() -> void:
 		state.player.health = mini(state.player.max_health, state.player.health + inscr_heal)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0:
 		state.energy += 2 + (2 if _has_resonance("res_sun_moon") else 0)
+	# Energy Famine (Phase 8 Curse Run mutator): a hard cap applied last, after every other
+	# energy source this turn (foxCharm/overload/thunderSeal above), so it holds regardless of
+	# what else would have granted energy.
+	var energy_cap: int = int(state.get("modifier", {}).get("energy_cap", 0))
+	if energy_cap > 0: state.energy = mini(state.energy, energy_cap)
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""
 	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome, +1 if res_fox_wind on Turn 2)
 	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
+	# Fewer Draws (Phase 8 Curse Run mutator): floored at 1 so a long fight can never fully
+	# stall the hand from growing at all.
+	turn_draw = maxi(1, turn_draw - int(state.get("modifier", {}).get("draw_penalty", 0)))
 	_draw(turn_draw)
+	# Boomerang (回旋): cards played last turn with this tag return straight to hand now,
+	# instead of having gone to discard/exhaust when they were played (see play()'s own branch).
+	if not state.boomerang_queue.is_empty():
+		for instance in state.boomerang_queue: state.hand.append(instance)
+		state.boomerang_queue = []
+	# Reverb (余韵): a free, full-value re-cast of what was played last turn, queued in play().
+	# Re-targets fresh rather than reusing the original target_index — that enemy may already
+	# be dead by the time this actually fires, same reasoning _smart_target() exists for at all.
+	if not state.reverb_queue.is_empty():
+		for entry in state.reverb_queue:
+			var rv_card: Dictionary = content.card(str(entry.get("card_id", "")))
+			if rv_card.is_empty(): continue
+			var rv_needs_target: bool = _targets_opponent(rv_card)
+			var rv_target: int = _smart_target() if rv_needs_target else -1
+			if rv_needs_target and rv_target < 0: continue
+			_resolve_effects(rv_card, rv_target, int(entry.get("bonus", 0)), 1.0)
+		state.reverb_queue = []
 	if _has_relic("cursedTome"):
 		if _has_resonance("res_nether_pact") and int(state.get("pact_cleansed_turns", 0)) > 0:
 			state.pact_cleansed_turns = int(state.pact_cleansed_turns) - 1
@@ -389,6 +444,9 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 		match effect.operation:
 			"damage":
 				var targets := range(state.enemies.size()) if card.get("special","") == "cleave" else [target_index]
+				# Curse Run's Glass Cannon/Berserker's Pact mutators (Phase 8) boost outgoing
+				# damage; read once per effect rather than per target since it never changes mid-swing.
+				var dmg_mult: float = float(state.get("modifier", {}).get("player_dmg_mult", 1.0))
 				for index in targets:
 					if state.enemies[index].health <= 0: continue
 					var execute := 1.5 if state.runes.get(card.id,"") == "execute" and state.enemies[index].health <= state.enemies[index].max_health * .25 else 1.0
@@ -399,7 +457,7 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					# landing a hit, checked per target since cleave can hit a mix of burning
 					# and non-burning enemies in the same swing.
 					var flame_bonus := 3 if state.get("rune_sets", []).has("set_flame") and int(state.enemies[index].get("burn", 0)) > 0 else 0
-					var hit := _damage_enemy(index,int(round(amount * execute * critical)) + flame_bonus,card.get("special","") == "pierce" or state.equipment.has("stoneSpear"))
+					var hit := _damage_enemy(index,int(round(amount * execute * critical * dmg_mult)) + flame_bonus,card.get("special","") == "pierce" or state.equipment.has("stoneSpear"))
 					dealt += hit
 					# chaosPrism's payoff for the +6 enemy shield it hands out at battle start:
 					# every attack that actually lands stacks Vulnerable, snowballing the rest
@@ -418,7 +476,13 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					_draw(1)
 					var tc_shield: int = [0, 2, 4, 6][clampi(_equip_tier("tideCharm"), 0, 3)]
 					if tc_shield > 0: state.player.shield += tc_shield
-			"heal": state.player.health = mini(state.player.max_health,state.player.health + amount)
+			"heal":
+				# No Mercy (Phase 8 Curse Run mutator): card-based healing is nullified for the
+				# whole run. Scoped to this one operation deliberately — auditing every other
+				# heal source (rest sites, ancientSeed, mastery heal_per_turn) is out of scope
+				# for an opt-in combat handicap.
+				if not state.get("modifier", {}).get("no_heal", false):
+					state.player.health = mini(state.player.max_health,state.player.health + amount)
 			"draw": _draw(amount)
 			"energy": state.energy += amount
 			"status":
@@ -753,6 +817,11 @@ func ai_best_play() -> Dictionary:
 
 		# Cost efficiency penalty
 		score -= float(card.cost) * 2.5
+		# Overload (Phase 7): the burst damage above already counted in full, so the AI needs
+		# an explicit counterweight for the next-turn energy debt it's about to take on — same
+		# per-point weight as a normal energy cost, since it's the same resource paid later.
+		var overload_cost: int = int(card.get("overload", 0))
+		if overload_cost > 0: score -= float(overload_cost) * 2.5
 
 		if score > best_score:
 			best_score = score

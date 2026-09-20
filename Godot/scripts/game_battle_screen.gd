@@ -21,6 +21,35 @@ func _modifier(seed: int, stage: int) -> Dictionary:
 	var value: int = absi(seed ^ ((stage + 1) * 2654435761))
 	return {} if value % 100 < 48 else options[(value / 100) % options.size()]
 
+# Composes the per-stage random flavor modifier above with content.difficulty_modifier()'s
+# player-selected tier scaling — both can independently carry health_scale/damage_bonus/
+# reward_scale, so this multiplies (health_scale, reward_scale) and adds (damage_bonus)
+# rather than one silently overwriting the other. Also combines display text (name/name_en/
+# detail/detail_en) rather than dropping it: _build_player_stage()'s modifier badge reads
+# those four fields unconditionally whenever active_modifier isn't empty — the exact same
+# invariant content.daily_trial_modifier()'s own comment documents crashing on once already
+# (an early version returned only raw combat.gd keys with no display text). A tier-only
+# modifier (the common case — the flavor modifier above is empty 52% of the time) would hit
+# that same crash if it came back non-empty with no name/detail, so difficulty_modifier()
+# always carries its own.
+func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
+	if tier_mod.is_empty(): return base
+	var merged: Dictionary = base.duplicate()
+	merged["health_scale"] = float(base.get("health_scale", 1.0)) * float(tier_mod.get("health_scale", 1.0))
+	merged["damage_bonus"] = int(base.get("damage_bonus", 0)) + int(tier_mod.get("damage_bonus", 0))
+	merged["reward_scale"] = float(base.get("reward_scale", 1.0)) * float(tier_mod.get("reward_scale", 1.0))
+	if base.has("name"):
+		merged["name"] = "%s · %s" % [str(base.name), str(tier_mod.name)]
+		merged["name_en"] = "%s · %s" % [str(base.name_en), str(tier_mod.name_en)]
+		merged["detail"] = "%s；%s" % [str(base.detail), str(tier_mod.detail)]
+		merged["detail_en"] = "%s; %s" % [str(base.detail_en), str(tier_mod.detail_en)]
+	else:
+		merged["name"] = tier_mod.name
+		merged["name_en"] = tier_mod.name_en
+		merged["detail"] = tier_mod.detail
+		merged["detail_en"] = tier_mod.detail_en
+	return merged
+
 func begin_battle(index: int) -> void:
 	g.resolving = false
 	auto_stepping = false
@@ -31,8 +60,14 @@ func begin_battle(index: int) -> void:
 	# right chapter instead of wherever the player last happened to be browsing.
 	g.current_map_chapter = index / 5
 	g.current_stage = index
-	var seed := int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
-	g.active_modifier = _modifier(seed, index)
+	# New battle invalidates any previous one's in-flight _resolve_play() coroutine (see
+	# battle_session's own comment in game.gd) — and resolving is this battle's own fresh
+	# start, never mid-card-resolution, regardless of what a stale coroutine from the last one
+	# might still be about to do.
+	g.battle_session += 1
+	g.resolving = false
+	var seed := g._battle_seed()
+	g.active_modifier = _apply_difficulty(_modifier(seed, index), g.content.difficulty_modifier(int(g.profile.difficulty)))
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var battle_deck: Array = g.profile.deck
@@ -987,7 +1022,16 @@ func _build_player_stage() -> Control:
 		all_items.append(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
 
 	# 2. Stage Modifier, Equipment & Relic Badges
-	if not g.active_modifier.is_empty():
+	# Checked by "has a name," not just "isn't empty": begin_abyss_battle() unconditionally
+	# adds a "boons" key to whatever _modifier() returns, including its own no-flavor-modifier
+	# {} case (~48% of battles, seed-dependent) — turning it non-empty with no display fields
+	# at all. `.is_empty()` alone crashed here (Dictionary key access on "name"/"detail" with
+	# neither present) roughly every other real Abyss run, timing-dependent enough that no
+	# prior test happened to roll the empty-modifier seed. Same invariant this file's own
+	# _apply_difficulty()/content.daily_trial_modifier() already document at length — the fix
+	# here is making the *read* robust to a future caller repeating that mistake, not just the
+	# one write site that happened to trip it this time.
+	if not str(g.active_modifier.get("name", "")).is_empty():
 		var m_name: String = g.active_modifier.name_en if g.lang == "en" else g.active_modifier.name
 		var m_det: String = g.active_modifier.detail_en if g.lang == "en" else g.active_modifier.detail
 		var mod_badge := g._icon_badge("✥", Color("ffe2b0"), 26, 13)
@@ -1485,7 +1529,12 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 		for special in effect.get("special", []):
 			var sp: String = str(special)
 			if sp in g.KEYWORD_KEYS: kw_set[sp] = true
+	var card_special: String = str(card.get("special", ""))
+	if card_special in g.KEYWORD_KEYS: kw_set[card_special] = true
 	if not rune_id.is_empty() and rune_id in g.KEYWORD_KEYS: kw_set[rune_id] = true
+	if card.get("boomerang", false): kw_set["boomerang"] = true
+	if card.get("reverb", false): kw_set["reverb"] = true
+	if int(card.get("overload", 0)) > 0: kw_set["overload"] = true
 	if not kw_set.is_empty():
 		var kw_flow := HBoxContainer.new()
 		kw_flow.position = Vector2(8.0, size.y - 28.0)
@@ -2039,6 +2088,13 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	return true
 
 func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0, player_health_before: int = 0, player_focus_before: int = 0, player_strength_before: int = 0, card: Dictionary = {}) -> void:
+	# Captured before any await below, so a battle_session bump from _leave_battle() (a loss or
+	# a manual retreat reached while this coroutine is still mid-animation) or begin_battle() (a
+	# new battle already started) can be told apart from "still the same battle" once this
+	# resumes — see the guard right before show_battle() and battle_session's own comment in
+	# game.gd for what this prevents.
+	var session: int = g.battle_session
+
 	# 0. The just-played card flies off to the discard pile — fire-and-forget, so it plays
 	# out alongside everything below rather than delaying it.
 	_animate_card_to_discard(hand_index)
@@ -2079,12 +2135,30 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 			await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
 
 	await g.get_tree().create_timer(g._battle_delay(0.25)).timeout
+	# The battle this coroutine was resolving a card for is gone (a loss, a manual retreat, or
+	# a new battle already started while we were mid-animation) — show_battle() unconditionally
+	# wipes whatever screen is current, so calling it here would redraw this abandoned battle
+	# over the player's new location. _leave_battle()/begin_battle() already reset g.resolving
+	# themselves, so there is nothing left for this stale call to finish.
+	if g.battle_session != session: return
 	show_battle()
 	await _maybe_end_turn()
 	g.resolving = false
+	# Auto-Battle's real re-trigger point. show_battle()'s own internal check (its
+	# "if g.auto_battle_active: _maybe_step_auto_battle()" branch) fires from *inside* this
+	# same _resolve_play() call (via the show_battle() call two lines up, and again from
+	# within _maybe_end_turn()'s _enemy_turn() when a turn ends) — at both of those points
+	# g.resolving is still true, so _maybe_step_auto_battle()'s own guard clause always bails
+	# immediately. Nothing else ever called it again afterward, so auto-battle only ever
+	# played the one card kicked off from begin_battle()'s initial call (made before resolving
+	# is ever set true). This line is the fix: only once resolving is actually false again —
+	# meaning the previous card's animation and any resulting turn-end/enemy-turn have fully
+	# settled — do we check whether to play the next card. The combat/phase checks are
+	# redundant with _maybe_step_auto_battle()'s own guard clause but cheap and explicit about
+	# why this call site in particular needs them: this fires after a battle-ending animation,
+	# so combat may already be null or past the player's turn by the time this line runs.
 	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
 		_maybe_step_auto_battle()
-
 
 func _animate_player_action(card: Dictionary) -> void:
 	if g.overlay == null or g.get_tree() == null: return
@@ -2660,16 +2734,28 @@ func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 
 	await tw.finished
 	await g.get_tree().create_timer(g._battle_delay(0.70)).timeout
+	# This whole function is awaited all the way from _resolve_play(), so it normally only
+	# ever runs while the battle screen it built these nodes onto is still current — but the
+	# still-visible "⌂ leave battle" button from that same screen (show_battle() doesn't
+	# redraw to the win/loss outcome screen until _resolve_play() finishes, well after this
+	# function returns) means a player really can tap away mid-animation and free g.overlay's
+	# children out from under this coroutine. Same class of bug as show_chapter_transition()'s
+	# freed-instance race (game_map_screen.gd) — same fix, checked at every resume point that
+	# still touches these nodes.
+	if not is_instance_valid(top_bar) or not is_instance_valid(btm_bar) or not is_instance_valid(banner):
+		return
 
 	var out_tw := g.create_tween().set_parallel(true)
 	out_tw.tween_property(banner, "modulate:a", 0.0, g._battle_delay(0.25))
 	out_tw.tween_property(banner, "scale", Vector2(1.2, 1.2), g._battle_delay(0.25))
 	out_tw.tween_property(top_bar, "position:y", -64.0, g._battle_delay(0.25))
 	out_tw.tween_property(btm_bar, "position:y", 844.0, g._battle_delay(0.25))
-	if sprite:
+	if sprite and is_instance_valid(sprite):
 		out_tw.tween_property(sprite, "modulate:a", 0.0, g._battle_delay(0.25))
 
 	await out_tw.finished
+	if not is_instance_valid(top_bar) or not is_instance_valid(btm_bar) or not is_instance_valid(banner):
+		return
 	top_bar.queue_free()
 	btm_bar.queue_free()
 	banner.queue_free()
@@ -2992,10 +3078,26 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	seq.tween_callback(banner.queue_free)
 
 func _leave_battle() -> void:
+	# Invalidate any in-flight _resolve_play() coroutine still mid-animation from the battle
+	# being left (see battle_session's own comment in game.gd) before it can resume later and
+	# call show_battle(), which would wipe whatever screen we're about to navigate to and
+	# redraw this now-abandoned battle over it. resolving is reset here too rather than left
+	# for that coroutine's own tail to clear — the whole point is that tail may never reach its
+	# own "g.resolving = false" line once battle_session no longer matches.
+	g.battle_session += 1
+	g.resolving = false
 	if g.auto_battle_active: g.stop_auto_battle("manual")
 	g.selected_card = -1
 	g.resolving = false
 	auto_stepping = false
+	# Career Codex bookkeeping: this is the one choke point every non-win battle ending goes
+	# through (a real loss or a manual retreat) — _grant_stage_rewards() is a win's own separate
+	# path and never reaches here (see AGENTS.md's own trap entry on this function). Checked
+	# before g.in_sandbox specifically clears below, since Sandbox is the one mode that
+	# shouldn't count toward lifetime stats at all (zero-stakes practice, not a real run).
+	if g.combat != null and not g.in_sandbox:
+		if g.combat.state.phase == "lost": g._track_career_defeat()
+		else: g._track_career_retreat()
 	if g.in_sandbox:
 		# Zero-stakes: profile.health was never touched on the way in, so there is nothing to
 		# restore and nothing worth writing to disk on the way out either.
@@ -3007,6 +3109,22 @@ func _leave_battle() -> void:
 		# bout number stays put so the next attempt re-fights the same boss at the same
 		# escalation, rather than resetting the whole streak.
 		g.in_boss_rush = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
+	if g.in_curse_run:
+		# Same split again: the selected mutator's floor isn't touched on a loss, so the next
+		# attempt re-fights the same floor instead of losing progress on that mutator.
+		g.in_curse_run = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
+	if g.in_world_event:
+		# Freely repeatable like Phantom Arena/Sandbox — a loss just restores HP and returns to
+		# camp, nothing to reset since there's no floor/streak state tied to this mode at all.
+		g.in_world_event = false
 		g.profile.health = 60
 		SpiritSave.write(g.profile)
 		g.show_camp()
@@ -3031,6 +3149,43 @@ func _leave_battle() -> void:
 		g.profile.health = 60
 		SpiritSave.write(g.profile)
 		g.show_camp()
+		return
+	if g.in_ghost_arena:
+		# Freely repeatable like Phantom Arena/Sandbox — a loss just restores HP and returns to
+		# camp, nothing to reset since there's no floor/streak tied to this mode either.
+		g.in_ghost_arena = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
+	if g.in_weekly_challenge:
+		g.in_weekly_challenge = false
+		g.profile.health = 60
+		SpiritSave.write(g.profile)
+		g.show_camp()
+		return
+	if g.in_draft_battle:
+		# A loss counts against SpiritContent.DRAFT_LOSS_CAP rather than ending the run
+		# outright — same "attempt vs. run" split as Abyss/Daily Trial above — except
+		# reaching the cap does end the run, mirroring DRAFT_WIN_CAP's Grand Champion ending
+		# in _grant_stage_rewards(). g._reset_draft_run() is the same helper _abandon_draft()
+		# and that ending use, so every way a run can end leaves round/deck/current_pool/
+		# wins/losses clean for the next one. Without this branch at all, in_draft_battle
+		# stayed stuck true after any loss or retreat, silently swapping every later
+		# battle's deck for the (by-then stale) draft deck — see begin_battle()'s
+		# battle_deck check.
+		g.in_draft_battle = false
+		g.profile.health = 60
+		var draft: Dictionary = g.profile.get("draft_arena", {})
+		var losses: int = int(draft.get("losses", 0)) + 1
+		draft.losses = losses
+		if losses >= SpiritContent.DRAFT_LOSS_CAP:
+			var final_wins: int = int(draft.get("wins", 0))
+			g._reset_draft_run()
+			g._toast(g.tf("ui.draft_run_ended", final_wins))
+		else:
+			SpiritSave.write(g.profile)
+		g.show_challenges()
 		return
 	g.profile.health = 60
 	SpiritSave.write(g.profile)
