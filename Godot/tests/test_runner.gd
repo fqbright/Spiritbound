@@ -1873,6 +1873,42 @@ func run() -> void:
 	check(LogService.EV_TUTORIAL_STARTED == "tutorial_started" and LogService.EV_DAY7_RETURN == "day7_return", "LogService exposes the documented starter funnel names")
 	LogService.crash_log_tail(5)
 	check(true, "LogService.crash_log_tail is safe to call whether or not an engine log file exists")
+
+	# Every funnel event the service declares has to be emitted somewhere outside the service
+	# itself. A declared-but-never-fired event is invisible in a way that costs real information:
+	# it reads as a metric, it reports nothing, and nothing crashes or warns.
+	#
+	# That was the actual state of the onboarding funnel before this check: the first screen a new
+	# player must interact with (the name prompt, which _ready routes to before the map and before
+	# any battle) was created in game.gd with no instrumentation at all, and the earliest event in
+	# the funnel fired from the BATTLE screen -- i.e. after that gate. So a player who quit at the
+	# name prompt emitted no event whatsoever and was indistinguishable in the data from someone
+	# who never launched the game: the most likely early drop-off was the one thing the funnel
+	# could not show. Asserting the call sites exist is the cheap half of not repeating that.
+	var call_sites := ""
+	var script_dir := DirAccess.open("res://scripts")
+	check(script_dir != null, "the scripts directory is readable for the event call-site scan")
+	if script_dir != null:
+		script_dir.list_dir_begin()
+		var entry := script_dir.get_next()
+		while entry != "":
+			if entry.ends_with(".gd") and entry != "log_service.gd":
+				var f := FileAccess.open("res://scripts/" + entry, FileAccess.READ)
+				if f != null:
+					call_sites += f.get_as_text()
+					f.close()
+			entry = script_dir.get_next()
+		script_dir.list_dir_end()
+	check(call_sites.length() > 10000, "the event call-site scan actually read the game's scripts")
+	for event_name in LogService.ALL_EVENTS:
+		# Call sites name the constant (LogService.EV_X), so match the identifier, and accept the
+		# raw string too in case a site ever passes the literal.
+		var constant := "EV_" + str(event_name).to_upper()
+		check(call_sites.contains(constant) or call_sites.contains('"%s"' % event_name),
+			"funnel event '%s' is emitted somewhere outside log_service.gd" % event_name)
+	check(LogService.ALL_EVENTS.has(LogService.EV_ACCOUNT_SETUP_SHOWN)
+		and LogService.ALL_EVENTS.has(LogService.EV_ACCOUNT_SETUP_COMPLETED),
+		"ALL_EVENTS includes the onboarding-entry pair (a new event must be registered or it is not scanned)")
 	check(SupabaseClient.TABLE_CLIENT_EVENTS == "client_events", "SupabaseClient posts events to the client_events table")
 
 	# --- Section 2: the purchase gate (Docs/LAUNCH_READINESS.md) ---

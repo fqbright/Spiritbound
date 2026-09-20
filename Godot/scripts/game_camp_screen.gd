@@ -775,7 +775,7 @@ func _account_panel() -> Control:
 	if is_linked:
 		status_text = g.tf("ui.auth_status_linked", "Apple" if provider == "apple" else "Google")
 	names.add_child(g._label(status_text, 9, g.JADE if is_linked else Color("e09c48")))
-	var rename_btn := g._button(g.t("ui.account_rename"), g.show_account_setup, Color("17363e"), Vector2(52, 34))
+	var rename_btn := g._button(g.t("ui.account_rename"), func(): g.show_account_setup(true), Color("17363e"), Vector2(52, 34))
 	rename_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(rename_btn)
 

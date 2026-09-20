@@ -33,6 +33,33 @@ const EV_STAGE_25_REACHED := "stage_25_reached"
 const EV_DAY2_RETURN := "day2_return"
 const EV_DAY7_RETURN := "day7_return"
 
+# Onboarding-entry funnel. These exist because the very first screen a new player can be asked to
+# interact with had no instrumentation at all, which made the most likely early drop-off the one
+# thing the data could not show.
+#
+# `SpiritGame._ready` routes a player with no account name to the account setup screen *before*
+# the map and before any battle, so the ordering a new player meets is: intro cutscene -> type a
+# name -> map -> first fight. The first event in this file (`tutorial_started`) is only emitted
+# from the battle screen, i.e. after that gate, so a player who quit at the name prompt produced
+# no event whatsoever — indistinguishable in the data from someone who never launched the game.
+#
+# `shown` and `completed` are separated on purpose: the interesting quantity is the ratio, and a
+# screen that is shown and never completed is a specific, fixable finding. `detail.method` records
+# which path got them through (typed name / Apple / Google / email), which is what decides whether
+# the third-party sign-in buttons are pulling their weight.
+const EV_ACCOUNT_SETUP_SHOWN := "account_setup_shown"
+const EV_ACCOUNT_SETUP_COMPLETED := "account_setup_completed"
+const EV_INTRO_COMPLETED := "intro_completed"
+
+# Every event name this file defines, so a test can assert that each one is actually emitted
+# somewhere instead of trusting a constant that nothing calls. A declared-but-never-fired event is
+# invisible: it looks like a metric, it reports nothing, and no crash tells you.
+const ALL_EVENTS := [
+	EV_TUTORIAL_STARTED, EV_TUTORIAL_COMPLETED, EV_FIRST_BATTLE_WON, EV_STAGE_25_REACHED,
+	EV_DAY2_RETURN, EV_DAY7_RETURN,
+	EV_ACCOUNT_SETUP_SHOWN, EV_ACCOUNT_SETUP_COMPLETED, EV_INTRO_COMPLETED,
+]
+
 # ------------------------------------------------------------------------------
 # Clean-shutdown marker
 # ------------------------------------------------------------------------------

@@ -478,6 +478,10 @@ func _ready() -> void:
 		play_intro_cutscene(func():
 			profile.intro_seen = true
 			SpiritSave.write(profile)
+			# Fires on both "watched" and "skipped" (the cutscene is skippable). The split that
+			# matters is intro_completed vs account_setup_shown: reaching the name prompt at all is
+			# what a skip rate would otherwise hide.
+			LogService.event(LogService.EV_INTRO_COMPLETED, {}, self)
 			if SpiritSave.has_account_name(profile): show_map()
 			else: show_account_setup()
 		)
@@ -760,8 +764,17 @@ func _reset_draft_run() -> void:
 	profile.draft_arena = draft
 	SpiritSave.write(profile)
 
-func show_account_setup() -> void:
+func show_account_setup(from_rename: bool = false) -> void:
 	_close_settings()
+	# Instrumented here rather than at the call sites: this function IS the screen, and the three
+	# places that route into it (`_ready`'s no-account-name branch, the email-auth return, and the
+	# camp rename button) are each a different reason to be here. `from_rename` keeps the rename
+	# case out of the new-player funnel denominator -- without it, every "rename my account" tap
+	# would inflate the denominator and make the completion rate look worse than it is.
+	LogService.event(LogService.EV_ACCOUNT_SETUP_SHOWN, {
+		"from_rename": from_rename,
+		"has_account": SpiritSave.has_account_name(profile),
+	}, self)
 	_clear(); _play_music(false)
 	var backdrop := _background("spirit-world-map-v1.jpg", .34); root.add_child(backdrop); root.move_child(backdrop, 0)
 	var page := _create_page(10)
@@ -791,7 +804,10 @@ func show_account_setup() -> void:
 	field.add_theme_stylebox_override("focus", _panel(Color("14303a"), 12, JADE))
 	page.add_child(field)
 
-	page.add_child(_button(t("ui.account_start"), func(): _create_account(field.text), EMBER, Vector2(0, 50)))
+	page.add_child(_button(t("ui.account_start"), func():
+		_create_account(field.text)
+		_track_account_setup_completed("typed")
+	, EMBER, Vector2(0, 50)))
 
 	page.add_child(_label(t("ui.auth_or_continue"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	var auth_row := HBoxContainer.new()
@@ -801,6 +817,7 @@ func show_account_setup() -> void:
 		var chosen_name := field.text.strip_edges()
 		if chosen_name.is_empty(): chosen_name = "灵界探险家"
 		_create_account(chosen_name)
+		_track_account_setup_completed("apple")
 		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
 	, Color("080808"), Vector2(0, 42))
 	apple_btn.name = "SignInWithAppleBtn"
@@ -819,6 +836,7 @@ func show_account_setup() -> void:
 		var chosen_name := field.text.strip_edges()
 		if chosen_name.is_empty(): chosen_name = "灵界探险家"
 		_create_account(chosen_name)
+		_track_account_setup_completed("google")
 		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
 	, Color("f0f2f5"), Vector2(0, 42))
 	google_btn.name = "SignInWithGoogleBtn"
@@ -842,7 +860,10 @@ func show_account_setup() -> void:
 		var chosen_name := field.text.strip_edges()
 		if not chosen_name.is_empty():
 			profile.account.name = chosen_name
-		show_auth_modal(func(): show_map())
+		show_auth_modal(func():
+			_track_account_setup_completed("email")
+			show_map()
+		)
 	, Color("17363e"), Vector2(0, 38))
 	email_btn.name = "SignInWithEmailBtn"
 	page.add_child(email_btn)
@@ -861,6 +882,15 @@ func _create_account(raw_name: String) -> void:
 	profile.account = account
 	SpiritSave.write(profile)
 	show_map()
+
+# The three sign-in paths all funnel through here so the funnel records one completion per player
+# rather than one per button, and so `method` says which route actually worked. Called from the
+# typed-name button, the Apple button, the Google button and the email modal.
+func _track_account_setup_completed(method: String) -> void:
+	LogService.event(LogService.EV_ACCOUNT_SETUP_COMPLETED, {
+		"method": method,
+		"name_len": str(profile.get("account", {}).get("name", "")).length(),
+	}, self)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
