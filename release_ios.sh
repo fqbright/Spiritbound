@@ -166,6 +166,40 @@ fi
 mkdir -p "$BUILD_DIR"
 run godot --headless --path "$PROJECT_DIR" --export-release "$PRESET_NAME" "$BUILD_DIR/Spiritbound.ipa"
 
+# Patch dummy.cpp with weak-symbol stubs that libgodot.a(metal_cpp.ios.template_release.arm64.o)
+# references but that the iPhoneOS 18.5 SDK does not export as linkable symbols. The same patch
+# lives in deploy_ios.sh for debug builds; both use the same Godot-generated dummy.cpp file.
+# Without this the linker fails: "Undefined symbols: _CADynamicRangeAutomatic, _MTLTensorDomain".
+DUMMY_CPP="$BUILD_DIR/Spiritbound/dummy.cpp"
+if [ "$DRY_RUN" = false ] && [ -f "$DUMMY_CPP" ]; then
+    if ! grep -q "CADynamicRangeAutomatic" "$DUMMY_CPP"; then
+        cat << 'EOF' >> "$DUMMY_CPP"
+
+extern "C" {
+    __attribute__((visibility("default"))) void* CADynamicRangeAutomatic = nullptr;
+    __attribute__((visibility("default"))) void* CADynamicRangeConstrainedHigh = nullptr;
+    __attribute__((visibility("default"))) void* CADynamicRangeHigh = nullptr;
+    __attribute__((visibility("default"))) void* CADynamicRangeStandard = nullptr;
+    __attribute__((visibility("default"))) void* MTLTensorDomain = nullptr;
+    int SDL_IsAppleTV(void) { return 0; }
+    int SDL_IsIPad(void) { return 0; }
+}
+EOF
+        echo "   ✓ Patched dummy.cpp with Metal/QuartzCore/SDL compatibility symbols"
+    elif ! grep -q "SDL_IsAppleTV" "$DUMMY_CPP"; then
+        cat << 'EOF' >> "$DUMMY_CPP"
+
+extern "C" {
+    int SDL_IsAppleTV(void) { return 0; }
+    int SDL_IsIPad(void) { return 0; }
+}
+EOF
+        echo "   ✓ Patched dummy.cpp with SDL compatibility symbols"
+    else
+        echo "   ✓ dummy.cpp already has compatibility symbols — no patch needed"
+    fi
+fi
+
 # Godot regenerates the Xcode project and its Info.plist on every export, so anything that must
 # be true of the shipped plist is asserted here, after the export, rather than edited into a
 # generated file. ITSAppUsesNonExemptEncryption in particular is what stops App Store Connect
