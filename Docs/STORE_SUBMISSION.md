@@ -11,39 +11,78 @@ drift are marked with what they were measured against, so re-measure before trus
 
 ## 1. Blocking before upload
 
-### 1.1 The payload is 170 MB and the cellular limit is 200 MB
+### 1.1 Payload size — measured on the `.pck`, not the source tree
 
-Measured: `Godot/build/ios/Spiritbound.pck` = **170,449,820 bytes (163 MiB)**. Apple's
-over-the-cellular download limit is 200 MB; over Wi-Fi there is no practical cap. This is not a
-rejection risk today, but it is 85% of a hard ceiling with art still being added, and exceeding
-it is what produces the "this app requires Wi-Fi to download" warning that measurably costs
-installs.
+Apple's over-the-cellular download limit is 200 MB (over Wi-Fi there is no practical cap).
+Exceeding it is what produces the "requires Wi-Fi to download" warning that measurably costs
+installs, so the number to watch is the **shipped `Spiritbound.pck`**.
 
-Where the bytes are (`du -sh Godot/assets/*`):
+**Use `python3 Godot/tools/pck_audit.py <pck>` for this, never `du -sh Godot/assets/*`.** Godot
+re-imports every asset and packs the *imported* form, so the two disagree — badly. An earlier
+revision of this section reasoned from the source tree and got the ranking of what to fix
+**wrong**, which is why the script exists:
 
-| Path | Size | Note |
+| Measured on | audio | textures | fonts |
+| --- | --- | --- | --- |
+| `du -sh Godot/assets/*` (source) | 28 MB | ~177 MB | 13 MB |
+| **inside the shipped `.pck`** | **5.6 MiB** | **146.8 MiB** | **9.1 MiB** |
+
+The source-tree view suggests audio is a headline cost. It is not: every `.wav.import` already
+has `compress/mode=2` (**QOA**, a lossy codec), so the 30 tracks occupy 5.6 MiB in the pack.
+"Convert the WAVs to OGG" — the old advice here — would have saved ~4 MiB and was not worth
+doing. Trust the artifact.
+
+Real breakdown of the 170,449,820-byte pack at `2e1af47` is **90.3% texture**, and that is the
+whole story:
+
+| Group | Size | Note |
 | --- | --- | --- |
-| `characters/` | 83 MB | 386 PNGs, incl. the 250 monster portraits |
-| `chapters/` | 32 MB | |
-| `audio/` | 28 MB | **30 `.wav` files, zero compressed formats** |
-| `cards/`, `backgrounds/` | 40 MB | |
-| `banners/` | 14 MB | |
-| `fonts/` | 13 MB | one full CJK face, `LXGWWenKai-Medium.ttf` |
+| `.ctex` texture data | 146.8 MiB | 604 textures, from `assets/characters/` (394 PNGs), `chapters/`, `banners/`, `cards/`, `backgrounds/` |
+| `.fontdata` | 9.1 MiB | `LXGWWenKai-Medium.ttf`, one full CJK face |
+| `.sample` (QOA audio) | 5.6 MiB | already compressed |
+| `.gdc` + scripts + `data/` | 1.1 MiB | |
 
-The two cheap wins, in order of payoff:
+**Landing in this pass, verified by re-export:** `export_presets.cfg` now carries an
+`exclude_filter` that drops things no build should ever have shipped. `tests/` and `tools/` were
+being packed into the release artifact, `addons/gut/` (the test framework) was too, and
+`assets/characters/monsters/m_r*.png` are **byte-identical duplicates** of the `m_s*.png` sheets
+with zero references anywhere in `scripts/` or `data/` (checked by `md5` and by `grep`).
 
-1. **Convert the 30 `.wav` files to OGG Vorbis.** Godot's WAV importer
-   (`Godot/assets/audio/*.wav.import`) has `force/8_bit=false`, `force/mono=false`,
-   `force/max_rate=false` — i.e. every file ships at its authored quality. For music and
-   ambience, 96–128 kbps Vorbis is transparent to essentially every listener on a phone
-   speaker; expect roughly a 10× reduction on those 28 MB. This is a pure asset change, no code.
-2. **Subset the font.** 13 MB is one face covering all of CJK. Both shipped languages need
-   hanzi, so it cannot simply be dropped, but `pyftsubset` against the actual glyph set the
-   game renders (the `UI_TEXT` table is exhaustive — 935 keys, both `zh-Hans` and `en` complete,
-   zero missing translations, verified) removes everything unused. Typically 60–80% off.
+```
+before  170,449,820 bytes (162.5 MiB)
+after   149,324,576 bytes (142.4 MiB)   -20.1 MiB, -12.4%
+```
 
-Then re-measure the `.pck`. If it lands under ~120 MB there is no size question left for a
-long time. `Godot/tests/visual_snapshots.gd` gives a visual regression check if you touch art.
+No code change, no re-encode, no visual risk. `./run_tests.sh` green after.
+
+**What is still on the table, in order of payoff:**
+
+1. **638 of 668 texture `.import` files are `compress/mode=0` (Lossless)** — i.e. the art ships
+   as effectively raw RGBA. `project.godot` already sets
+   `textures/vram_compression/import_etc2_astc=true`, so switching them to
+   `compress/mode=2` (VRAM Compressed) is the one change with a 2–4× lever on 90% of the payload.
+   It is *not* free: ETC2/ASTC is lossy and will be visible on gradients and soft shading, so
+   this is a quality call, and it needs `godot --headless --import`, a re-measure and
+   `Godot/tests/visual_snapshots.gd`. Do it deliberately or not at all.
+2. **Duplicate `.png`/`.jpg` pairs ship side by side.** `backgrounds/` contains seven
+   same-basename pairs (`battlefield-v1`, `ember-cliff-v1`, `lantern-marsh-v1`,
+   `mountain-forge-v1`, `rune-ravine-v1`, `spirit-world-map-v1`, …), as do `cards/moonfang` and
+   `cards/renewal`. The `.jpg` duplicates are ~0.25–0.5 MB each. Most of those basenames appear
+   in *no* script, so the likely fix is deletion rather than exclusion — but confirm each
+   reference first; two of them (`lantern-marsh-v1`, `spirit-world-map-v1`) are referenced
+   somewhere and must not be guessed at.
+3. **Subset the font** (9.1 MiB). Both shipped languages need hanzi so the face cannot be
+   dropped, but `pyftsubset` against the glyphs the game actually renders can remove the rest.
+   The `UI_TEXT` table is exhaustive — 935 keys, `zh-Hans` and `en` both complete, zero missing
+   translations, verified — so the glyph set is known rather than estimated.
+4. **Stale import cache.** `Godot/.godot/imported/NotoSansSC.ttf-*.fontdata` is 13 MB of orphan:
+   its source `NotoSansSC.ttf` **is not in the repo**, it is not referenced by any script or by
+   `project.godot`, and it is **not** in the pack (confirmed via `pck_audit.py`). It is only
+   local disk, so it is not a shipping problem — but do not mistake it for a shipped font, and
+   do not "fix" the 13 MB by editing `assets/fonts/`.
+
+Re-run `pck_audit.py` after any art change. `Godot/tests/visual_snapshots.gd` is the visual
+regression check.
 
 ### 1.2 The purchase gate cannot unlock anything yet
 
@@ -116,15 +155,43 @@ scores") whenever the flag is set. The stricter alternative — mirroring
 sample board outright; that would also delete a deliberate, tested design choice, so labelling
 it was the smaller and more honest change. Revisit if you would rather have the empty state.
 
-### 2.2 Version numbers say 0.2.0 / build 2
+### 2.2 Version numbers say 1.0.0 / build 1
 
-`Godot/export_presets.cfg` has `application/short_version="0.2.0"`,
-`application/version="2"`. A first public release is normally `1.0.0`. The generated
-`Spiritbound-Info.plist` derives `CFBundleShortVersionString` and `CFBundleVersion` from Xcode's
-`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`, with the preset as the source of truth — so set
-both there, and confirm the built app's plist matches. `./release_ios.sh` prints the version that
-actually reached the binary, and warns when the build number will collide with one already
-uploaded (App Store Connect rejects duplicate build numbers per version).
+`Godot/export_presets.cfg` has `application/short_version="1.0.0"`,
+`application/version="1"` — raised from `0.2.0` / `2` in this pass, since a first public release
+is normally `1.0.0`.
+
+How the number reaches the binary, verified by re-exporting rather than assumed:
+
+- `Spiritbound-Info.plist` does **not** contain the version; it contains the build-setting
+  references `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`.
+- The literals live in the **generated** `Spiritbound.xcodeproj/project.pbxproj`, and Godot
+  rewrites them from the preset on every export: the fresh export made in this pass contains
+  `MARKETING_VERSION = 1.0.0` / `CURRENT_PROJECT_VERSION = 1`, while the pre-existing
+  `Godot/build/ios/` still contains `0.2.0` / `2`.
+
+**The trap:** the preset is the source of truth only at export time, so a `build/ios/` directory
+that is not re-exported keeps whatever version it was last written with, and archiving that
+stale tree ships the old number. This is not hypothetical — one exists in this repo right now:
+`Godot/build/ios/` still says `0.2.0` / `2` while the preset says `1.0.0` / `1`.
+
+`release_ios.sh` re-exports on every run (that is why it is the release path), which is what
+keeps the two in sync. It also now reads the version **out of the exported
+`project.pbxproj`** rather than out of `export_presets.cfg`, so the number it prints and records
+next to the archive is the one that will actually ship; if the exported project and the preset
+disagree it says so and tells you to delete `Godot/build/ios/` and re-export. Do not archive
+that directory by hand. To check it yourself:
+
+```bash
+grep MARKETING_VERSION Godot/build/ios/Spiritbound.xcodeproj/project.pbxproj
+```
+
+On build numbers, be precise about what the script can and cannot know: it warns when you are
+reusing the number committed in `export_presets.cfg`, because it **cannot see what you have
+already uploaded** — App Store Connect rejects a duplicate build number for the same version,
+and only you know whether one exists. Pass `--build-number <n+1>` to silence it. Numbers only
+have to be unique *within* a version train, so `1` is fine under `1.0.0` even if `0.2.0` build
+`2` already exists.
 
 ### 2.3 Export compliance — verified OK, but it is template-owned
 
@@ -163,8 +230,21 @@ place those screens get eyes.
 installed over the cable). The release script refuses a dirty working tree on purpose — an
 archive has to correspond to a commit — runs `./run_tests.sh` first, exports with
 `--export-release` (never `--export-debug`), archives with distribution signing via
-`-allowProvisioningUpdates`, and records the version and commit next to the archive so a
-TestFlight report can be traced back to a build.
+`-allowProvisioningUpdates`, and records the version (read from the exported Xcode project),
+the build number and the commit next to the archive so a TestFlight report can be traced back to
+a build. It also asserts, post-export, that the generated `Info.plist` still carries
+`ITSAppUsesNonExemptEncryption` (§2.3), and that the exported marketing version matches the
+preset (§2.2).
+
+Before uploading, re-measure the payload — it is the one gate that is cheap to check and
+expensive to discover late:
+
+```bash
+python3 Godot/tools/pck_audit.py Godot/build/ios/Spiritbound.pck
+```
+
+Expect ~142 MiB after the exclusions in §1.1; anything much larger means the `exclude_filter`
+was lost or new art landed uncompressed.
 
 Then, in App Store Connect: attach the build to a TestFlight group, complete the
 export-compliance question if it appears, confirm App Privacy and the account-deletion

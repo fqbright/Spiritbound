@@ -41,12 +41,13 @@ GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC
 UPLOAD=false
 DRY_RUN=false
 BUILD_NUMBER=""
+BUILD_NUMBER_ARG=""       # non-empty only when the caller passed --build-number
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --upload)       UPLOAD=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
-        --build-number) BUILD_NUMBER="${2:-}"; shift 2 ;;
+        --build-number) BUILD_NUMBER="${2:-}"; BUILD_NUMBER_ARG=true; shift 2 ;;
         -h|--help)      sed -n '4,29p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo -e "${RED}Unknown argument: $1${NC}"; exit 1 ;;
     esac
@@ -143,15 +144,36 @@ if [ "$DRY_RUN" = false ] && [ -f "$PLIST" ]; then
     fi
 fi
 
-# The version that actually reached the binary, recorded next to the archive. This is what you
+# The version that reached the *exported project*, recorded next to the archive. This is what you
 # paste into TestFlight's "What to Test" so a tester report can be traced to a build.
-SHORT_VERSION="$(grep -m1 'application/short_version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
-[ -n "$BUILD_NUMBER" ] || BUILD_NUMBER="$(grep -m1 'application/version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
+#
+# Read it from the exported pbxproj, not from export_presets.cfg: Godot only copies the preset
+# into the Xcode project at export time, so the two can disagree (a stale or hand-archived
+# Godot/build/ios/ keeps the number it was last written with). Reading the artifact and warning
+# on a mismatch is the difference between reporting the shipped version and reporting the
+# intended one. See Docs/STORE_SUBMISSION.md section 2.2.
+PRESET_VERSION="$(grep -m1 'application/short_version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
+PRESET_BUILD="$(grep -m1 'application/version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
+SHORT_VERSION="$PRESET_VERSION"
+[ -n "$BUILD_NUMBER" ] || BUILD_NUMBER="$PRESET_BUILD"
+PBXPROJ="$BUILD_DIR/Spiritbound.xcodeproj/project.pbxproj"
+if [ -f "$PBXPROJ" ]; then
+    EXPORTED_VERSION="$(grep -m1 'MARKETING_VERSION' "$PBXPROJ" | sed 's/.*= *//; s/;//' | tr -d ' ')"
+    EXPORTED_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION' "$PBXPROJ" | sed 's/.*= *//; s/;//' | tr -d ' ')"
+    [ -n "$EXPORTED_VERSION" ] && SHORT_VERSION="$EXPORTED_VERSION"
+    [ -z "$BUILD_NUMBER_ARG" ] && [ -n "$EXPORTED_BUILD" ] && BUILD_NUMBER="$EXPORTED_BUILD"
+    if [ -n "$EXPORTED_VERSION" ] && [ "$EXPORTED_VERSION" != "$PRESET_VERSION" ]; then
+        echo -e "${YELLOW}  ⚠ Exported project says version $EXPORTED_VERSION but export_presets.cfg"
+        echo -e "    says $PRESET_VERSION — the Xcode project was not regenerated from the preset."
+        echo -e "    Delete $BUILD_DIR and re-export before archiving.${NC}"
+    fi
+fi
 echo "  Marketing version $SHORT_VERSION, build $BUILD_NUMBER, commit $RELEASE_COMMIT"
-if [ "$BUILD_NUMBER" = "$(grep -m1 'application/version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)" ] && [ "$DRY_RUN" = false ]; then
-    echo -e "${YELLOW}  ⚠ This build number is already in export_presets.cfg, so it may collide with a"
-    echo -e "    build you already uploaded — App Store Connect rejects a duplicate build number"
-    echo -e "    for the same version. Pass --build-number <n+1> to be safe.${NC}"
+if [ -z "$BUILD_NUMBER_ARG" ] && [ "$DRY_RUN" = false ]; then
+    echo -e "${YELLOW}  ⚠ Reusing build number $BUILD_NUMBER from export_presets.cfg. This script cannot"
+    echo -e "    see what you have already uploaded — if a build with that number exists for"
+    echo -e "    $SHORT_VERSION, App Store Connect will reject the upload. Pass --build-number <n+1>"
+    echo -e "    to be safe.${NC}"
 fi
 
 # ---- Archive -----------------------------------------------------------------
