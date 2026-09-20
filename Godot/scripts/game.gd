@@ -455,6 +455,12 @@ func _ready() -> void:
 	# marker, and uploads the previous session's log tail if that session didn't exit cleanly.
 	# Headless (the test runner) is skipped inside LogService itself — see its begin_session().
 	LogService.begin_session(self)
+	# Billing plugin hand-off (Docs/LAUNCH_READINESS.md Section 2). A no-op until a Godot
+	# billing plugin is vendored AND named in project.godot's
+	# spiritbound/purchase/provider_candidates setting — see PurchaseService.bootstrap_provider().
+	# Without this the Buy / Restore buttons could never work even after the plugin shipped,
+	# because nothing ever registered it with PurchaseService.
+	PurchaseService.bootstrap_provider()
 	profile = SpiritSave.load_profile(content)
 	_track_return_days()
 	lang = str(profile.get("language", "zh-Hans"))

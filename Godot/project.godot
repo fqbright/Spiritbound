@@ -39,3 +39,15 @@ file_logging/enable_file_logging=true
 [editor_plugins]
 enabled=PackedStringArray("res://addons/gut/plugin.cfg")
 
+[spiritbound]
+
+; Billing plugin hand-off for the season-pass purchase gate (Docs/LAUNCH_READINESS.md §2).
+; List the vendored plugin name(s) here and PurchaseService.bootstrap_provider() wires the first
+; one that exists at startup — a native plugin singleton name (Engine.get_singleton(), how
+; Godot StoreKit / Play Billing plugins register) or a GDScript `class_name` adapter over it.
+; The provider must expose `purchase(product_id) -> Dictionary` (and optionally `restore()`).
+; Empty is the correct value until a plugin is actually vendored: with no provider wired, Buy
+; and Restore both fail closed and the premium track stays locked, which is the intended
+; behavior for an unconfigured store.
+purchase/provider_candidates=PackedStringArray()
+

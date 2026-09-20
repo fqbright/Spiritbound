@@ -1921,6 +1921,38 @@ func run() -> void:
 	PurchaseService.clear_verify_override()
 	PurchaseService.clear_receipts()
 
+	# --- Provider bootstrap: vendoring a billing plugin must not require editing the game ---
+	# The gap these cover was real and would have shipped silently: set_provider() existed and
+	# was well tested, but only the tests ever called it, so a vendored plugin would have
+	# arrived inert and every Buy tap would answer `no_provider` with no clue why. game.gd's
+	# _ready() now calls bootstrap_provider(); these checks hold the lookup honest.
+	check(PurchaseService.resolve_provider("") == null, "resolve_provider refuses an empty name")
+	check(PurchaseService.resolve_provider("NoSuchBillingPlugin") == null, "resolve_provider returns null for a name that isn't vendored")
+	check(not PurchaseService.bootstrap_provider(PackedStringArray(["NoSuchBillingPlugin"])), "bootstrap with only unresolvable candidates wires nothing")
+	check(not PurchaseService.provider_available(), "an unresolvable candidate must not look like a working store")
+	# A real, resolvable project class that is NOT a billing provider must be rejected rather
+	# than adopted: the contract is purchase(product_id), and a half-wired plugin adopting it
+	# would flip the game into "a provider exists" while every purchase still failed.
+	check(PurchaseService.resolve_provider("SpiritSave") == null, "resolve_provider rejects a resolvable class that exposes no purchase()")
+	check(not PurchaseService.bootstrap_provider(PackedStringArray(["SpiritSave"])), "a wrong-shaped candidate is not adopted as the provider")
+	check(not PurchaseService.provider_available(), "the gate still reports no provider after a wrong-shaped candidate")
+	# The scripted-adapter path: a provider registered as a project class_name is found and used.
+	check(PurchaseService.resolve_provider("BillingProviderStub") != null, "resolve_provider finds a scripted provider by its class_name")
+	check(PurchaseService.bootstrap_provider(PackedStringArray(["NoSuchBillingPlugin", "BillingProviderStub"])), "bootstrap walks the candidate list and adopts the first working one")
+	check(PurchaseService.provider_available(), "a bootstrapped provider reports itself available")
+	check(PurchaseService.bootstrap_provider(), "bootstrap is idempotent — a live provider is left in place, not replaced")
+	# And the bootstrapped provider is usable end to end, not merely present: a purchase through
+	# it plus a verified answer unlocks, which is the whole point of wiring it.
+	PurchaseService.set_verify_override(func(_p, _r, _t): return {"ok": true, "premium": true, "error": ""})
+	var boot_prof: Dictionary = SpiritSave.defaults(content)
+	var boot_bought: Dictionary = await PurchaseService.purchase(boot_prof)
+	check(bool(boot_bought.get("verified", false)), "a purchase through the bootstrapped provider completes")
+	check(PurchaseService.has_premium(boot_prof), "a purchase through the bootstrapped provider unlocks the premium track")
+	check(PurchaseService.configured_provider_candidates() is PackedStringArray, "configured_provider_candidates returns a list whether or not the setting exists")
+	PurchaseService.clear_provider()
+	PurchaseService.clear_verify_override()
+	check(not PurchaseService.provider_available(), "clear_provider still tears the wiring down")
+
 	if had_profile:
 		var restore_file := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
 		restore_file.store_string(saved_profile)

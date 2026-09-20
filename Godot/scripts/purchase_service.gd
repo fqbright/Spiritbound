@@ -48,6 +48,80 @@ static func clear_provider() -> void:
 static func provider_available() -> bool:
 	return _provider != null
 
+# ------------------------------------------------------------------------------
+# Provider bootstrap
+# ------------------------------------------------------------------------------
+# The gap this closes was real and would have shipped silently: `set_provider()` above is the
+# only way a billing plugin ever reaches this class, and until now nothing outside the headless
+# suites called it — so a vendored plugin would have arrived inert and the Buy button would keep
+# answering `no_provider` with no visible clue why. This runs once at startup and is deliberately
+# a no-op when nothing is vendored: an unconfigured store must stay locked, not crash.
+#
+# Vendoring a plugin then needs no edit to this file. Name it in project.godot:
+#
+#     [spiritbound]
+#     purchase/provider_candidates=PackedStringArray("GodotStoreKit")
+#
+# Each name may be either a native plugin singleton (`Engine.get_singleton()` — how Godot
+# StoreKit/Play Billing plugins register) or a GDScript `class_name`, which is the usual shape
+# for a thin scripted adapter over that singleton. Either way it must expose
+# `purchase(product_id) -> Dictionary` (and optionally `restore() -> Array`) — the contract in
+# this file's header. Anything that doesn't is rejected rather than adopted, so a half-wired
+# plugin can't leave the game believing it has a working store.
+const PROVIDER_CANDIDATES_SETTING := "spiritbound/purchase/provider_candidates"
+
+# Resolves one candidate name to an object satisfying the provider contract, or null if it can't
+# be found or doesn't expose purchase(). Pure lookup, no state change — safe to call from tests.
+static func resolve_provider(candidate_name: String) -> Object:
+	if candidate_name.is_empty():
+		return null
+	if Engine.has_singleton(candidate_name):
+		var singleton: Object = Engine.get_singleton(candidate_name)
+		if singleton != null and singleton.has_method("purchase"):
+			return singleton
+		return null
+	# Scripted adapter path: ProjectSettings already maintains the list of every `class_name` in
+	# the project, so a vendored GDScript provider is findable by name without loading a path.
+	for entry in ProjectSettings.get_global_class_list():
+		if not (entry is Dictionary) or str(entry.get("class", "")) != candidate_name:
+			continue
+		var script := load(str(entry.get("path", ""))) as Script
+		if script == null or not script.can_instantiate():
+			return null
+		var inst: Object = script.new()
+		if inst != null and inst.has_method("purchase"):
+			return inst
+		return null
+	return null
+
+# Reads the project setting into a plain list. Kept separate from bootstrap_provider() so the
+# "which names did we look for" question is inspectable on a real device without guessing.
+static func configured_provider_candidates() -> PackedStringArray:
+	var out := PackedStringArray()
+	var configured = ProjectSettings.get_setting(PROVIDER_CANDIDATES_SETTING, PackedStringArray())
+	if configured is PackedStringArray:
+		out.append_array(configured)
+	elif configured is Array:
+		for item in configured:
+			out.append(str(item))
+	return out
+
+# Wires the first working candidate. Returns true when a provider is available afterwards,
+# including when one was already wired (idempotent — called on every startup, must not tear
+# down or duplicate a live provider). `candidates` is a test seam: empty means "read the
+# project setting", which is what the game itself does.
+static func bootstrap_provider(candidates: PackedStringArray = PackedStringArray()) -> bool:
+	if _provider != null:
+		return true
+	if candidates.is_empty():
+		candidates = configured_provider_candidates()
+	for name in candidates:
+		var candidate := resolve_provider(str(name))
+		if candidate != null:
+			_provider = candidate
+			return true
+	return false
+
 static func set_verify_override(override: Callable) -> void:
 	_verify_override = override
 
