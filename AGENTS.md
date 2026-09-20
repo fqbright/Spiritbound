@@ -334,6 +334,26 @@ Every one of these produced a wrong screen with no error in the log. They are th
   these 7 modes' shuffle, flavor modifier, and enemy count fully reproducible with one line set
   before calling the relevant `begin_*_battle()`, instead of discovering the same non-determinism
   the hard way per mode. Covered by `tests/gut/test_battle_seed_override.gd`.
+- **The same wall-clock idiom had a slower-motion twin: `int(Time.get_unix_time_from_system()) /
+  DAY_SECONDS`, independently inlined at 6 call sites** (`game.gd`'s `_ensure_daily_trial_current`,
+  `_ensure_phantom_arena_current`, `fast_idle_harvest`, and its idle-harvest-modal builder;
+  `game_shop_deck_screen.gd`'s `_shop_period`/`_shop_reset_at`). Unlike the per-battle millisecond
+  seed above, this one doesn't flake between two captures taken moments apart — it only changes
+  once the real calendar day rolls over — so it survived the entire Xvfb/Pixel-Diff validation
+  effort undetected and only surfaced when the sandbox's real clock actually crossed a day
+  boundary mid-session: the shop screen's baseline (`04_shop_screen.png`, driven by
+  `roll_shop_stock(day, ...)`) suddenly failed Pixel-Diff at 9%+ diff with no code change at all,
+  because its rotating stock/sale/rune/relic had rolled to the new day. Same root cause and same
+  fix shape as the battle seed: deduplicated into one `SpiritGame._current_day()`, all 6 sites now
+  call instead of inlining the formula, plus `test_day_override` (default `-1`, same "disabled"
+  convention) so a test can pin "today" the same way `test_seed_override` pins a battle's seed.
+  `visual_snapshots.gd` sets `test_day_override = 20000` once, globally, before any of the 7
+  screens are captured — cheap insurance since only the shop screen actually reads it, but nothing
+  stops a future capturable screen from reading `_current_day()` too. If a Pixel-Diff baseline ever
+  fails with no corresponding code change, check whether the real calendar day moved since that
+  baseline was captured before assuming a real regression — this is the second time in one session
+  wall-clock content has silently eaten a visual-diff threshold from underneath a passing baseline,
+  just on a different clock granularity than the first.
 
 ## Game rules worth knowing before touching balance
 

@@ -77,6 +77,15 @@ func _run() -> void:
 	game.profile.daily_reset_at = 1700086400
 	game.profile.weekly_reset_at = 1700600000
 	game.lang = "zh-Hans"
+	# The shop's daily stock/sale/rune/relic (game_shop_deck_screen.gd's _shop_period(), via
+	# game._current_day()) is a pure function of the real calendar day, so its baseline would
+	# otherwise silently bake in whatever day it happened to be captured and then genuinely
+	# differ — not flake, actually differ — the next time the real date rolls over. Same "wall-
+	# clock content defeats a visual-diff threshold" shape as the battle screen's fix just below,
+	# just on a day boundary instead of a per-battle one, so it survives many back-to-back
+	# captures before ever showing up. Pinned to an arbitrary fixed day for the same reason the
+	# battle screen below is pinned to a fixed hand/enemy count.
+	game.test_day_override = 20000
 	await process_frame
 
 	# 1. Map Screen

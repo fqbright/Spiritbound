@@ -3461,12 +3461,122 @@ func _run() -> void:
 			if tab_daily != null:
 				tap_button(tab_daily, "LeaderboardTab_daily_trial")
 				await process_frame
+			# E3 Part 2: Global/Friends scope toggle. Switching scope kicks off a real
+			# SupabaseClient network fetch inside show_leaderboard()'s update_view closure (same
+			# fire-and-forget shape the existing category tabs above already exercise without
+			# awaiting the fetch itself) — only structural existence and that tapping it doesn't
+			# crash are asserted here, not fetched content, since that content depends on network
+			# reachability this suite can't rely on.
+			var scope_global: Control = lb_modal.find_child("LeaderboardScope_global", true, false) as Control
+			var scope_friends: Control = lb_modal.find_child("LeaderboardScope_friends", true, false) as Control
+			check(scope_global != null, "LeaderboardScope_global toggle exists")
+			check(scope_friends != null, "LeaderboardScope_friends toggle exists")
+			if scope_friends != null:
+				tap_button(scope_friends, "LeaderboardScope_friends")
+				await process_frame
+				check(lb_modal.is_inside_tree(), "switching to the Friends scope does not close or crash the leaderboard modal")
 			if lb_close != null:
 				tap_button(lb_close, "LeaderboardCloseBtn")
 				await process_frame
 				check(game.overlay.find_child("LeaderboardModal", true, false) == null, "LeaderboardModal closed on close tap")
 		game.show_map()
 		await process_frame
+
+	section("== friends leaderboard management (E3 Part 2) ==")
+	# All of _add_friend()/_remove_friend()/_rebuild_friends_list() (game_camp_screen.gd) are
+	# purely local — no network call — unlike the leaderboard fetch above, so this can assert on
+	# actual behavior deterministically instead of just structural existence.
+	var saved_account_friends: Dictionary = game.profile.account.duplicate(true)
+	var saved_friends_list: Array = game.profile.get("friends", []).duplicate(true)
+
+	game.profile.account.provider = "guest"
+	game.profile.account.user_id = ""
+	game.profile.friends = []
+	game.show_challenges()
+	await process_frame
+	var friends_sec: Node = game.root.find_child("FriendsSection", true, false)
+	check(friends_sec != null, "FriendsSection exists in challenges list")
+	var friends_open_btn: Control = game.root.find_child("FriendsManageBtn", true, false) as Control
+	check(friends_open_btn != null, "FriendsManageBtn exists in FriendsSection")
+	if friends_open_btn != null:
+		tap_button(friends_open_btn, "FriendsManageBtn")
+		await process_frame
+		var f_modal: Node = game.overlay.find_child("FriendsModal", true, false)
+		check(f_modal != null, "FriendsModal opened on tap")
+		if f_modal != null:
+			check(f_modal.find_child("FriendsLinkAccountBtn", true, false) != null, "a guest (not cloud-linked) sees a prompt to sign in instead of their own code")
+			check(f_modal.find_child("FriendsCopyCodeBtn", true, false) == null, "a guest has no code to copy")
+			check(_find_label_containing(f_modal, game.t("ui.friends_empty_list")), "an empty friends list shows its own empty-state message")
+			var f_close: Control = f_modal.find_child("FriendsCloseBtn", true, false) as Control
+			if f_close != null:
+				tap_button(f_close, "FriendsCloseBtn")
+				await process_frame
+				check(game.overlay.find_child("FriendsModal", true, false) == null, "FriendsModal closed on close tap")
+
+	# Now a cloud-linked account with a stable, shareable code.
+	game.profile.account.provider = "apple"
+	game.profile.account.user_id = "owner_code_123456"
+	game.show_friends_modal()
+	await process_frame
+	var f_modal2: Node = game.overlay.find_child("FriendsModal", true, false)
+	check(f_modal2 != null, "FriendsModal reopens via the game.gd delegator")
+	if f_modal2 != null:
+		check(f_modal2.find_child("FriendsLinkAccountBtn", true, false) == null, "a cloud-linked account has no sign-in prompt")
+		var copy_btn: Control = f_modal2.find_child("FriendsCopyCodeBtn", true, false) as Control
+		check(copy_btn != null, "a cloud-linked account can copy its own code")
+		if copy_btn != null:
+			tap_button(copy_btn, "FriendsCopyCodeBtn")
+			check(game._clipboard_get() == "owner_code_123456", "copying the code puts the account's real user_id on the clipboard")
+
+		var friend_code_input: LineEdit = f_modal2.find_child("FriendsCodeInput", true, false) as LineEdit
+		var nick_input: LineEdit = f_modal2.find_child("FriendsNicknameInput", true, false) as LineEdit
+		var add_btn: Control = f_modal2.find_child("FriendsAddBtn", true, false) as Control
+		check(friend_code_input != null and nick_input != null and add_btn != null, "the add-friend inputs and button exist")
+		if friend_code_input != null and nick_input != null and add_btn != null:
+			friend_code_input.text = ""
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_empty")), "submitting an empty code surfaces an error toast")
+			check(game.profile.friends.is_empty(), "an empty-code submission adds nothing")
+
+			friend_code_input.text = "bad code!"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_invalid")), "a code with disallowed characters is rejected")
+			check(game.profile.friends.is_empty(), "an invalid-format code adds nothing")
+
+			friend_code_input.text = "owner_code_123456"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_self")), "a player cannot add their own code as a friend")
+			check(game.profile.friends.is_empty(), "adding one's own code adds nothing")
+
+			friend_code_input.text = "friend_code_abcdef"
+			nick_input.text = "TestFriend"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_added_toast")), "a valid new code is accepted")
+			check(game.profile.friends.size() == 1 and str(game.profile.friends[0].get("user_id","")) == "friend_code_abcdef", "the accepted friend is stored with its code")
+			check(friend_code_input.text.is_empty(), "the code input clears itself after a successful add")
+			var remove_btn: Control = f_modal2.find_child("FriendsRemoveBtn_friend_code_abcdef", true, false) as Control
+			check(remove_btn != null, "the newly added friend appears in the list with a remove button")
+
+			friend_code_input.text = "friend_code_abcdef"
+			tap_button(add_btn, "FriendsAddBtn")
+			check(_find_label_containing(game.overlay, game.t("ui.friends_add_err_duplicate")), "adding the same code twice is rejected")
+			check(game.profile.friends.size() == 1, "a duplicate submission does not add a second entry")
+
+			if remove_btn != null:
+				tap_button(remove_btn, "FriendsRemoveBtn_friend_code_abcdef")
+				check(_find_label_containing(game.overlay, game.t("ui.friends_removed_toast")), "removing a friend surfaces a confirmation toast")
+				check(game.profile.friends.is_empty(), "removing the only friend empties the list")
+				check(_find_label_containing(f_modal2, game.t("ui.friends_empty_list")), "the list shows its empty-state message again after the last friend is removed")
+
+		var f_close2: Control = f_modal2.find_child("FriendsCloseBtn", true, false) as Control
+		if f_close2 != null:
+			tap_button(f_close2, "FriendsCloseBtn")
+			await process_frame
+
+	game.profile.account = saved_account_friends
+	game.profile.friends = saved_friends_list
+	game.show_map()
+	await process_frame
 
 	# 1d. Cultivation Meridian Modal
 	game.show_camp()

@@ -58,6 +58,17 @@ var screen_generation := 0
 # fully reproducible instead of hand-patching combat state after the fact per-test; never
 # touched by real gameplay.
 var test_seed_override := -1
+# Same shape as test_seed_override above, for the OTHER wall-clock-driven non-determinism
+# source in this codebase: "today" as a day-index, used by _current_day() below to roll the
+# shop's daily stock/sale/rune/relic (game_shop_deck_screen.gd's _shop_period()/_shop_reset_at()),
+# Daily Trial, Phantom Arena, and idle-harvest's fast-claim cooldown. Found the same way
+# test_seed_override was: visual_snapshots.gd's shop-screen capture depends on _shop_period(),
+# so its baseline silently bakes in whatever the real calendar day was on capture day and drifts
+# out from under the Pixel-Diff gate the next time the date actually rolls over — a slower-
+# motion version of the exact same "wall-clock content defeats a visual-diff threshold" bug
+# already fixed for battles (see test_seed_override's own comment). -1 means "disabled" (real
+# gameplay); set to a fixed day index before capturing/asserting anything day-rotation-dependent.
+var test_day_override := -1
 var loadout_tab := "equipment"
 var pending_rewards: Dictionary = {}
 var selected_card := -1
@@ -487,7 +498,7 @@ func _ensure_quests_current() -> void:
 # for, once "now" moves past it the run resets to stage 0 — lifetime badges/best_stage are
 # untouched, only the in-progress run.
 func _ensure_daily_trial_current() -> void:
-	var day: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var day: int = _current_day()
 	var previous: Dictionary = profile.get("daily_trial_record", {})
 	if int(previous.get("day", -1)) != day:
 		var prev_day: int = int(previous.get("day", -1))
@@ -904,6 +915,12 @@ func _safe_bottom() -> int:
 func _battle_seed() -> int:
 	if test_seed_override >= 0: return test_seed_override
 	return int(Time.get_unix_time_from_system() * 1000.0) & 0x7fffffff
+
+# See test_day_override's own comment for why this exists. Every call site that used to inline
+# int(Time.get_unix_time_from_system()) / DAY_SECONDS calls this instead.
+func _current_day() -> int:
+	if test_day_override >= 0: return test_day_override
+	return int(Time.get_unix_time_from_system()) / DAY_SECONDS
 
 func _clear() -> void:
 	screen_generation += 1
@@ -1605,6 +1622,7 @@ func show_season_pass() -> void: _camp_screen.show_season_pass()
 func show_spirit_draft() -> void: _camp_screen.show_spirit_draft()
 func begin_phantom_arena() -> void: _camp_screen.begin_phantom_arena()
 func show_leaderboard(category: String = "abyss") -> void: _camp_screen.show_leaderboard(category)
+func show_friends_modal() -> void: _camp_screen.show_friends_modal()
 
 func _submit_abyss_record(floor_num: int) -> void:
 	if floor_num <= 0: return
@@ -2615,7 +2633,7 @@ func _change_text_scale(scale_value: float) -> void:
 	show_settings()
 
 func _ensure_phantom_arena_current() -> void:
-	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var today_idx: int = _current_day()
 	if not profile.has("phantom_arena") or not (profile.phantom_arena is Dictionary):
 		profile.phantom_arena = {"day": today_idx, "wins_today": 0, "claimed_today": false}
 	elif int(profile.phantom_arena.get("day", -1)) != today_idx:
@@ -2655,7 +2673,7 @@ func claim_idle_harvest() -> int:
 
 func fast_idle_harvest() -> int:
 	var harvest: Dictionary = profile.get("idle_harvest", {})
-	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var today_idx: int = _current_day()
 	var last_day: int = int(harvest.get("last_fast_claim_day", -1))
 	if last_day == today_idx:
 		_toast(t("ui.idle_harvest_fast_done"), MUTED)
@@ -2878,7 +2896,7 @@ func show_idle_harvest_modal() -> void:
 	claim_btn.disabled = acc_gold <= 0
 	list.add_child(claim_btn)
 
-	var today_idx: int = int(Time.get_unix_time_from_system()) / DAY_SECONDS
+	var today_idx: int = _current_day()
 	var harvest_dict: Dictionary = profile.get("idle_harvest", {})
 	var fast_claimed: bool = int(harvest_dict.get("last_fast_claim_day", -1)) == today_idx
 	var fast_btn := _button(t("ui.idle_harvest_fast_done") if fast_claimed else t("ui.idle_harvest_fast"), func():

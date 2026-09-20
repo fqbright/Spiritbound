@@ -556,6 +556,9 @@ const MAX_CARD_UPGRADE := 2
 # _abandon_draft() resets (round/deck/current_pool/wins/losses) so the next run starts clean.
 const DRAFT_WIN_CAP := 6
 const DRAFT_LOSS_CAP := 3
+# Caps profile.friends so a pasted-code-in-a-loop mistake (or a griefing attempt) can't grow the
+# leaderboards' `user_id=in.(...)` PostgREST filter into an unbounded URL.
+const FRIEND_LIST_MAX := 50
 
 const RUNES = [
 	{"id":"swift","icon":"»","icon_mark":"chevrons","zh":"迅捷","en":"Swift","detail":"每回合第一次使用免费（返还其能量费用）。","detail_en":"First play each turn is free (refunds its Energy cost).","color":"78e9ff"},
@@ -2249,6 +2252,29 @@ const UI_TEXT = {
 	"ui.leaderboard_loading": {"zh-Hans":"正在同步天机名录...", "en":"Fetching celestial rankings..."},
 	"ui.leaderboard_empty": {"zh-Hans":"暂无登榜记录，虚位以待！", "en":"No entries yet, awaiting heroes!"},
 	"ui.leaderboard_submit_toast": {"zh-Hans":"🏆 新纪录已登入封神榜！", "en":"🏆 New record published to Leaderboard!"},
+	"ui.leaderboard_scope_global": {"zh-Hans":"全服", "en":"Global"},
+	"ui.leaderboard_scope_friends": {"zh-Hans":"好友", "en":"Friends"},
+	"ui.leaderboard_friends_empty": {"zh-Hans":"暂无好友战绩，先添加好友吧", "en":"No friends on this board yet — add some first"},
+	"ui.friends_title": {"zh-Hans":"好友名录", "en":"Friends"},
+	"ui.friends_sub": {"zh-Hans":"添加好友代码，同榜比拼名次", "en":"Add a friend's code to compare rankings"},
+	"ui.friends_manage_btn": {"zh-Hans":"管理好友", "en":"Manage Friends"},
+	"ui.friends_modal_title": {"zh-Hans":"好友名录", "en":"Friends"},
+	"ui.friends_my_code_label": {"zh-Hans":"我的代码", "en":"My Code"},
+	"ui.friends_copy_btn": {"zh-Hans":"复制", "en":"Copy"},
+	"ui.friends_code_copied": {"zh-Hans":"代码已复制", "en":"Code copied"},
+	"ui.friends_need_link": {"zh-Hans":"登录账号后即可获得专属代码，供好友添加", "en":"Sign in to get your own code so friends can add you"},
+	"ui.friends_code_placeholder": {"zh-Hans":"好友代码", "en":"Friend's code"},
+	"ui.friends_nickname_placeholder": {"zh-Hans":"备注名（可选）", "en":"Nickname (optional)"},
+	"ui.friends_add_btn": {"zh-Hans":"添加好友", "en":"Add Friend"},
+	"ui.friends_add_err_empty": {"zh-Hans":"请输入好友代码", "en":"Enter a friend code"},
+	"ui.friends_add_err_invalid": {"zh-Hans":"代码格式无效", "en":"Invalid code format"},
+	"ui.friends_add_err_self": {"zh-Hans":"不能添加自己", "en":"You can't add yourself"},
+	"ui.friends_add_err_duplicate": {"zh-Hans":"该好友已添加", "en":"Already added"},
+	"ui.friends_add_err_full": {"zh-Hans":"好友数量已达上限", "en":"Friend list is full"},
+	"ui.friends_added_toast": {"zh-Hans":"✦ 好友已添加", "en":"✦ Friend added"},
+	"ui.friends_removed_toast": {"zh-Hans":"好友已移除", "en":"Friend removed"},
+	"ui.friends_empty_list": {"zh-Hans":"还没有好友，添加代码开始比拼吧", "en":"No friends yet — add a code to start comparing"},
+	"ui.friends_count": {"zh-Hans":"%d/%d 位好友", "en":"%d/%d friends"},
 	"ui.deck_filter_all": {"zh-Hans":"全部", "en":"All"},
 	"ui.deck_filter_attack": {"zh-Hans":"攻击", "en":"Attack"},
 	"ui.deck_filter_skill": {"zh-Hans":"技能", "en":"Skill"},

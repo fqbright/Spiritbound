@@ -169,11 +169,11 @@ const SHOP_STOCK_COUNT := 6
 # Stock and the day's sale slot are derived from the day number rather than stored, so
 # they need no save-file field and can't drift out of sync with the daily quest reset.
 func _shop_period() -> Dictionary:
-	var day: int = int(Time.get_unix_time_from_system()) / g.DAY_SECONDS
+	var day: int = g._current_day()
 	return g.content.roll_shop_stock(day, SHOP_STOCK_COUNT)
 
 func _shop_reset_at() -> int:
-	var day: int = int(Time.get_unix_time_from_system()) / g.DAY_SECONDS
+	var day: int = g._current_day()
 	return (day + 1) * g.DAY_SECONDS
 
 # Escalating cost is the direct fix for "just buy the same card forever": each copy already

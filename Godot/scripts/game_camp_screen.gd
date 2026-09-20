@@ -757,6 +757,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 # "what have I collected."
 func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_leaderboard_entry_section())
+	list.add_child(_friends_section())
 	list.add_child(_world_event_section())
 	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
@@ -2281,12 +2282,263 @@ func _leaderboard_entry_section() -> Control:
 
 	return panel
 
+func _friends_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "FriendsSection"
+	panel.custom_minimum_size = Vector2(0, 96)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("101d25"), 12, g.JADE))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 8)
+
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 2)
+	title_box.add_child(g._label(g.t("ui.friends_title") + " 👥", 14, g.JADE, HORIZONTAL_ALIGNMENT_LEFT))
+	title_box.add_child(g._label(g.t("ui.friends_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	top_row.add_child(title_box)
+
+	var open_btn := g._button(g.t("ui.friends_manage_btn"), func(): show_friends_modal(), Color("225046"), Vector2(100, 34))
+	open_btn.name = "FriendsManageBtn"
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top_row.add_child(open_btn)
+	vbox.add_child(top_row)
+
+	var friend_list: Array = g.profile.get("friends", [])
+	vbox.add_child(g._label(g.tf("ui.friends_count", [friend_list.size(), SpiritContent.FRIEND_LIST_MAX]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+
+	return panel
+
+# Only letters/digits/underscore/hyphen: covers a real Supabase auth UUID and the
+# "apple_"/"google_"-prefixed sandbox ids alike, while rejecting anything that could smuggle
+# extra characters into the user_id=in.(...) filter this code is pasted into (see
+# SupabaseClient.fetch_leaderboard_for_users) — belt-and-suspenders alongside that function's
+# own uri_encode() on every id.
+func _is_valid_friend_code(code: String) -> bool:
+	if code.length() < 6 or code.length() > 64: return false
+	for i in code.length():
+		var c := code.unicode_at(i)
+		var is_upper := c >= 65 and c <= 90
+		var is_lower := c >= 97 and c <= 122
+		var is_digit := c >= 48 and c <= 57
+		var is_symbol := c == 95 or c == 45 # '_' or '-'
+		if not (is_upper or is_lower or is_digit or is_symbol): return false
+	return true
+
+func _remove_friend(fid: String, list: VBoxContainer) -> void:
+	var current: Array = g.profile.get("friends", [])
+	for j in current.size():
+		if str(current[j].get("user_id", "")) == fid:
+			current.remove_at(j)
+			break
+	g.profile.friends = current
+	SpiritSave.write(g.profile)
+	g._toast(g.t("ui.friends_removed_toast"), g.MUTED)
+	_rebuild_friends_list(list)
+
+func _add_friend(code_input: LineEdit, nickname_input: LineEdit, list: VBoxContainer) -> void:
+	var raw_code := code_input.text.strip_edges()
+	var nickname := nickname_input.text.strip_edges()
+	if raw_code.is_empty():
+		g._toast(g.t("ui.friends_add_err_empty"), g.EMBER)
+		return
+	if not _is_valid_friend_code(raw_code):
+		g._toast(g.t("ui.friends_add_err_invalid"), g.EMBER)
+		return
+	var my_id: String = str(g.profile.get("account", {}).get("user_id", ""))
+	if not my_id.is_empty() and raw_code == my_id:
+		g._toast(g.t("ui.friends_add_err_self"), g.EMBER)
+		return
+	var current: Array = g.profile.get("friends", [])
+	for f in current:
+		if str(f.get("user_id", "")) == raw_code:
+			g._toast(g.t("ui.friends_add_err_duplicate"), g.EMBER)
+			return
+	if current.size() >= SpiritContent.FRIEND_LIST_MAX:
+		g._toast(g.t("ui.friends_add_err_full"), g.EMBER)
+		return
+	current.append({"user_id": raw_code, "name": nickname})
+	g.profile.friends = current
+	SpiritSave.write(g.profile)
+	code_input.text = ""
+	nickname_input.text = ""
+	g._toast(g.t("ui.friends_added_toast"), g.GOLD)
+	_rebuild_friends_list(list)
+
+func _rebuild_friends_list(list: VBoxContainer) -> void:
+	for ch in list.get_children():
+		list.remove_child(ch)
+		ch.queue_free()
+	var friends: Array = g.profile.get("friends", [])
+	if friends.is_empty():
+		list.add_child(g._label(g.t("ui.friends_empty_list"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		return
+	for i in friends.size():
+		var f: Dictionary = friends[i]
+		var fid: String = str(f.get("user_id", ""))
+		var fname: String = str(f.get("name", ""))
+		if fname.is_empty(): fname = fid.substr(0, mini(10, fid.length()))
+
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", g._panel(Color("14242e") if i % 2 == 0 else Color("0f1c24"), 6, Color("1a3543")))
+		var row_h := HBoxContainer.new()
+		row_h.add_theme_constant_override("separation", 6)
+		var n_lbl := g._label(fname, 11, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+		n_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		n_lbl.clip_text = true
+		row_h.add_child(n_lbl)
+		var remove_btn := g._button("✕", _remove_friend.bind(fid, list), Color("3a1c1c"), Vector2(30, 30))
+		remove_btn.name = "FriendsRemoveBtn_" + fid
+		row_h.add_child(remove_btn)
+		row.add_child(row_h)
+		list.add_child(row)
+
+func _close_friends_modal() -> void:
+	if g.overlay == null: return
+	var existing: Node = g.overlay.get_node_or_null("FriendsModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+func show_friends_modal() -> void:
+	_close_friends_modal()
+
+	var modal := g._modal_dialog("FriendsModal", func(): _close_friends_modal())
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "FriendsModalPanel"
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(340, vp_w - 24), 480)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0a1419"), 14, g.JADE))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(g._label(g.t("ui.friends_modal_title") + " 👥", 15, g.JADE, HORIZONTAL_ALIGNMENT_LEFT))
+	header_row.add_child(title_box)
+	var close_btn := g._button("✕", func(): _close_friends_modal(), Color("223640"), Vector2(32, 32))
+	close_btn.name = "FriendsCloseBtn"
+	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	# My Code panel
+	var code_panel := PanelContainer.new()
+	code_panel.add_theme_stylebox_override("panel", g._panel(Color("0f222b"), 8, g.GOLD))
+	var code_pad := MarginContainer.new()
+	for s in ["left", "right"]: code_pad.add_theme_constant_override("margin_%s" % s, 8)
+	for s in ["top", "bottom"]: code_pad.add_theme_constant_override("margin_%s" % s, 6)
+	code_panel.add_child(code_pad)
+	vbox.add_child(code_panel)
+
+	if SpiritSave.is_cloud_linked(g.profile):
+		var code_row := HBoxContainer.new()
+		code_row.add_theme_constant_override("separation", 6)
+		code_pad.add_child(code_row)
+		var my_code: String = str(g.profile.get("account", {}).get("user_id", ""))
+		var code_box := VBoxContainer.new()
+		code_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		code_box.add_theme_constant_override("separation", 2)
+		code_box.add_child(g._label(g.t("ui.friends_my_code_label"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+		var code_lbl := g._label(my_code, 11, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT)
+		code_lbl.clip_text = true
+		code_box.add_child(code_lbl)
+		code_row.add_child(code_box)
+		var copy_btn := g._button(g.t("ui.friends_copy_btn"), func():
+			g._clipboard_set(my_code)
+			g._toast(g.t("ui.friends_code_copied"), g.GOLD)
+		, Color("17363e"), Vector2(64, 34))
+		copy_btn.name = "FriendsCopyCodeBtn"
+		code_row.add_child(copy_btn)
+	else:
+		var link_col := VBoxContainer.new()
+		link_col.add_theme_constant_override("separation", 6)
+		code_pad.add_child(link_col)
+		link_col.add_child(g._label(g.t("ui.friends_need_link"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		var link_btn := g._button(g.t("ui.settings_account"), func():
+			_close_friends_modal()
+			g.show_settings()
+		, Color("1a2f36"), Vector2(0, 34))
+		link_btn.name = "FriendsLinkAccountBtn"
+		link_col.add_child(link_btn)
+
+	# Add Friend row
+	var add_row := HBoxContainer.new()
+	add_row.add_theme_constant_override("separation", 6)
+
+	var code_input := LineEdit.new()
+	code_input.name = "FriendsCodeInput"
+	code_input.placeholder_text = g.t("ui.friends_code_placeholder")
+	code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	code_input.custom_minimum_size = Vector2(0, 36)
+	add_row.add_child(code_input)
+
+	var nickname_input := LineEdit.new()
+	nickname_input.name = "FriendsNicknameInput"
+	nickname_input.placeholder_text = g.t("ui.friends_nickname_placeholder")
+	nickname_input.custom_minimum_size = Vector2(90, 36)
+	add_row.add_child(nickname_input)
+	vbox.add_child(add_row)
+
+	# Friends list
+	var scroll := TouchScrollContainer.new()
+	scroll.name = "FriendsScroll"
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size.y = 220
+	vbox.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.name = "FriendsList"
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+
+	var add_btn := g._button(g.t("ui.friends_add_btn"), _add_friend.bind(code_input, nickname_input, list), g.EMBER, Vector2(0, 38))
+	add_btn.name = "FriendsAddBtn"
+	vbox.add_child(add_btn)
+
+	_rebuild_friends_list(list)
+
 func _close_leaderboard_modal() -> void:
 	if g.overlay == null: return
 	var existing: Node = g.overlay.get_node_or_null("LeaderboardModal")
 	if existing != null:
 		if existing.get_parent(): existing.get_parent().remove_child(existing)
 		existing.queue_free()
+
+# Bound via .bind() from show_leaderboard()'s scope-toggle buttons rather than captured
+# directly in a per-iteration button lambda — matches the same .bind(cat_id) convention the
+# category tabs just below it already use, since .bind() evaluates scope_id immediately as a
+# normal argument instead of relying on lambda-closure-over-loop-variable semantics.
+func _set_leaderboard_scope(scope_id: String, current_scope: Array, update_view: Callable, current_category: Array) -> void:
+	current_scope[0] = scope_id
+	update_view.call(current_category[0])
 
 func show_leaderboard(default_category: String = "abyss") -> void:
 	_close_leaderboard_modal()
@@ -2329,6 +2581,15 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 	close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header_row.add_child(close_btn)
 	vbox.add_child(header_row)
+
+	# Scope Toggle: Global vs Friends (E3 Part 2) — friends scope filters the same table to
+	# just the player's own id plus profile.friends via SupabaseClient.fetch_leaderboard_for_users.
+	var scope_row := HBoxContainer.new()
+	scope_row.name = "LeaderboardScopeRow"
+	scope_row.add_theme_constant_override("separation", 6)
+	vbox.add_child(scope_row)
+	var scope_buttons: Dictionary = {}
+	var current_scope: Array = ["global"]
 
 	# Category Tabs
 	var tab_row := HBoxContainer.new()
@@ -2388,6 +2649,10 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 			var b: Button = tab_buttons.get(c)
 			if b != null:
 				b.add_theme_stylebox_override("normal", g._panel(Color("225046") if c == cat else Color("122228"), 6, g.GOLD if c == cat else Color("2a434d")))
+		for sc in ["global", "friends"]:
+			var sb: Button = scope_buttons.get(sc)
+			if sb != null:
+				sb.add_theme_stylebox_override("normal", g._panel(Color("225046") if sc == current_scope[0] else Color("122228"), 6, g.GOLD if sc == current_scope[0] else Color("2a434d")))
 		for ch in list.get_children():
 			list.remove_child(ch)
 			ch.queue_free()
@@ -2398,7 +2663,17 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 			my_pad.remove_child(ch)
 			ch.queue_free()
 
-		var res: Dictionary = await SupabaseClient.fetch_leaderboard(cat, 50, g)
+		var res: Dictionary
+		if current_scope[0] == "friends":
+			var my_id: String = str(g.profile.get("account", {}).get("user_id", ""))
+			var friend_ids: Array = []
+			if not my_id.is_empty(): friend_ids.append(my_id)
+			for f in g.profile.get("friends", []):
+				var fid: String = str(f.get("user_id", ""))
+				if not fid.is_empty() and not friend_ids.has(fid): friend_ids.append(fid)
+			res = await SupabaseClient.fetch_leaderboard_for_users(cat, friend_ids, g)
+		else:
+			res = await SupabaseClient.fetch_leaderboard(cat, 50, g)
 		if not is_instance_valid(list) or not list.is_inside_tree(): return
 
 		for ch in list.get_children():
@@ -2407,7 +2682,8 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 
 		var entries: Array = res.get("entries", [])
 		if entries.is_empty():
-			list.add_child(g._label(g.t("ui.leaderboard_empty"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+			var empty_key := "ui.leaderboard_friends_empty" if current_scope[0] == "friends" else "ui.leaderboard_empty"
+			list.add_child(g._label(g.t(empty_key), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		else:
 			for i in entries.size():
 				var entry: Dictionary = entries[i]
@@ -2541,6 +2817,18 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 		tab_row.add_child(btn)
 
 	refresh_btn.pressed.connect(func(): update_view.call(current_category[0]))
+
+	var scope_names := {
+		"global": g.t("ui.leaderboard_scope_global"),
+		"friends": g.t("ui.leaderboard_scope_friends"),
+	}
+	for scope_id in ["global", "friends"]:
+		var sbtn := g._button(scope_names[scope_id], Callable(), Color("122228"), Vector2(0, 28))
+		sbtn.name = "LeaderboardScope_" + scope_id
+		sbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sbtn.pressed.connect(_set_leaderboard_scope.bind(scope_id, current_scope, update_view, current_category))
+		scope_buttons[scope_id] = sbtn
+		scope_row.add_child(sbtn)
 
 	update_view.call(default_category)
 

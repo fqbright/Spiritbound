@@ -395,6 +395,33 @@ static func submit_score(category: String, score: int, player_name: String, char
 	var res = await _http_request(url, HTTPClient.METHOD_POST, headers, body, node)
 	return {"ok": res.get("ok", false), "data": res.get("data"), "error": str(res.get("error", ""))}
 
+# Friend-scoped leaderboard view (E3 Part 2): same table and row shape as fetch_leaderboard(),
+# just filtered to a specific set of user_ids (a player's own id plus their added friends')
+# instead of the global top-N. No new table needed — profile.friends (save_store.gd) is a
+# plain local/cloud-synced list of {user_id, name} the player builds by pasting each other's
+# account.user_id, and this only ever reads rows that fetch_leaderboard()'s own public listing
+# already exposes to anyone. Unlike fetch_leaderboard(), an empty or failed result must NOT
+# fall back to the seeded sample data — showing fabricated "friends" would be actively
+# misleading, so callers render the real empty state instead (see show_leaderboard()).
+static func fetch_leaderboard_for_users(category: String, user_ids: Array, node: Node = null) -> Dictionary:
+	if user_ids.is_empty():
+		return {"ok": true, "entries": [], "error": "", "offline": false}
+	var encoded: Array = []
+	for uid in user_ids:
+		encoded.append(str(uid).uri_encode())
+	var id_list := ",".join(encoded)
+	var url := SUPABASE_URL + "/rest/v1/" + TABLE_LEADERBOARDS + "?category=eq." + category + "&user_id=in.(" + id_list + ")&order=score.desc,created_at.asc"
+	var token := get_access_token()
+	var headers := PackedStringArray()
+	if not token.is_empty():
+		headers.append("Authorization: Bearer " + token)
+	var res = await _http_request(url, HTTPClient.METHOD_GET, headers, null, node)
+	if res.get("ok", false):
+		var data = res.get("data")
+		if data is Array:
+			return {"ok": true, "entries": data, "error": "", "offline": false}
+	return {"ok": false, "entries": [], "error": str(res.get("error", "")), "offline": true}
+
 static func _get_fallback_leaderboard(category: String) -> Array:
 	var list: Array = []
 	if category == "daily_trial":

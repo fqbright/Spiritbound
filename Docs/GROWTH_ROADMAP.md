@@ -294,10 +294,27 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 - `[x]` **E3 (Part 1) — Supabase 云端多方式登录与双向云存档**
   - 集成 Supabase REST API & Auth: 邮箱密码登录/注册、一键免密设备登录、Apple / Google 第三方 ID Token 认证。
   - 双向云存档同步 (`public.player_saves`): 时间戳自动比对与冲突消解、Token 自动刷新重试、离线沙盒安全回退。
-- `[ ]` **E3 (Part 2) — 好友排行榜** (待后续增加 `public.leaderboards` 表)
+- `[x]` **E3 (Part 2) — 好友排行榜**
+  No new table needed — `public.leaderboards` (used by the Part 1-adjacent global leaderboard
+  already shipped on `origin/main`) is publicly readable by design, so a friend-scoped view is
+  just that same table filtered to a specific set of `user_id`s instead of the global top-N
+  (`SupabaseClient.fetch_leaderboard_for_users`). `profile.friends` (a plain `{user_id, name}`
+  list, cloud-synced for free since the whole profile already round-trips through
+  `public.player_saves`) is built by pasting a friend's `account.user_id` — the same stable id
+  their own scores are submitted under — through a "My Code"/"Add Friend" flow in a new
+  `FriendsModal` (`game_camp_screen.gd`), and a Global/Friends scope toggle in the existing
+  leaderboard modal switches which fetch function backs the same rendering path. Add/remove is
+  local-only (no server round-trip, no verification call) so it can't add latency or fail on a
+  flaky connection — an unresolvable or mistyped code just never shows up in the filtered
+  results, the same graceful-empty handling the global board already had for zero entries.
+  Friend codes require a cloud-linked account (a guest's submission id isn't stable across
+  sessions, so there'd be nothing durable to share); the modal shows a sign-in prompt instead of
+  a code for a guest account.
 - `[ ]` **E4 — 异步"幽灵对战"**
-  Recorded-run AI opponents need a backend to store and serve run recordings. Same blocker as
-  E3; sequence after it, not before.
+  Recorded-run AI opponents need a backend to store and serve run recordings. E3 Part 2 shipped
+  without needing a new table by reusing `leaderboards`/`player_saves`; E4 has no equivalent
+  existing table to piggyback on (a run recording is arbitrary-length action data, not a score
+  row or a save blob), so it still needs one, e.g. `public.ghost_runs` keyed by stage + user_id.
 
 ---
 
@@ -305,6 +322,26 @@ If a headless run seems to hang instead of finishing in a few seconds, suspect a
 
 Append newest entries at the top. Each entry: date, what changed, why, anything the next
 agent needs to know that isn't obvious from the diff.
+
+### 2026-09-20 — E3 Part 2 (friend leaderboards) shipped; found & fixed a second wall-clock-content trap
+First of the three "gaming experience" follow-ups (feature-unlock toasts shipped the same day,
+just before this) picked up in order. Investigated the roadmap's own "待后续增加 `public.leaderboards`
+表" note before writing any code and found it stale: that table already exists and already backs
+the global leaderboard shipped on `origin/main` — so this shipped with zero new backend schema,
+reusing `leaderboards` (filtered to specific `user_id`s instead of the global top-N) and
+`player_saves` (a new `profile.friends` field rides the existing whole-profile cloud sync for
+free). See the roadmap entry above for the shape.
+
+While getting a clean `--all` run to commit against, Pixel-Diff failed on the shop screen alone
+with no relevant code change — traced to the real calendar day having advanced mid-session, which
+rolls `roll_shop_stock()`'s output. This is the exact same "wall-clock content defeats a visual-
+diff threshold" bug class fixed for battle seeds the day before, just on a day-granularity clock
+instead of a millisecond one, which is why it survived that entire dedup pass undetected. Fixed
+the same way: deduplicated the 6 independent `int(Time.get_unix_time_from_system()) /
+DAY_SECONDS` call sites into `SpiritGame._current_day()` plus a `test_day_override` hook, pinned
+in `visual_snapshots.gd`, and refreshed the shop baseline. See AGENTS.md's Traps section for the
+full account — if a Pixel-Diff baseline ever fails with no matching code change, check the
+calendar before assuming a real regression.
 
 ### 2026-09-19 — Deduplicated the wall-clock battle seed across 7 functions, added a test hook
 
