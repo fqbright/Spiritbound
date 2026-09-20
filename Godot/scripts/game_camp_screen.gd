@@ -991,11 +991,31 @@ func show_challenges() -> void:
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 10)
 	scroll.add_child(list)
+
+	# The tab dock on the left used to be the only way to get here, and the screen itself was 13
+	# fully-stacked banner cards — roughly four screens of scrolling with no indication of where
+	# one mode's concerns ended and the next began. A grouped dock makes the screen's shape
+	# visible before you commit to a scroll (and, unlike the challenge rail removed earlier, it
+	# doesn't overlap the list it scrolls).
+	var dock_row := HBoxContainer.new()
+	dock_row.name = "ChallengeBandDock"
+	dock_row.add_theme_constant_override("separation", 6)
+	dock_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	for entry in CHALLENGE_BANDS:
+		var band_id: String = str(entry[0])
+		var band_btn := g._button(g.t(str(entry[1])), func():
+			var target: Node = list.get_node_or_null("ChallengeBand_%s" % band_id)
+			if target != null: scroll.ensure_control_visible(target)
+		, Color("17363e"), Vector2(0, 32))
+		band_btn.name = "ChallengeDock_%s" % band_id
+		band_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		dock_row.add_child(band_btn)
+	page.add_child(dock_row)
+	page.add_child(scroll)
 
 	_build_camp_challenges(list)
 
@@ -1008,23 +1028,84 @@ func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
 
-# "Modes you enter": the two challenge tracks (Daily Trial, Endless Abyss) plus the campaign's
-# own difficulty ladder — all three answer "what am I about to go fight," not "who am I" or
-# "what have I collected."
+# "Modes you enter". Four bands, and every mode lives in exactly one of them — the list used to be
+# 13 ungrouped cards where, for example, the leaderboard entry point sat next to a boss gauntlet
+# with nothing saying they belonged to different kinds of play. Band accents are the same colours
+# their member sections already use, so the grouping reads without adding a second colour language.
+const CHALLENGE_BANDS: Array = [
+	["daily", "ui.challenges_group_daily", "ffb765"],
+	["competitive", "ui.challenges_group_competitive", "dab56e"],
+	["endgame", "ui.challenges_group_endgame", "c9a6ff"],
+	["practice", "ui.challenges_group_practice", "5ec9d6"],
+]
+
 func _build_camp_challenges(list: VBoxContainer) -> void:
-	list.add_child(_leaderboard_entry_section())
-	list.add_child(_friends_section())
+	# Daily: the two tracks on a reset timer.
+	list.add_child(_challenge_band_header("daily"))
+	list.add_child(_daily_trial_section())
+	list.add_child(_weekly_challenge_section())
+	# Competitive: the two things that compare you against other players. Stacked as one row —
+	# separately they were two nearly-empty panels that each burned a full 96pt of vertical space
+	# on a screen that already ran to four heights.
+	list.add_child(_challenge_band_header("competitive"))
+	list.add_child(_challenge_companion_row([_leaderboard_entry_section(), _friends_section()]))
+	# Endgame: everything gated behind a deep campaign clear.
+	list.add_child(_challenge_band_header("endgame"))
 	list.add_child(_world_event_section())
 	list.add_child(_phantom_arena_section())
 	list.add_child(_draft_arena_section())
-	list.add_child(_daily_trial_section())
-	list.add_child(_weekly_challenge_section())
 	list.add_child(_boss_rush_section())
 	list.add_child(_curse_run_section())
-	list.add_child(_sandbox_section())
 	list.add_child(_abyss_section())
-	list.add_child(_difficulty_tier_section())
 	list.add_child(_samsara_section())
+	# Practice & tuning: nothing here is a permanent run — the difficulty ladder changes what the
+	# campaign above does, and the sandbox is a throwaway bout.
+	list.add_child(_challenge_band_header("practice"))
+	list.add_child(_difficulty_tier_section())
+	list.add_child(_sandbox_section())
+
+func _challenge_band_header(band_id: String) -> Control:
+	var accent := g.GOLD
+	var label_key := ""
+	for entry in CHALLENGE_BANDS:
+		if str(entry[0]) == band_id:
+			label_key = str(entry[1])
+			accent = Color(str(entry[2]))
+	var box := VBoxContainer.new()
+	box.name = "ChallengeBand_%s" % band_id
+	box.add_theme_constant_override("separation", 5)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	var rule_l := ColorRect.new()
+	rule_l.custom_minimum_size = Vector2(0, 1)
+	rule_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rule_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rule_l.color = Color(accent.r, accent.g, accent.b, 0.35)
+	rule_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(rule_l)
+	var title := g._label(g.t(label_key), 12, accent)
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(title)
+	var rule_r := ColorRect.new()
+	rule_r.custom_minimum_size = Vector2(0, 1)
+	rule_r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rule_r.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rule_r.color = Color(accent.r, accent.g, accent.b, 0.35)
+	rule_r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(rule_r)
+	box.add_child(row)
+	return box
+
+func _challenge_companion_row(panels: Array) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for p in panels:
+		var panel := p as Control
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(panel)
+	return row
 
 # "What you've earned": the Compendium entry point plus the actual relics owned right now —
 # the Compendium already covers cards/gear/runes/bestiary/achievements, so relics-in-hand
@@ -1281,6 +1362,25 @@ func _split_horizontal_gradient(bg_color: Color) -> GradientTexture2D:
 	tex.height = 16
 	return tex
 
+func _procedural_band_texture(bg_color: Color, accent: Color) -> Texture2D:
+	var grad := Gradient.new()
+	var deep: Color = bg_color.darkened(0.35)
+	var lift: Color = Color(
+		lerpf(bg_color.r, accent.r, 0.35),
+		lerpf(bg_color.g, accent.g, 0.35),
+		lerpf(bg_color.b, accent.b, 0.35))
+	grad.colors = PackedColorArray([deep, lift, deep])
+	grad.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	# Diagonal rather than vertical so no two of these read as the same flat wash, and so the
+	# scrim overlay in _split_card_frame() has something to fall off against.
+	tex.fill_from = Vector2(0.0, 0.0)
+	tex.fill_to = Vector2(1.0, 1.0)
+	tex.width = 128
+	tex.height = 72
+	return tex
+
 func _split_card_frame(banner_path: String, unlocked: bool, bg_color: Color, border_color: Color, min_height: float = 126.0) -> Dictionary:
 	var panel := PanelContainer.new()
 	panel.clip_contents = true
@@ -1293,6 +1393,16 @@ func _split_card_frame(banner_path: String, unlocked: bool, bg_color: Color, bor
 	banner.name = "BannerBg"
 	if ResourceLoader.exists(banner_path):
 		banner.texture = load(banner_path)
+	else:
+		# Two of the eight challenge cards — World Event and Curse Run — reference banner files that
+		# are not in the repo (verified: every other res:// asset literal resolves; these two, and
+		# only these two, do not). They used to fall through to a bare flat panel, so those two
+		# modes rendered as empty rectangles next to seven painted ones. Borrowing another mode's
+		# painting is what made the leaderboard card look duplicated, so the fallback here is
+		# generated from the section's OWN border colour instead: every artless card gets a
+		# distinct diagonal wash with no second file, and the moment real art is added the
+		# ResourceLoader.exists() branch above takes over with no code change.
+		banner.texture = _procedural_band_texture(bg_color, border_color)
 	banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2649,56 +2759,77 @@ func _abandon_draft() -> void:
 	show_challenges()
 
 func _leaderboard_entry_section() -> Control:
-	var bg_col := Color("101d25")
-	var border_col := g.GOLD
-	var frame := _split_card_frame("res://assets/banners/banner_phantom_arena.png", true, bg_col, border_col, 110.0)
-	var panel: PanelContainer = frame.panel
+	# Was a full-width _split_card_frame() on banner_phantom_arena.png, i.e. the mode with no art of
+	# its own borrowed the Phantom Arena's — the two panels sat next to each other showing the same
+	# painting. It's a two-line entry point, so it's now a compact half-width panel with the nav
+	# icon doing the identifying, and the borrowed banner is gone.
+	var panel := PanelContainer.new()
 	panel.name = "LeaderboardSection"
-	var left: VBoxContainer = frame.left
+	panel.custom_minimum_size = Vector2(0, 138)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("101d25"), 12, g.GOLD))
 
-	left.add_child(g._label(g.t("ui.leaderboard_title") + " 🏆", 15, g.GOLD, HORIZONTAL_ALIGNMENT_LEFT))
-	left.add_child(g._label(g.t("ui.leaderboard_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 9)
+	panel.add_child(pad)
 
-	var open_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("abyss"), Color("225046"), Vector2(140, 36))
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	pad.add_child(col)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.add_child(g._nav_icon("nav_quest", 26))
+	var title := g._label(g.t("ui.leaderboard_title"), 13, g.GOLD)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(title)
+	col.add_child(head)
+
+	var sub := g._label(g.t("ui.leaderboard_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	sub.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sub)
+
+	var open_btn := g._button(g.t("ui.leaderboard_open"), func(): show_leaderboard("abyss"), Color("225046"), Vector2(0, 32))
 	open_btn.name = "LeaderboardOpenBtn"
-	open_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	left.add_child(open_btn)
+	col.add_child(open_btn)
 
 	return panel
 
 func _friends_section() -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "FriendsSection"
-	panel.custom_minimum_size = Vector2(0, 96)
+	panel.custom_minimum_size = Vector2(0, 138)
 	panel.add_theme_stylebox_override("panel", g._panel(Color("101d25"), 12, g.JADE))
 
 	var pad := MarginContainer.new()
-	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 12)
-	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 9)
 	panel.add_child(pad)
 
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	pad.add_child(vbox)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	pad.add_child(col)
 
-	var top_row := HBoxContainer.new()
-	top_row.add_theme_constant_override("separation", 8)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.add_child(g._nav_icon("profile", 26))
+	var title := g._label(g.t("ui.friends_title"), 13, g.JADE)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(title)
+	col.add_child(head)
 
-	var title_box := VBoxContainer.new()
-	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title_box.add_theme_constant_override("separation", 2)
-	title_box.add_child(g._label(g.t("ui.friends_title") + " 👥", 14, g.JADE, HORIZONTAL_ALIGNMENT_LEFT))
-	title_box.add_child(g._label(g.t("ui.friends_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
-	top_row.add_child(title_box)
-
-	var open_btn := g._button(g.t("ui.friends_manage_btn"), func(): show_friends_modal(), Color("225046"), Vector2(100, 34))
-	open_btn.name = "FriendsManageBtn"
-	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	top_row.add_child(open_btn)
-	vbox.add_child(top_row)
+	var sub := g._label(g.t("ui.friends_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	sub.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sub)
 
 	var friend_list: Array = g.profile.get("friends", [])
-	vbox.add_child(g._label(g.tf("ui.friends_count", [friend_list.size(), SpiritContent.FRIEND_LIST_MAX]), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+	col.add_child(g._label(g.tf("ui.friends_count", [friend_list.size(), SpiritContent.FRIEND_LIST_MAX]), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT))
+
+	var open_btn := g._button(g.t("ui.friends_manage_btn"), func(): show_friends_modal(), Color("225046"), Vector2(0, 32))
+	open_btn.name = "FriendsManageBtn"
+	col.add_child(open_btn)
 
 	return panel
 

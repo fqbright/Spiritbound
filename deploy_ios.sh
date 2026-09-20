@@ -43,7 +43,17 @@ elif [ "$MODE" != "build" ]; then
 fi
 
 # Step 2: Ensure Xcode project signing is permanently configured
-DETECTED_TEAM=$(security find-certificate -a -p | openssl x509 -noout -subject 2>/dev/null | grep -o "OU=[A-Z0-9]\{10\}" | head -n 1 | cut -d= -f2)
+# Read the team id from the signing identity Xcode created for this account.
+# A plain `openssl x509` consumes only the first PEM block and exits, which delivers SIGPIPE
+# to `security`; under `set -o pipefail` that aborts the whole script mid-deploy. It only
+# happens once the keychain holds more than one signing identity, so it looks intermittent.
+# Read every certificate, and make sure no stage of the pipeline exits before its input ends.
+_CERT_PEMS="$(mktemp)"
+security find-certificate -a -p > "$_CERT_PEMS" 2>/dev/null || true
+DETECTED_TEAM=$(openssl crl2pkcs7 -nocrl -certfile "$_CERT_PEMS" 2>/dev/null \
+    | openssl pkcs7 -print_certs -noout 2>/dev/null \
+    | grep -o "OU=[A-Z0-9]\{10\}" | sed -n '1p' | cut -d= -f2 || true)
+rm -f "$_CERT_PEMS"
 if [ -n "$DETECTED_TEAM" ]; then
     TEAM_ID="$DETECTED_TEAM"
 fi
@@ -130,7 +140,7 @@ BUILT_PRODUCTS_DIR=$(xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -scheme Spiritbound \
     -destination "generic/platform=iOS" \
     -showBuildSettings 2>/dev/null \
-    | grep -m1 "[[:space:]]BUILT_PRODUCTS_DIR = " | sed 's/.* = //')
+    | sed -n 's/^[[:space:]]*BUILT_PRODUCTS_DIR = //p' | sed -n '1p')
 DERIVED_APP="$BUILT_PRODUCTS_DIR/Spiritbound.app"
 
 if [ -z "$BUILT_PRODUCTS_DIR" ] || [ ! -d "$DERIVED_APP" ]; then
@@ -172,7 +182,7 @@ if [ -z "$DEVICE_LINE" ]; then
     exit 1
 fi
 
-DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40})" | head -n 1)
+DEVICE_ID=$(echo "$DEVICE_LINE" | grep -o -E "([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{40})" | sed -n '1p')
 if [ -z "$DEVICE_ID" ]; then
     DEVICE_ID=$(echo "$DEVICE_LINE" | awk -F'[(]UDID[)]' '{print $1}' | awk '{print $NF}')
 fi

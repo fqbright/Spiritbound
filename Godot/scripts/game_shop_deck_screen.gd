@@ -183,6 +183,182 @@ func _shop_price(card: Dictionary, owned: int) -> int:
 	var base := 90 if card.rarity == "Rare" else 60 if card.rarity == "Uncommon" else 40
 	return int(round(float(base) * (1.0 + float(owned) * 0.35) / 5.0)) * 5
 
+# The shop's "◆X / ✧Y" prices let a purchase fall back to Spirit Jade when gold runs short. That
+# fallback used to live inline in six different buy handlers, each re-deciding it slightly
+# differently; it lives here once so the confirm dialog can name the currency that will actually
+# be charged *before* the player commits, instead of the player finding out from the toast.
+func _resolve_payment(gold_cost: int, jade_cost: int) -> Dictionary:
+	if gold_cost > 0 and int(g.profile.gold) >= gold_cost:
+		return {"kind": "gold", "amount": gold_cost}
+	if jade_cost > 0 and int(g.profile.get("spirit_jade", 0)) >= jade_cost:
+		return {"kind": "jade", "amount": jade_cost}
+	return {"kind": "", "amount": 0}
+
+func _can_pay(gold_cost: int, jade_cost: int) -> bool:
+	return str(_resolve_payment(gold_cost, jade_cost).kind) != ""
+
+func _spend_payment(gold_cost: int, jade_cost: int) -> bool:
+	var payment := _resolve_payment(gold_cost, jade_cost)
+	match str(payment.kind):
+		"gold": g.profile.gold = int(g.profile.gold) - int(payment.amount)
+		"jade": g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) - int(payment.amount)
+		_: return false
+	return true
+
+# Reported problem: one tap bought or recycled outright. _bind_touch_guard() only rejects a
+# *drag* — a clean tap anywhere on the button fired instantly, and on the 390pt-wide shop the
+# price button sits directly under the card art while the recycle button sits beside a card row,
+# so a mis-tap spent real currency or destroyed a real copy with nothing to undo it. These are
+# infrequent, deliberate actions (unlike a battle card tap, which stays instant and recoverable),
+# so an explicit second confirmation costs almost nothing and removes the whole failure mode.
+func _confirm_shop_action(node_name: String, title: String, body_lines: Array, accent: Color, on_confirm: Callable) -> void:
+	if g.overlay.get_node_or_null(node_name) != null: return
+
+	var close := func():
+		var stale: Node = g.overlay.get_node_or_null(node_name)
+		if stale != null:
+			if stale.get_parent() != null: stale.get_parent().remove_child(stale)
+			stale.queue_free()
+
+	var modal := g._modal_dialog(node_name, close)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var vp_w: int = int(g.get_viewport_rect().size.x)
+	var panel := PanelContainer.new()
+	panel.name = "%sPanel" % node_name
+	panel.custom_minimum_size = Vector2(mini(330, vp_w - 24), 0)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0b171c"), 14, accent))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 16)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	pad.add_child(col)
+
+	var title_lbl := g._label(title, 16, accent, HORIZONTAL_ALIGNMENT_CENTER)
+	title_lbl.name = "%sTitle" % node_name
+	col.add_child(title_lbl)
+
+	for entry in body_lines:
+		if entry is Control:
+			var holder := CenterContainer.new()
+			holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			holder.add_child(entry as Control)
+			col.add_child(holder)
+		else:
+			col.add_child(g._label(str(entry), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 10)
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(buttons)
+
+	# Cancel first and widest-on-the-left: the dismissive option is the one the thumb may already
+	# be heading for, so a mis-tap inside the dialog errs toward not spending anything.
+	var cancel_btn := g._button(g.t("ui.confirm_cancel"), close, Color("1b2a30"), Vector2(110, 40))
+	cancel_btn.name = "%sCancelBtn" % node_name
+	buttons.add_child(cancel_btn)
+
+	var confirm_btn := g._button(g.t("ui.confirm_ok"), func():
+		close.call()
+		on_confirm.call()
+	, accent.darkened(0.55), Vector2(110, 40))
+	confirm_btn.name = "%sConfirmBtn" % node_name
+	buttons.add_child(confirm_btn)
+
+# "Will charge: [coin]150". A price shown as "◆150 / ✧15" is ambiguous about which wallet the
+# fallback actually takes from, so every confirmation states it outright before committing.
+func _pay_line(gold_cost: int, jade_cost: int) -> Control:
+	var payment := _resolve_payment(gold_cost, jade_cost)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if str(payment.kind) == "":
+		row.add_child(g._label(g.t("ui.shop_no_gold"), 11, Color("ff7373")))
+		return row
+	var prefix := g._label(g.t("ui.shop_confirm_pay_prefix"), 11, g.MUTED)
+	prefix.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(prefix)
+	row.add_child(g._currency_amount(str(payment.kind), int(payment.amount), 15, g.GOLD, 11))
+	return row
+
+# Shared shape for every priced purchase: what you get, what it costs, which wallet pays.
+func _confirm_purchase(node_name: String, title: String, detail_lines: Array, gold_cost: int, jade_cost: int, accent: Color, on_confirm: Callable) -> void:
+	var lines: Array = detail_lines.duplicate()
+	var options: Array = []
+	if gold_cost > 0: options.append(["gold", gold_cost])
+	if jade_cost > 0: options.append(["jade", jade_cost])
+	if options.size() > 1: lines.append(g._currency_costs(options, 16, g.GOLD, 12))
+	lines.append(_pay_line(gold_cost, jade_cost))
+	_confirm_shop_action(node_name, title, lines, accent, on_confirm)
+
+func _buy_relic(relic: Dictionary, price_gold: int, price_jade: int, display_name: String) -> void:
+	if not _spend_payment(price_gold, price_jade):
+		g._toast(g.t("ui.shop_no_gold"))
+		return
+	g.profile.relics.append(relic.id)
+	g._mark_discovered("relics", relic.id)
+	g._advance_quest("shop_purchase", 1)
+	SpiritSave.write(g.profile)
+	g._haptic("heavy")
+	g._toast(g.tf("ui.boon_acquired_toast", display_name), g.GOLD)
+	show_shop()
+
+func _buy_rune(rune: Dictionary, price_gold: int, price_jade: int, display_name: String) -> void:
+	if not _spend_payment(price_gold, price_jade):
+		g._toast(g.t("ui.shop_no_gold"))
+		return
+	g.profile.rune_inventory[rune.id] = int(g.profile.rune_inventory.get(rune.id, 0)) + 1
+	g._mark_discovered("runes", rune.id)
+	g._advance_quest("shop_purchase", 1)
+	SpiritSave.write(g.profile)
+	g._haptic("tap")
+	g._toast(g.tf("ui.boon_acquired_toast", display_name), g.GOLD)
+	show_shop()
+
+func _buy_consumable(item: Dictionary, price_gold: int, price_jade: int, display_name: String) -> void:
+	if not _spend_payment(price_gold, price_jade):
+		g._toast(g.t("ui.shop_no_gold"))
+		return
+	match str(item.id):
+		"elixir_vitality":
+			g.profile.health = mini(60, int(g.profile.health) + 25)
+			g._toast(g.tf("ui.shop_item_bought", display_name), g.JADE)
+			SpiritSave.write(g.profile)
+			show_shop()
+		"elixir_might":
+			if not g.profile.has("combat_consumables"): g.profile.combat_consumables = {"strength":0,"focus":0,"energy":0}
+			g.profile.combat_consumables.strength = int(g.profile.combat_consumables.get("strength", 0)) + 2
+			g._toast(g.tf("ui.shop_item_bought", display_name), g.EMBER)
+			SpiritSave.write(g.profile)
+			show_shop()
+		"elixir_focus":
+			if not g.profile.has("combat_consumables"): g.profile.combat_consumables = {"strength":0,"focus":0,"energy":0}
+			g.profile.combat_consumables.energy = int(g.profile.combat_consumables.get("energy", 0)) + 1
+			g.profile.combat_consumables.focus = int(g.profile.combat_consumables.get("focus", 0)) + 1
+			g._toast(g.tf("ui.shop_item_bought", display_name), g.GOLD)
+			SpiritSave.write(g.profile)
+			show_shop()
+		"dust_ore":
+			g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + 35
+			g._toast(g.tf("ui.shop_item_bought", display_name), Color("c79bff"))
+			SpiritSave.write(g.profile)
+			show_shop()
+		"upgrade_stone":
+			SpiritSave.write(g.profile)
+			show_deck_upgrade(show_shop)
+	g._advance_quest("shop_purchase", 1)
+	g._haptic("tap")
+
 func show_shop() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
@@ -233,7 +409,7 @@ func _build_shop_curated(page: VBoxContainer) -> void:
 	purge_texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	purge_row.add_child(purge_texts)
 	purge_texts.add_child(g._label(g.t("ui.shop_purge_service"), 11, g.TEXT))
-	purge_texts.add_child(g._label(g.tf("ui.shop_gold", 50), 10, g.GOLD))
+	purge_texts.add_child(g._currency_amount("gold", 50, 14, g.GOLD, 10))
 
 	var pack_btn := Button.new()
 	pack_btn.name = "ShopPackBtn"
@@ -246,7 +422,11 @@ func _build_shop_curated(page: VBoxContainer) -> void:
 	pack_btn.add_theme_stylebox_override("normal", g._panel(Color("1b2a36"), 12, Color("78e9ff") if can_pack else Color("2a3d42")))
 	pack_btn.add_theme_stylebox_override("hover", g._panel(Color("263d4d"), 12, Color("78e9ff")))
 	pack_btn.add_theme_stylebox_override("pressed", g._panel(Color("131f28"), 12, g.GOLD))
-	g._bind_touch_guard(pack_btn, func(): _buy_booster_pack(pack_cost_gold, pack_cost_jade))
+	g._bind_touch_guard(pack_btn, func():
+		_confirm_purchase("ShopConfirmPack", g.t("ui.shop_confirm_pack_title"),
+			[g.t("ui.shop_pack_title"), g.t("ui.shop_pack_desc")],
+			pack_cost_gold, pack_cost_jade, Color("78e9ff"),
+			func(): _buy_booster_pack(pack_cost_gold, pack_cost_jade)))
 	svc_row.add_child(pack_btn)
 
 	var pack_row := HBoxContainer.new()
@@ -265,7 +445,7 @@ func _build_shop_curated(page: VBoxContainer) -> void:
 	pack_texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pack_row.add_child(pack_texts)
 	pack_texts.add_child(g._label(g.t("ui.shop_pack_title"), 11, g.TEXT))
-	pack_texts.add_child(g._label("◆%d / ✧%d" % [pack_cost_gold, pack_cost_jade], 10, Color("78e9ff")))
+	pack_texts.add_child(g._currency_costs([["gold", pack_cost_gold], ["jade", pack_cost_jade]], 14, Color("78e9ff"), 10))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
@@ -316,7 +496,7 @@ func _shop_relic_tile(relic: Dictionary) -> Control:
 	var owned: bool = g.profile.relics.has(relic.id)
 	var price_gold := 150
 	var price_jade := 15
-	var can_afford: bool = int(g.profile.gold) >= price_gold or int(g.profile.get("spirit_jade", 0)) >= price_jade
+	var can_afford: bool = _can_pay(price_gold, price_jade)
 	panel.add_theme_stylebox_override("panel", g._panel(Color("161f28"), 10, Color(relic.get("color", "ffd700")) if not owned else Color("2a3d42")))
 
 	var hbox := HBoxContainer.new()
@@ -344,24 +524,13 @@ func _shop_relic_tile(relic: Dictionary) -> Control:
 		owned_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hbox.add_child(owned_lbl)
 	else:
-		var buy_btn := g._button("◆%d/✧%d" % [price_gold, price_jade], func():
-			if int(g.profile.gold) >= price_gold:
-				g.profile.gold -= price_gold
-			elif int(g.profile.get("spirit_jade", 0)) >= price_jade:
-				g.profile.spirit_jade -= price_jade
-			else:
-				g._toast(g.t("ui.shop_no_gold"))
-				return
-			g.profile.relics.append(relic.id)
-			g._mark_discovered("relics", relic.id)
-			g._advance_quest("shop_purchase", 1)
-			SpiritSave.write(g.profile)
-			g._haptic("heavy")
-			g._toast(g.tf("ui.boon_acquired_toast", r_name), g.GOLD)
-			show_shop()
-		, Color("204a44") if can_afford else Color("2c2a28"), Vector2(80, 32))
+		var buy_btn := g._currency_button([["gold", price_gold], ["jade", price_jade]], func():
+			_confirm_purchase("ShopConfirmRelic", g.t("ui.shop_confirm_relic_title"), [r_name, r_desc],
+				price_gold, price_jade, Color(relic.get("color", "ffd700")),
+				func(): _buy_relic(relic, price_gold, price_jade, r_name))
+		, Color("204a44"), Color("78e9ff"), Vector2(84, 34), can_afford)
+		buy_btn.name = "ShopRelicBuyBtn"
 		buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		buy_btn.disabled = not can_afford
 		hbox.add_child(buy_btn)
 
 	return panel
@@ -372,7 +541,7 @@ func _shop_rune_tile(rune: Dictionary) -> Control:
 	panel.custom_minimum_size.y = 52
 	var price_gold := 80
 	var price_jade := 8
-	var can_afford: bool = int(g.profile.gold) >= price_gold or int(g.profile.get("spirit_jade", 0)) >= price_jade
+	var can_afford: bool = _can_pay(price_gold, price_jade)
 	var rune_color := Color(rune.get("color", "78e9ff"))
 	panel.add_theme_stylebox_override("panel", g._panel(Color("161f28"), 10, rune_color))
 
@@ -396,24 +565,13 @@ func _shop_rune_tile(rune: Dictionary) -> Control:
 	var r_desc: String = g.content.rune_detail(rune, g.lang)
 	texts.add_child(g._label(r_desc, 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
-	var buy_btn := g._button("◆%d/✧%d" % [price_gold, price_jade], func():
-		if int(g.profile.gold) >= price_gold:
-			g.profile.gold -= price_gold
-		elif int(g.profile.get("spirit_jade", 0)) >= price_jade:
-			g.profile.spirit_jade -= price_jade
-		else:
-			g._toast(g.t("ui.shop_no_gold"))
-			return
-		g.profile.rune_inventory[rune.id] = int(g.profile.rune_inventory.get(rune.id, 0)) + 1
-		g._mark_discovered("runes", rune.id)
-		g._advance_quest("shop_purchase", 1)
-		SpiritSave.write(g.profile)
-		g._haptic("tap")
-		g._toast(g.tf("ui.boon_acquired_toast", r_name), g.GOLD)
-		show_shop()
-	, Color("204a44") if can_afford else Color("2c2a28"), Vector2(80, 32))
+	var buy_btn := g._currency_button([["gold", price_gold], ["jade", price_jade]], func():
+		_confirm_purchase("ShopConfirmRune", g.t("ui.shop_confirm_rune_title"), [r_name, r_desc],
+			price_gold, price_jade, rune_color,
+			func(): _buy_rune(rune, price_gold, price_jade, r_name))
+	, Color("204a44"), Color("78e9ff"), Vector2(84, 34), can_afford)
+	buy_btn.name = "ShopRuneBuyBtn"
 	buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	buy_btn.disabled = not can_afford
 	hbox.add_child(buy_btn)
 
 	return panel
@@ -458,48 +616,19 @@ func _shop_specialties_shelf() -> Control:
 
 		var p_gold: int = int(item.get("price_gold", 0))
 		var p_jade: int = int(item.get("price_jade", 0))
-		var can_buy: bool = (p_gold > 0 and int(g.profile.gold) >= p_gold) or (p_jade > 0 and int(g.profile.get("spirit_jade", 0)) >= p_jade)
+		var can_buy: bool = _can_pay(p_gold, p_jade)
 
-		var cost_str: String = "◆%d" % p_gold if p_jade == 0 else ("✧%d" % p_jade if p_gold == 0 else "◆%d/✧%d" % [p_gold, p_jade])
-		var buy_btn := g._button(cost_str, func():
-			if p_gold > 0 and int(g.profile.gold) >= p_gold:
-				g.profile.gold -= p_gold
-			elif p_jade > 0 and int(g.profile.get("spirit_jade", 0)) >= p_jade:
-				g.profile.spirit_jade -= p_jade
-			else:
-				g._toast(g.t("ui.shop_no_gold"))
-				return
+		var costs: Array = []
+		if p_gold > 0: costs.append(["gold", p_gold])
+		if p_jade > 0: costs.append(["jade", p_jade])
+		if costs.is_empty(): costs.append(["gold", 0])
 
-			match str(item.id):
-				"elixir_vitality":
-					g.profile.health = mini(60, int(g.profile.health) + 25)
-					g._toast(g.tf("ui.shop_item_bought", item_name), g.JADE)
-					SpiritSave.write(g.profile)
-					show_shop()
-				"elixir_might":
-					if not g.profile.has("combat_consumables"): g.profile.combat_consumables = {"strength":0,"focus":0,"energy":0}
-					g.profile.combat_consumables.strength = int(g.profile.combat_consumables.get("strength", 0)) + 2
-					g._toast(g.tf("ui.shop_item_bought", item_name), g.EMBER)
-					SpiritSave.write(g.profile)
-					show_shop()
-				"elixir_focus":
-					if not g.profile.has("combat_consumables"): g.profile.combat_consumables = {"strength":0,"focus":0,"energy":0}
-					g.profile.combat_consumables.energy = int(g.profile.combat_consumables.get("energy", 0)) + 1
-					g.profile.combat_consumables.focus = int(g.profile.combat_consumables.get("focus", 0)) + 1
-					g._toast(g.tf("ui.shop_item_bought", item_name), g.GOLD)
-					SpiritSave.write(g.profile)
-					show_shop()
-				"dust_ore":
-					g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + 35
-					g._toast(g.tf("ui.shop_item_bought", item_name), Color("c79bff"))
-					SpiritSave.write(g.profile)
-					show_shop()
-				"upgrade_stone":
-					SpiritSave.write(g.profile)
-					show_deck_upgrade(show_shop)
-			g._advance_quest("shop_purchase", 1)
-			g._haptic("tap")
-		, Color("1e4a3d") if can_buy else Color("222e33"), Vector2(80, 32))
+		var buy_btn := g._currency_button(costs, func():
+			_confirm_purchase("ShopConfirmItem_%s" % str(item.id), g.t("ui.shop_confirm_item_title"),
+				[item_name, item_desc], p_gold, p_jade, item_color,
+				func(): _buy_consumable(item, p_gold, p_jade, item_name))
+		, Color("1e4a3d"), item_color, Vector2(84, 34), can_buy)
+		buy_btn.name = "ShopItemBuyBtn_%s" % str(item.id)
 		buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hbox.add_child(buy_btn)
 
@@ -508,11 +637,7 @@ func _shop_specialties_shelf() -> Control:
 	return col
 
 func _buy_booster_pack(cost_gold: int, cost_jade: int) -> void:
-	if int(g.profile.gold) >= cost_gold:
-		g.profile.gold -= cost_gold
-	elif int(g.profile.get("spirit_jade", 0)) >= cost_jade:
-		g.profile.spirit_jade -= cost_jade
-	else:
+	if not _spend_payment(cost_gold, cost_jade):
 		g._toast(g.t("ui.shop_no_gold"))
 		return
 
@@ -554,12 +679,7 @@ func _build_shop_exchange(page: VBoxContainer) -> void:
 	b_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	dust_banner.add_child(b_box)
 
-	var dust_icon := TextureRect.new()
-	dust_icon.texture = load("res://assets/icons/hud_dust.png")
-	dust_icon.custom_minimum_size = Vector2(24, 24)
-	dust_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	dust_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	dust_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var dust_icon := g._currency_icon("dust", 26)
 	b_box.add_child(dust_icon)
 
 	var d_val := int(g.profile.get("spirit_dust", 0))
@@ -629,18 +749,26 @@ func _build_shop_exchange(page: VBoxContainer) -> void:
 			hbox.add_child(sb_lbl)
 		else:
 			var dust_val := g.content.card_recycle_dust_value(card)
-			var recycle_btn := g._button("+%d %s" % [dust_val, g.t("ui.currency_dust")], func():
-				g.profile.collection[card_id] = maxi(0, int(g.profile.collection[card_id]) - 1)
-				g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + dust_val
-				if g.profile.deck.count(card_id) > int(g.profile.collection[card_id]):
-					var idx: int = g.profile.deck.find(card_id)
-					if idx >= 0:
-						g.profile.deck[idx] = "strike"
-				SpiritSave.write(g.profile)
-				g._haptic("tap")
-				g._toast(g.tf("ui.recycle_success_toast", dust_val), g.JADE)
-				show_shop()
-			, Color("204a44"), Vector2(90, 34))
+			# Recycle used to fire on the first tap, destroying a real copy irreversibly. Now the
+			# dialog names the card, the copy count and the dust before anything is removed.
+			var recycle_btn := g._currency_button([["dust", dust_val]], func():
+				_confirm_shop_action("ShopConfirmRecycle", g.t("ui.shop_recycle_confirm_title"),
+					["%s  ×%d" % [card_name, count],
+					g._currency_amount("dust", dust_val, 18, Color("c79bff"), 13),
+					g.t("ui.shop_recycle_confirm_body")],
+					Color("c79bff"), func():
+						g.profile.collection[card_id] = maxi(0, int(g.profile.collection[card_id]) - 1)
+						g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + dust_val
+						if g.profile.deck.count(card_id) > int(g.profile.collection[card_id]):
+							var idx: int = g.profile.deck.find(card_id)
+							if idx >= 0:
+								g.profile.deck[idx] = "strike"
+						SpiritSave.write(g.profile)
+						g._haptic("tap")
+						g._toast(g.tf("ui.recycle_success_toast", dust_val), g.JADE)
+						show_shop())
+			, Color("204a44"), Color("78e9ff"), Vector2(96, 34), true, "+")
+			recycle_btn.name = "RecycleBtn_%s" % card_id
 			recycle_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			hbox.add_child(recycle_btn)
 
@@ -687,21 +815,24 @@ func _build_shop_exchange(page: VBoxContainer) -> void:
 		texts.add_child(g._label("%s%s" % [card_name, " (×%d)" % owned_cnt if owned_cnt > 0 else ""], 12, g.TEXT))
 		texts.add_child(g._label("%s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("rarity.%s" % card.get("rarity", "Common"))], 9, g.GOLD))
 
-		var craft_btn := g._button("-%d 灵尘" % craft_cost, func():
-			if int(g.profile.get("spirit_dust", 0)) < craft_cost:
-				g._toast(g.t("ui.insufficient_dust"))
-				return
-			g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) - craft_cost
-			if int(g.profile.collection.get(card.id, 0)) == 0:
-				g._advance_quest("collect_cards", 1)
-			g.profile.collection[card.id] = int(g.profile.collection.get(card.id, 0)) + 1
-			SpiritSave.write(g.profile)
-			g._haptic("heavy")
-			g._toast(g.tf("ui.transmute_success_toast", card_name), g.GOLD)
-			show_shop()
-		, Color("1e4b52") if can_craft else Color("222a2e"), Vector2(90, 34))
+		var craft_btn := g._currency_button([["dust", craft_cost]], func():
+			_confirm_shop_action("ShopConfirmCraft", g.t("ui.shop_craft_confirm_title"),
+				[card_name, g._currency_amount("dust", craft_cost, 18, Color("c79bff"), 13)],
+				Color("78e9ff"), func():
+					if int(g.profile.get("spirit_dust", 0)) < craft_cost:
+						g._toast(g.t("ui.insufficient_dust"))
+						return
+					g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) - craft_cost
+					if int(g.profile.collection.get(card.id, 0)) == 0:
+						g._advance_quest("collect_cards", 1)
+					g.profile.collection[card.id] = int(g.profile.collection.get(card.id, 0)) + 1
+					SpiritSave.write(g.profile)
+					g._haptic("heavy")
+					g._toast(g.tf("ui.transmute_success_toast", card_name), g.GOLD)
+					show_shop())
+		, Color("1e4b52"), Color("78e9ff"), Vector2(96, 34), can_craft, "-")
+		craft_btn.name = "CraftBtn_%s" % card.id
 		craft_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		craft_btn.disabled = not can_craft
 		hbox.add_child(craft_btn)
 
 		craft_list.add_child(row)
@@ -806,22 +937,58 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 
 	var buy := Button.new()
 	buy.name = "BuyButton"
-	buy.custom_minimum_size.y = 32
+	buy.custom_minimum_size.y = 34
 	buy.focus_mode = Control.FOCUS_NONE
-	buy.text = "%s  ◆%d" % [g.t("ui.shop_buy"), price]
+	# The price used to be welded into this button's own text ("购买 ◆200"). A Label cannot embed
+	# a texture, which is exactly why the coin had to be a glyph; the price is now a real
+	# TextureRect child laid over the button's right edge, with the word pushed left out of its way.
+	buy.text = g.t("ui.shop_buy")
+	buy.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if g.font_cjk: buy.add_theme_font_override("font", g.font_cjk)
 	buy.add_theme_font_size_override("font_size", 12)
-	buy.add_theme_color_override("font_color", Color("0f1d10") if can_afford else Color("c78b7f"))
+	var buy_price_color: Color = Color("0f1d10") if can_afford else Color("c78b7f")
+	buy.add_theme_color_override("font_color", buy_price_color)
 	buy.add_theme_color_override("font_hover_color", Color("0f1d10"))
-	buy.add_theme_stylebox_override("normal", g._panel(g.GOLD if can_afford else Color("3a2723"), 8, g.GOLD if can_afford else Color("6b4038")))
-	buy.add_theme_stylebox_override("hover", g._panel(g.GOLD.lightened(0.15) if can_afford else Color("46302b"), 8, Color.WHITE))
-	buy.add_theme_stylebox_override("pressed", g._panel(g.GOLD.darkened(0.2), 8, g.EMBER))
-	buy.add_theme_stylebox_override("disabled", g._panel(Color("2a2320"), 8, Color("53403a")))
+	buy.add_theme_color_override("font_disabled_color", buy_price_color)
+	var buy_normal := g._panel(g.GOLD if can_afford else Color("3a2723"), 8, g.GOLD if can_afford else Color("6b4038"))
+	var buy_hover := g._panel(g.GOLD.lightened(0.15) if can_afford else Color("46302b"), 8, Color.WHITE)
+	var buy_pressed := g._panel(g.GOLD.darkened(0.2), 8, g.EMBER)
+	var buy_disabled := g._panel(Color("2a2320"), 8, Color("53403a"))
+	for buy_style in [buy_normal, buy_hover, buy_pressed, buy_disabled]:
+		buy_style.content_margin_left = 10
+		buy_style.content_margin_right = 10
+	buy.add_theme_stylebox_override("normal", buy_normal)
+	buy.add_theme_stylebox_override("hover", buy_hover)
+	buy.add_theme_stylebox_override("pressed", buy_pressed)
+	buy.add_theme_stylebox_override("disabled", buy_disabled)
 	buy.disabled = not can_afford
-	g._bind_touch_guard(buy, func(): _buy_card_with_feedback(btn, card, price))
+
+	var price_overlay := HBoxContainer.new()
+	price_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	price_overlay.offset_left = 46
+	price_overlay.offset_right = -9
+	price_overlay.alignment = BoxContainer.ALIGNMENT_END
+	price_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	buy.add_child(price_overlay)
+	price_overlay.add_child(g._currency_amount("gold", price, 14, buy_price_color, 12))
+
+	# Two taps, not one: this button sits directly beneath the card art inside the same tile, and
+	# a single clean tap used to deduct gold on the spot. See _confirm_shop_action().
+	g._bind_touch_guard(buy, func():
+		_confirm_shop_action("ShopConfirmBuy_%s" % card.id, g.t("ui.shop_confirm_card_title"),
+			[g.content.text(card.nameKey, g.lang), g._currency_amount("gold", price, 18, g.GOLD, 13)],
+			g.GOLD, func(): _buy_card_with_feedback(btn, card, price)))
 	price_row.add_child(buy)
 	if owned > 0 and not on_sale:
-		price_row.add_child(g._label(g.tf("ui.shop_next_price", _shop_price(card, owned + 1)), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_CENTER))
+		var next_row := HBoxContainer.new()
+		next_row.add_theme_constant_override("separation", 3)
+		next_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		next_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var next_lbl := g._label(g.t("ui.shop_next_price"), 8, Color("5e7278"))
+		next_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		next_row.add_child(next_lbl)
+		next_row.add_child(g._currency_amount("gold", _shop_price(card, owned + 1), 11, Color("5e7278"), 8))
+		price_row.add_child(next_row)
 
 	return btn
 
@@ -1685,14 +1852,12 @@ func show_reforge_modal(item_id: String) -> void:
 		header_row.add_child(close_btn)
 		vbox.add_child(header_row)
 
-		# 2. Currency bar (Gold & Spirit Dust)
+		# 2. Currency bar (Gold & Spirit Dust) — same designed icons as the HUD, not ◈/✧ glyphs.
 		var currency_row := HBoxContainer.new()
-		currency_row.add_theme_constant_override("separation", 12)
+		currency_row.add_theme_constant_override("separation", 14)
 		currency_row.alignment = BoxContainer.ALIGNMENT_BEGIN
-		currency_row.add_child(g._icon_badge("◈", g.GOLD, 24, 12))
-		currency_row.add_child(g._label("%d" % int(g.profile.gold), 12, g.GOLD))
-		currency_row.add_child(g._icon_badge("✧", Color("80d6ff"), 24, 12))
-		currency_row.add_child(g._label("%d" % int(g.profile.spirit_dust), 12, Color("80d6ff")))
+		currency_row.add_child(g._currency_amount("gold", int(g.profile.gold), 20, g.GOLD, 12))
+		currency_row.add_child(g._currency_amount("dust", int(g.profile.spirit_dust), 20, Color("80d6ff"), 12))
 		vbox.add_child(currency_row)
 
 		# 3. Item Card Showcase

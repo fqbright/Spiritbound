@@ -66,7 +66,7 @@ fi
 if [ -z "$PROJECT_REF" ]; then
     echo -e "${RED}✗ --project-ref is required.${NC}"
     echo "  It is the subdomain of your project URL. This repo's client currently points at:"
-    grep -o 'https://[a-z0-9]*\.supabase\.co' "$REPO_DIR/Godot/scripts/supabase_client.gd" | head -1 | sed 's/^/    /'
+    grep -o 'https://[a-z0-9]*\.supabase\.co' "$REPO_DIR/Godot/scripts/supabase_client.gd" | sed -n '1p' | sed 's/^/    /'
     exit 1
 fi
 

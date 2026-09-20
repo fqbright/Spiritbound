@@ -155,7 +155,18 @@ func _run() -> void:
 	game.show_compendium()
 	await _capture_screen(game, "08_codex_screen.png")
 
+	# 9. Trial Challenges Screen — the screen this snapshotter was missing entirely, which is why
+	# the duplicate-banner problem (two cards sharing banner_phantom_arena.png) survived: nothing
+	# ever rendered it for review. Forced to a mid-game state so every mode is unlocked, since a
+	# default profile shows eight of ten cards lock-collapsed and none of the real layout.
+	print("9/9 Rendering Trial Challenges Screen...")
+	game.profile.unlocked = 20
+	game.profile.difficulty = 1
+	game.camp_tab = "challenges"
+	game.show_challenges()
+	await _capture_screen(game, "09_challenges_screen.png")
+
 	print("\n========================================================")
-	print("  🎉 ALL 8 SCREENSHOTS CAPTURED TO Godot/tests/snapshots/")
+	print("  🎉 ALL 9 SCREENSHOTS CAPTURED TO Godot/tests/snapshots/")
 	print("========================================================\n")
 	quit(0)

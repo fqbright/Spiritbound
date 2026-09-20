@@ -77,7 +77,7 @@ if ! command -v xcodebuild >/dev/null 2>&1; then
     echo -e "${RED}✗ xcodebuild is not available.${NC}"; exit 1
 fi
 
-GODOT_VERSION="$(godot --version 2>/dev/null | head -1)"
+GODOT_VERSION="$(godot --version 2>/dev/null | sed -n '1p')"
 # `godot --version` prints e.g. "4.7.2.stable.official.ed1daf0bf" while the export-templates
 # folder is named "4.7.2.stable" — the build hash and the "official" tag are not part of it, so
 # stripping only the last dot-segment lands on a path that never exists.

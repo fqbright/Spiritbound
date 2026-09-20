@@ -3791,6 +3791,130 @@ func _run() -> void:
 	check(game.root.find_child("ShopPurgeBtn", true, false) != null, "ShopPurgeBtn present in curated shop")
 	check(game.root.find_child("ShopPackBtn", true, false) != null, "ShopPackBtn present in curated shop")
 	check(game.root.find_child("ShopSpecialtiesShelf", true, false) != null, "ShopSpecialtiesShelf present in curated shop")
+
+	# Currency icons: the shop's prices must use the same designed hud_gold artwork as the HUD, not
+	# the ◆/✧/◈ characters that were standing in for them. A Label can't embed a texture, so any
+	# price still rendered as a glyph means a label never got converted to an icon row.
+	section("== shop currency icons are real art, not substitute glyphs ==")
+	var shop_tile_for_icons: Control = _find_shop_tile(game.root)
+	check(shop_tile_for_icons != null, "a shop card tile is present to inspect")
+	if shop_tile_for_icons != null:
+		check(_find_texture_rect_ending_with(shop_tile_for_icons, "hud_gold.png") != null, "the shop card tile's price shows the designed gold icon")
+		var glyph_labels: Array = []
+		_collect_labels_containing(shop_tile_for_icons, ["◆", "✧", "◈"], glyph_labels)
+		check(glyph_labels.is_empty(), "no currency glyph stands in for the art on a shop tile (found %s)" % str(glyph_labels))
+
+	section("== shop purchase confirmation names the wallet it charges ==")
+	game.profile.gold = 0
+	game.profile.spirit_jade = 100
+	var pay_line_route: Dictionary = game._shop_deck_screen._resolve_payment(150, 15)
+	check(str(pay_line_route.kind) == "jade", "with no gold, a gold/jade purchase routes to Spirit Jade (got %s)" % str(pay_line_route.kind))
+	check(int(pay_line_route.amount) == 15, "the jade fallback charges the jade price, not the gold one")
+	game.profile.gold = 500
+	var pay_line_gold: Dictionary = game._shop_deck_screen._resolve_payment(150, 15)
+	check(str(pay_line_gold.kind) == "gold", "with enough gold, the same purchase routes to gold (got %s)" % str(pay_line_gold.kind))
+	check(game._shop_deck_screen._can_pay(150, 15), "a purchase is affordable when either wallet covers it")
+	game.profile.spirit_jade = 0
+	game.profile.gold = 10
+	check(not game._shop_deck_screen._can_pay(150, 15), "a purchase is unaffordable when neither wallet covers it")
+	game.profile.gold = 500
+	game.profile.spirit_jade = 10
+
+	section("== challenge screen is grouped into labelled bands ==")
+	game.profile.unlocked = 20
+	game.show_challenges()
+	await process_frame
+	for band in ["daily", "competitive", "endgame", "practice"]:
+		check(game.root.find_child("ChallengeBand_%s" % band, true, false) != null, "challenges screen renders the '%s' band header" % band)
+		check(game.root.find_child("ChallengeDock_%s" % band, true, false) != null, "the band dock offers a jump button for '%s'" % band)
+	var band_texts: Array = [
+		game.content.ui("ui.challenges_group_daily", game.lang),
+		game.content.ui("ui.challenges_group_competitive", game.lang),
+		game.content.ui("ui.challenges_group_endgame", game.lang),
+		game.content.ui("ui.challenges_group_practice", game.lang),
+	]
+	for bt in band_texts:
+		check(_find_label_text(game.root, bt), "the band title '%s' renders" % bt)
+	# Every mode must still be reachable from the grouped layout — the regrouping moved children
+	# around, and a section silently dropped in the process would be invisible to a check that only
+	# looked at band headers.
+	for btn_name in ["DailyTrialEnterBtn", "WeeklyChallengeEnterBtn", "LeaderboardOpenBtn", "FriendsManageBtn",
+			"WorldEventEnterBtn", "PhantomArenaEnterBtn", "DraftArenaEnterBtn", "BossRushEnterBtn",
+			"SandboxEnterBtn", "AbyssEnterBtn"]:
+		check(game.root.find_child(btn_name, true, false) != null, "%s survived the challenges-screen regrouping" % btn_name)
+	check(game.root.find_child("SamsaraSection", true, false) != null, "SamsaraSection survived the challenges-screen regrouping")
+	# Two challenge cards reference banner art that is not in the repo at all, so they used to render
+	# as flat empty rectangles next to seven painted ones. Every BannerBg must carry *some* texture,
+	# and no two cards may draw the same *file* — the duplicate-banner complaint is what this guards.
+	# Scans every BannerBg on the screen rather than a hardcoded list of section names: the section
+	# node names aren't uniform (some panels are named, some aren't), and a name typo here would
+	# silently shrink this check to nothing.
+	var banner_files: Array = []
+	var banner_untextured: Array = []
+	for bg_tex in _all_texture_rects(game.root):
+		if bg_tex.name != "BannerBg": continue
+		if bg_tex.texture == null:
+			banner_untextured.append(str(bg_tex.get_path()))
+			continue
+		banner_files.append(str(bg_tex.texture.resource_path))
+	check(banner_files.size() >= 6, "the challenges screen's banner cards were actually inspected (%d found)" % banner_files.size())
+	check(banner_untextured.is_empty(), "every banner card has a texture, even where the art file is absent (untextured: %s)" % str(banner_untextured))
+	var dupes: Array = []
+	for p in banner_files:
+		if p != "" and banner_files.count(p) > 1 and p not in dupes: dupes.append(p.basename())
+	check(dupes.is_empty(), "no two challenge cards draw the same banner file (duplicated: %s)" % str(dupes))
+	# The two artless cards must be exactly the two whose files are missing from the repo, and their
+	# fallback must be distinct per section (procedural textures report no resource_path).
+	var procedural: int = 0
+	for p in banner_files:
+		if p == "": procedural += 1
+	check(procedural == 2, "exactly the two artless challenge cards fall back to a procedural backdrop (got %d)" % procedural)
+	# A regrouping that stacks or overflows is the classic mobile-layout regression, and both are
+	# invisible to a "does this button exist" check. Assert the bands actually appear in the order
+	# the dock lists them, on one column, inside the 390pt viewport.
+	var band_ys: Array = []
+	for band in ["daily", "competitive", "endgame", "practice"]:
+		var band_node: Control = game.root.find_child("ChallengeBand_%s" % band, true, false) as Control
+		band_ys.append(band_node.global_position.y if band_node != null else -1.0)
+	var ordered := true
+	for i in range(1, band_ys.size()):
+		if band_ys[i] <= band_ys[i - 1]: ordered = false
+	check(ordered, "the four bands stack top-to-bottom in dock order, not interleaved (y = %s)" % str(band_ys))
+	check(band_ys[0] > 0.0, "the first band has a real on-screen position (y = %.1f)" % band_ys[0])
+	var widest: float = 0.0
+	var widest_name := ""
+	for ctrl_v in _all_controls(game.root):
+		var ctrl: Control = ctrl_v
+		if not ctrl.is_visible_in_tree(): continue
+		if ctrl.size.x > widest:
+			var p: Node = ctrl.get_parent()
+			# The scrollable list is deliberately as tall/wide as its content; the check is about
+			# content wider than the phone, which clips off-screen edge-to-edge.
+			if p != null and (p is ScrollContainer or ctrl is ScrollContainer): continue
+			widest = ctrl.size.x
+			widest_name = str(ctrl.name)
+	check(widest <= game.MAP_WIDTH + 1.0, "nothing on the challenges screen is wider than the viewport (%.1f pt, %s)" % [widest, widest_name])
+
+	section("== the leaderboard entry no longer borrows the Phantom Arena's banner ==")
+	# It was a _split_card_frame() on banner_phantom_arena.png, so the two neighbouring cards showed
+	# the same painting. Compact panels now, with the designed nav icon doing the identifying.
+	var lb_node: Node = game.root.find_child("LeaderboardSection", true, false)
+	check(lb_node != null, "LeaderboardSection still renders")
+	if lb_node != null:
+		check(lb_node.find_child("BannerBg", true, false) == null, "the leaderboard entry no longer draws a banner background")
+		check(_find_texture_rect_ending_with(lb_node, "nav_quest.png") != null, "the leaderboard entry identifies itself with the designed nav_quest icon")
+	var friends_node: Node = game.root.find_child("FriendsSection", true, false)
+	check(friends_node != null, "FriendsSection still renders")
+	if friends_node != null:
+		check(friends_node.find_child("BannerBg", true, false) == null, "the friends entry no longer draws a banner background")
+		check(_find_texture_rect_ending_with(friends_node, "profile.png") != null, "the friends entry identifies itself with the designed profile icon")
+	# A duplicate banner is what the report was about; Phantom Arena must now be the only card
+	# loading it.
+	var phantom_banner_users: int = 0
+	for tex in _all_texture_rects(game.root):
+		if str(tex.texture.resource_path).ends_with("banner_phantom_arena.png"): phantom_banner_users += 1
+	check(phantom_banner_users == 1, "banner_phantom_arena.png is drawn by exactly one card now (got %d)" % phantom_banner_users)
+
 	game.shop_tab = "exchange"
 	game.show_shop()
 	await process_frame
@@ -3805,6 +3929,38 @@ func _run() -> void:
 		tap_button(tut_ok, "TutorialUnderstoodBtn")
 		await process_frame
 		check(game.overlay.find_child("FeatureTutorial_card_exchange", true, false) == null, "Tutorial dialog dismissed on Understood tap")
+
+	section("== shop actions need a second tap (no one-tap spend or destroy) ==")
+	# Recycling used to destroy a copy on the first clean tap. Confirm the first tap only opens a
+	# dialog, that the dialog names what is at stake, and that cancelling leaves the collection
+	# byte-identical — the whole point is that a mis-tap costs nothing.
+	var recycle_owned_before: int = int(game.profile.collection.get("moonfang", 0))
+	if recycle_owned_before == 0:
+		game.profile.collection["moonfang"] = 1
+		recycle_owned_before = 1
+	game.profile.spirit_dust = 0
+	game.shop_tab = "exchange"
+	game.show_shop()
+	await process_frame
+	var recycle_btn: Button = game.root.find_child("RecycleBtn_moonfang", true, false) as Button
+	check(recycle_btn != null, "the moonfang recycle button is reachable")
+	if recycle_btn != null:
+		check(_find_texture_rect_ending_with(recycle_btn, "hud_dust.png") != null, "the recycle price shows the designed dust icon, not a ✧ glyph")
+		recycle_btn.emit_signal("pressed")
+		await process_frame
+		var rc_modal: Node = game.overlay.find_child("ShopConfirmRecycle", true, false)
+		check(rc_modal != null, "tapping recycle opens a confirmation instead of recycling outright")
+		check(int(game.profile.collection.get("moonfang", 0)) == recycle_owned_before, "the card copy is untouched while the confirmation is open")
+		check(int(game.profile.get("spirit_dust", 0)) == 0, "no dust is credited while the confirmation is open")
+		var rc_cancel: Button = rc_modal.find_child("ShopConfirmRecycleCancelBtn", true, false) as Button if rc_modal else null
+		check(rc_cancel != null, "the recycle confirmation offers a cancel button")
+		if rc_cancel != null:
+			tap_button(rc_cancel, "ShopConfirmRecycleCancelBtn")
+			await process_frame
+			check(game.overlay.find_child("ShopConfirmRecycle", true, false) == null, "cancelling closes the recycle confirmation")
+			check(int(game.profile.collection.get("moonfang", 0)) == recycle_owned_before, "cancelling left the collection unchanged")
+			check(int(game.profile.get("spirit_dust", 0)) == 0, "cancelling credited no dust")
+		if rc_modal != null and is_instance_valid(rc_modal): rc_modal.queue_free()
 
 	# 5. Novice Journey in Quests
 	game.show_quests()
@@ -4338,6 +4494,30 @@ func _find_button_containing(node: Node, needle: String) -> Button:
 		var found := _find_button_containing(child, needle)
 		if found != null: return found
 	return null
+
+# Used to prove a currency price is no longer rendered as a substitute glyph (◆/✧/◈) — a Label
+# cannot embed a texture, so a glyph anywhere in an amount is evidence a label escaped conversion
+# to the icon-row helper.
+func _collect_labels_containing(node: Node, needles: Array, out: Array) -> void:
+	if node is Label:
+		for needle in needles:
+			if str(needle) in (node as Label).text:
+				out.append((node as Label).text)
+				break
+	for child in node.get_children():
+		_collect_labels_containing(child, needles, out)
+
+func _all_texture_rects(node: Node, out: Array = []) -> Array:
+	if node is TextureRect and (node as TextureRect).texture != null: out.append(node)
+	for child in node.get_children():
+		_all_texture_rects(child, out)
+	return out
+
+func _all_controls(node: Node, out: Array = []) -> Array:
+	if node is Control: out.append(node)
+	for child in node.get_children():
+		_all_controls(child, out)
+	return out
 
 func _find_text(node: Node, needle: String) -> bool:
 	if node is Button and (node as Button).text == needle: return true

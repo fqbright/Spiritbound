@@ -1324,6 +1324,95 @@ func _currency_pill(icon_tex: Texture2D, amount: int, color: Color, on_click := 
 		_bind_touch_guard(pill, func(): show_treasury_inspector())
 	return pill
 
+# One currency, one icon. The HUD and Treasury screens already drew hud_gold/jade/dust.png, but
+# the shop and camp screens printed the ◆/✧/◈ glyphs instead — so the same currency showed up as
+# a designed illustration on one screen and a substitute vector character on another. Every
+# widget that displays an amount now goes through these three helpers, and the glyphs are gone
+# from the amount strings entirely (a Label can't embed a texture; only a real child node can).
+const CURRENCY_ICON_PATHS := {
+	"gold": "res://assets/icons/hud_gold.png",
+	"jade": "res://assets/icons/hud_jade.png",
+	"dust": "res://assets/icons/hud_dust.png",
+	"stamina": "res://assets/icons/hud_stamina.png",
+}
+
+func _currency_icon(kind: String, px := 16) -> TextureRect:
+	return _named_icon(str(CURRENCY_ICON_PATHS.get(kind, "")), px)
+
+# The designed navigation icons (assets/icons/nav_*.png). Section headers used to identify themselves
+# with emoji (🏆 👥) instead, which render as a different typeface's coloured glyph on every device
+# and never match the game's own palette.
+func _nav_icon(name: String, px := 26) -> TextureRect:
+	return _named_icon("res://assets/icons/%s.png" % name, px)
+
+func _named_icon(res_path: String, px := 16) -> TextureRect:
+	var tex := TextureRect.new()
+	if res_path != "" and ResourceLoader.exists(res_path):
+		tex.texture = load(res_path)
+	tex.custom_minimum_size = Vector2(px, px)
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tex.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return tex
+
+func _currency_amount(kind: String, amount: int, px := 15, color := TEXT, font_size := 11) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_currency_icon(kind, px))
+	var amount_lbl := _label("%d" % amount, font_size, color)
+	amount_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	amount_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(amount_lbl)
+	return row
+
+# costs: [["gold", 120], ["jade", 12]] — rendered in the given order, which is also the order
+# ShopDeckScreen._resolve_payment() will try to charge them in, so what the row shows first is
+# literally what gets deducted first.
+func _currency_costs(costs: Array, px := 15, color := TEXT, font_size := 11, separated := true) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for i in costs.size():
+		if i > 0:
+			var sep := _label("/", font_size, MUTED)
+			sep.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			sep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(sep)
+		row.add_child(_currency_amount(str(costs[i][0]), int(costs[i][1]), px, color, font_size))
+	return row
+
+# A Button that shows an icon-only price. Buttons that carry their label in `text` keep doing so
+# (the shop's card tile buy button is found by its text in tests); this is for the price-only
+# buttons where the old "◆80/✧8" text was the entire label.
+func _currency_button(costs: Array, on_press: Callable, box_color: Color, accent: Color, min_size := Vector2(0, 34), enabled := true, prefix := "") -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = min_size
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.disabled = not enabled
+	btn.add_theme_stylebox_override("normal", _panel(box_color, 10, accent))
+	btn.add_theme_stylebox_override("hover", _panel(box_color.lightened(0.08), 10, accent.lightened(0.20)))
+	btn.add_theme_stylebox_override("pressed", _panel(box_color.darkened(0.12), 10, GOLD))
+	btn.add_theme_stylebox_override("disabled", _panel(box_color.darkened(0.25), 10, Color("3a4a50")))
+	var overlay := CenterContainer.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(overlay)
+	var content := HBoxContainer.new()
+	content.add_theme_constant_override("separation", 3)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(content)
+	if prefix != "":
+		var prefix_lbl := _label(prefix, 12, TEXT if enabled else MUTED)
+		prefix_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		prefix_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		content.add_child(prefix_lbl)
+	content.add_child(_currency_costs(costs, 15, TEXT if enabled else MUTED, 11))
+	if on_press.is_valid():
+		_bind_touch_guard(btn, on_press)
+	return btn
+
 func _header(title: String, subtitle: String, back := Callable()) -> HBoxContainer:
 	var bar := HBoxContainer.new()
 	bar.custom_minimum_size.y = 86

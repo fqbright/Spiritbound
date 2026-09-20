@@ -195,7 +195,23 @@ func _run() -> void:
 		var btn: Button = buy_buttons[0]
 		btn.emit_signal("pressed")
 		await process_frame
-		check(int(game.profile.gold) <= initial_gold, "Gold successfully spent in Shop (was %d, now %d)" % [initial_gold, int(game.profile.gold)])
+		# Two-tap purchase: the shop's buy buttons used to spend gold on the first clean tap, which
+		# on a 390pt-wide screen meant a mis-tap under the card art bought outright. The first tap
+		# must now only open a confirmation dialog and spend nothing.
+		var confirm_modal: Node = game.overlay.find_child("ShopConfirmBuy_*", true, false)
+		check(confirm_modal != null, "first tap opens a purchase confirmation instead of buying outright")
+		check(int(game.profile.gold) == initial_gold, "Gold untouched while the confirmation is still open (was %d, now %d)" % [initial_gold, int(game.profile.gold)])
+		var confirm_btn: Button = confirm_modal.find_child("*ConfirmBtn", true, false) as Button if confirm_modal else null
+		check(confirm_btn != null, "confirmation dialog exposes a confirm button")
+		if confirm_btn != null:
+			confirm_btn.emit_signal("pressed")
+			# The purchase finishes behind _buy_card_with_feedback's 0.23s scale tween. Awaiting N
+			# frames does NOT work here: this suite is a headless SceneTree that runs frames
+			# uncapped, so 30 frames elapse in a few milliseconds of process time and the tween
+			# never completes — the assertion then fails while the code under test is fine. Wait on
+			# the clock the tween actually runs on.
+			await create_timer(0.6).timeout
+			check(int(game.profile.gold) < initial_gold, "Gold actually spent after confirming (was %d, now %d)" % [initial_gold, int(game.profile.gold)])
 
 	# =========================================================================
 	# PHASE 6: Deck Screen Verification
