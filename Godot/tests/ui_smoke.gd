@@ -2854,6 +2854,57 @@ func _run() -> void:
 	settings_modal = game.overlay.get_node_or_null("SettingsModal")
 	check(settings_modal.find_child("SignInWithAppleBtn", true, false) != null, "SignInWithAppleBtn returns after sign out")
 
+	# Account deletion (Docs/LAUNCH_READINESS.md Section 1). The guest full-profile-wipe branch
+	# is deliberately NOT exercised here — it would wipe gold/unlocked/deck/relics on this
+	# shared `game` instance that every later section in this file depends on; see its own
+	# isolated test in test_runner.gd instead. This only covers UI wiring and the safe
+	# (no-op-on-failure) cloud-linked path.
+	check(settings_modal.find_child("DeleteAccountBtn", true, false) == null, "a guest sees no Delete Account option — nothing was created to delete")
+	SupabaseClient.clear_session()
+	game.profile.account.provider = "apple"
+	game.profile.account.user_id = "test_delete_uid_do_not_have_real_session"
+	# show_settings() toggles closed if a SettingsModal is already open (it still is, from
+	# sign_out's own _close_settings()+show_settings() reopen above) — close it first so this
+	# actually reopens fresh with the new account state instead of just closing it.
+	game._close_settings()
+	game.show_settings()
+	await process_frame
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
+	var delete_account_btn := settings_modal.find_child("DeleteAccountBtn", true, false) as Button
+	check(delete_account_btn != null, "a cloud-linked account sees the Delete Account option")
+	if delete_account_btn != null:
+		tap_button(delete_account_btn, "DeleteAccountBtn")
+		await process_frame
+		check(game.overlay.find_child("SettingsModal", true, false) == null, "opening the delete confirmation closes Settings first rather than stacking modals")
+		var delete_modal: Node = game.overlay.find_child("DeleteAccountModal", true, false)
+		check(delete_modal != null, "DeleteAccountModal opens on tap")
+		if delete_modal != null:
+			var delete_cancel_btn := delete_modal.find_child("DeleteAccountCancelBtn", true, false) as Button
+			check(delete_cancel_btn != null, "DeleteAccountCancelBtn exists")
+			if delete_cancel_btn != null:
+				tap_button(delete_cancel_btn, "DeleteAccountCancelBtn")
+				await process_frame
+				check(game.overlay.find_child("DeleteAccountModal", true, false) == null, "cancelling closes the confirmation modal")
+				check(str(game.profile.account.user_id) == "test_delete_uid_do_not_have_real_session", "cancelling the confirmation leaves the account untouched")
+
+	game.show_delete_account_modal()
+	await process_frame
+	var delete_confirm_btn := game.overlay.find_child("DeleteAccountConfirmBtn", true, false) as Button
+	check(delete_confirm_btn != null, "DeleteAccountConfirmBtn exists")
+	if delete_confirm_btn != null:
+		tap_button(delete_confirm_btn, "DeleteAccountConfirmBtn")
+		await process_frame
+		check(str(game.profile.account.user_id) == "test_delete_uid_do_not_have_real_session", "confirming with no real auth session (this headless test never has one) fails gracefully and leaves the account intact rather than signing out or wiping the shared profile")
+
+	game.profile.account.provider = "guest"
+	game.profile.account.user_id = ""
+	# Same toggle concern as above: the failed-deletion callback (delete_account's on_done)
+	# already reopened SettingsModal on failure, so close before reopening fresh here too.
+	game._close_settings()
+	game.show_settings()
+	await process_frame
+	settings_modal = game.overlay.get_node_or_null("SettingsModal")
+
 	var settings_close := settings_modal.find_child("SettingsCloseBtn", true, false) as Button
 	check(settings_close != null, "SettingsCloseBtn exists")
 	var open_auth_btn := settings_modal.find_child("OpenAuthModalBtn", true, false) as Button

@@ -1356,6 +1356,44 @@ func run() -> void:
 	check(samsara_game._achievement_progress({"kind":"samsara_count"}) == 1, "achievement reader tracks samsara_count correctly")
 	samsara_game.free()
 
+	# Account deletion (Docs/LAUNCH_READINESS.md Section 1): the guest branch is a full local
+	# profile wipe with no network dependency, so it's tested end-to-end here with a throwaway
+	# SpiritGame instance (same isolation pattern as samsara_game above) rather than against
+	# ui_smoke.gd's shared instance, which every later section in that suite depends on keeping
+	# intact — SpiritSave.defaults() wipes gold/unlocked/deck/relics/everything, not just the
+	# account fields, so running it against a shared instance mid-suite would cascade failures
+	# through the rest of that file.
+	var delete_game := SpiritGame.new()
+	delete_game.content = content
+	delete_game.profile = SpiritSave.defaults(content)
+	delete_game.profile.account.provider = "guest"
+	delete_game.profile.account.user_id = ""
+	delete_game.profile.gold = 99999
+	delete_game.profile.unlocked = 40
+	var delete_ok: Array = [false, false]
+	SpiritAuth.delete_account(delete_game, func(ok): delete_ok[0] = true; delete_ok[1] = ok)
+	check(delete_ok[0] and delete_ok[1], "delete_account() completes synchronously and successfully for a guest (nothing cloud-side to fail)")
+	check(int(delete_game.profile.gold) == 30, "a guest's local profile resets to fresh defaults (gold) on deletion")
+	check(int(delete_game.profile.unlocked) == 0, "a guest's local profile resets to fresh defaults (campaign progress) on deletion")
+	delete_game.free()
+
+	# The cloud-linked branch must NOT touch profile/session state on a failed delete (no real
+	# Supabase auth session exists in this headless environment, so SupabaseClient.
+	# delete_player_save()'s own is_authenticated() guard fails fast) — a player whose deletion
+	# fails partway through must still be able to retry, not be left logged out with no save.
+	var delete_game2 := SpiritGame.new()
+	delete_game2.content = content
+	delete_game2.profile = SpiritSave.defaults(content)
+	delete_game2.profile.account.provider = "apple"
+	delete_game2.profile.account.user_id = "fake_uid_no_real_session"
+	delete_game2.profile.gold = 12345
+	var delete_ok2: Array = [false, false]
+	SpiritAuth.delete_account(delete_game2, func(ok): delete_ok2[0] = true; delete_ok2[1] = ok)
+	check(delete_ok2[0] and not delete_ok2[1], "delete_account() reports failure for a cloud-linked account with no real auth session")
+	check(SpiritSave.is_cloud_linked(delete_game2.profile), "a failed cloud deletion leaves the account linked rather than signing it out")
+	check(int(delete_game2.profile.gold) == 12345, "a failed cloud deletion does not touch the local profile")
+	delete_game2.free()
+
 	# Samsara Combat perks verification: shield_start/draw_turn1 flow through hero_bonuses, the
 	# same mechanism Hero Mastery perks already use (see _current_hero_mastery_bonuses()) — A6+
 	# difficulty's own real combat effect (health_scale/damage_bonus) is a completely separate

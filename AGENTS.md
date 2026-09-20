@@ -372,6 +372,22 @@ Every one of these produced a wrong screen with no error in the log. They are th
   with the same shape (a persisted "already seen/claimed/granted" id list checked against a
   growable data table) needs backfill logic that survives the table growing, not just logic that
   survives the field being absent — check the whole table on every load, not just once.
+- **Many `show_*_modal()` functions toggle closed if already open, rather than refreshing.**
+  `show_settings()`, `show_samsara_modal()`, `show_delete_account_modal()`, and others share the
+  same opening shape: check `overlay.get_node_or_null("SomeModal")`, and if it already exists,
+  remove/free it and `return` immediately — they never fall through to rebuild it. This is the
+  right behavior for a literal tap-to-toggle button, but it silently breaks any code (test or
+  otherwise) that calls one of these a second time expecting it to redraw with new state: the
+  second call just closes it, and every subsequent `find_child()` against that modal fails on a
+  null reference with no indication of why. Bit `ui_smoke.gd`'s account-deletion tests
+  directly — `show_settings()` was called to "reopen with a new fake-linked account," but a
+  handler earlier in the same flow (`sign_out`'s own callback) had already left a `SettingsModal`
+  open, so the second `show_settings()` call just closed it, and the next line crashed on
+  `null.find_child()`. The fix is always `_close_settings()` (or the equivalent close helper)
+  immediately before the `show_*_modal()` call whenever you need a guaranteed-fresh reopen, not
+  a toggle — every existing call site that does this already follows exactly that
+  close-then-show two-step (see `open_auth_btn`'s handler in `show_settings()` for a
+  same-file example); a bare second call to the `show_*` function is never enough on its own.
 
 ## Game rules worth knowing before touching balance
 

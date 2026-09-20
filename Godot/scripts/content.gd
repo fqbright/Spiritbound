@@ -2368,6 +2368,18 @@ const UI_TEXT = {
 	"ui.auth_cloud_success": {"zh-Hans":"云端存档已成功更新！", "en":"Cloud save updated successfully!"},
 	"ui.auth_sign_out": {"zh-Hans":"退出账号", "en":"Sign Out"},
 	"ui.auth_sign_out_confirm": {"zh-Hans":"已退出账号，当前保留为本地游客数据。", "en":"Signed out. Retained as local guest data."},
+	# Pre-existing bug fix: show_samsara_modal()'s cancel button already calls t("ui.cancel"),
+	# but this key never existed in UI_TEXT or core.json's translations table, so it was
+	# rendering the literal string "ui.cancel" to real players instead of an actual label —
+	# found while looking for a confirmation-modal pattern to reuse for account deletion below.
+	"ui.cancel": {"zh-Hans":"取消", "en":"Cancel"},
+	"ui.account_delete_btn": {"zh-Hans":"删除账号", "en":"Delete Account"},
+	"ui.account_delete_desc": {"zh-Hans":"永久删除云端存档与排行榜记录，且无法撤销", "en":"Permanently deletes your cloud save and leaderboard records — cannot be undone"},
+	"ui.account_delete_modal_title": {"zh-Hans":"删除账号？", "en":"Delete Account?"},
+	"ui.account_delete_modal_desc": {"zh-Hans":"此操作将永久删除你的云端存档与排行榜记录，且无法撤销。本地进度也会重置为全新状态。", "en":"This permanently deletes your cloud save and leaderboard records — this cannot be undone. Local progress will also reset to a fresh state."},
+	"ui.account_delete_confirm_btn": {"zh-Hans":"确认删除", "en":"Delete Permanently"},
+	"ui.account_delete_success_toast": {"zh-Hans":"账号已删除", "en":"Account deleted"},
+	"ui.account_delete_failed_toast": {"zh-Hans":"删除失败，请检查网络后重试", "en":"Deletion failed — check your connection and try again"},
 	"ui.auth_quick_title": {"zh-Hans":"快捷登录", "en":"Quick Sign-In"},
 	"ui.auth_guest_start": {"zh-Hans":"以游客身份体验", "en":"Continue as Guest"},
 	"ui.auth_email_tab": {"zh-Hans":"邮箱登录", "en":"Email Sign In"},

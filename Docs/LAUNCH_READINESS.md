@@ -45,8 +45,25 @@ device-testing ask that's still worth doing).
 
 ## 1. Account deletion (blocking — do this first)
 
+**Status: client-side done (2026-09-20).** `SpiritAuth.delete_account()` (`auth_service.gd`),
+`SupabaseClient.delete_player_save()`/`delete_leaderboard_entries()` (`supabase_client.gd`), the
+`DeleteAccountBtn` Settings entry and `show_delete_account_modal()` confirmation flow (`game.gd`)
+are all shipped and tested (`test_runner.gd` + `ui_smoke.gd`, both green, plus the full `--all`
+suite). Leaderboard rows are deleted outright (not anonymized) on account deletion — see
+`delete_leaderboard_entries()`'s own comment for why (also: `submit_score()` inserts a new row
+per submission rather than upserting, so an account can have many accumulated rows, all deleted
+in one request). **Still open, and genuinely blocking real use:** the underlying Supabase
+`auth.users` record is deliberately never touched by this client code — see the security
+constraint below. Whoever has Supabase project access needs to wire up a privileged server-side
+call (a Supabase Edge Function is the natural fit) that this flow can trigger, or the account
+technically still exists on Apple/Google/Supabase's side after "deletion." Also worth deciding:
+this session found and fixed an unrelated pre-existing bug while building this (`show_samsara_
+modal()`'s Cancel button was rendering the literal string "ui.cancel" — the key never existed in
+UI_TEXT — now fixed as part of this same commit since the new delete-confirmation modal needed a
+working Cancel string too).
+
 Apple Guideline 5.1.1(v): any app that lets a user create an account must let them delete it
-from inside the app, not just via a support email. This repo has zero code for this today.
+from inside the app, not just via a support email. This repo had zero code for this before now.
 
 **Requirements:**
 - A reachable entry point from Settings (`show_settings()` in `game.gd` — the existing account

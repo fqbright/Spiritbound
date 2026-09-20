@@ -2102,6 +2102,73 @@ func show_samsara_modal() -> void:
 	btn_box.add_child(confirm_btn)
 	vbox.add_child(btn_box)
 
+# Account deletion confirmation (Docs/LAUNCH_READINESS.md Section 1) — deliberately its own
+# modal rather than nested inside SettingsModal, mirroring how show_auth_modal() is also opened
+# via _close_settings() first rather than stacking on top of it, so there's only ever one modal
+# on overlay at a time.
+func show_delete_account_modal() -> void:
+	var existing: Node = overlay.get_node_or_null("DeleteAccountModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+		return
+
+	var modal := _modal_dialog("DeleteAccountModal", func():
+		var m: Node = overlay.get_node_or_null("DeleteAccountModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.name = "DeleteAccountModalPanel"
+	var vp_w: int = int(get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(300, vp_w - 32), 0)
+	panel.add_theme_stylebox_override("panel", _panel(Color("1a0f0f"), 14, Color("963228")))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	pad.add_child(vbox)
+
+	vbox.add_child(_label(t("ui.account_delete_modal_title"), 16, Color("ff6b5c"), HORIZONTAL_ALIGNMENT_CENTER))
+	vbox.add_child(_label(t("ui.account_delete_modal_desc"), 10, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var btn_box2 := HBoxContainer.new()
+	btn_box2.add_theme_constant_override("separation", 8)
+	var cancel_btn2 := _button(t("ui.cancel"), func():
+		var m: Node = overlay.get_node_or_null("DeleteAccountModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+	, MUTED, Vector2(100, 38))
+	cancel_btn2.name = "DeleteAccountCancelBtn"
+	cancel_btn2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_box2.add_child(cancel_btn2)
+
+	var confirm_btn2 := _button(t("ui.account_delete_confirm_btn"), func():
+		var m: Node = overlay.get_node_or_null("DeleteAccountModal")
+		if m != null:
+			if m.get_parent(): m.get_parent().remove_child(m)
+			m.queue_free()
+		SpiritAuth.delete_account(self, func(ok):
+			if ok: show_account_setup()
+			else: show_settings()
+		)
+	, Color("963228"), Vector2(160, 38))
+	confirm_btn2.name = "DeleteAccountConfirmBtn"
+	confirm_btn2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_box2.add_child(confirm_btn2)
+	vbox.add_child(btn_box2)
+
 func show_settings() -> void:
 	var existing: Node = overlay.get_node_or_null("SettingsModal")
 	if existing:
@@ -2322,6 +2389,18 @@ func show_settings() -> void:
 		sync_row.add_child(signout_btn)
 
 		account_box.add_child(sync_row)
+
+		# Account deletion (Docs/LAUNCH_READINESS.md Section 1) — Apple Guideline 5.1.1(v)
+		# requires an in-app deletion path for any app offering account creation, which this one
+		# does via Apple/Google/email sign-in. Gated to cloud-linked accounts only, matching the
+		# guideline's own scope: a guest never created an account in the first place.
+		var delete_account_btn := _button(t("ui.account_delete_btn"), func():
+			_close_settings()
+			show_delete_account_modal()
+		, Color("2a0f0f"), Vector2(0, 36))
+		delete_account_btn.name = "DeleteAccountBtn"
+		account_box.add_child(delete_account_btn)
+		account_box.add_child(_label(t("ui.account_delete_desc"), 8, Color("8a5a5a"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	# 4c. Cinematic Intro Video Replay
 	var intro_box := VBoxContainer.new()
