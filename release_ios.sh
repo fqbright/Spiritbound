@@ -224,20 +224,53 @@ fi
 # Godot/build/ios/ keeps the number it was last written with). Reading the artifact and warning
 # on a mismatch is the difference between reporting the shipped version and reporting the
 # intended one. See Docs/STORE_SUBMISSION.md section 2.2.
+# The preset is the source of truth for BOTH numbers, and both are handed to xcodebuild as build
+# setting overrides at the archive step. That is what makes --build-number real: before this fix
+# BUILD_NUMBER only ever reached an echo statement, so the script would print "uploading build 21"
+# and upload build 20 — the exact number App Store Connect dedupes on (ITMS-4238).
+#
+# The exported project is still read, but now only to *warn* about staleness, never to decide the
+# number. Deciding from it let a stale Godot/build/ios/ choose what the release claimed to be:
+# measured 2026-09-20, --dry-run printed "build 1" (a two-day-old pbxproj) while the preset said 20.
 PRESET_VERSION="$(grep -m1 'application/short_version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
 PRESET_BUILD="$(grep -m1 'application/version' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
 SHORT_VERSION="$PRESET_VERSION"
 [ -n "$BUILD_NUMBER" ] || BUILD_NUMBER="$PRESET_BUILD"
+
+# A blank or non-numeric override is worse than no override: `CURRENT_PROJECT_VERSION=` would hand
+# xcodebuild an empty build number to substitute into CFBundleVersion. Fail here instead, naming
+# the file to fix, rather than deep inside the build or — worse — inside the uploaded plist.
+if [ -z "$SHORT_VERSION" ]; then
+    echo -e "${RED}✗ application/short_version is empty in export_presets.cfg — nothing to ship.${NC}"
+    exit 1
+fi
+if [ -n "$BUILD_NUMBER_ARG" ] && [ -z "$BUILD_NUMBER" ]; then
+    echo -e "${RED}✗ --build-number was given no value.${NC}"
+    echo -e "${RED}  Pass an integer (e.g. --build-number 21), or drop the flag entirely to use"
+    echo -e "${RED}  application/version from export_presets.cfg.${NC}"
+    exit 1
+fi
+if [ -z "$BUILD_NUMBER" ] || ! printf '%s' "$BUILD_NUMBER" | grep -qE '^[0-9]+$'; then
+    echo -e "${RED}✗ Build number is '${BUILD_NUMBER}' — it must be a positive integer.${NC}"
+    echo -e "${RED}  Set application/version in export_presets.cfg, or pass --build-number <n>.${NC}"
+    exit 1
+fi
+
 PBXPROJ="$BUILD_DIR/Spiritbound.xcodeproj/project.pbxproj"
 if [ -f "$PBXPROJ" ]; then
     EXPORTED_VERSION="$(grep -m1 'MARKETING_VERSION' "$PBXPROJ" | sed 's/.*= *//; s/;//' | tr -d ' ')"
     EXPORTED_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION' "$PBXPROJ" | sed 's/.*= *//; s/;//' | tr -d ' ')"
-    [ -n "$EXPORTED_VERSION" ] && SHORT_VERSION="$EXPORTED_VERSION"
-    [ -z "$BUILD_NUMBER_ARG" ] && [ -n "$EXPORTED_BUILD" ] && BUILD_NUMBER="$EXPORTED_BUILD"
     if [ -n "$EXPORTED_VERSION" ] && [ "$EXPORTED_VERSION" != "$PRESET_VERSION" ]; then
         echo -e "${YELLOW}  ⚠ Exported project says version $EXPORTED_VERSION but export_presets.cfg"
         echo -e "    says $PRESET_VERSION — the Xcode project was not regenerated from the preset."
         echo -e "    Delete $BUILD_DIR and re-export before archiving.${NC}"
+    fi
+    # The build-number half of that staleness check was missing, which is why the stale export got
+    # to rename the release in silence. Warning (not adopting) still surfaces it, and the override
+    # below guarantees the artifact carries the number we just logged.
+    if [ -z "$BUILD_NUMBER_ARG" ] && [ -n "$EXPORTED_BUILD" ] && [ "$EXPORTED_BUILD" != "$PRESET_BUILD" ]; then
+        echo -e "${YELLOW}  ⚠ Exported project says build $EXPORTED_BUILD but export_presets.cfg says"
+        echo -e "    $PRESET_BUILD — archiving as $PRESET_BUILD anyway; the override below wins.${NC}"
     fi
 fi
 echo "  Marketing version $SHORT_VERSION, build $BUILD_NUMBER, commit $RELEASE_COMMIT"
@@ -257,6 +290,14 @@ mkdir -p "$ARCHIVE_DIR"
 # for a specific identity while the project is set to Automatic, which Xcode rejects as a
 # conflict ("automatically signed for development, but a conflicting code signing identity
 # Apple Distribution has been manually specified").
+#
+# MARKETING_VERSION and CURRENT_PROJECT_VERSION are build-setting overrides: xcodebuild applies
+# them on top of the generated project for this invocation. They are what actually set the shipped
+# numbers, because Godot's Info.plist template resolves CFBundleVersion to
+# $(CURRENT_PROJECT_VERSION) and CFBundleShortVersionString to $(MARKETING_VERSION) — verified by
+# dumping godot_apple_embedded-Info.plist out of the 4.7.2 ios.zip template; both are variables,
+# not literals, so there is nothing else to edit and no reason to hand-patch generated files.
+# This pair of arguments is the ONLY route by which --build-number reaches the artifact.
 run xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -scheme Spiritbound \
     -configuration Release \
@@ -264,6 +305,8 @@ run xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
     CODE_SIGN_STYLE=Automatic \
+    MARKETING_VERSION="$SHORT_VERSION" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     archive
 
 # Check the artifact, not the exit status. `xcodebuild archive` succeeds just as happily for a
@@ -292,6 +335,28 @@ if [ "$DRY_RUN" = false ]; then
     fi
     echo "  ✓ Distribution-signed: $PROFILE_NAME (no device list, debugging disallowed)"
     rm -f "$PROFILE_PLIST"
+
+    # Same rule as the signing check above, applied to the version numbers: read the archive's own
+    # Info.plist instead of trusting that the build-setting override took effect. An override that
+    # silently does not apply yields an archive with the wrong CFBundleVersion, and the only
+    # feedback is App Store Connect rejecting the upload minutes later as ITMS-4238 "Redundant
+    # Binary Upload" — an error that never once mentions version overrides. This check is also the
+    # empirical proof that --build-number reaches the artifact at all, which is precisely what the
+    # script previously assumed while it only ever echoed the number.
+    ARCHIVED_PLIST="$ARCHIVE_PATH/Products/Applications/Spiritbound.app/Info.plist"
+    if [ ! -f "$ARCHIVED_PLIST" ]; then
+        echo -e "${RED}✗ The archive has no Info.plist — cannot verify the shipped version.${NC}"
+        exit 1
+    fi
+    ARCHIVED_SHORT="$(plutil -extract CFBundleShortVersionString raw "$ARCHIVED_PLIST" 2>/dev/null || echo '')"
+    ARCHIVED_BUILD="$(plutil -extract CFBundleVersion raw "$ARCHIVED_PLIST" 2>/dev/null || echo '')"
+    if [ "$ARCHIVED_SHORT" != "$SHORT_VERSION" ] || [ "$ARCHIVED_BUILD" != "$BUILD_NUMBER" ]; then
+        echo -e "${RED}✗ The archive carries $ARCHIVED_SHORT ($ARCHIVED_BUILD), but this run asked for"
+        echo -e "${RED}  $SHORT_VERSION ($BUILD_NUMBER). The build-setting override did not reach the"
+        echo -e "${RED}  artifact — do not upload this.${NC}"
+        exit 1
+    fi
+    echo "  ✓ Archive carries version $ARCHIVED_SHORT, build $ARCHIVED_BUILD (override applied)"
 fi
 
 if [ "$UPLOAD" = false ]; then

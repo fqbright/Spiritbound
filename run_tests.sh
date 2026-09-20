@@ -188,6 +188,15 @@ for arg in "$@"; do
     esac
 done
 
+# Release-script version numbers (no Godot, no build, ~1s). Fails the run rather than warning --
+# and it is wired in *before* the Godot suites because release_ios.sh itself refuses to build
+# until this suite passes: a build number that only reaches an echo statement produces a valid
+# archive with the wrong CFBundleVersion, which nothing else here would notice.
+if [ "$RUN_UNIT" = true ]; then
+    echo -e "\n${YELLOW}[build] Release-script version numbers (Tests/release_version_test.sh)...${NC}"
+    bash "${REPO_DIR}/Tests/release_version_test.sh"
+fi
+
 # 1. Unit & Integration Test Suite
 if [ "$RUN_UNIT" = true ]; then
     echo -e "\n${YELLOW}[1/8] Running Unit & Integration Tests (tests/test_runner.gd)...${NC}"
