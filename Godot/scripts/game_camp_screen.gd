@@ -797,7 +797,11 @@ func _account_panel() -> Control:
 		, Color("1a2f36"), Vector2(0, 38))
 		cloud.name = "CampCloudLinkBtn"
 		stack.add_child(cloud)
-		stack.add_child(g._label(g.t("ui.settings_account_desc"), 8, Color("5e7278"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		# Was 8pt in Color("5e7278") — measured at 2.04:1 against this panel's fill, i.e. the one
+		# line explaining what linking an account even does was the least readable text on the
+		# screen, and it also spilled 9px below the panel because 8pt wrapping to two lines needs
+		# more height than the row gave it. MUTED at 9pt clears AA and fits.
+		stack.add_child(g._label(g.t("ui.settings_account_desc"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	return panel
 
 func show_quests() -> void:

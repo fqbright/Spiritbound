@@ -4304,11 +4304,130 @@ func _run() -> void:
 		check(str(enc.get("add_name", "")) == expected_minion_name, "stage %d adds share chapter %d minion name '%s'" % [s_idx, chapter, expected_minion_name])
 	check(all_stage_arts.size() == 250, "all 250 small stages have 100% unique main enemy arts")
 
+	_ui_readability_checks(game)
+
 	_restore_save()
 	print("")
 	if failures == 0: print("UI SMOKE: all checks passed")
 	else: print("UI SMOKE: %d FAILURES" % failures)
 	quit(1 if failures > 0 else 0)
+
+# ---------------------------------------------------------------------------------------------
+# UI readability — the invariants behind the fixes in tools/ui_audit.gd, in a form that fails CI.
+#
+# ui_audit.gd MEASURES rendered pixels, which is the right way to *find* these problems (it found
+# the 1.62:1 deck chips and the 2.19:1 HP readout) but the wrong way to *gate* them: it needs a
+# real renderer, its numbers move with the GPU driver, and a threshold on "average local contrast"
+# would go red on a font-weight change that nobody can see. So the gate here asserts the
+# decisions instead — the five things that were actually wrong and can only be wrong again by
+# someone re-inventing them:
+#   1. `_ink_for` picks dark ink on a light fill (the rule that 24 deck chips broke)
+#   2. bar text carries an outline (the HP readout)
+#   3. map captions carry an outline (text over terrain)
+#   4. the leftmost hand card's cost badge stays inside the hand's clip (it was half cut off)
+#   5. no repeated glyph stands in for a currency icon (the ◆/✧/◈ regression, kept from the
+#      shop rework so the two guards live together)
+func _ui_readability_checks(game: Control) -> void:
+	section("== ui readability ==")
+
+	# 1. Contrast-aware ink. Light fills must get dark text; dark fills keep the light text.
+	var light_fill := Color("ff9a4c")   # g.EMBER — the active-filter-chip fill that measured 1.90:1
+	var dark_fill := Color("10242b")    # g.PANEL
+	var dark_fill_ratio: float = game.contrast_ratio(game._ink_for(dark_fill), dark_fill)
+	check(game.contrast_ratio(game._ink_for(light_fill), light_fill) >= 4.5,
+		"_ink_for() picks >=4.5:1 text on a light EMBER fill (was 1.90:1 with hardcoded TEXT)")
+	check(dark_fill_ratio >= 4.5,
+		"_ink_for() keeps >=4.5:1 text on a dark PANEL fill (%.2f:1)" % dark_fill_ratio)
+	# The rule has to hold for whatever colour a future caller passes, not just these two.
+	var worst_fill := 99.0
+	for fill: Color in [Color("83e4c1"), Color("ff9a4c"), Color("dab56e"), Color("f7f3e8"),
+			Color("10242b"), Color("172a30"), Color("1e4a35"), Color("a663bc"), Color("c35736")]:
+		worst_fill = minf(worst_fill, game.contrast_ratio(game._ink_for(fill), fill))
+	check(worst_fill >= 4.5,
+		"_ink_for() clears 4.5:1 on every palette fill a button actually uses (worst %.2f:1)" % worst_fill)
+
+	# 2/3. Outlines on text that sits on a variable background.
+	game.profile.unlocked = 12
+	game.begin_battle(0)
+	await process_frame
+	var bar := _find_stat_bar_with_text(game, "♥")
+	check(bar != null, "battle screen has an HP stat bar")
+	if bar != null:
+		var inner := _find_label_with_text(bar, "♥")
+		check(inner != null and inner.get_theme_constant("outline_size") > 0,
+			"the HP readout has a text outline — it renders white over the orange fill and measured 2.19:1 without one")
+
+	game.show_map()
+	await process_frame
+	var caption := _find_label_with_text(game, game.t("ui.locked"))
+	check(caption != null, "map screen shows a locked-pin caption")
+	if caption != null:
+		check(caption.get_theme_constant("outline_size") > 0,
+			"map pin captions have an outline — they sit on terrain that ranges from water to sand within one label")
+
+	# 4. Hand-fan clipping. A full five-card hand is the only case that overflows, so it is the
+	# only case worth asserting; the fan is mathematically narrower below that.
+	game.begin_battle(0)
+	await process_frame
+	var hand: Array = game.combat.state.hand
+	while hand.size() < 5:
+		hand.append({"uid": 70000 + hand.size(), "card_id": "strike"})
+	hand.resize(5)
+	game.show_battle()
+	await process_frame
+	var tiles := _find_hand_cards(game)
+	var clipped := 0
+	var leftmost := 999.0
+	for t: Control in tiles:
+		leftmost = minf(leftmost, t.position.x)
+		if t.position.x + t.size.x < 0.0 or t.position.x > 366.0:
+			clipped += 1
+	check(tiles.size() == 5, "a full hand renders all five cards (%d)" % tiles.size())
+	check(clipped == 0, "no card in a full five-card hand is laid out fully outside the hand area")
+	check(leftmost >= 9.0,
+		"the leftmost hand card keeps its 10px cost-badge offset on screen (leftmost x=%.1f)" % leftmost)
+
+	# 5. Currency must be the designed icon art, never a lookalike glyph.
+	var glyphs := ["◆", "✧", "◈", "◇", "✦"]
+	var offenders: Array[String] = []
+	for n: Node in game.find_children("", "Control", true, false):
+		var c := n as Control
+		if c == null or not c.is_visible_in_tree():
+			continue
+		if not (c is Label or c is Button):
+			continue
+		var txt: String = (c as Label).text if c is Label else (c as Button).text
+		for gl: String in glyphs:
+			if gl in txt:
+				offenders.append("%s \"%s\"" % [c.name, txt.substr(0, 24)])
+				break
+	check(offenders.is_empty(),
+		"no currency amount is drawn with a substitute glyph instead of the designed icon (%s)" % str(offenders))
+
+func _find_stat_bar_with_text(node: Node, needle: String) -> ProgressBar:
+	if node is ProgressBar:
+		if _find_label_with_text(node, needle) != null:
+			return node as ProgressBar
+	for child in node.get_children():
+		var found := _find_stat_bar_with_text(child, needle)
+		if found != null: return found
+	return null
+
+func _find_label_with_text(node: Node, needle: String) -> Label:
+	if node is Label and needle in (node as Label).text:
+		return node as Label
+	for child in node.get_children():
+		var found := _find_label_with_text(child, needle)
+		if found != null: return found
+	return null
+
+func _find_hand_cards(node: Node) -> Array:
+	var out: Array = []
+	if node is HandCard:
+		out.append(node)
+	for child in node.get_children():
+		out.append_array(_find_hand_cards(child))
+	return out
 
 func _restore_save() -> void:
 	if had_profile: FileAccess.open(SpiritSave.PATH, FileAccess.WRITE).store_string(saved_profile)

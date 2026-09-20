@@ -1151,8 +1151,13 @@ func _add_stage_pin(index: int) -> void:
 		halo.tween_property(pin, "modulate", Color.WHITE, 0.85).set_trans(Tween.TRANS_SINE)
 
 	var caption := g._label(g.content.waypoint_name(index % 5, g.lang) if not locked else g.t("ui.locked"), 10, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	caption.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
-	caption.add_theme_constant_override("shadow_offset_y", 1)
+	# An outline, not a drop shadow: these captions sit directly on map terrain, which ranges from
+	# near-black water to sunlit sand within a single 112px label, so there is no single ink that
+	# works. Measured on the committed baseline, "未解锁" on locked pins read 2.07–2.98:1 against
+	# the ground behind it (need 4.5:1). A 1px offset shadow only darkens below the glyph; an
+	# outline darkens all of it, which is what a variable background needs.
+	caption.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	caption.add_theme_constant_override("outline_size", 3)
 	caption.size = Vector2(112.0, 16.0)
 	caption.position = Vector2(point.x - 56.0, point.y + 6.0)
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE

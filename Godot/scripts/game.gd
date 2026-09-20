@@ -1016,11 +1016,20 @@ func _stat_bar(bar_width: float, bar_height: float, value: int, max_value: int, 
 	bar.add_theme_stylebox_override("background", _panel(Color(0.02, 0.06, 0.08, 0.85), radius, Color(0, 0, 0, 0.45)))
 	bar.add_theme_stylebox_override("fill", _panel(fill_color, radius))
 	if not text.is_empty():
+		# WHITE TEXT SPANS THE WHOLE BAR, NOT JUST THE FILL — so it has to stay readable against
+		# two backgrounds at once: the light fill on the left, the dark track on the right, in
+		# whatever ratio `value/max` happens to be. Choosing one ink by luminance (as `_button`
+		# does) cannot work here: a dark ink that reads on an orange fill vanishes on the track,
+		# and the white that reads on the track measured 2.10:1 on EMBER — the player's own
+		# `绯狐 ♥ 60/60` line on the battle screen, the most-read number in the game.
+		# A 2px black outline makes the white legible on both, which is why it is an outline
+		# rather than the previous 1px drop shadow: a shadow only darkens one side, so a light
+		# fill still left the glyph body floating at ~2:1. Measured by tools/ui_audit.gd.
 		var lbl := _label(text, font_size, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
 		lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-		lbl.add_theme_constant_override("shadow_offset_y", 1)
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		lbl.add_theme_constant_override("outline_size", 3)
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bar.add_child(lbl)
 	return bar
@@ -1310,11 +1319,47 @@ func _bind_touch_guard(btn: Button, callback: Callable, slop: float = 14.0) -> v
 		callback.call()
 	)
 
+## WCAG 2.1 relative luminance (sRGB). Used to decide text colour against an arbitrary fill.
+func _luminance(c: Color) -> float:
+	var out := 0.0
+	var weights: Array[float] = [0.2126, 0.7152, 0.0722]
+	var chans: Array[float] = [c.r, c.g, c.b]
+	for i in 3:
+		var v: float = chans[i]
+		out += weights[i] * (v / 12.92 if v <= 0.03928 else pow((v + 0.055) / 1.055, 2.4))
+	return out
+
+## Contrast ratio between two colours, 1.0 (identical) to 21.0 (black on white).
+func contrast_ratio(a: Color, b: Color) -> float:
+	var la := _luminance(a)
+	var lb := _luminance(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+## Pick the readable text colour for a given button fill.
+##
+## WHY THIS IS A FUNCTION AND NOT A CONSTANT: `_button` used to hardcode near-white `TEXT` for
+## every fill, which is invisible-on-white the moment a caller passes a light accent. That is not
+## hypothetical — the deck screen's *active* filter chips (EMBER #ff9a4c) measured 1.90:1 and its
+## active element chip (JADE #83e4c1) measured 1.62:1, both far below WCAG AA's 4.5:1, and the
+## confirm-deck button ("确认牌组 25/25") 1.76:1. Every one of those was a *live, tappable* control
+## whose label could not be read. Choosing per-fill means a future caller cannot reintroduce it by
+## picking a new colour — see ui_audit.gd, which measures the rendered frames rather than trusting
+## this reasoning.
+func _ink_for(fill: Color) -> Color:
+	# Two candidates, pick the higher contrast. LIGHT_INK is near-black rather than a mid-dark
+	# slate because mid-tone fills exist in this palette where BOTH a mid-dark and a near-white ink
+	# fall short: on the deck screen's epic-purple (`#a663bc`, luminance 0.20) a `#16232a` ink
+	# manages only 3.9:1 and white only 3.8:1, so only a near-black clears 4.5:1. Since the whole
+	# point of this function is that no fill can lose, the dark candidate has to be dark enough to
+	# win on the worst fill in the palette — ui_smoke.gd asserts that over every one of them.
+	const LIGHT_INK := Color.BLACK
+	return LIGHT_INK if contrast_ratio(LIGHT_INK, fill) > contrast_ratio(TEXT, fill) else TEXT
+
 func _button(text: String, callback: Callable, color := PANEL, min_size := Vector2(0,44)) -> Button:
 	var value := Button.new(); value.text = text; value.custom_minimum_size = min_size
 	if font_cjk: value.add_theme_font_override("font", font_cjk)
 	value.add_theme_font_size_override("font_size", 12)
-	value.add_theme_color_override("font_color", TEXT)
+	value.add_theme_color_override("font_color", _ink_for(color))
 	value.add_theme_stylebox_override("normal", _panel(color, 10, GOLD))
 	value.add_theme_stylebox_override("hover", _panel(color.lightened(.1), 10, JADE))
 	value.add_theme_stylebox_override("pressed", _panel(color.darkened(.12), 10, EMBER))

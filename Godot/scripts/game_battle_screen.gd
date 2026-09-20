@@ -1719,6 +1719,14 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var center_x: float = 366.0 / 2.0
 	tile.home_rot = deg_to_rad(distance * 2.8)
 	tile.home_pos = Vector2(center_x + distance * spacing - 58.0, 10.0 + absf(distance) * 4.2)
+	# The cost badge is offset 10px up-and-left of the tile (see its position below), so a full
+	# five-card fan -- which already spans the whole 366px hand area edge to edge -- pushes the
+	# leftmost badge to x=-10 and the clip rounds its left half away. Clamping the tile rather than
+	# narrowing the fan keeps every card the same size; for four or fewer cards the fan is narrower
+	# and this never triggers. Asserted in ui_smoke.gd, because "half a cost pip" is exactly the
+	# kind of thing that renders fine on top of a dark background and is invisible in a headless
+	# existence check.
+	tile.home_pos.x = maxf(10.0, tile.home_pos.x)
 	tile.position = tile.home_pos
 	tile.rotation = tile.home_rot
 	tile.z_index = index

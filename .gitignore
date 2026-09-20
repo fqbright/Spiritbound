@@ -8,4 +8,6 @@ Godot/tests/snapshots/*.png
 Godot/tests/snapshots/*.png.import
 Godot/tests/snapshots/baselines/*.png.import
 Godot/tests/snapshots/diffs/*.png
+# ui_audit.gd's measurement dump — scratch output, regenerated on every run.
+Godot/tests/snapshots/ui_audit.json
 Godot/tests/gut/results.xml
