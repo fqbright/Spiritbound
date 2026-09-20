@@ -217,10 +217,12 @@ fi
 # ---- Archive -----------------------------------------------------------------
 echo -e "\n${YELLOW}[4/6] xcodebuild archive (distribution signing)${NC}"
 mkdir -p "$ARCHIVE_DIR"
-# CODE_SIGN_IDENTITY is the part that actually decides this. Without it the archive silently
-# inherits the preset's "iPhone Developer" and produces a development-signed build (see the
-# preflight check above); CODE_SIGN_STYLE=Automatic plus -allowProvisioningUpdates then lets Xcode
-# create/fetch the matching App Store profile from the Apple account signed into Xcode.
+# With CODE_SIGN_STYLE=Automatic and -allowProvisioningUpdates, Xcode automatically selects
+# the Apple Distribution identity for `archive` actions (and Apple Development for `build`).
+# Do NOT also pass CODE_SIGN_IDENTITY="Apple Distribution" — that overrides automatic signing
+# for a specific identity while the project is set to Automatic, which Xcode rejects as a
+# conflict ("automatically signed for development, but a conflicting code signing identity
+# Apple Distribution has been manually specified").
 run xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -scheme Spiritbound \
     -configuration Release \
@@ -228,7 +230,6 @@ run xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
     CODE_SIGN_STYLE=Automatic \
-    CODE_SIGN_IDENTITY="Apple Distribution" \
     archive
 
 # Check the artifact, not the exit status. `xcodebuild archive` succeeds just as happily for a
