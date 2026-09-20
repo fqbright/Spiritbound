@@ -42,7 +42,18 @@ on:
         default: "intentional UI change"
   push:
     branches:
+      # Listed explicitly as well as by glob: a glob that fails to match fails *silently* here --
+      # the workflow simply never runs, with no error anywhere -- and this is the only trigger
+      # reachable without an authenticated gh CLI.
+      - 'ci/refresh-baselines'
       - 'ci/refresh-baselines**'
+
+# Two pushes in quick succession would otherwise run two captures, both of which try to commit
+# baselines and push to the same branch -- the loser's push is rejected. The newest run is the one
+# that matters, so let it win.
+concurrency:
+  group: refresh-baselines-${{ github.ref_name }}
+  cancel-in-progress: true
 
 # Required to push the refreshed baselines back to the branch. The default token permissions in
 # this repository are read-only, so this has to be stated explicitly or the push step 403s.
@@ -101,11 +112,10 @@ jobs:
           set -e
           echo "status=${verify_status}" >> "$GITHUB_OUTPUT"
           echo "--- per-screen results ---"
-          grep -E "matches baseline|exceeded visual difference|Skipping" /tmp/verify.log | tee /tmp/per_screen.txt || true
+          grep -E "matches baseline|exceeded visual difference|no committed baseline|was not captured" /tmp/verify.log | tee /tmp/per_screen.txt || true
           echo "--- verify tail ---"
           tail -30 /tmp/verify.log
-          mkdir -p /tmp/diffs
-          cp Godot/tests/snapshots/diffs/*.png /tmp/diffs/ 2>/dev/null || true
+          ls -la Godot/tests/snapshots/diffs/ 2>/dev/null || true
 
       - name: Compose the report that will be the commit body
         run: |
@@ -148,7 +158,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: refreshed-snapshots
+          # Paths must stay inside the workspace -- upload-artifact rejects absolute paths pointing
+          # outside it, which would fail the step that is supposed to preserve the evidence.
           path: |
             Godot/tests/snapshots/*.png
-            /tmp/diffs/*.png
+            Godot/tests/snapshots/diffs/*.png
           if-no-files-found: warn
