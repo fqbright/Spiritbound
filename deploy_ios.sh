@@ -122,11 +122,34 @@ xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
 
 # Step 4: Install and launch on device
 echo "📱 [4/4] Locating connected iOS device for install..."
-DERIVED_APP=$(find ~/Library/Developer/Xcode/DerivedData/Spiritbound-*/Build/Products/Debug-iphoneos -name "Spiritbound.app" -type d 2>/dev/null | head -n 1)
+# Ask Xcode where the product actually landed instead of guessing. The shipped scheme sets
+# buildConfiguration = Release for the build and Run actions, so a hardcoded
+# ".../Debug-iphoneos" path does not find the app we just built -- it finds whatever stale
+# Debug build an earlier session left in DerivedData, and installs that instead.
+BUILT_PRODUCTS_DIR=$(xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
+    -scheme Spiritbound \
+    -destination "generic/platform=iOS" \
+    -showBuildSettings 2>/dev/null \
+    | grep -m1 "[[:space:]]BUILT_PRODUCTS_DIR = " | sed 's/.* = //')
+DERIVED_APP="$BUILT_PRODUCTS_DIR/Spiritbound.app"
 
-if [ -z "$DERIVED_APP" ]; then
-    echo "❌ Could not find built Spiritbound.app in DerivedData"
+if [ -z "$BUILT_PRODUCTS_DIR" ] || [ ! -d "$DERIVED_APP" ]; then
+    echo "❌ Could not find built Spiritbound.app (BUILT_PRODUCTS_DIR='$BUILT_PRODUCTS_DIR')"
     exit 1
+fi
+echo "   Using $DERIVED_APP"
+
+# Refuse to install a bundle that does not carry the .pck we just exported, so a stale
+# DerivedData copy can never be mistaken for the current build.
+APP_PCK="$DERIVED_APP/Spiritbound.pck"
+if [ -f "$APP_PCK" ] && [ -f "$BUILD_DIR/Spiritbound.pck" ]; then
+    if [ "$(md5 -q "$APP_PCK")" != "$(md5 -q "$BUILD_DIR/Spiritbound.pck")" ]; then
+        echo "❌ $DERIVED_APP does not contain the pck that was just exported."
+        echo "   in bundle: $(md5 -q "$APP_PCK")"
+        echo "   exported:  $(md5 -q "$BUILD_DIR/Spiritbound.pck")"
+        echo "   This is stale build output. Delete $DERIVED_APP and re-run."
+        exit 1
+    fi
 fi
 
 # Wait up to 60 seconds for device to be connected/available
