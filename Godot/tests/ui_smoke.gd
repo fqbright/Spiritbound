@@ -719,9 +719,16 @@ func _run() -> void:
 	# per-level theme) rather than the old per-encounter variety-rotation index — stage 4 is
 	# chapter 0's boss (level 5, stage_lvl 4) and should show the "Crown" background.
 	check(_find_texture_rect_ending_with(game.root, "battle_stage_4.png"), "a level-5 boss battle shows the Crown-themed background")
+	check(_find_texture_rect_ending_with(game.root, "chapter_0.png") or _find_texture_rect_ending_with(game.root, "biome_0_forest.png"), "combat background aligns with the main map chapter artwork")
 	game.begin_battle(0)
 	await process_frame
 	check(_find_texture_rect_ending_with(game.root, "battle_stage_0.png"), "a level-1 battle shows the Trailhead-themed background")
+	check(_find_texture_rect_ending_with(game.root, "chapter_0.png") or _find_texture_rect_ending_with(game.root, "biome_0_forest.png"), "stage 0 combat background aligns with chapter 0 map")
+	game.begin_battle(5)
+	await process_frame
+	check(_find_texture_rect_ending_with(game.root, "chapter_1.png") or _find_texture_rect_ending_with(game.root, "biome_1_autumn.png"), "chapter 1 combat background aligns with chapter 1 map artwork")
+	game.begin_battle(0)
+	await process_frame
 
 	# Health bar must actually shrink with the enemy's health.
 	var enemy_box: Control = game.enemy_boxes[0]

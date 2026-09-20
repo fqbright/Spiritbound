@@ -1301,6 +1301,25 @@ func _map_point(index: int) -> Vector2: return _map_screen._map_point(index)
 func _build_road_curve(points: PackedVector2Array) -> Curve2D: return _map_screen._build_road_curve(points)
 func _get_road_texture() -> NoiseTexture2D: return _map_screen._get_road_texture()
 func _get_terrain_wash_texture(tint_index: int) -> GradientTexture2D: return _map_screen._get_terrain_wash_texture(tint_index)
+func _get_terrain_grain_texture() -> NoiseTexture2D: return _map_screen._get_terrain_grain_texture()
+func _get_mote_texture() -> GradientTexture2D: return _map_screen._get_mote_texture()
+func _fade_strip(height: float, flipped: bool, base_color := BG) -> TextureRect:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(base_color.r, base_color.g, base_color.b, 1.0))
+	gradient.set_color(1, Color(base_color.r, base_color.g, base_color.b, 0.0))
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.width = 4
+	tex.height = 96
+	tex.fill_from = Vector2(0, 1) if flipped else Vector2(0, 0)
+	tex.fill_to = Vector2(0, 0) if flipped else Vector2(0, 1)
+	var strip := TextureRect.new()
+	strip.texture = tex
+	strip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	strip.stretch_mode = TextureRect.STRETCH_SCALE
+	strip.size = Vector2(MAP_WIDTH, height)
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return strip
 func _add_notification_dot(anchor: Control, btn_size: Vector2) -> void: _map_screen._add_notification_dot(anchor, btn_size)
 func _clipboard_set(text: String) -> void:
 	if DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):

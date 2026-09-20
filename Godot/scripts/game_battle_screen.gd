@@ -52,6 +52,166 @@ func begin_battle(index: int) -> void:
 	_maybe_end_turn()
 	if g.auto_battle_active: _maybe_step_auto_battle()
 
+func _setup_battle_background(encounter: Dictionary, stage_lvl: int) -> void:
+	var raw_ch: int = int(encounter.get("chapter", 1)) - 1
+	var ch: int = raw_ch
+	if g.in_abyss:
+		ch = 49
+	elif ch < 0:
+		ch = int(g.profile.position) / 5
+	ch = posmod(ch, 50)
+
+	var bg_index: int = clampi(stage_lvl, 0, g.BATTLE_BACKGROUNDS.size() - 1)
+	var tint: Color = g.CHAPTER_TINTS[ch % g.CHAPTER_TINTS.size()]
+	var is_boss: bool = stage_lvl >= 4 or int(encounter.get("tier", 1)) >= 3
+	var is_world_boss: bool = int(encounter.get("tier", 1)) == 4
+
+	# Root background holder node
+	var bg_root := Control.new()
+	bg_root.name = "BattleBackgroundHolder"
+	bg_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	g.root.add_child(bg_root)
+	g.root.move_child(bg_root, 0)
+
+	# 1. Base dark foundation
+	var base_rect := ColorRect.new()
+	base_rect.name = "BattleBaseRect"
+	base_rect.color = g.BG
+	base_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	base_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg_root.add_child(base_rect)
+
+	# 2. Atmospheric terrain wash (matching map chapter atmosphere)
+	var wash_tex := g._get_terrain_wash_texture(ch % g.CHAPTER_TINTS.size())
+	if wash_tex != null:
+		var wash := TextureRect.new()
+		wash.name = "BattleTerrainWash"
+		wash.texture = wash_tex
+		wash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		wash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		wash.stretch_mode = TextureRect.STRETCH_SCALE
+		wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wash.modulate.a = 0.40
+		bg_root.add_child(wash)
+
+	# 3. Main Map Chapter Artwork (Primary environment background)
+	var map_tex: Texture2D = g._get_chapter_map_texture(ch)
+	if map_tex != null:
+		var map_tile := TextureRect.new()
+		map_tile.name = "BattleMapBackground"
+		map_tile.texture = map_tex
+		map_tile.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		map_tile.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		map_tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+		# Stage Parallax Framing:
+		# Lower stages (Trailhead) look at the bottom trail; Boss stages look toward the summit!
+		var zoom_factor: float = 1.10
+		var target_w: float = g.MAP_WIDTH * zoom_factor
+		var target_h: float = g.BAND_HEIGHT * zoom_factor
+		map_tile.size = Vector2(target_w, target_h)
+
+		var v_ratio: float = 1.0 - (float(clampi(stage_lvl, 0, 4)) / 4.0)
+		var offset_y: float = -(target_h - g.BAND_HEIGHT) * v_ratio
+		var offset_x: float = -(target_w - g.MAP_WIDTH) * 0.5
+		map_tile.position = Vector2(offset_x, offset_y)
+
+		var map_modulate: Color = Color.WHITE.lerp(tint, 0.28)
+		map_modulate.a = 0.54 if not is_boss else 0.46
+		map_tile.modulate = map_modulate
+		map_tile.flip_h = false if g._chapter_has_unique_art(ch) else ((ch / 6) % 2 == 1)
+		bg_root.add_child(map_tile)
+
+	# 4. Battle Stage Arena & Ground Ring (Keeps test assertions & provides battle arena floor)
+	var stage_overlay := g._background(g.BATTLE_BACKGROUNDS[bg_index], 0.20 if not is_boss else 0.28)
+	stage_overlay.name = "BattleStageBackground"
+	bg_root.add_child(stage_overlay)
+
+	# 5. Contrast & Readability Vignettes (Protects Card Hand & Top HUD clarity)
+	var top_fade := g._fade_strip(90.0, false)
+	top_fade.name = "BattleTopVignette"
+	top_fade.modulate = Color(1.0, 1.0, 1.0, 0.75)
+	bg_root.add_child(top_fade)
+
+	var bottom_fade := g._fade_strip(260.0, true)
+	bottom_fade.name = "BattleBottomVignette"
+	bottom_fade.position = Vector2(0, g.BAND_HEIGHT - 260.0)
+	bottom_fade.modulate = Color(1.0, 1.0, 1.0, 0.85)
+	bg_root.add_child(bottom_fade)
+
+	# 6. Biome Weather Particles (Atmospheric floating motes matching map ambience)
+	_add_battle_ambience(bg_root, ch, is_boss, is_world_boss)
+
+func _add_battle_ambience(parent: Node, chapter: int, is_boss: bool, is_world_boss: bool) -> void:
+	var biome_idx: int = chapter % 6
+	var motes := CPUParticles2D.new()
+	motes.name = "BattleAmbienceParticles"
+	motes.texture = g._get_mote_texture()
+	motes.position = Vector2(g.MAP_WIDTH / 2.0, 844.0 / 2.0)
+	motes.amount = 30 if is_world_boss else (22 if is_boss else 16)
+	motes.lifetime = 6.0
+	motes.preprocess = 5.0
+	motes.emitting = not bool(g.profile.get("reduce_motion", false))
+	motes.z_index = 0
+	motes.local_coords = true
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(g.MAP_WIDTH / 2.0, 844.0 / 2.0)
+
+	match biome_idx:
+		0: # Mistwood: gentle green drifting spores
+			motes.direction = Vector2(0.2, -1.0)
+			motes.spread = 30.0
+			motes.gravity = Vector2.ZERO
+			motes.initial_velocity_min = 6.0
+			motes.initial_velocity_max = 14.0
+			motes.color = Color(0.70, 0.95, 0.80, 0.50)
+		1: # Ashlands / Ember Canyon: warm rising fire sparks
+			motes.direction = Vector2(0.1, -1.0)
+			motes.spread = 20.0
+			motes.gravity = Vector2(0, -10.0)
+			motes.initial_velocity_min = 15.0
+			motes.initial_velocity_max = 35.0
+			motes.color = Color(1.0, 0.55, 0.22, 0.65)
+		2: # Glacial Pass / Frost Peaks: falling snow crystals
+			motes.direction = Vector2(0.15, 1.0)
+			motes.spread = 40.0
+			motes.gravity = Vector2(0, 14.0)
+			motes.initial_velocity_min = 10.0
+			motes.initial_velocity_max = 24.0
+			motes.color = Color(0.85, 0.95, 1.0, 0.60)
+		3: # Starfall Sanctuary / Celestial: sparkling stardust
+			motes.direction = Vector2(0.0, -0.5)
+			motes.spread = 180.0
+			motes.gravity = Vector2.ZERO
+			motes.initial_velocity_min = 4.0
+			motes.initial_velocity_max = 10.0
+			motes.color = Color(0.95, 0.85, 1.0, 0.55)
+		4: # Sunken Marsh: floating algae bubbles / wisps
+			motes.direction = Vector2(-0.2, -1.0)
+			motes.spread = 25.0
+			motes.gravity = Vector2(0, -4.0)
+			motes.initial_velocity_min = 5.0
+			motes.initial_velocity_max = 12.0
+			motes.color = Color(0.45, 0.92, 0.75, 0.50)
+		5: # Abyssal Rift: void motes
+			motes.direction = Vector2(0.0, -1.0)
+			motes.spread = 60.0
+			motes.gravity = Vector2(0, -5.0)
+			motes.initial_velocity_min = 8.0
+			motes.initial_velocity_max = 20.0
+			motes.color = Color(0.75, 0.50, 0.95, 0.55)
+	if is_world_boss:
+		motes.color = motes.color.lerp(Color(1.0, 0.35, 0.35), 0.35)
+
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.0))
+	ramp.add_point(0.2, Color(1, 1, 1, 1.0))
+	ramp.add_point(0.8, Color(1, 1, 1, 1.0))
+	ramp.set_color(ramp.get_point_count() - 1, Color(1, 1, 1, 0.0))
+	motes.color_ramp = ramp
+	parent.add_child(motes)
+
 func show_battle() -> void:
 	var encounter: Dictionary = g._current_encounter()
 	var stage_lvl: int = int(encounter.get("level", 1)) - 1
@@ -61,13 +221,7 @@ func show_battle() -> void:
 	elif b_tier == 3:
 		_shake_screen(4.0, 0.2)
 	g._clear(); g._play_music(true, stage_lvl); g.enemy_boxes.clear()
-	# Keyed by within-chapter level (Trailhead..Crown), the same index _play_music() uses for
-	# the matching battle theme, rather than the old per-encounter "background" rotation index
-	# — that tied visual variety to chapter/stage number with no relationship to the music
-	# playing over it. Clamped the same way _play_music() clamps stream_idx, since Daily
-	# Trial/Weekly Challenge stages run past level 5 with no matching array entry.
-	var bg_index: int = clampi(stage_lvl, 0, g.BATTLE_BACKGROUNDS.size() - 1)
-	var bg := g._background(g.BATTLE_BACKGROUNDS[bg_index],.28); g.root.add_child(bg); g.root.move_child(bg,0)
+	_setup_battle_background(encounter, stage_lvl)
 	var page := g._create_page(4)
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 44
