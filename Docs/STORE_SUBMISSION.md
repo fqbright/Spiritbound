@@ -42,18 +42,30 @@ whole story:
 | `.sample` (QOA audio) | 5.6 MiB | already compressed |
 | `.gdc` + scripts + `data/` | 1.1 MiB | |
 
-**Landing in this pass, verified by re-export:** `export_presets.cfg` now carries an
-`exclude_filter` that drops things no build should ever have shipped. `tests/` and `tools/` were
+**Landing in this pass, verified by re-export.** Two changes, no re-encode, no visual risk:
+
+**(a) `export_presets.cfg` now excludes what no build should ship.** `tests/` and `tools/` were
 being packed into the release artifact, `addons/gut/` (the test framework) was too, and
 `assets/characters/monsters/m_r*.png` are **byte-identical duplicates** of the `m_s*.png` sheets
 with zero references anywhere in `scripts/` or `data/` (checked by `md5` and by `grep`).
 
+**(b) The export directory is wiped before exporting.** `Godot/build/ios` sits *inside* the
+project, and `export_filter="all_resources"` scans the project tree — so on the **second and
+later** releases Godot scans its own previous output and packs it into the new `.pck`: 18
+zero-byte `Images.xcassets` entries, a duplicate `Icon-*.png` import per generated app icon, and
+20 `Can't open file from path 'res://build/...'` errors during export. The first release on a
+fresh clone never shows it, which is why it survived this long. The already-built pack in this
+repo was affected. `release_ios.sh` now clears `build/ios` first (`build/` is gitignored and
+fully regenerated), which makes repeated exports reproducible.
+
 ```
-before  170,449,820 bytes (162.5 MiB)
-after   149,324,576 bytes (142.4 MiB)   -20.1 MiB, -12.4%
+before  170,449,820 bytes (162.5 MiB)   with stale-export pollution (20 export errors)
+after   147,705,952 bytes (140.8 MiB)   -22.7 MiB, -13.3%, 0 errors, 1140 entries
 ```
 
-No code change, no re-encode, no visual risk. `./run_tests.sh` green after.
+Reproducibility check that caught (b): exporting twice in a row without the wipe produced
+`147,709,736` vs `147,705,952` bytes — the same commit does not yield the same pack, and the
+difference is garbage. `./run_tests.sh` green (720 checks) after both changes.
 
 **What is still on the table, in order of payoff:**
 
@@ -243,8 +255,9 @@ expensive to discover late:
 python3 Godot/tools/pck_audit.py Godot/build/ios/Spiritbound.pck
 ```
 
-Expect ~142 MiB after the exclusions in §1.1; anything much larger means the `exclude_filter`
-was lost or new art landed uncompressed.
+Expect ~141 MiB (147,705,952 bytes) after the changes in §1.1; anything much larger means the
+`exclude_filter` was lost, the stale `build/ios` was packed back in, or new art landed
+uncompressed.
 
 Then, in App Store Connect: attach the build to a TestFlight group, complete the
 export-compliance question if it appears, confirm App Privacy and the account-deletion
