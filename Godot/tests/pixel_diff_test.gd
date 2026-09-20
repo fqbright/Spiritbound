@@ -143,7 +143,11 @@ func _run() -> void:
 		"04_shop_screen.png",
 		"05_deck_screen.png",
 		"06_camp_screen.png",
-		"07_treasury_inspector.png"
+		"07_treasury_inspector.png",
+		# Added when the snapshotter grew from 7 screens to 9. Both of these were being captured on
+		# every single run and then compared against nothing — see the enumeration guard below.
+		"08_codex_screen.png",
+		"09_challenges_screen.png"
 	]
 
 	# Screen-adaptive thresholds (tight bounds for static UI, reasonable tolerance for dynamic scenes)
@@ -154,18 +158,51 @@ func _run() -> void:
 		"04_shop_screen.png": 0.010,        # 1.0% max allowed (shelf list)
 		"05_deck_screen.png": 0.008,        # 0.8% max allowed (static grid)
 		"06_camp_screen.png": 0.010,        # 1.0% max allowed (tabs and list)
-		"07_treasury_inspector.png": 0.010  # 1.0% max allowed (modal dialog)
+		"07_treasury_inspector.png": 0.010, # 1.0% max allowed (modal dialog)
+		"08_codex_screen.png": 0.010,       # 1.0% max allowed (static list)
+		"09_challenges_screen.png": 0.012   # 1.2% max allowed (grouped cards + dock)
 	}
+
+	# Enumerate what was actually captured instead of trusting this file's own hand-written lists.
+	# Those lists have drifted before and nothing noticed: visual_snapshots.gd grew from 7 screens
+	# to 9 when the codex and trial-challenges screens were added, and neither the screens array
+	# nor the thresholds dict above was updated — so both new screens were captured on every run
+	# and then compared against nothing at all. The trial-challenges screen, freshly redesigned at
+	# the time, was the one screen in the game with no visual regression gate whatsoever. These
+	# checks make the next addition fail here rather than pass quietly, and they cost one
+	# directory read.
+	var captured: Array[String] = []
+	var snap_dir := DirAccess.open(SNAPSHOT_DIR)
+	if snap_dir == null:
+		fail("Cannot open %s to enumerate the captured snapshots." % SNAPSHOT_DIR)
+	else:
+		for entry in snap_dir.get_files():
+			if not entry.begins_with(".") and entry.ends_with(".png"):
+				captured.append(entry)
+		captured.sort()
+
+	check(captured.size() > 0,
+		"Current snapshots exist to diff against (found %d in %s)" % [captured.size(), SNAPSHOT_DIR])
+	for captured_file in captured:
+		check(screens.has(captured_file),
+			"%s is listed in this suite's screens array — an unlisted snapshot is captured but never gated" % captured_file)
+		check(screen_thresholds.has(captured_file),
+			"%s has a per-screen threshold of its own" % captured_file)
 
 	for screen_file in screens:
 		var baseline_path := "%s/%s" % [BASELINE_DIR, screen_file]
 		var current_path := "%s/%s" % [SNAPSHOT_DIR, screen_file]
 
+		# Both of these branches used to print a warning and `continue`, which makes this a gate
+		# that cannot fail for the very reason it exists: delete a baseline and its regression
+		# check quietly vanishes from the suite instead of the run going red. run_tests.sh always
+		# captures the current snapshots before invoking this script (step 8), so a missing
+		# current snapshot means the capture failed — not that there is nothing worth checking.
 		if not FileAccess.file_exists(baseline_path):
-			print("  ⚠️ Skipping %s: baseline does not exist yet" % screen_file)
+			fail("%s has no committed baseline at %s — refusing to silently drop a whole screen." % [screen_file, baseline_path])
 			continue
 		if not FileAccess.file_exists(current_path):
-			print("  ⚠️ Skipping %s: current snapshot does not exist yet" % screen_file)
+			fail("%s was not captured to %s — run_tests.sh captures before diffing, so this means the capture failed." % [screen_file, current_path])
 			continue
 
 		var img_base := Image.load_from_file(ProjectSettings.globalize_path(baseline_path))
