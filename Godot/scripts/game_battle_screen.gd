@@ -2143,6 +2143,16 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 		if i < before.size() and before[i] > g.combat.state.enemies[i].health:
 			_animate_attack_slash(i, card_id)
 			await g.get_tree().create_timer(g._battle_delay(0.14)).timeout
+			# The condition above ran before the two awaits between it and here, and the live enemy
+			# list can shrink in the meantime: the loop bound was evaluated once on entry, so an
+			# enemy that died and was removed while this iteration was animating leaves `i` past
+			# the end of g.combat.state.enemies. Indexing it then raises "Invalid access of index
+			# 'N' on a base object of type: 'Array'". Observed intermittently in ui_smoke's
+			# auto-battle run (2026-09-21), where every check still passed but the SCRIPT ERROR
+			# aborted ./run_tests.sh and so blocked a release. `before` is a snapshot built by the
+			# caller and cannot shrink, but it is re-checked alongside for the same reason.
+			if i >= before.size() or i >= g.combat.state.enemies.size():
+				continue
 			await _animate_enemy_hit(i, before[i] - g.combat.state.enemies[i].health, g.combat.state.enemies[i].health <= 0)
 			await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
 
