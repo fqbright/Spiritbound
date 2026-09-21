@@ -107,13 +107,18 @@ func run() -> void:
 
 	# ...and where the hardcoded great-boss path *does* own the transition, the boost must land
 	# exactly once — this is the assertion that catches the two phase-2 code paths
-	# double-counting the same HP threshold. The flag is forced here rather than relied on from
-	# content, because _build_encounters() never sets is_great_boss on the encounter dict, so
-	# that path is currently unreachable in the campaign (see the note in this file's header).
+	# double-counting the same HP threshold.
+	#
+	# This used to be forced by hand, because _build_encounters() never wrote is_great_boss onto
+	# the encounter dict — so state.is_great_boss was always false and the five hardcoded
+	# ultimates were unreachable in the campaign. That is fixed at the source now, so the fight
+	# below is a plain chapter-10 fight with no test-side nudging; the check right after it is
+	# what keeps the field from silently disappearing again.
 	var boost_hard := fight(49, true)
-	boost_hard.state["is_great_boss"] = true
+	check(bool(boost_hard.state.get("is_great_boss", false)),
+		"the campaign's chapter-10 encounter carries is_great_boss — without it the hardcoded ultimates are dead code")
 	var b2: Dictionary = boost_hard.state.enemies[0]
-	b2["is_great_boss"] = true
+	check(bool(b2.get("is_great_boss", false)), "the flag also reaches enemy 0, which is where the phase gate reads it")
 	var base_damage_2: int = int(b2.damage)
 	b2.health = int(round(float(b2.max_health) * 0.45))
 	boost_hard._damage_enemy(0, 1, false)
@@ -244,6 +249,88 @@ func run() -> void:
 	var dbl_off := fight(249, true)
 	dbl_off.state.enemies[0]["phase"] = 1
 	check(not dbl_off._attacks_twice(dbl_off.state.enemies[0]), "no double attack before phase 3")
+
+	# --- Every one of the 50 chapter bosses has a signature, and no signature is dead data ---
+	# This is the check that matters most in this file. It is deliberately shaped as an allowlist
+	# of keys combat.gd actually reads: a key nothing consults parses, type-checks, and then
+	# silently never happens at runtime, which is a bug this repo has already shipped twice.
+	var engine_read_keys := [
+		"absorb_burn_every", "shield_per_absorbed_burn", "starting_shield", "shield_per_turn",
+		"regeneration", "frost_armor", "thorns", "dodge_every", "heal_on_attack", "critical_every",
+		"below_half", "enrage", "mark_hand_penalty", "mark_hand_threshold",
+		"counterspell_threshold", "counterspell_burn", "enrage_on_block_threshold",
+		"enrage_attack_boost", "soul_tide_curse", "soul_tide_count", "phase2_soul_tide",
+		"exhaust_hand_every", "phase2_exhaust_every", "summon_every", "phase2_mirror_shield",
+		"phase2_threshold", "phase2_damage_boost", "phase2_burn_on_hit", "phase3_threshold",
+		"phase3_damage_boost", "phase3_double_attack", "revive_hp_pct", "revive_attack_pierce",
+		"burn_immune",
+	]
+	var missing_signature: Array = []
+	var no_phase2: Array = []
+	var dead_keys: Array = []
+	for chapter in range(1, 51):
+		var boss_index: int = (chapter - 1) * 5 + 4
+		var enc: Dictionary = content.encounters[boss_index]
+		check(enc.level == 5, "stage %d is the chapter %d boss node" % [boss_index, chapter])
+		var m: Dictionary = enc.mechanics
+		if m.is_empty(): missing_signature.append(chapter)
+		if not m.has("phase2_threshold"): no_phase2.append(chapter)
+		for key in m:
+			if not (key in engine_read_keys): dead_keys.append("ch%d:%s" % [chapter, key])
+	check(missing_signature.is_empty(),
+		"all 50 chapter bosses carry mechanics (missing: %s)" % str(missing_signature))
+	check(no_phase2.is_empty(),
+		"all 50 chapter bosses have a phase-2 transition (missing: %s)" % str(no_phase2))
+	check(dead_keys.is_empty(),
+		"every boss mechanic key is one combat.gd actually reads (unread: %s)" % str(dead_keys))
+
+	# The signatures must actually differ per chapter, or "all 50 have one" would be true while
+	# every fight still played the same.
+	var shapes := {}
+	for chapter in range(1, 51):
+		var m: Dictionary = content.encounters[(chapter - 1) * 5 + 4].mechanics
+		var own: Array = []
+		for key in m:
+			if key != "phase2_threshold": own.append(key)
+		own.sort()
+		shapes[",".join(own)] = true
+	check(shapes.size() >= 10,
+		"chapter bosses fall into at least 10 distinct mechanic shapes (got %d)" % shapes.size())
+
+	# And the numbers scale across the five realms rather than repeating verbatim.
+	var early: int = int(content.encounters[4].mechanics.get("shield_per_absorbed_burn", 0))
+	var late: int = int(content.encounters[204].mechanics.get("shield_per_absorbed_burn", 0))
+	check(late > early,
+		"chapter 41's signature scales past chapter 1's (ch1 %d, ch41 %d)" % [early, late])
+
+	# is_great_boss is true on exactly the five every-tenth chapters, and nowhere else.
+	var great: Array = []
+	for i in content.encounters.size():
+		if bool(content.encounters[i].get("is_great_boss", false)): great.append(i)
+	check(great == [49, 99, 149, 199, 249],
+		"is_great_boss is set on exactly the five great-boss stages (got %s)" % str(great))
+
+	# --- Signature mechanics on a non-authored boss actually run ---
+	# Chapter 8 (stage 39) is one of the forty chapters that had no mechanics before this table
+	# existed; its archetype is Blood Price (heal on attack), so the same funnel that tests
+	# chapter 35 can be pointed at it.
+	var sig := fight(39, true)
+	var sig_boss: Dictionary = sig.state.enemies[0]
+	check(sig_boss.mechanics.has("heal_on_attack"),
+		"a previously-plain chapter boss now has its signature mechanic")
+	sig_boss.health = int(sig_boss.max_health) - 30
+	sig_boss.intent = {"kind": "attack", "amount": 1}
+	sig.state.player.shield = 999
+	var sig_before: int = int(sig_boss.health)
+	sig._execute_intent(0)
+	check(int(sig_boss.health) > sig_before,
+		"the signature mechanic is live in combat, not just present in the data (was %d, now %d)"
+			% [sig_before, int(sig_boss.health)])
+
+	# The chapter band's own scaling must survive the signature merge, same as with authored ones.
+	check(content.encounters[39].mechanics.has("shield_per_turn")
+		or content.encounters[39].mechanics.has("critical_every"),
+		"the chapter band still contributes after the signature merge")
 
 	# --- Per-turn trackers must not leak across turns ---
 	var reset := fight(124, true)

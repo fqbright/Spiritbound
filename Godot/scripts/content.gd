@@ -886,6 +886,61 @@ func node_kind(index: int) -> String:
 func is_boss_kind(kind: String) -> bool:
 	return kind == "boss" or kind == "greatboss"
 
+# ---------------------------------------------------------------------------------------------
+# Signature mechanics for EVERY chapter boss, not just the ten that carry hand-authored data on
+# their ENEMIES row.
+#
+# Before this, only ten chapters (5, 10, 15, ... 50 — the m_s025/m_s050/... rows) had any
+# mechanics of their own; the other forty chapter-5 fights were mechanically identical apart
+# from their stat block, so "the chapter boss" was a different coat of paint rather than a
+# different fight. This table gives all fifty a signature set.
+#
+# Hard rule for anything added here: **every key must be one combat.gd actually reads.** A key
+# nothing consults parses, type-checks, and then silently never happens at runtime — this repo
+# has already shipped that bug twice (the unused `thorns` field, and the `mechanics` dict that
+# _build_encounters() discarded entirely). The read sites are listed next to each key below so
+# the next person can check the claim instead of trusting it.
+#
+#   absorb_burn_every / shield_per_absorbed_burn  -> _apply_boss_player_turn_end()
+#   starting_shield                               -> create()
+#   shield_per_turn / regeneration                -> end_turn() (per enemy turn)
+#   frost_armor / thorns / dodge_every            -> _damage_enemy()
+#   heal_on_attack                                -> _execute_intent()
+#   critical_every / below_half                   -> _roll_intent()
+#   mark_hand_penalty / counterspell_*            -> _apply_boss_player_turn_end()
+#   enrage_on_block_threshold / enrage_attack_boost -> _apply_boss_player_turn_end()
+#   soul_tide_* / exhaust_hand_every / summon_every / phase2_mirror_shield
+#                                                 -> _apply_boss_player_turn_start()
+#   phase2_* / phase3_* thresholds                -> _check_mechanics_phases()
+#
+# The shape is the archetype; the numbers scale with the realm band (`r`) so no two chapters
+# reuse an early chapter's values verbatim. Where a chapter's own ENEMIES row is authored, those
+# keys still win — see the merge in _build_encounters().
+func boss_mechanics_for(chapter: int) -> Dictionary:
+	var r: int = (chapter - 1) / 10        # realm band 0..4
+	var archetype: int = (chapter - 1) % 10
+	match archetype:
+		0:  # Ember Furnace — punishes Burn, then weaponises it.
+			return {"absorb_burn_every":3, "shield_per_absorbed_burn":2 + r, "phase2_threshold":0.5, "phase2_burn_on_hit":2 + r}
+		1:  # Glacial Bastion — the longer you take, the more it armours up.
+			return {"starting_shield":15 + 5 * r, "shield_per_turn":2 + r, "frost_armor":1 + r, "phase2_threshold":0.45, "phase2_damage_boost":2 + r}
+		2:  # Undying — must be killed twice; the first death bites back.
+			return {"revive_hp_pct":0.3, "revive_attack_pierce":8 + 3 * r, "thorns":1 + r, "phase2_threshold":0.4, "phase2_damage_boost":2 + r}
+		3:  # Soul Tide — clogs the hand every turn.
+			return {"soul_tide_curse":"void_curse", "soul_tide_count":1, "phase2_threshold":0.4, "phase2_soul_tide":2}
+		4:  # Memory Erase — deletes your most expensive card, then does it faster.
+			return {"exhaust_hand_every":3, "regeneration":2 + r, "phase2_threshold":0.35, "phase2_exhaust_every":2}
+		5:  # Hunter's Mark — punishes ending the turn with cards left in hand.
+			return {"mark_hand_penalty":5 + 2 * r, "mark_hand_threshold":3, "phase2_threshold":0.5, "phase2_damage_boost":2 + r}
+		6:  # Counterspell — punishes long card chains.
+			return {"counterspell_threshold":3, "counterspell_burn":1 + r, "phase2_threshold":0.5, "phase2_damage_boost":3 + r}
+		7:  # Blood Price — every swing heals it.
+			return {"heal_on_attack":3 + r, "regeneration":1 + r, "phase2_threshold":0.5, "phase2_damage_boost":2 + r}
+		8:  # Mirror Shield — negates your first card each turn once phase 2 begins.
+			return {"dodge_every":maxi(2, 4 - r), "phase2_threshold":0.5, "phase2_mirror_shield":true, "phase2_damage_boost":2 + r}
+		_:  # Enrage Stack — rewards you for not over-blocking.
+			return {"enrage_on_block_threshold":10, "enrage_attack_boost":2 + r, "below_half":1 + r, "phase2_threshold":0.5, "phase2_damage_boost":2 + r}
+
 # Returns the two fork options for branch-able map levels (2, 3, 4).
 # Empty array means this level has no branch — the node kind is fixed (levels 1 and 5).
 # branch_index 0 = left/top option, 1 = right/bottom option.
@@ -1884,6 +1939,14 @@ func _build_encounters() -> void:
 		var authored: Dictionary = enemy.get("mechanics", {})
 		for key in authored:
 			mechanics[key] = authored[key]
+		# Every chapter boss also gets its signature set (boss_mechanics_for). Filled in only
+		# where neither the chapter band nor the ENEMIES row already set the key, so an authored
+		# boss keeps its written-up identity and the band's scaling is never overwritten — this
+		# adds the remaining forty chapters' identities without changing the ten authored ones.
+		if level == 5:
+			var signature: Dictionary = boss_mechanics_for(chapter)
+			for key in signature:
+				if not mechanics.has(key): mechanics[key] = signature[key]
 		var adds := _chapter_adds(chapter, level, is_great_boss)
 		var factor: float = _chapter_factor(chapter)
 		var level_health: float = 1.0 + float(level - 1) * 0.12
@@ -1906,6 +1969,15 @@ func _build_encounters() -> void:
 			"tier":enemy.get("tier", 1),"tint":enemy.get("tint", "83e4c1"),
 			"lore":enemy.get("lore", ""),"lore_en":enemy.get("lore_en", ""),
 			"mechanics":mechanics,"adds":adds,"background":(chapter - 1) % 5,
+			# This flag is what makes the five great-boss phase-2 ultimates in combat.gd
+			# (_trigger_great_boss_phase_2) reachable at all. It was read in exactly two places
+			# and written in none: combat.gd copies it off the encounter dict into
+			# state.is_great_boss, so with the field absent the flag was always false and the
+			# chapter 10/20/30/40/50 ultimates could never fire on any code path. The map kind
+			# ("greatboss") and the reward/achievement paths were already keyed off node_kind()
+			# instead, which is why the gap stayed invisible — the label was right everywhere
+			# the player could see it.
+			"is_great_boss":is_great_boss,
 			"add_art_key":add_art_key,"add_name":add_name,"add_name_en":add_name_en
 		})
 
