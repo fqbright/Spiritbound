@@ -1,0 +1,557 @@
+# ==============================================================================
+# Spiritbound — cloud iOS release (archive → App Store Connect / TestFlight)
+# ==============================================================================
+#
+# Manual only, on purpose: nothing here runs on push. Dispatch it from the Actions tab with the
+# build number you want, or from the CLI:
+#
+#   gh workflow run ios-release.yml -f build_number=21
+#
+# Why this exists: ./release_ios.sh is the local release path, and it needs a Mac whose Xcode
+# ships the SDK App Store Connect currently demands. Measured 2026-09-21, an upload from the dev
+# Mac was rejected with:
+#
+#   Validation failed. SDK version issue. This app was built with the iOS 18.5 SDK. All iOS and
+#   iPadOS apps must be built with the iOS 26 SDK or later, included in Xcode 26 or later, in
+#   order to be uploaded to App Store Connect or submitted for distribution.
+#
+# That Mac runs Xcode 16.4 with only the iOS 18.5 SDK, and Xcode 26 requires macOS Sequoia 15.6+
+# while the machine is on 15.3.1. GitHub's macOS runners already carry current Xcode, so the SDK
+# requirement is satisfied here without touching that machine.
+#
+# The signing/export logic mirrors ./release_ios.sh step for step (Godot export → the same
+# dummy.cpp linker patch → archive → -exportArchive → verify the .ipa on the three signals that
+# decide whether an upload can work). The difference is that the archive is manually signed with
+# a distribution identity from Secrets instead of automatic signing against an Xcode account,
+# because a CI runner has no signed-in Apple ID.
+#
+# ----------------------------------------------------------------------------------------------
+# REQUIRED SECRETS — add them yourself at:
+#   GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+#
+# NEVER paste a certificate, a password or a private key into a chat, an issue, a commit or a
+# pull request. These are credentials for your Apple developer account. Add them through the
+# GitHub UI only; nobody (human or agent) needs to see their contents.
+#
+#   IOS_DIST_P12_BASE64
+#       The Apple Distribution certificate WITH its private key, exported as a .p12 and
+#       base64-encoded. Where: Keychain Access → login keychain → My Certificates → right-click
+#       "Apple Distribution: ..." → Export → save as .p12 with a password → then
+#       `base64 -i Certificates.p12 | pbcopy`.
+#   IOS_DIST_P12_PASSWORD
+#       The password you set on that .p12 export. Plain text, not base64.
+#   APPSTORE_PROVISIONING_PROFILE_BASE64
+#       The App Store distribution .mobileprovision for com.jiacong.spiritbound, base64-encoded.
+#       Where: developer.apple.com → Certificates, Identifiers & Profiles → Profiles → the App
+#       Store profile for this app → Download → `base64 -i XXX.mobileprovision | pbcopy`.
+#       A DEVELOPMENT profile will not work — it lists devices, and the upload gets rejected.
+#       This workflow checks for that and fails before building.
+#   ASC_KEY_ID / ASC_ISSUER_ID
+#       App Store Connect API key identifiers. Where: App Store Connect → Users and Access →
+#       Integrations → Team Keys → generate a key with at least the App Manager role. The Key ID
+#       appears in the list and the Issuer ID above it. Apple lets you download the .p8 exactly
+#       once, so save it when you create the key.
+#   ASC_KEY_P8_BASE64
+#       That AuthKey_<KEY_ID>.p8 file, base64-encoded: `base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy`.
+#
+# Uploads authenticate with the API key rather than an Apple ID, so no interactive login or 2FA
+# can stall a run — that is the whole reason this path is CI-friendly.
+# ----------------------------------------------------------------------------------------------
+
+name: iOS Release (TestFlight)
+
+on:
+  # Dispatch only. A push here would burn a signing identity and an App Store Connect build
+  # number on every commit, and build numbers cannot be reused — so this is never automatic.
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: >-
+          CFBundleVersion to ship. Must not already exist for this marketing version on App
+          Store Connect (ITMS-4238 rejects a duplicate).
+        required: true
+        default: "21"
+        type: string
+
+# The job only reads the repository. Signing material arrives as secrets; no write token needed.
+permissions:
+  contents: read
+
+env:
+  TEAM_ID: N5Q948HNBR
+  GODOT_VERSION: "4.7.2"
+  # Godot names the export-templates folder after the version without its build hash
+  # ("4.7.2.stable", not "4.7.2.stable.official.ed1daf0bf").
+  GODOT_TEMPLATE_VERSION: "4.7.2.stable"
+  TOOLS_DIR: ${{ github.workspace }}/.tools
+  ARCHIVE_DIR: ${{ github.workspace }}/build/release
+  # A throwaway keychain, created and deleted inside this run. Its password protects nothing
+  # beyond the run's own lifetime, which is why it is not a secret; the .p12 password is.
+  KEYCHAIN_NAME: spiritbound-ci.keychain
+  KEYCHAIN_PASSWORD: spiritbound-ci-temporary
+
+jobs:
+  release:
+    name: Archive and upload to App Store Connect
+    runs-on: macos-15
+    # Generous: a Godot templates download, the full test suite, a Release archive and an upload.
+    # The actual figure matters less than not killing a run that is merely slow.
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------------------------------
+      # Xcode: pick 26.x and refuse to build with anything older.
+      # ------------------------------------------------------------------------------------------
+      - name: Select the newest Xcode 26.x and verify the iOS SDK
+        run: |
+          set -euo pipefail
+
+          echo "::group::Xcode applications present on this runner"
+          for app in /Applications/Xcode*.app; do [ -e "$app" ] && basename "$app"; done || true
+          echo "::endgroup::"
+
+          shopt -s nullglob
+          CANDIDATES=(/Applications/Xcode_26*.app)
+          shopt -u nullglob
+
+          if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+            echo "::error::No Xcode 26.x found in /Applications. App Store Connect requires the iOS 26 SDK (see this workflow's header). Available:"
+            find /Applications -maxdepth 1 -iname 'Xcode*' -print || true
+            exit 1
+          fi
+
+          SELECTED="$(printf '%s\n' "${CANDIDATES[@]}" | sort -V | tail -1)"
+          echo "Selected $SELECTED"
+          sudo xcode-select -s "$SELECTED/Contents/Developer"
+          xcodebuild -version
+
+          # The gate that makes this workflow worth having: fail here, loudly, rather than at
+          # upload validation minutes later with an error that never mentions the SDK.
+          SDK_VERSION="$(xcodebuild -showsdks 2>/dev/null \
+            | sed -n 's/.*-sdk iphoneos\([0-9][0-9.]*\).*/\1/p' | sort -V | tail -1)"
+          if [ -z "$SDK_VERSION" ]; then
+            echo "::error::Could not determine the iOS SDK version from xcodebuild -showsdks."
+            exit 1
+          fi
+          if [ "${SDK_VERSION%%.*}" -lt 26 ]; then
+            echo "::error::iOS SDK $SDK_VERSION is too old. App Store Connect requires the iOS 26 SDK or later (Xcode 26+). Xcode 16.4 ships only iOS 18.5 and its uploads are rejected with 'SDK version issue'."
+            exit 1
+          fi
+          echo "✓ iOS SDK $SDK_VERSION (meets the iOS 26+ requirement)"
+
+      # ------------------------------------------------------------------------------------------
+      # Godot plus the iOS export templates. Unlike .github/workflows/ci.yml (which only runs
+      # headless tests on Linux), this job needs a macOS Godot app and the iOS templates, and it
+      # needs them at the exact paths Godot itself looks in.
+      # ------------------------------------------------------------------------------------------
+      - name: Install Godot ${{ env.GODOT_VERSION }} (macOS) and the iOS export templates
+        run: |
+          set -euo pipefail
+          mkdir -p "$TOOLS_DIR"
+          cd "$TOOLS_DIR"
+
+          RELEASE_BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+
+          curl -fsSL -o godot.zip "${RELEASE_BASE}/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
+          unzip -q -o godot.zip
+          # curl downloads are not quarantined by Gatekeeper on a runner, but this is harmless and
+          # saves a confusing failure if that ever changes.
+          xattr -dr com.apple.quarantine "Godot.app" 2>/dev/null || true
+          ln -sf "$TOOLS_DIR/Godot.app/Contents/MacOS/Godot" "$TOOLS_DIR/godot"
+          echo "$TOOLS_DIR" >> "$GITHUB_PATH"
+
+          # Assert the version rather than trusting the URL: a redirect or a moved asset would
+          # otherwise surface much later as a confusing export error.
+          GOT="$("$TOOLS_DIR/godot" --version)"
+          case "$GOT" in
+            "${GODOT_VERSION}".*) echo "✓ Godot $GOT" ;;
+            *) echo "::error::Expected Godot ${GODOT_VERSION}, got '$GOT'"; exit 1 ;;
+          esac
+
+          TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/${GODOT_TEMPLATE_VERSION}"
+          mkdir -p "$TEMPLATE_DIR"
+          curl -fsSL -o templates.tpz "${RELEASE_BASE}/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          rm -rf "$TOOLS_DIR/templates"
+          unzip -q templates.tpz -d "$TOOLS_DIR/templates"
+          # The archive holds a top-level "templates/" directory; Godot wants its *contents* in
+          # the versioned folder above.
+          cp -R "$TOOLS_DIR/templates/templates/." "$TEMPLATE_DIR/"
+
+          if [ ! -f "$TEMPLATE_DIR/ios.zip" ]; then
+            echo "::error::ios.zip is missing from $TEMPLATE_DIR — the export below cannot work."
+            ls -la "$TEMPLATE_DIR" || true
+            exit 1
+          fi
+          echo "✓ iOS export templates installed in $TEMPLATE_DIR"
+          find "$TEMPLATE_DIR" -maxdepth 1 -type f | head -20 || true
+
+      # ------------------------------------------------------------------------------------------
+      # Tests before an artifact that reaches reviewers — the same rule ./release_ios.sh follows.
+      # ------------------------------------------------------------------------------------------
+      # Every headless test script references global class_name types (SpiritContent, SpiritGame,
+      # GutTest, ...) that Godot only resolves from its own generated cache (Godot/.godot/,
+      # gitignored, so a fresh checkout never has one). Without this import pass the suite fails
+      # immediately with "Identifier ... not declared in the current scope" before running a
+      # single test. Same reasoning as ci.yml, which paid for this lesson already.
+      - name: Import project (populate the class_name cache)
+        run: godot --headless --path Godot/ --import
+
+      - name: Run the automated test suite
+        run: ./run_tests.sh
+
+      # ------------------------------------------------------------------------------------------
+      # Signing material. Imported into a keychain that exists only for this run.
+      # ------------------------------------------------------------------------------------------
+      - name: Install the distribution identity and Store profile into a temporary keychain
+        env:
+          P12_BASE64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.APPSTORE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          # GitHub masks secret values in logs already; these make the intent explicit and cover
+          # values that were re-encoded (a base64 blob echoed verbatim would otherwise be legible).
+          echo "::add-mask::$P12_BASE64"
+          echo "::add-mask::$P12_PASSWORD"
+          echo "::add-mask::$PROFILE_BASE64"
+
+          for pair in "IOS_DIST_P12_BASE64=$P12_BASE64" \
+                      "IOS_DIST_P12_PASSWORD=$P12_PASSWORD" \
+                      "APPSTORE_PROVISIONING_PROFILE_BASE64=$PROFILE_BASE64"; do
+            if [ -z "${pair#*=}" ]; then
+              echo "::error::Secret ${pair%%=*} is empty. Add it under Settings → Secrets and variables → Actions (see this workflow's header for how to obtain each one)."
+              exit 1
+            fi
+          done
+
+          SIGNING_DIR="$(mktemp -d)"
+          echo "SIGNING_DIR=$SIGNING_DIR" >> "$GITHUB_ENV"
+
+          printf '%s' "$P12_BASE64" | base64 --decode > "$SIGNING_DIR/dist.p12"
+          printf '%s' "$PROFILE_BASE64" | base64 --decode > "$SIGNING_DIR/profile.mobileprovision"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+
+          # -T marks the tools allowed to use the imported private key. Without it, codesign can
+          # ask for GUI confirmation, which on a headless runner means hanging until the timeout.
+          security import "$SIGNING_DIR/dist.p12" -k "$KEYCHAIN_NAME" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/xcodebuild
+          # set-key-partition-list is what actually removes the confirmation prompt for a key
+          # imported non-interactively; the -T flags alone are not always enough.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME" >/dev/null
+
+          # Prepend the temporary keychain, keeping the runner's own keychains on the list.
+          # shellcheck disable=SC2046 # deliberate: each keychain path must be its own
+          # argument. Quoting this substitution would pass the whole list as one path and
+          # silently drop every existing keychain.
+          security list-keychains -d user -s "$KEYCHAIN_NAME" \
+            $(security list-keychains -d user | tr -d '"')
+
+          if ! security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -q 'Apple Distribution'; then
+            echo "::error::No Apple Distribution identity in the imported keychain. The .p12 in IOS_DIST_P12_BASE64 must contain the certificate AND its private key."
+            security find-identity -v -p codesigning "$KEYCHAIN_NAME" || true
+            exit 1
+          fi
+          security find-identity -v -p codesigning "$KEYCHAIN_NAME"
+
+          # Manual signing addresses the profile by UUID or name, and Xcode only finds it if it is
+          # installed where Xcode looks.
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          security cms -D -i "$SIGNING_DIR/profile.mobileprovision" > "$SIGNING_DIR/profile.plist"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$SIGNING_DIR/profile.plist")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$SIGNING_DIR/profile.plist")"
+          cp "$SIGNING_DIR/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+
+          # Fail before building if this is a development profile. It would produce a perfectly
+          # valid-looking .ipa that App Store Connect rejects at upload, minutes later, with an
+          # error that never mentions signing — the exact failure ./release_ios.sh was written to
+          # catch locally.
+          if /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices' "$SIGNING_DIR/profile.plist" >/dev/null 2>&1; then
+            echo "::error::APPSTORE_PROVISIONING_PROFILE_BASE64 is a DEVELOPMENT profile ('$PROFILE_NAME'): it lists devices. Use the App Store distribution profile."
+            exit 1
+          fi
+
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "✓ Distribution identity imported; Store profile '$PROFILE_NAME' installed ($PROFILE_UUID)"
+
+      # ------------------------------------------------------------------------------------------
+      # Godot export. Mirrors step [3/6] of ./release_ios.sh, which cannot be called directly:
+      # that script's archive step does automatic signing against a signed-in Apple ID, which a
+      # runner does not have. Keep the export command, the stale-build removal and the dummy.cpp
+      # patch in sync with it if either side changes.
+      # ------------------------------------------------------------------------------------------
+      - name: Export the Godot project to an Xcode project
+        run: |
+          set -euo pipefail
+          BUILD_DIR="Godot/build/ios"
+          # Godot's "all_resources" filter packs anything under the project tree into the .pck, so
+          # a leftover export from an earlier run would be packed into the new one.
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          godot --headless --path Godot --export-release iOS "$PWD/$BUILD_DIR/Spiritbound.ipa"
+
+      # libgodot.a(metal_cpp.ios.template_release.arm64.o) references weak symbols that the SDK
+      # does not export as linkable, so the link fails without these stubs. Same patch as
+      # ./release_ios.sh (and ./deploy_ios.sh); Godot regenerates dummy.cpp on every export.
+      - name: Patch dummy.cpp with the Metal/QuartzCore/SDL compatibility symbols
+        run: |
+          set -euo pipefail
+          DUMMY_CPP="Godot/build/ios/Spiritbound/dummy.cpp"
+          if [ ! -f "$DUMMY_CPP" ]; then
+            echo "::error::$DUMMY_CPP is missing — the Godot export did not produce the expected project layout."
+            find Godot/build/ios -maxdepth 2 | head -30
+            exit 1
+          fi
+          if grep -q "CADynamicRangeAutomatic" "$DUMMY_CPP"; then
+            echo "✓ dummy.cpp already patched"
+          elif grep -q "SDL_IsAppleTV" "$DUMMY_CPP"; then
+            cat >> "$DUMMY_CPP" << 'EOF'
+
+          extern "C" {
+          int SDL_IsAppleTV(void) { return 0; }
+          int SDL_IsIPad(void) { return 0; }
+          }
+          EOF
+            echo "✓ Patched dummy.cpp with SDL compatibility symbols"
+          else
+            cat >> "$DUMMY_CPP" << 'EOF'
+
+          extern "C" {
+          __attribute__((visibility("default"))) void* CADynamicRangeAutomatic = nullptr;
+          __attribute__((visibility("default"))) void* CADynamicRangeConstrainedHigh = nullptr;
+          __attribute__((visibility("default"))) void* CADynamicRangeHigh = nullptr;
+          __attribute__((visibility("default"))) void* CADynamicRangeStandard = nullptr;
+          __attribute__((visibility("default"))) void* MTLTensorDomain = nullptr;
+          int SDL_IsAppleTV(void) { return 0; }
+          int SDL_IsIPad(void) { return 0; }
+          }
+          EOF
+            echo "✓ Patched dummy.cpp with Metal/QuartzCore/SDL compatibility symbols"
+          fi
+
+      # ------------------------------------------------------------------------------------------
+      # Archive, manually signed with the distribution identity.
+      # ------------------------------------------------------------------------------------------
+      - name: Archive with the Apple Distribution identity
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          if ! printf '%s' "$BUILD_NUMBER" | grep -qE '^[0-9]+$'; then
+            echo "::error::build_number must be a positive integer, got '$BUILD_NUMBER'."
+            exit 1
+          fi
+
+          # Both numbers come from export_presets.cfg (the repo's source of truth) except the
+          # build number, which comes from the dispatch input. They are passed as xcodebuild
+          # build-setting overrides exactly as ./release_ios.sh does: Godot's Info.plist template
+          # resolves CFBundleVersion to $(CURRENT_PROJECT_VERSION) and CFBundleShortVersionString
+          # to $(MARKETING_VERSION), so this is the only route by which they reach the artifact.
+          SHORT_VERSION="$(grep -m1 'application/short_version' Godot/export_presets.cfg | cut -d'"' -f2)"
+          BUNDLE_ID="$(grep -m1 'application/bundle_identifier' Godot/export_presets.cfg | cut -d'"' -f2)"
+          PRESET_TEAM="$(grep -m1 'application/app_store_team_id' Godot/export_presets.cfg | cut -d'"' -f2)"
+
+          if [ -z "$SHORT_VERSION" ] || [ -z "$BUNDLE_ID" ]; then
+            echo "::error::Could not read application/short_version or application/bundle_identifier from Godot/export_presets.cfg."
+            exit 1
+          fi
+          if [ "$PRESET_TEAM" != "$TEAM_ID" ]; then
+            echo "::error::export_presets.cfg names team '$PRESET_TEAM' but this workflow is set up for '$TEAM_ID'."
+            exit 1
+          fi
+
+          echo "BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "SHORT_VERSION=$SHORT_VERSION" >> "$GITHUB_ENV"
+          echo "Shipping $BUNDLE_ID $SHORT_VERSION (build $BUILD_NUMBER), team $TEAM_ID"
+
+          mkdir -p "$ARCHIVE_DIR"
+          xcodebuild -project Godot/build/ios/Spiritbound.xcodeproj \
+            -scheme Spiritbound \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_DIR/Spiritbound.xcarchive" \
+            # Manual signing, because a runner has no signed-in Apple ID for automatic signing
+            # to fall back on. If this archive reports that it cannot find a profile, pass
+            # PROVISIONING_PROFILE_SPECIFIER by profile *name* instead of $PROFILE_UUID: Xcode
+            # accepts either, and the UUID must match what security cms reported above.
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            MARKETING_VERSION="$SHORT_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            archive
+
+      # ------------------------------------------------------------------------------------------
+      # Export the .ipa and verify the file that would be uploaded.
+      # ------------------------------------------------------------------------------------------
+      - name: Export the store-signed .ipa
+        run: |
+          set -euo pipefail
+          EXPORT_DIR="$ARCHIVE_DIR/export"
+          rm -rf "$EXPORT_DIR"
+          mkdir -p "$EXPORT_DIR"
+
+          # method=app-store-connect is the current spelling of what older Xcode called
+          # "app-store"; Xcode 15 removed the old value and errors on it, so do not "restore" it.
+          #
+          # There is deliberately no `destination` key: this step only produces the .ipa, so every
+          # check below runs before anything is sent to Apple. The upload is a separate step, and
+          # it authenticates with the App Store Connect API key rather than an Apple ID.
+          #
+          # Note there are also no apiKey/apiIssuer keys in here, and no way to add any:
+          # ExportOptions.plist has no such keys. App Store Connect API authentication for
+          # -exportArchive is passed as command-line flags (-authenticationKeyPath,
+          # -authenticationKeyID, -authenticationKeyIssuerID), and it is only needed when the
+          # export also uploads (destination=upload). This step does not upload, so it needs no
+          # credentials at all — the API key belongs to the altool step further down.
+          cat > "$ARCHIVE_DIR/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+              <key>method</key><string>app-store-connect</string>
+              <key>teamID</key><string>${TEAM_ID}</string>
+              <key>signingStyle</key><string>manual</string>
+              <key>signingCertificate</key><string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict><key>${BUNDLE_ID}</key><string>${PROFILE_UUID}</string></dict>
+              <key>uploadSymbols</key><true/>
+              <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_DIR/Spiritbound.xcarchive" \
+            -exportOptionsPlist "$ARCHIVE_DIR/ExportOptions.plist" \
+            -exportPath "$EXPORT_DIR"
+
+      - name: Verify the .ipa is distribution-signed and carries the right version
+        run: |
+          set -euo pipefail
+          IPA="$ARCHIVE_DIR/export/Spiritbound.ipa"
+          if [ ! -f "$IPA" ]; then
+            echo "::error::-exportArchive produced no .ipa at $IPA"
+            exit 1
+          fi
+
+          VERIFY_DIR="$(mktemp -d)"
+          unzip -q "$IPA" -d "$VERIFY_DIR"
+          APP_BUNDLE="$(find "$VERIFY_DIR/Payload" -maxdepth 1 -name '*.app' | head -1 || true)"
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "::error::The .ipa has no Payload/*.app — nothing to verify signing against."
+            exit 1
+          fi
+
+          # 1. The leaf Authority is the certificate that actually signed the app.
+          AUTHORITY="$(codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1 | sed -n 's/^Authority=//p' | head -1 || true)"
+          case "$AUTHORITY" in
+            *Distribution*) echo "✓ Authority: $AUTHORITY" ;;
+            *)
+              echo "::error::The .ipa is not distribution-signed (Authority: ${AUTHORITY:-none}). App Store Connect rejects uploads signed with Apple Development."
+              exit 1 ;;
+          esac
+
+          # 2. An App Store profile carries no device list; a development one always does.
+          security cms -D -i "$APP_BUNDLE/embedded.mobileprovision" > "$VERIFY_DIR/profile.plist"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$VERIFY_DIR/profile.plist")"
+          if /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices' "$VERIFY_DIR/profile.plist" >/dev/null 2>&1; then
+            echo "::error::The .ipa is signed with a DEVELOPMENT profile ('$PROFILE_NAME') — it lists devices. Do not upload this."
+            exit 1
+          fi
+          echo "✓ Profile: $PROFILE_NAME (no device list)"
+
+          # 3. get-task-allow=true means a debugger can attach; a Store build must not allow it.
+          codesign -d --entitlements :- "$APP_BUNDLE" > "$VERIFY_DIR/entitlements.plist" 2>/dev/null || true
+          GTA="$(plutil -extract get-task-allow raw "$VERIFY_DIR/entitlements.plist" 2>/dev/null || echo '')"
+          if [ "$GTA" = "true" ]; then
+            echo "::error::The .ipa has get-task-allow=true — it is a debuggable build. Do not upload it."
+            exit 1
+          fi
+          echo "✓ get-task-allow: ${GTA:-absent}"
+
+          if plutil -extract beta-reports-active raw "$VERIFY_DIR/entitlements.plist" >/dev/null 2>&1; then
+            echo "✓ TestFlight entitlement present (beta-reports-active)"
+          else
+            echo "::warning::No beta-reports-active entitlement — TestFlight may refuse this build."
+          fi
+
+          # Re-read the numbers from the .ipa: this is the file App Store Connect dedupes on, and
+          # a wrong CFBundleVersion comes back as ITMS-4238 "Redundant Binary Upload", an error
+          # that never mentions version overrides.
+          IPA_SHORT="$(plutil -extract CFBundleShortVersionString raw "$APP_BUNDLE/Info.plist")"
+          IPA_BUILD="$(plutil -extract CFBundleVersion raw "$APP_BUNDLE/Info.plist")"
+          if [ "$IPA_SHORT" != "$SHORT_VERSION" ] || [ "$IPA_BUILD" != "${{ inputs.build_number }}" ]; then
+            echo "::error::The .ipa carries $IPA_SHORT ($IPA_BUILD) but this run asked for $SHORT_VERSION (${{ inputs.build_number }}). Do not upload this."
+            exit 1
+          fi
+          echo "✓ .ipa carries version $IPA_SHORT, build $IPA_BUILD"
+
+      # ------------------------------------------------------------------------------------------
+      # Upload.
+      # ------------------------------------------------------------------------------------------
+      - name: Upload to App Store Connect (TestFlight)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          echo "::add-mask::$ASC_KEY_ID"
+          echo "::add-mask::$ASC_ISSUER_ID"
+          echo "::add-mask::$ASC_KEY_P8_BASE64"
+          for pair in "ASC_KEY_ID=$ASC_KEY_ID" "ASC_ISSUER_ID=$ASC_ISSUER_ID" "ASC_KEY_P8_BASE64=$ASC_KEY_P8_BASE64"; do
+            if [ -z "${pair#*=}" ]; then
+              echo "::error::Secret ${pair%%=*} is empty. See this workflow's header for how to create the API key."
+              exit 1
+            fi
+          done
+
+          # altool looks for the key in this directory and names it AuthKey_<KEY_ID>.p8, so the
+          # filename and the --apiKey value must agree. Cleaned up in the always() step below.
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$KEY_DIR"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$KEY_DIR/AuthKey_$ASC_KEY_ID.p8"
+          chmod 600 "$KEY_DIR/AuthKey_$ASC_KEY_ID.p8"
+
+          # altool is deprecated in favour of `xcodebuild -exportArchive` with
+          # destination=upload and -authenticationKeyPath/-authenticationKeyID/
+          # -authenticationKeyIssuerID. It is kept here because it uploads an .ipa directly, which
+          # means the file verified above is exactly the file uploaded. If Apple removes it, that
+          # is the replacement to switch to.
+          xcrun altool --upload-app \
+            --file "$ARCHIVE_DIR/export/Spiritbound.ipa" \
+            --type ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID" \
+            --verbose
+
+          echo "✓ Uploaded $SHORT_VERSION (${{ inputs.build_number }}) to App Store Connect"
+          echo "  Processing takes a few minutes; then add the build to a TestFlight group."
+
+      # ------------------------------------------------------------------------------------------
+      # Cleanup. GitHub-hosted runners are destroyed after the job, so this is belt-and-braces
+      # here — but it is what keeps the workflow safe on a self-hosted runner, and it means the
+      # keychain and the API key never outlive the step that needed them.
+      # ------------------------------------------------------------------------------------------
+      - name: Remove signing material and the temporary keychain
+        if: always()
+        run: |
+          set +e
+          security delete-keychain "$KEYCHAIN_NAME" 2>/dev/null
+          [ -n "${SIGNING_DIR:-}" ] && rm -rf "$SIGNING_DIR"
+          rm -rf "$HOME/.appstoreconnect/private_keys"
+          if [ -n "${PROFILE_UUID:-}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          fi
+          echo "✓ Removed the temporary keychain, the imported signing files and the API key."
+          exit 0
