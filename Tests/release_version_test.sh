@@ -133,5 +133,67 @@ expect_fail "--build-number abc" abc
 expect_fail "--build-number (no value)" ""
 expect_fail "--build-number -1" -1
 
+# --- 6: the export/re-sign step, and which artifact the signing checks read -----
+# Distribution signing moved out of the archive and into -exportArchive, so the file that decides
+# whether an upload works is now the .ipa. These assert the checks followed it there, that the
+# archive no longer hard-fails on the development profile it is expected to carry (that conflict
+# made a route-B archive impossible: measured 2026-09-21), and that a plain run cannot upload.
+if grep -qF 'xcodebuild -exportArchive' "$RELEASE_SCRIPT"; then
+    ok "an -exportArchive step exists (the .ipa is produced by the script)"
+else
+    bad "no -exportArchive step — nothing re-signs the archive for distribution"
+fi
+
+if grep -qF '<key>method</key><string>app-store-connect</string>' "$RELEASE_SCRIPT"; then
+    ok "export uses method=app-store-connect"
+else
+    bad "export does not use app-store-connect (Xcode 15 rejects the old 'app-store' value)"
+fi
+
+# The regression that motivated route B: a development-signed archive is the *expected* input here.
+if grep -qF 'The archive is signed with a DEVELOPMENT profile' "$RELEASE_SCRIPT"; then
+    bad "the archive still hard-fails on a development profile — distribution signing could never run"
+else
+    ok "the archive no longer fails on a development profile (distribution is checked on the .ipa)"
+fi
+
+if grep -qF 'ProvisionedDevices raw "$IPA_PROFILE_PLIST"' "$RELEASE_SCRIPT"; then
+    ok "the .ipa's embedded profile is checked for a device list"
+else
+    bad "the .ipa's profile is not checked for ProvisionedDevices — a dev-signed upload could slip through"
+fi
+
+if grep -qF 'get-task-allow' "$RELEASE_SCRIPT" && grep -qF 'IPA_GTA' "$RELEASE_SCRIPT"; then
+    ok "the .ipa is checked for get-task-allow (a debuggable build must not upload)"
+else
+    bad "get-task-allow is not checked on the .ipa"
+fi
+
+if grep -qF '*Distribution*)' "$RELEASE_SCRIPT"; then
+    ok "the .ipa's signing Authority must be a Distribution certificate"
+else
+    bad "the .ipa's signing Authority is not verified to be a Distribution one"
+fi
+
+if grep -qF 'beta-reports-active' "$RELEASE_SCRIPT"; then
+    ok "the TestFlight entitlement (beta-reports-active) is reported"
+else
+    bad "beta-reports-active is not checked — a build TestFlight refuses would look fine"
+fi
+
+# A plain `./release_ios.sh` must never reach Apple. The verify-only export is the one that passes
+# an empty destination; destination=upload must belong solely to the --upload path.
+if grep -qF 'write_export_options "$EXPORT_OPTIONS" ""' "$RELEASE_SCRIPT"; then
+    ok "the verify-only export sets no destination (a plain run uploads nothing)"
+else
+    bad "the non-upload export may be setting destination=upload — a plain run could upload"
+fi
+
+if grep -qF 'write_export_options "$EXPORT_OPTIONS" "upload"' "$RELEASE_SCRIPT"; then
+    ok "--upload is the only path that sets destination=upload"
+else
+    bad "no upload path found — --upload would export without uploading"
+fi
+
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ] || exit 1

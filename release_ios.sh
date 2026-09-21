@@ -12,19 +12,24 @@ set -euo pipefail
 #
 # Usage:
 #   ./release_ios.sh --dry-run                 # print every command, change nothing (start here)
-#   ./release_ios.sh                           # export-release + archive; leaves the .xcarchive
+#   ./release_ios.sh                           # archive + export a store-signed .ipa (no upload)
 #   ./release_ios.sh --build-number 7          # override the build number for this archive
-#   ./release_ios.sh --upload                  # archive, then export + upload to App Store Connect
+#   ./release_ios.sh --upload                  # ...then upload it to App Store Connect
 #
 # What it deliberately does NOT do: bump the marketing version (application/short_version in
 # Godot/export_presets.cfg). That is a release decision, not a build detail — set it yourself
 # and commit it, so the version in the binary always matches a commit.
 #
-# Signing: an archive needs a *distribution* identity and profile, not the "iPhone Developer"
-# debug ones in the preset. --allowProvisioningUpdates lets Xcode create/fetch them from the
-# Apple account already signed into Xcode, which is why there is no password anywhere here.
-# If your account has no distribution certificate yet, open Xcode → Settings → Accounts and
-# let it make one, or the archive step fails with a clear "no signing certificate" error.
+# Signing happens in two stages, the way Xcode's own Organizer splits it:
+#   [4/6] archive — signs with the identity the generated project resolves, which Godot's preset
+#                   pins to "iPhone Developer". Pinning a distribution identity there instead makes
+#                   Xcode refuse to archive at all: a manually specified identity conflicts with
+#                   the project's automatic signing. So that pin is left alone.
+#   [5/6] export  — -exportArchive re-signs that archive with an Apple Distribution identity and a
+#                   Store provisioning profile, and produces the .ipa that gets uploaded.
+# --allowProvisioningUpdates lets Xcode fetch or create the distribution certificate and profile
+# from the Apple account signed into Xcode, which is why there is no password anywhere here. If the
+# account has no distribution certificate yet: Xcode → Settings → Accounts → Manage Certificates.
 # ==============================================================================
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -282,7 +287,7 @@ if [ -z "$BUILD_NUMBER_ARG" ] && [ "$DRY_RUN" = false ]; then
 fi
 
 # ---- Archive -----------------------------------------------------------------
-echo -e "\n${YELLOW}[4/6] xcodebuild archive (distribution signing)${NC}"
+echo -e "\n${YELLOW}[4/6] xcodebuild archive (development-signed; [5/6] re-signs for the store)${NC}"
 mkdir -p "$ARCHIVE_DIR"
 # With CODE_SIGN_STYLE=Automatic and -allowProvisioningUpdates, Xcode automatically selects
 # the Apple Distribution identity for `archive` actions (and Apple Development for `build`).
@@ -309,31 +314,30 @@ run xcodebuild -project "$BUILD_DIR/Spiritbound.xcodeproj" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     archive
 
-# Check the artifact, not the exit status. `xcodebuild archive` succeeds just as happily for a
-# development-signed build as for a distribution-signed one, and nothing in its output says which
-# you got, so the only trustworthy answer is the provisioning profile embedded in the .app. An
-# App Store distribution profile carries no ProvisionedDevices list and disallows debugging; a
-# development profile has both. This is the difference that decides whether the upload works.
+# The archive is checked for the two facts that must hold wherever the signing happens: that it
+# carries a signature at all, and that it carries the version numbers this run asked for.
+#
+# Its *identity* is deliberately not required to be a distribution one. Godot's preset pins
+# "iPhone Developer" and the archive action honours it; pinning a distribution identity in there
+# instead makes Xcode refuse to archive at all ("automatically signed for development, but a
+# conflicting code signing identity Apple Distribution has been manually specified" — measured on
+# this project, 2026-09-21). Distribution signing happens one step later, in [5/6], which is also
+# how Xcode's Organizer splits the two.
 if [ "$DRY_RUN" = false ]; then
     EMBEDDED_PROFILE="$ARCHIVE_PATH/Products/Applications/Spiritbound.app/embedded.mobileprovision"
     if [ ! -f "$EMBEDDED_PROFILE" ]; then
-        echo -e "${RED}✗ The archive has no embedded.mobileprovision — nothing to verify signing against.${NC}"
+        echo -e "${RED}✗ The archive has no embedded.mobileprovision — there is nothing to re-sign.${NC}"
         exit 1
     fi
     PROFILE_PLIST="$(mktemp)"
     security cms -D -i "$EMBEDDED_PROFILE" > "$PROFILE_PLIST" 2>/dev/null
     PROFILE_NAME="$(plutil -extract Name raw "$PROFILE_PLIST" 2>/dev/null || echo '(unreadable)')"
     if plutil -extract ProvisionedDevices raw "$PROFILE_PLIST" >/dev/null 2>&1; then
-        echo -e "${RED}✗ The archive is signed with a DEVELOPMENT profile:" 
-        echo -e "${RED}    $PROFILE_NAME${NC}"
-        echo -e "${RED}  It contains a ProvisionedDevices list, which an App Store profile never does.${NC}"
-        echo -e "${RED}  This archive cannot be submitted; App Store Connect would reject it at upload with${NC}"
-        echo -e "${RED}  an error that does not mention signing. Create an Apple Distribution certificate${NC}"
-        echo -e "${RED}  (Xcode → Settings → Accounts → Manage Certificates → +) and re-run.${NC}"
-        rm -f "$PROFILE_PLIST"
-        exit 1
+        echo "  • Archive signed for development ($PROFILE_NAME)"
+        echo "    Expected here: [5/6] re-signs it with the Apple Distribution identity for the store."
+    else
+        echo "  ✓ Archive already distribution-signed: $PROFILE_NAME"
     fi
-    echo "  ✓ Distribution-signed: $PROFILE_NAME (no device list, debugging disallowed)"
     rm -f "$PROFILE_PLIST"
 
     # Same rule as the signing check above, applied to the version numbers: read the archive's own
@@ -359,39 +363,171 @@ if [ "$DRY_RUN" = false ]; then
     echo "  ✓ Archive carries version $ARCHIVED_SHORT, build $ARCHIVED_BUILD (override applied)"
 fi
 
-if [ "$UPLOAD" = false ]; then
-    echo -e "\n${GREEN}✓ Archived to $ARCHIVE_PATH${NC}"
-    echo "  Next, either:"
-    echo "    ./release_ios.sh --upload            # export + upload to App Store Connect"
-    echo "    open \"$ARCHIVE_PATH\"                # or use Xcode Organizer's Distribute button"
-    echo "  Then add the build to a TestFlight group and walk Docs/STORE_SUBMISSION.md."
-    exit 0
-fi
-
 # ---- Export for App Store Connect -------------------------------------------
-# destination=upload makes -exportArchive do the App Store Connect upload itself, which is the
-# current supported path (xcrun altool is deprecated). It uses the Apple ID already signed into
-# Xcode; pass -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID instead if
-# this machine is not signed in (see Xcode → Settings → Accounts → App Store Connect API key).
-echo -e "\n${YELLOW}[5/6] Export + upload to App Store Connect${NC}"
+# This is where the artifact becomes distributable, and the only place distribution signing
+# happens. -exportArchive re-signs the archived .app with an Apple Distribution identity and a
+# Store provisioning profile, then packages the .ipa; -allowProvisioningUpdates lets Xcode fetch or
+# create that profile from the account signed into Xcode.
+#
+# method=app-store-connect is the current spelling of what older Xcode called "app-store" (Xcode 15
+# removed the old value and errors on it). destination=upload is deliberately absent: this step
+# only produces the .ipa, so every check below runs before anything is sent to Apple.
+#
+# The checks read the .ipa, not the archive, because the .ipa is what gets uploaded. Three signals
+# decide whether it is submittable:
+#   1. the signing certificate's Authority is an Apple Distribution one,
+#   2. the embedded profile has no ProvisionedDevices list (App Store profiles never do),
+#   3. get-task-allow is not true (an App Store build cannot be debugged).
+# A development-signed .ipa fails all three and nothing in xcodebuild's output says so: App Store
+# Connect's rejection arrives minutes later and never mentions signing. Checking here costs seconds
+# and catches it on the file that would otherwise have been uploaded.
+echo -e "\n${YELLOW}[5/6] Export for App Store Connect (re-signs for distribution)${NC}"
 TEAM_ID="$(grep -m1 'application/app_store_team_id' "$PROJECT_DIR/export_presets.cfg" | cut -d'"' -f2)"
 if [ -z "$TEAM_ID" ]; then
     echo -e "${RED}✗ application/app_store_team_id is empty in export_presets.cfg.${NC}"; exit 1
 fi
 
+# $2 = destination: "" exports only, "upload" exports and sends the result to Apple.
+write_export_options() {
+    local path="$1" destination="$2"
+    {
+        echo '<?xml version="1.0" encoding="UTF-8"?>'
+        echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        echo '<plist version="1.0"><dict>'
+        echo '    <key>method</key><string>app-store-connect</string>'
+        if [ -n "$destination" ]; then
+            echo "    <key>destination</key><string>${destination}</string>"
+        fi
+        echo "    <key>teamID</key><string>${TEAM_ID}</string>"
+        echo '    <key>uploadSymbols</key><true/>'
+        echo '    <key>manageAppVersionAndBuildNumber</key><false/>'
+        echo '</dict></plist>'
+    } > "$path"
+}
+
+# A .ipa left over from an earlier run would be the one verified, and would pass every check
+# below. build/ is gitignored and regenerated by this script, so removing it is safe.
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${YELLOW}  [dry-run] write $EXPORT_OPTIONS (method=app-store-connect, destination=not set)${NC}"
+    echo -e "${YELLOW}  [dry-run] rm -rf $EXPORT_DIR (a stale .ipa would otherwise be the one verified)${NC}"
+else
+    write_export_options "$EXPORT_OPTIONS" ""
+    rm -rf "$EXPORT_DIR"
+fi
 mkdir -p "$EXPORT_DIR"
-cat > "$EXPORT_OPTIONS" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-    <key>method</key><string>app-store-connect</string>
-    <key>destination</key><string>upload</string>
-    <key>teamID</key><string>${TEAM_ID}</string>
-    <key>uploadSymbols</key><true/>
-    <key>manageAppVersionAndBuildNumber</key><false/>
-</dict></plist>
-EOF
 echo "  Wrote $EXPORT_OPTIONS"
+
+run xcodebuild -exportArchive \
+    -archivePath "$ARCHIVE_PATH" \
+    -exportOptionsPlist "$EXPORT_OPTIONS" \
+    -exportPath "$EXPORT_DIR" \
+    -allowProvisioningUpdates
+
+if [ "$DRY_RUN" = false ]; then
+    IPA="$EXPORT_DIR/Spiritbound.ipa"
+    if [ ! -f "$IPA" ]; then
+        echo -e "${RED}✗ -exportArchive produced no .ipa at $IPA${NC}"
+        exit 1
+    fi
+
+    # Unpack just far enough to read the signed bundle: a .ipa is a zip whose Payload holds the
+    # .app, and the signature, the profile and the shipped Info.plist all live inside it.
+    VERIFY_DIR="$(mktemp -d)"
+    unzip -q "$IPA" -d "$VERIFY_DIR"
+    APP_BUNDLE="$(find "$VERIFY_DIR/Payload" -maxdepth 1 -name '*.app' 2>/dev/null | head -1 || true)"
+    if [ -z "$APP_BUNDLE" ]; then
+        echo -e "${RED}✗ The .ipa has no Payload/*.app — nothing to verify signing against.${NC}"
+        rm -rf "$VERIFY_DIR"; exit 1
+    fi
+
+    # 1. The leaf Authority is the certificate that actually signed the app.
+    SIGN_AUTHORITY="$(codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1 | sed -n 's/^Authority=//p' | head -1 || true)"
+    case "$SIGN_AUTHORITY" in
+        *Distribution*) ;;
+        *)
+            echo -e "${RED}✗ The .ipa is not distribution-signed.${NC}"
+            echo -e "${RED}    Authority: ${SIGN_AUTHORITY:-(no signature found)}${NC}"
+            echo -e "${RED}  Expected an Apple Distribution certificate. App Store Connect rejects uploads${NC}"
+            echo -e "${RED}  signed with Apple Development, minutes later, without mentioning signing.${NC}"
+            rm -rf "$VERIFY_DIR"; exit 1 ;;
+    esac
+
+    # 2. An App Store profile carries no device list; a development one always does. This is the
+    #    difference the earlier version of this script got wrong while printing "✓ Archived".
+    IPA_PROFILE="$APP_BUNDLE/embedded.mobileprovision"
+    IPA_PROFILE_PLIST="$(mktemp)"
+    if ! security cms -D -i "$IPA_PROFILE" > "$IPA_PROFILE_PLIST" 2>/dev/null \
+            || [ ! -s "$IPA_PROFILE_PLIST" ]; then
+        echo -e "${RED}✗ The .ipa has no readable embedded.mobileprovision — signing cannot be trusted.${NC}"
+        rm -f "$IPA_PROFILE_PLIST"; rm -rf "$VERIFY_DIR"; exit 1
+    fi
+    IPA_PROFILE_NAME="$(plutil -extract Name raw "$IPA_PROFILE_PLIST" 2>/dev/null || echo '(unreadable)')"
+    if plutil -extract ProvisionedDevices raw "$IPA_PROFILE_PLIST" >/dev/null 2>&1; then
+        echo -e "${RED}✗ The .ipa is signed with a DEVELOPMENT profile:${NC}"
+        echo -e "${RED}    $IPA_PROFILE_NAME${NC}"
+        echo -e "${RED}  It lists devices, which an App Store profile never does. Do not upload this.${NC}"
+        rm -f "$IPA_PROFILE_PLIST"; rm -rf "$VERIFY_DIR"; exit 1
+    fi
+    rm -f "$IPA_PROFILE_PLIST"
+
+    # 3. get-task-allow lets a debugger attach. A Store build must not have it set; normally it is
+    #    present and false, but absent is equally fine.
+    IPA_ENTITLEMENTS="$(mktemp)"
+    codesign -d --entitlements :- "$APP_BUNDLE" > "$IPA_ENTITLEMENTS" 2>/dev/null || true
+    IPA_GTA="$(plutil -extract get-task-allow raw "$IPA_ENTITLEMENTS" 2>/dev/null || echo '')"
+    if [ "$IPA_GTA" = "true" ]; then
+        echo -e "${RED}✗ The .ipa has get-task-allow=true — it is a debuggable build. Do not upload it.${NC}"
+        rm -f "$IPA_ENTITLEMENTS"; rm -rf "$VERIFY_DIR"; exit 1
+    fi
+
+    echo "  ✓ Distribution-signed: $IPA_PROFILE_NAME"
+    echo "      Authority: $SIGN_AUTHORITY"
+    echo "      No ProvisionedDevices; get-task-allow ${IPA_GTA:-absent}"
+    if plutil -extract beta-reports-active raw "$IPA_ENTITLEMENTS" >/dev/null 2>&1; then
+        echo "  ✓ TestFlight entitlement present (beta-reports-active)"
+    else
+        echo -e "${YELLOW}  ⚠ No beta-reports-active entitlement — TestFlight may refuse this build.${NC}"
+    fi
+    rm -f "$IPA_ENTITLEMENTS"
+
+    # The numbers are re-read from the .ipa rather than assumed from the archive: this is the file
+    # App Store Connect dedupes on, and a wrong CFBundleVersion comes back as ITMS-4238 "Redundant
+    # Binary Upload", an error that never mentions version overrides.
+    IPA_PLIST="$APP_BUNDLE/Info.plist"
+    IPA_SHORT="$(plutil -extract CFBundleShortVersionString raw "$IPA_PLIST" 2>/dev/null || echo '')"
+    IPA_BUILD="$(plutil -extract CFBundleVersion raw "$IPA_PLIST" 2>/dev/null || echo '')"
+    if [ "$IPA_SHORT" != "$SHORT_VERSION" ] || [ "$IPA_BUILD" != "$BUILD_NUMBER" ]; then
+        echo -e "${RED}✗ The .ipa carries $IPA_SHORT ($IPA_BUILD), but this run asked for"
+        echo -e "${RED}  $SHORT_VERSION ($BUILD_NUMBER). Do not upload this.${NC}"
+        rm -rf "$VERIFY_DIR"; exit 1
+    fi
+    echo "  ✓ .ipa carries version $IPA_SHORT, build $IPA_BUILD"
+    rm -rf "$VERIFY_DIR"
+fi
+
+if [ "$UPLOAD" = false ]; then
+    echo -e "\n${GREEN}✓ Store-signed .ipa ready: $EXPORT_DIR/Spiritbound.ipa${NC}"
+    echo "  Nothing has been uploaded. Next, either:"
+    echo "    ./release_ios.sh --upload            # export again, then upload to App Store Connect"
+    echo "    open \"$ARCHIVE_PATH\"                # or use Xcode Organizer's Distribute button"
+    echo "  Then add the build to a TestFlight group and walk Docs/STORE_SUBMISSION.md."
+    exit 0
+fi
+
+# ---- Upload ------------------------------------------------------------------
+# destination=upload makes -exportArchive perform the App Store Connect upload itself, which is
+# the current supported path (xcrun altool is deprecated). It re-runs the export above on purpose:
+# xcodebuild treats export-and-upload as a single action, so there is no supported way to hand it
+# the .ipa that was verified. The archive and the options are otherwise identical, so what it
+# uploads is the same configuration that passed the checks. It uses the Apple ID already signed
+# into Xcode; pass -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID instead
+# if this machine is not signed in (Xcode → Settings → Accounts → App Store Connect API key).
+echo -e "\n${YELLOW}[6/6] Upload to App Store Connect${NC}"
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${YELLOW}  [dry-run] rewrite $EXPORT_OPTIONS with destination=upload${NC}"
+else
+    write_export_options "$EXPORT_OPTIONS" "upload"
+fi
 echo -e "${YELLOW}  This is the point of no return: the next command uploads build $BUILD_NUMBER to Apple.${NC}"
 
 run xcodebuild -exportArchive \
