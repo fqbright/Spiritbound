@@ -449,7 +449,7 @@ func _grant_stage_rewards() -> void:
 	g._check_feature_unlocks()
 	_mark_stage_event_claimed(g.current_stage)
 
-	var kind := g.content.node_kind(g.current_stage)
+	var kind := g.get_node_kind(g.current_stage)
 	g._advance_quest("win_battles", 1)
 	g._advance_quest("earn_gold", int(g.pending_rewards.gold))
 	if g.content.is_boss_kind(kind) or kind == "elite": g._advance_quest("clear_elite_or_boss", 1)
@@ -752,8 +752,8 @@ func _finish_reward() -> void:
 		g.auto_battle_stats.stages_cleared = int(g.auto_battle_stats.get("stages_cleared", 0)) + 1
 		g.auto_battle_stats.gold_earned = int(g.auto_battle_stats.get("gold_earned", 0)) + int(g.pending_rewards.get("gold", 0))
 		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
-		var kind := g.content.node_kind(next_idx)
-		if kind in ["event","merchant","rest"] and not _is_stage_event_claimed(next_idx) and not _is_replay(next_idx):
+		var kind := g.get_node_kind(next_idx)
+		if kind in ["event","merchant","rest","bonus"] and not _is_stage_event_claimed(next_idx) and not _is_replay(next_idx):
 			show_event(next_idx, kind)
 		else:
 			g.begin_battle(next_idx)
@@ -766,13 +766,19 @@ func show_event(index: int, kind: String) -> void:
 	var page := g._create_page(12)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 	var title: String
+	# `bonus` is the level-4 branch alternative to `rest` — same node slot, and it reuses the
+	# rest screen's own purify/upgrade services plus a larger gold payout, so it's strictly a
+	# "trade healing for compounding" choice rather than a separate minigame to maintain.
 	if kind == "event": title = g.t("ui.event_traveler")
 	elif kind == "merchant": title = g.t("ui.event_merchant")
 	elif kind == "rest": title = g.t("ui.rest_title")
+	elif kind == "bonus": title = g.t("ui.bonus_title")
 	else: title = g.t("ui.event_default")
 	page.add_child(g._label("✦", 48, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	page.add_child(g._label(title, 21, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	page.add_child(g._label(g.t("ui.rest_prompt") if kind == "rest" else g.t("ui.event_prompt"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(g._label(
+		g.t("ui.rest_prompt") if kind == "rest" else (g.t("ui.bonus_prompt") if kind == "bonus" else g.t("ui.event_prompt")),
+		11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	if kind == "event":
 		page.add_child(g._button(g.t("ui.event_blood_pact"), func():
@@ -791,6 +797,27 @@ func show_event(index: int, kind: String) -> void:
 		, Color("21594e"), Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.rest_smith_choice"), func():
 			g.show_deck_upgrade(func(): show_event(index, "event"), func():
+				_mark_stage_event_claimed(index)
+				g.begin_battle(index)
+			)
+		, g.EMBER, Vector2(300, 48)))
+	elif kind == "bonus":
+		page.add_child(g._button(g.t("ui.bonus_gold_choice"), func():
+			g.profile.gold += 60
+			g._advance_quest("earn_gold", 60)
+			_mark_stage_event_claimed(index)
+			SpiritSave.write(g.profile)
+			g._haptic("tap")
+			g.begin_battle(index)
+		, g.GOLD, Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.rest_purify_choice"), func():
+			g.show_deck_purge(func(): show_event(index, "bonus"), 0, func():
+				_mark_stage_event_claimed(index)
+				g.begin_battle(index)
+			)
+		, Color("4a285d"), Vector2(300, 48)))
+		page.add_child(g._button(g.t("ui.rest_smith_choice"), func():
+			g.show_deck_upgrade(func(): show_event(index, "bonus"), func():
 				_mark_stage_event_claimed(index)
 				g.begin_battle(index)
 			)
@@ -872,6 +899,14 @@ func _auto_handle_stage_event(index: int, kind: String) -> void:
 		SpiritSave.write(g.profile)
 		g._haptic("tap")
 		g._toast(g.t("ui.rest_heal_choice") + " +35", g.GOLD)
+		g.begin_battle(index)
+	elif kind == "bonus":
+		g.profile.gold += 60
+		g._advance_quest("earn_gold", 60)
+		_mark_stage_event_claimed(index)
+		SpiritSave.write(g.profile)
+		g._haptic("tap")
+		g._toast(g.t("ui.bonus_gold_choice"), g.GOLD)
 		g.begin_battle(index)
 	else:
 		g.profile.gold += 25

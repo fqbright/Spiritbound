@@ -203,6 +203,17 @@ if [ "$RUN_UNIT" = true ]; then
     run_suite "Unit & Integration tests" "SPIRITBOUND TESTS:" \
         godot --headless --path "${GODOT_DIR}" -s tests/test_runner.gd
     echo -e "${GREEN}✓ Unit & Integration tests passed!${NC}"
+
+    # Boss mechanics get their own suite because they're keyed to specific *campaign stage
+    # indices* rather than to a synthetic encounter — test_runner.gd's encounter() helper
+    # deliberately carries empty mechanics, so it structurally cannot cover these. Its first
+    # check is the one that matters: it fails if ENEMIES' per-boss `mechanics` stop being merged
+    # into the encounter dict in content._build_encounters(), which would make every authored
+    # boss mechanic silently dead data.
+    echo -e "\n${YELLOW}[1b/8] Running Authored Boss Mechanics (tests/boss_mechanics_test.gd)...${NC}"
+    run_suite "Authored boss mechanics" "BOSS MECHANICS:" \
+        godot --headless --path "${GODOT_DIR}" -s tests/boss_mechanics_test.gd
+    echo -e "${GREEN}✓ Authored boss mechanics passed!${NC}"
 fi
 
 # 2. UI Smoke & Interaction Suite

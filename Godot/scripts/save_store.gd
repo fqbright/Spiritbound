@@ -147,6 +147,9 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 		if current >= int(entry.threshold): seen_unlocks.append(unlock_id)
 	base.feature_unlocks_seen = seen_unlocks
 	if not base.get("friends") is Array: base.friends = []
+	# map_choices stores the player's branch path selection per stage index (String key).
+	# An empty dict means no choices made yet (all nodes are undecided / use fallback).
+	if not base.get("map_choices") is Dictionary: base.map_choices = {}
 	if not base.get("stamina") is Dictionary:
 		base.stamina = {"current":100,"max":100,"last_regen_time":0}
 	else:

@@ -1030,7 +1030,7 @@ func _add_stage_pin(index: int) -> void:
 	var point := _map_point(index)
 	var locked := index > int(g.profile.unlocked)
 	var is_current := index == int(g.profile.position)
-	var kind := g.content.node_kind(index)
+	var kind := g.get_node_kind(index)
 	var is_boss := g.content.is_boss_kind(kind)
 	var is_great: bool = kind == "greatboss"
 
@@ -1195,8 +1195,13 @@ func _travel_to(index: int) -> void:
 	# time this resumes, since neither of those calls otherwise know the travel was abandoned.
 	var generation: int = g.screen_generation
 	if index == start_index:
-		var kind := g.content.node_kind(index)
-		if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+		var kind := g.get_node_kind(index)
+		# If this is a branch-able node and the player hasn't chosen yet, show the picker.
+		var options: Array[String] = g.content.node_branch_options(index)
+		if options.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)) and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+			_show_branch_picker(index, options)
+			return
+		if kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 			g.show_event(index, kind)
 		else:
 			if not g.can_spend_stamina(5):
@@ -1224,8 +1229,12 @@ func _travel_to(index: int) -> void:
 		# If those nodes were freed by an external _clear() mid-animation, it returns before
 		# ever reaching _finish_chapter_transition(), so enter_next below never fires stale.
 		var enter_next := func():
-			var kind := g.content.node_kind(index)
-			if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+			var kind := g.get_node_kind(index)
+			var opts: Array[String] = g.content.node_branch_options(index)
+			if opts.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)) and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+				_show_branch_picker(index, opts)
+				return
+			if kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 				g.show_event(index, kind)
 			else:
 				if not g.can_spend_stamina(5):
@@ -1255,8 +1264,12 @@ func _travel_to(index: int) -> void:
 	await tween.finished
 	if g.screen_generation != generation: return
 	g.profile.position = index; SpiritSave.write(g.profile)
-	var kind := g.content.node_kind(index)
-	if kind in ["event","merchant","rest"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+	var kind := g.get_node_kind(index)
+	var opts: Array[String] = g.content.node_branch_options(index)
+	if opts.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)) and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+		_show_branch_picker(index, opts)
+		return
+	if kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
 		g.show_event(index, kind)
 	else:
 		if not g.can_spend_stamina(5):
@@ -1269,6 +1282,129 @@ func _travel_to(index: int) -> void:
 func _next_stage() -> void:
 	if int(g.profile.position) < int(g.profile.unlocked): _travel_to(int(g.profile.position)+1)
 	else: _travel_to(int(g.profile.position))
+
+# Shown when the player arrives at a branch-able node (levels 2, 3, 4) that has no saved
+# choice yet.  Two side-by-side cards let the player pick a path; the choice is persisted
+# immediately and the node is then entered normally.
+func _show_branch_picker(index: int, options: Array[String]) -> void:
+	# Remove any existing picker (safety guard against double-tap or re-entry).
+	var existing: Node = g.overlay.get_node_or_null("BranchPicker")
+	if existing: existing.queue_free()
+
+	# Metadata for each option type.
+	var meta := {
+		"event":    {"icon": "📖", "name_zh": "奇遇事件", "name_en": "Story Event",    "desc_zh": "随机触发奇遇，获得意外收益或面对风险。", "desc_en": "A random story event — rewards or risks await."},
+		"merchant": {"icon": "🛒", "name_zh": "灵石商人", "name_en": "Merchant",        "desc_zh": "用金币购买卡牌、遗物或符文。",             "desc_en": "Spend gold on cards, relics, or runes."},
+		"elite":    {"icon": "⚔️", "name_zh": "精英战斗", "name_en": "Elite Battle",    "desc_zh": "更强大的敌人，但击败可得稀有奖励。",       "desc_en": "A tougher foe with rare rewards on victory."},
+		"battle":   {"icon": "🗡️", "name_zh": "普通战斗", "name_en": "Normal Battle",   "desc_zh": "与普通敌人战斗，稳中求进。",               "desc_en": "A standard fight — steady progress."},
+		"rest":     {"icon": "🔥", "name_zh": "篝火休憩", "name_en": "Campfire Rest",   "desc_zh": "点燃篝火，恢复 25 点生命值。",             "desc_en": "Rest at a campfire and restore 25 HP."},
+		"bonus":    {"icon": "🎴", "name_zh": "额外奖励", "name_en": "Bonus Draft",     "desc_zh": "跳过休憩，从三张牌中再挑选一张加入牌组。", "desc_en": "Skip rest — draft one extra card instead."},
+	}
+	var lang := str(g.profile.get("language", "zh-Hans"))
+	var is_zh := lang.begins_with("zh")
+
+	# Semi-transparent backdrop.
+	var backdrop := ColorRect.new()
+	backdrop.name = "BranchPicker"
+	backdrop.color = Color(0, 0, 0, 0.72)
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	g.overlay.add_child(backdrop)
+
+	# Centre column.
+	var col := VBoxContainer.new()
+	col.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	col.custom_minimum_size = Vector2(340, 0)
+	col.size = col.custom_minimum_size
+	col.position = Vector2(-170, -160)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 16)
+	backdrop.add_child(col)
+
+	# Title.
+	var title := Label.new()
+	title.text = "选择路径" if is_zh else "Choose Your Path"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_color_override("font_color", g.GOLD)
+	col.add_child(title)
+
+	var sub := Label.new()
+	sub.text = "两条路只能走一条，一旦选择无法更改" if is_zh else "Choose once — you cannot change later"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_font_size_override("font_size", 13)
+	sub.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	col.add_child(sub)
+
+	# Two option cards side by side.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(row)
+
+	for opt in options:
+		var m: Dictionary = meta.get(opt, {"icon":"❓","name_zh":opt,"name_en":opt,"desc_zh":"","desc_en":""})
+		var card := Button.new()
+		card.custom_minimum_size = Vector2(152, 170)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.focus_mode = Control.FOCUS_NONE
+		card.add_theme_stylebox_override("normal",  g._panel(Color("1a3a42"), 14, Color("3a7a8a")))
+		card.add_theme_stylebox_override("hover",   g._panel(Color("1e4d58"), 14, g.JADE))
+		card.add_theme_stylebox_override("pressed", g._panel(Color("2a5f6a"), 14, g.GOLD))
+		row.add_child(card)
+
+		var vbox := VBoxContainer.new()
+		vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		vbox.add_theme_constant_override("separation", 8)
+		vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(vbox)
+
+		var icon_lbl := Label.new()
+		icon_lbl.text = m["icon"]
+		icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		icon_lbl.add_theme_font_size_override("font_size", 30)
+		icon_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(icon_lbl)
+
+		var name_lbl := Label.new()
+		name_lbl.text = m["name_zh"] if is_zh else m["name_en"]
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.add_theme_font_size_override("font_size", 15)
+		name_lbl.add_theme_color_override("font_color", g.GOLD)
+		name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(name_lbl)
+
+		var desc_lbl := Label.new()
+		desc_lbl.text = m["desc_zh"] if is_zh else m["desc_en"]
+		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		desc_lbl.add_theme_font_size_override("font_size", 11)
+		desc_lbl.add_theme_color_override("font_color", Color(0.75, 0.85, 0.85))
+		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(desc_lbl)
+
+		# Capture opt by value — GDScript lambdas close over variables, not values.
+		var chosen_kind: String = opt
+		g._bind_touch_guard(card, func():
+			# Persist choice, dismiss picker, re-render pin, then dispatch.
+			g.make_map_choice(index, chosen_kind)
+			if backdrop.is_inside_tree(): backdrop.queue_free()
+			# Re-render the map pin so it shows the resolved kind immediately.
+			g.show_map()
+			# Then dispatch into the chosen node kind.
+			await g.get_tree().create_timer(0.1).timeout
+			var resolved_kind := g.get_node_kind(index)
+			if resolved_kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index):
+				g.show_event(index, resolved_kind)
+			else:
+				if not g.can_spend_stamina(5):
+					g._toast(g.t("ui.stamina_insufficient"))
+					g.show_stamina_modal()
+					return
+				g.spend_stamina(5)
+				g.begin_battle(index)
+		)
 
 func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void:
 	g._clear(); g._play_music(false)

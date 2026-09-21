@@ -52,12 +52,27 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
 		"chapter":int(encounter.get("chapter", 1)),
 		"last_element":"",
-		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0,"cards_tally":{}}
+		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0,"cards_tally":{}},
+		"cards_played_this_turn":0,
+		"player_blocked_this_turn":0,
+		"mirror_shield_active":false,
+		# Consumed flag is per-turn (reset in end_turn) so Mirror Shield negates exactly the
+		# first card of each player turn, not every card that turn.
+		"mirror_shield_consumed":false,
 	}
 	if not enemies.is_empty():
 		enemies[0]["is_great_boss"] = state.is_great_boss
 		enemies[0]["phase"] = 1
 		enemies[0]["phase_triggered"] = false
+	# Phase bookkeeping for every enemy, not just the lead one: authored bosses can be fielded
+	# anywhere, and a missing key would read as `false` on every check anyway — initialising it
+	# explicitly keeps _check_boss_phases() a single lookup rather than a has()-then-get() pair.
+	for enemy in state.enemies:
+		enemy["phase3_triggered"] = false
+	# Apply starting_shield mechanic (separate from shield_per_turn which is applied each enemy turn)
+	for enemy in state.enemies:
+		var s_shield: int = int(enemy.mechanics.get("starting_shield", 0))
+		if s_shield > 0: enemy.shield = s_shield
 	if equipment.has("jadePlate"):
 		var jp_shield: int = [8, 14, 20, 28][clampi(_equip_tier("jadePlate"), 0, 3)]
 		state.player.shield += jp_shield
@@ -193,6 +208,20 @@ func _execute_intent(enemy_index: int) -> void:
 				emit_signal("event","equipment",{"id":"mistCloak"})
 			var taken := _damage_player(amount)
 			enemy.attacks += 1
+			# Chapter 10 phase 2 laces its swings with Burn — read as a flag each attack rather
+			# than latched on the transition, so a reload can't drop the boss's phase-2 identity.
+			if _mech_phase(enemy) >= 2:
+				var burn_hit: int = int(enemy.mechanics.get("phase2_burn_on_hit", 0))
+				if burn_hit > 0:
+					state.player.burn = int(state.player.get("burn", 0)) + burn_hit
+					emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"burn_on_hit","amount":burn_hit})
+			# Blood Price (Chapter 35): heals off its own swings. Applied whenever it attacks at
+			# all — including a swing the player fully blocked — because the mechanic is "every
+			# attack", not "every point of damage that got through".
+			var heal_on_attack: int = int(enemy.mechanics.get("heal_on_attack", 0))
+			if heal_on_attack > 0 and enemy.health > 0 and enemy.health < enemy.max_health:
+				enemy.health = mini(enemy.max_health, enemy.health + heal_on_attack)
+				emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"heal_on_attack","amount":heal_on_attack})
 			if taken > 0 and state.equipment.has("thornArmor"):
 				var ta_dmg: int = [2, 4, 6, 9][clampi(_equip_tier("thornArmor"), 0, 3)]
 				ta_dmg += int(state.inscr_bonuses.get("thorns", 0))
@@ -206,6 +235,13 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var instance: Dictionary = state.hand[hand_index]
 	var card := content.card(instance.card_id)
 	if card.is_empty() or card.cost > state.energy: return false
+	# Mirror Shield (Chapter 50, phase 2): the first card played each turn is negated outright.
+	# The card stays in hand and nothing is spent, so the tax is tempo rather than card
+	# advantage — the player still has the card, they just lose the turn's best first play to it.
+	if bool(state.get("mirror_shield_active", false)) and not bool(state.get("mirror_shield_consumed", false)):
+		state.mirror_shield_consumed = true
+		emit_signal("event","mirror_shield_blocked",{"card":card.id})
+		return true
 	# harmful drives the damage bonuses; needs_enemy drives targeting. A pure debuff needs a
 	# target but must not burn Focus or the first-attack bonuses.
 	var harmful := _is_attack(card)
@@ -219,6 +255,9 @@ func play(hand_index: int, target_index := -1) -> bool:
 		state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
 		if not state.stats.has("cards_tally"): state.stats.cards_tally = {}
 		state.stats.cards_tally[card.id] = int(state.stats.cards_tally.get(card.id, 0)) + 1
+	# Counted separately from the career tally above because Chapter 25's Counterspell reads it
+	# per-turn and it must reset every turn — the two have the same name but different lifetimes.
+	state.cards_played_this_turn = int(state.get("cards_played_this_turn", 0)) + 1
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true
@@ -315,9 +354,19 @@ func play(hand_index: int, target_index := -1) -> bool:
 
 func end_turn() -> void:
 	if state.phase != "player": return
+	# Authored boss mechanics that read the player's just-finished turn (hand size, cards
+	# played, damage blocked) — resolved here, before those trackers are reset below and
+	# before any enemy acts.
+	_apply_boss_player_turn_end()
+	if state.phase != "player": return
 	for enemy_index in state.enemies.size():
 		var enemy: Dictionary = state.enemies[enemy_index]
 		if enemy.health <= 0: continue
+		# Chapter 50 phase 3 attacks twice per turn: the second swing reuses the same telegraphed
+		# intent rather than rolling a fresh one, so the icon the player planned around stays true.
+		if _attacks_twice(enemy) and enemy.stun <= 0:
+			_execute_intent(enemy_index)
+			if state.phase != "player": return
 		enemy.shield = enemy.mechanics.get("shield_per_turn",0)
 		enemy.health = mini(enemy.max_health, enemy.health + enemy.mechanics.get("regeneration",0))
 		if enemy.stun > 0: enemy.stun -= 1
@@ -434,6 +483,14 @@ func end_turn() -> void:
 		else:
 			_damage_player(2)
 			if state.phase != "player": return
+	# Per-turn trackers reset *after* the boss mechanics above have read them and *before* the
+	# player's new turn starts, so each turn's counts are independent.
+	state.cards_played_this_turn = 0
+	state.player_blocked_this_turn = 0
+	state.mirror_shield_consumed = false
+	state.mirror_shield_active = false
+	_apply_boss_player_turn_start()
+	if state.phase != "player": return
 	_plan_intents()
 	emit_signal("event","turn",{"turn":state.turn})
 
@@ -514,12 +571,25 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if state.has("stats"): state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
 	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
 		_trigger_great_boss_phase_2(enemy)
+	_check_mechanics_phases(index, enemy)
 	# Thorns was carried as encounter data since the 50-stage version but never actually
 	# consulted anywhere — every "thorns" enemy fought identically to one with no mechanic.
 	if dealt > 0 and int(enemy.mechanics.get("thorns", 0)) > 0:
 		_damage_player(int(enemy.mechanics.thorns))
 		emit_signal("event","thorns",{"enemy":index,"amount":int(enemy.mechanics.thorns)})
 	if enemy.health <= 0:
+		# Authored Undying (Chapter 30): unconditional, unlike the player-facing revive_chance
+		# roll below — the whole point of the mechanic is that the player *knows* it will come
+		# back, so a dice roll here would make the fight's most memorable beat a coin flip.
+		if float(enemy.mechanics.get("revive_hp_pct", 0.0)) > 0.0 and not bool(enemy.get("mech_revived", false)):
+			enemy["mech_revived"] = true
+			enemy.health = maxi(1, int(ceil(enemy.max_health * float(enemy.mechanics.revive_hp_pct))))
+			enemy.shield = 0; enemy.burn = 0; enemy.poison = 0; enemy.vulnerable = 0; enemy.weak = 0
+			emit_signal("event","boss_mechanic",{"enemy":index,"kind":"undying","amount":enemy.health})
+			var pierce_amt: int = int(enemy.mechanics.get("revive_attack_pierce", 0))
+			if pierce_amt > 0:
+				_damage_player(pierce_amt, true)
+			return dealt
 		if not enemy.revived and state.revives > 0 and rng.randf() < state.revive_chance:
 			enemy.health = maxi(1,int(ceil(enemy.max_health * .35))); enemy.revived = true; state.revives -= 1
 			emit_signal("event","revive",{"enemy":index,"amount":enemy.health}); return dealt
@@ -583,10 +653,171 @@ func _trigger_great_boss_phase_2(enemy: Dictionary) -> void:
 			enemy.shield += 15
 			emit_signal("event", "boss_phase", {"chapter": chapter, "phase": 2, "name": "首领狂怒", "name_en": "Boss Enrage", "desc": "首领生命过半，进入二阶段狂暴！", "desc_en": "Boss health below half, enters Phase 2 Enrage!"})
 
-func _damage_player(amount: int) -> int:
-	var absorbed := mini(state.player.shield,amount)
+# ---------------------------------------------------------------------------------------------
+# Authored boss mechanics (see content.gd's ENEMIES `mechanics` dicts).
+#
+# These are read as *flags at their use site* rather than as one-off mutations applied when a
+# phase flips, so a boss can't be "caught" mid-phase by a save/reload or a resumed auto-battle
+# and silently lose its identity — e.g. phase2_mirror_shield is consulted in play() every card,
+# not latched once on the transition.
+#
+# The hardcoded chapter-matched _trigger_great_boss_phase_2() above is kept as-is for the five
+# great-boss chapters that shipped with it; the mechanics-driven path below is what the
+# remaining authored bosses use. Both can coexist on one enemy without double-applying damage
+# boosts, because each guards on its own flag (phase_triggered vs mech_phase2).
+# ---------------------------------------------------------------------------------------------
+
+func _hp_ratio(enemy: Dictionary) -> float:
+	return float(enemy.health) / float(maxi(1, int(enemy.max_health)))
+
+# Phase 2 / Phase 3 detection for mechanics-authored bosses. Guarded by its own flags so it's
+# idempotent — _damage_enemy can call this on every single hit.
+func _check_mechanics_phases(enemy_index: int, enemy: Dictionary) -> void:
+	if enemy.health <= 0: return
+	var m: Dictionary = enemy.mechanics
+	var ratio := _hp_ratio(enemy)
+	var p2: float = float(m.get("phase2_threshold", 0.0))
+	if p2 > 0.0 and ratio <= p2 and not bool(enemy.get("mech_phase2", false)):
+		enemy["mech_phase2"] = true
+		enemy["phase"] = maxi(2, int(enemy.get("phase", 1)))
+		var boost2: int = int(m.get("phase2_damage_boost", 0))
+		# The five great-boss chapters already apply their own hardcoded phase-2 boost inside
+		# _trigger_great_boss_phase_2(), which runs off the same HP threshold. Applying the
+		# authored boost as well would double-count it, so the authored path yields to the
+		# hardcoded one when both describe the same transition.
+		if boost2 > 0 and not bool(enemy.get("phase_triggered", false)): enemy.damage += boost2
+		emit_signal("event", "boss_phase_change", {"enemy": enemy_index, "phase": 2})
+	var p3: float = float(m.get("phase3_threshold", 0.0))
+	if p3 > 0.0 and ratio <= p3 and not bool(enemy.get("mech_phase3", false)):
+		enemy["mech_phase3"] = true
+		enemy["phase"] = 3
+		var boost3: int = int(m.get("phase3_damage_boost", 0))
+		if boost3 > 0: enemy.damage += boost3
+		emit_signal("event", "boss_phase_change", {"enemy": enemy_index, "phase": 3})
+
+func _mech_phase(enemy: Dictionary) -> int:
+	return int(enemy.get("phase", 1))
+
+# Chapter 50 phase 3 gains an extra swing per turn. Kept as a helper so the phase-gate and the
+# mechanics key live in one place rather than being re-derived at each call site.
+func _attacks_twice(enemy: Dictionary) -> bool:
+	return bool(enemy.mechanics.get("phase3_double_attack", false)) and _mech_phase(enemy) >= 3
+
+# Runs at the *end of the player's turn* — i.e. the top of end_turn(), before enemies act —
+# because every mechanic here reads player-turn state (hand size, cards played, damage blocked)
+# that is about to be reset for the next turn.
+func _apply_boss_player_turn_end() -> void:
+	for enemy_index in state.enemies.size():
+		var enemy: Dictionary = state.enemies[enemy_index]
+		if enemy.health <= 0: continue
+		var m: Dictionary = enemy.mechanics
+		# Hunter's Mark (Chapter 5): punishes ending the turn holding cards.
+		if m.has("mark_hand_penalty") and state.hand.size() > int(m.get("mark_hand_threshold", 0)):
+			var mark: int = int(m.mark_hand_penalty)
+			_damage_player(mark)
+			emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"mark","amount":mark})
+			if state.phase != "player": return
+		# Counterspell (Chapter 25): punishes playing a long chain of cards in one turn.
+		if m.has("counterspell_threshold") and int(state.get("cards_played_this_turn", 0)) >= int(m.counterspell_threshold):
+			var cb: int = int(m.get("counterspell_burn", 1))
+			state.player.burn = int(state.player.get("burn", 0)) + cb
+			emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"counterspell","amount":cb})
+		# Absorb Burn (Chapter 10, phase-1 identity): converts the player's Burn into its own
+		# Shield, which makes stacking Burn on it actively counterproductive — the intended
+		# counterplay is to hold Burn until after the absorb turn rather than to stop using it.
+		if m.has("absorb_burn_every") and int(m.absorb_burn_every) > 0 and state.turn % int(m.absorb_burn_every) == 0:
+			var burn_stacks: int = int(state.player.get("burn", 0))
+			if burn_stacks > 0:
+				var gained: int = burn_stacks * int(m.get("shield_per_absorbed_burn", 0))
+				enemy.shield += gained
+				state.player.burn = 0
+				emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"absorb_burn","amount":gained})
+		# Enrage Stack (Chapter 45): rewards the player for *not* over-blocking.
+		if m.has("enrage_on_block_threshold") and int(state.get("player_blocked_this_turn", 0)) > int(m.enrage_on_block_threshold):
+			var atk_boost: int = int(m.get("enrage_attack_boost", 0))
+			if atk_boost > 0:
+				enemy.damage += atk_boost
+				emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"enrage","amount":atk_boost})
+
+# Runs at the *start of the player's turn* — the tail of end_turn(), alongside the boomerang and
+# reverb drains, so these land after the energy/draw reset and before the player can act.
+func _apply_boss_player_turn_start() -> void:
+	for enemy_index in state.enemies.size():
+		var enemy: Dictionary = state.enemies[enemy_index]
+		if enemy.health <= 0: continue
+		var m: Dictionary = enemy.mechanics
+		# Soul Tide (Chapter 20): clogs the hand with unplayable curses. Removed at the end of
+		# the player's turn by end_turn()'s existing void_curse sweep, so the hand isn't
+		# permanently degraded — it's a per-turn tempo tax, not a slow death spiral.
+		if m.has("soul_tide_curse"):
+			var count: int = int(m.get("soul_tide_count", 1))
+			if _mech_phase(enemy) >= 2: count = int(m.get("phase2_soul_tide", count))
+			var curse_id: String = str(m.soul_tide_curse)
+			for i in count:
+				if state.hand.size() >= 10: break
+				state.hand.append({"card_id": curse_id})
+				emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"soul_tide","card":curse_id})
+		# Memory Erase (Chapter 40): permanently exhausts the player's most expensive card for
+		# the rest of the battle. Deliberately "most expensive" and not random — a random
+		# exhaust would be unattributable, whereas this one is a legible "protect your top end"
+		# pressure the player can play around.
+		if m.has("exhaust_hand_every"):
+			var interval: int = int(m.exhaust_hand_every)
+			if _mech_phase(enemy) >= 2: interval = int(m.get("phase2_exhaust_every", interval))
+			if interval > 0 and state.turn % interval == 0:
+				var idx := _most_expensive_hand_index()
+				if idx >= 0:
+					var erased: Dictionary = state.hand[idx]
+					state.hand.remove_at(idx)
+					state.exhaust.append(erased)
+					emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"memory_erase","card":erased.card_id})
+		# Mirror Shield (Chapter 50, phase 2): arms the negate, consumed by play().
+		var mirror: bool = bool(m.get("phase2_mirror_shield", false)) and _mech_phase(enemy) >= 2
+		state.mirror_shield_active = mirror
+		if mirror: emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"mirror_shield"})
+		# Summon (Chapter 50, phase 1): adds reinforcements on a fixed cadence, capped so a long
+		# fight can't drown the player in bodies the engine never intended to hold.
+		if m.has("summon_every") and int(m.summon_every) > 0 and _mech_phase(enemy) < 2 and state.turn % int(m.summon_every) == 0:
+			_summon_boss_add(enemy_index, enemy)
+
+func _most_expensive_hand_index() -> int:
+	var best := -1
+	var best_cost := -1
+	for i in state.hand.size():
+		var card := content.card(str(state.hand[i].card_id))
+		if card.is_empty(): continue
+		var cost: int = int(card.get("cost", 0))
+		# Ties go to the earlier card, so the same hand always erases the same card — makes the
+		# mechanic reproducible in a test rather than a coin flip between equal-cost cards.
+		if cost > best_cost:
+			best_cost = cost
+			best = i
+	return best
+
+func _summon_boss_add(owner_index: int, owner: Dictionary) -> void:
+	if state.enemies.size() >= 3: return
+	var chapter: int = int(state.get("chapter", 1))
+	var add_health: int = maxi(8, int(round(owner.max_health * 0.12)))
+	var add_damage: int = maxi(2, int(round(owner.damage * 0.4)))
+	var add: Dictionary = _enemy("boss_add", "天道余烬", "Cosmic Ember", "m_s246", add_health, add_damage, {"shield_per_turn": 2})
+	add["chapter"] = chapter
+	add["phase"] = 1
+	add["phase3_triggered"] = false
+	state.enemies.append(add)
+	emit_signal("event","boss_mechanic",{"enemy":owner_index,"kind":"summon","count":1})
+
+# `pierce` bypasses the player's Shield entirely (the readable counterpart to _damage_enemy's
+# own pierce flag) — Chapter 30's revive attack is authored as unavoidable, so it can't be
+# absorbed or it would just be a normal swing.
+func _damage_player(amount: int, pierce := false) -> int:
+	var absorbed := 0 if pierce else mini(state.player.shield, amount)
 	state.player.shield -= absorbed
-	var dealt := mini(state.player.health,amount - absorbed)
+	# Tracks how much Shield actually ate this turn — the input to Chapter 45's enrage-on-block.
+	# Accumulated in the damage funnel rather than at each call site so every source (enemy
+	# swings, Burn, curses) counts, not just the one path someone remembered to instrument.
+	if state.has("player_blocked_this_turn"):
+		state.player_blocked_this_turn = int(state.player_blocked_this_turn) + absorbed
+	var dealt := mini(state.player.health, amount - absorbed)
 	state.player.health -= dealt
 	if state.player.health <= 0:
 		if state.equipment.has("phoenixMail") and not state.phoenix_used:

@@ -161,6 +161,130 @@ func _run() -> void:
 	game.show_map()
 	await process_frame
 
+	section("== map branching (level 2/3/4 forks) ==")
+	# The map used to be strictly linear (fixed kind per level), so these checks pin the new
+	# contract: levels 2/3/4 offer exactly two forks, levels 1/5 stay fixed, and a player's
+	# choice is what get_node_kind() reports from then on.
+	for lvl_index in [1, 2, 3]:
+		check(game.content.node_branch_options(lvl_index).size() == 2,
+			"level %d offers exactly two fork options" % (lvl_index % 5 + 1))
+	for fixed_index in [0, 4]:
+		check(game.content.node_branch_options(fixed_index).is_empty(),
+			"level %d stays fixed (no fork)" % (fixed_index % 5 + 1))
+	# Every advertised option must be a kind the map can actually render and enter — an
+	# invented string here would render a fallback pin and then dead-end on travel.
+	var known_kinds := ["event", "merchant", "elite", "battle", "rest", "bonus", "boss", "greatboss"]
+	var all_known := true
+	for i in 10:
+		for opt in game.content.node_branch_options(i):
+			if not known_kinds.has(opt): all_known = false
+	check(all_known, "every fork option is a real node kind the map can render and enter")
+
+	var saved_map_choices: Dictionary = game.profile.get("map_choices", {}).duplicate(true)
+	var saved_branch_position: int = int(game.profile.position)
+
+	# No choice recorded yet -> the deterministic default still answers, so a fresh profile's map
+	# renders identically to the pre-branching game.
+	game.profile.map_choices = {}
+	check(game.get_node_kind(1) == game.content.node_kind(1),
+		"before any choice is made, get_node_kind() falls back to the deterministic default")
+
+	# A recorded choice wins over the default...
+	game.make_map_choice(1, "merchant")
+	check(game.get_node_kind(1) == "merchant", "a recorded fork choice overrides the default kind")
+	check(game.get_node_kind(0) == game.content.node_kind(0),
+		"choosing on one node does not disturb a fixed node")
+	# ...but only if it's one of that node's own legal options, so a corrupt/hand-edited save
+	# can't steer the player into a kind this node was never allowed to be.
+	game.make_map_choice(1, "greatboss")
+	check(game.get_node_kind(1) == game.content.node_kind(1),
+		"an illegal stored kind is rejected in favour of the default, not trusted")
+	game.make_map_choice(1, "merchant")
+
+	# The picker's two options must each build a real, tappable card.
+	game.show_map()
+	await process_frame
+	game._map_screen._show_branch_picker(1, game.content.node_branch_options(1))
+	await process_frame
+	var picker: Node = game.overlay.get_node_or_null("BranchPicker")
+	check(picker != null, "arriving at an unchosen fork node shows the branch picker")
+	var picker_buttons: Array = []
+	if picker != null:
+		for b in _all_controls(picker):
+			if b is Button and (b as Button).custom_minimum_size.x > 100: picker_buttons.append(b)
+	check(picker_buttons.size() == 2, "the branch picker offers exactly two choices (got %d)" % picker_buttons.size())
+	# Both option names must be rendered distinctly, or the player is choosing blind. Checked
+	# language-agnostically (two non-empty, different labels) rather than by hardcoding one
+	# language's strings, since the picker picks its wording from the profile's language.
+	if picker != null:
+		var option_names: Array = []
+		for l in _all_controls(picker):
+			if l is Label and not (l as Label).text.strip_edges().is_empty():
+				option_names.append((l as Label).text)
+		var distinct_names := {}
+		for n in option_names: distinct_names[n] = true
+		check(option_names.size() >= 2 and distinct_names.size() >= 2,
+			"both fork options are labelled, and differently (found %d labels, %d distinct)"
+				% [option_names.size(), distinct_names.size()])
+	# Choosing persists *before* the node is entered, so an app kill during the transition
+	# can't lose the pick and re-offer the fork.
+	game.profile.map_choices = {}
+	if picker_buttons.size() == 2:
+		(picker_buttons[1] as Button).pressed.emit()
+		await process_frame
+		check(str(game.profile.get("map_choices", {}).get("1", "")) == "merchant",
+			"tapping an option records the choice (%s)" % str(game.profile.get("map_choices", {}).get("1", "")))
+		check(game.get_node_kind(1) == "merchant", "the recorded pick is what the map now resolves to")
+		var dismissed: Node = game.overlay.get_node_or_null("BranchPicker")
+		check(dismissed == null or not dismissed.is_inside_tree(), "the picker dismisses itself once a choice is made")
+		await create_timer(0.3).timeout
+
+	# make_map_choice must survive a profile that predates the field entirely (the upgrade path
+	# for an existing install), rather than erroring on a missing key.
+	game.profile.erase("map_choices")
+	game.make_map_choice(1, "event")
+	check(game.profile.get("map_choices") is Dictionary, "make_map_choice creates the field on a pre-branching profile")
+	check(str(game.profile.map_choices.get("1", "")) == "event", "and the choice lands in it")
+	# The real upgrade path for an existing install: a profile written *before* branching has no
+	# map_choices key at all, and must still load with the field present. Exercised against a
+	# throwaway save file and restored immediately — ui_smoke's own teardown (_restore_save)
+	# holds the same text, so an early failure here still can't lose the player's profile.
+	var pre_branch_text := ""
+	if FileAccess.file_exists(SpiritSave.PATH):
+		pre_branch_text = FileAccess.open(SpiritSave.PATH, FileAccess.READ).get_as_text()
+	var pre_write := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+	if pre_write != null:
+		pre_write.store_string('{"schema_version":1,"gold":1,"deck":[]}')
+		pre_write.close()
+	var migrated: Dictionary = SpiritSave.load_profile(game.content)
+	check(migrated.get("map_choices") is Dictionary,
+		"a profile saved before branching loads with map_choices added")
+	check(migrated.get("map_choices").is_empty(), "the migrated field starts empty, not pre-filled")
+	var pre_restore := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+	if pre_restore != null:
+		pre_restore.store_string(pre_branch_text)
+		pre_restore.close()
+	check(FileAccess.open(SpiritSave.PATH, FileAccess.READ).get_as_text() == pre_branch_text,
+		"the pre-branching migration test restores the save file it borrowed")
+
+	# Turning down a fork must let the player walk the default path instead of being stuck.
+	game.profile.map_choices = {}
+	game.show_map()
+	await process_frame
+	check(game.get_node_kind(1) == game.content.node_kind(1),
+		"declining to choose leaves the node on its default kind (no dead end)")
+
+	# The level-4 alternative kind must render an event page rather than falling through.
+	game.show_event(3, "bonus")
+	await process_frame
+	check(_find_label_containing(game.root, game.content.ui("ui.bonus_title", game.lang)),
+		"the level-4 'bonus' branch renders its own event screen")
+
+	game.profile.map_choices = saved_map_choices
+	game.profile.position = saved_branch_position
+	game.show_map()
+	await process_frame
+
 	section("== organic map path ==")
 	var wp0: Array = game._chapter_waypoints(0)
 	var wp1: Array = game._chapter_waypoints(1)

@@ -1617,6 +1617,24 @@ func show_map() -> void:
 	await _map_screen.show_map()
 func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void: await _map_screen.show_chapter_transition(cleared_ch, next_ch, on_complete)
 func _travel_to(index: int) -> void: await _map_screen._travel_to(index)
+
+# Returns the effective node kind for a given stage index, respecting any branch choice the
+# player has already made for that node. Falls back to content.node_kind() for fixed nodes
+# (level 1 and 5) and for branch-able nodes where no choice has been stored yet.
+func get_node_kind(index: int) -> String:
+	var options: Array[String] = content.node_branch_options(index)
+	if options.is_empty(): return content.node_kind(index)
+	var chosen: String = str(profile.get("map_choices", {}).get(str(index), ""))
+	if chosen != "" and chosen in options: return chosen
+	return content.node_kind(index)  # fallback: use the original deterministic kind
+
+# Persists a branch choice for a given stage index.  Called by the branch-picker UI in
+# game_map_screen.gd the moment the player taps one of the two fork options.
+func make_map_choice(index: int, kind: String) -> void:
+	if not profile.get("map_choices") is Dictionary: profile.map_choices = {}
+	profile.map_choices[str(index)] = kind
+	SpiritSave.write(profile)
+
 func _has_claimable_quest() -> bool: return _map_screen._has_claimable_quest()
 func _has_claimable_camp_reward() -> bool: return _map_screen._has_claimable_camp_reward()
 func _claimable_reward_count() -> int: return _map_screen._claimable_reward_count()
@@ -3261,7 +3279,7 @@ func _record_battle_result(won: bool) -> void:
 	cs.total_shield_gained = int(cs.get("total_shield_gained", 0)) + shd
 	cs.total_cards_played = int(cs.get("total_cards_played", 0)) + cards
 
-	var node_k: String = content.node_kind(current_stage) if (not in_abyss and not in_daily_trial and not in_weekly_challenge and current_stage >= 0 and current_stage < content.encounters.size()) else ""
+	var node_k: String = get_node_kind(current_stage) if (not in_abyss and not in_daily_trial and not in_weekly_challenge and current_stage >= 0 and current_stage < content.encounters.size()) else ""
 	if won:
 		if node_k == "elite" or in_weekly_challenge:
 			cs.elites_slain = int(cs.get("elites_slain", 0)) + 1
@@ -3295,7 +3313,7 @@ func _record_battle_result(won: bool) -> void:
 
 
 func _on_pin_pressed(index: int) -> void:
-	if _is_replay(index) and content.node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
+	if _is_replay(index) and get_node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
 		_show_replay_mode_prompt(index)
 	else:
 		_travel_to(index)
