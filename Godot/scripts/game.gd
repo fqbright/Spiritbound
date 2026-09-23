@@ -3313,6 +3313,10 @@ func _record_battle_result(won: bool) -> void:
 
 
 func _on_pin_pressed(index: int) -> void:
+	var branch_options: Array[String] = content.node_branch_options(index)
+	if branch_options.size() == 2 and index <= int(profile.unlocked):
+		_map_screen._show_branch_picker(index, branch_options)
+		return
 	if _is_replay(index) and get_node_kind(index) in ["battle", "elite", "boss", "greatboss"]:
 		_show_replay_mode_prompt(index)
 	else:

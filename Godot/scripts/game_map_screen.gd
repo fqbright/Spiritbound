@@ -1150,6 +1150,66 @@ func _add_stage_pin(index: int) -> void:
 		halo.tween_property(pin, "modulate", Color(1.25, 1.12, 0.95), 0.85).set_trans(Tween.TRANS_SINE)
 		halo.tween_property(pin, "modulate", Color.WHITE, 0.85).set_trans(Tween.TRANS_SINE)
 
+	var branch_options: Array[String] = g.content.node_branch_options(index)
+	if branch_options.size() == 2 and not locked:
+		var opt_meta := {
+			"event":    {"icon": "📖", "name_zh": "奇遇", "name_en": "Story"},
+			"merchant": {"icon": "🛒", "name_zh": "商人", "name_en": "Shop"},
+			"elite":    {"icon": "⚔️", "name_zh": "精英", "name_en": "Elite"},
+			"battle":   {"icon": "🗡️", "name_zh": "普通", "name_en": "Normal"},
+			"rest":     {"icon": "🔥", "name_zh": "休憩", "name_en": "Rest"},
+			"bonus":    {"icon": "✦",  "name_zh": "秘宝", "name_en": "Bonus"},
+		}
+		var is_zh: bool = str(g.profile.get("language", "zh-Hans")).begins_with("zh")
+		var chosen_opt: String = str(g.profile.get("map_choices", {}).get(str(index), ""))
+
+		var fork_pill := PanelContainer.new()
+		fork_pill.name = "ForkPill_%d" % index
+		fork_pill.z_index = 11
+		var pill_style := g._panel(Color("0c1e24", 0.92), 10, g.GOLD if chosen_opt != "" else Color("2f6575"))
+		pill_style.content_margin_left = 4
+		pill_style.content_margin_right = 4
+		pill_style.content_margin_top = 2
+		pill_style.content_margin_bottom = 2
+		fork_pill.add_theme_stylebox_override("panel", pill_style)
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 3)
+		hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		fork_pill.add_child(hbox)
+
+		for opt_idx in 2:
+			var opt_key: String = branch_options[opt_idx]
+			var m: Dictionary = opt_meta.get(opt_key, {"icon":"✦", "name_zh":opt_key, "name_en":opt_key})
+			var is_selected := chosen_opt == opt_key
+			var btn := Button.new()
+			btn.text = "%s %s" % [m["icon"], m["name_zh"] if is_zh else m["name_en"]]
+			btn.custom_minimum_size = Vector2(50, 18)
+			btn.focus_mode = Control.FOCUS_NONE
+			btn.add_theme_font_size_override("font_size", 9)
+			var btn_style := g._panel(Color("163b45") if is_selected else Color("0e2229"), 8, g.GOLD if is_selected else Color("22444e"))
+			btn.add_theme_stylebox_override("normal", btn_style)
+			btn.add_theme_stylebox_override("hover", g._panel(Color("225360"), 8, g.JADE))
+			btn.add_theme_stylebox_override("pressed", g._panel(Color("2d6a7b"), 8, g.GOLD))
+			btn.add_theme_color_override("font_color", g.GOLD if is_selected else Color(0.7, 0.82, 0.85))
+			var captured_opt: String = opt_key
+			g._bind_touch_guard(btn, func():
+				g.make_map_choice(index, captured_opt)
+				g.show_map()
+				_travel_to(index)
+			)
+			hbox.add_child(btn)
+			if opt_idx == 0:
+				var fork_sym := Label.new()
+				fork_sym.text = "⑂"
+				fork_sym.add_theme_font_size_override("font_size", 10)
+				fork_sym.add_theme_color_override("font_color", g.GOLD if chosen_opt != "" else g.JADE)
+				fork_sym.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				hbox.add_child(fork_sym)
+
+		fork_pill.position = Vector2(point.x - 62.0, badge_bottom_y - pin_size.y - 23.0)
+		g.map_canvas.add_child(fork_pill)
+
 	var caption := g._label(g.content.waypoint_name(index % 5, g.lang) if not locked else g.t("ui.locked"), 10, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	# An outline, not a drop shadow: these captions sit directly on map terrain, which ranges from
 	# near-black water to sunlit sand within a single 112px label, so there is no single ink that
@@ -1198,7 +1258,7 @@ func _travel_to(index: int) -> void:
 		var kind := g.get_node_kind(index)
 		# If this is a branch-able node and the player hasn't chosen yet, show the picker.
 		var options: Array[String] = g.content.node_branch_options(index)
-		if options.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)) and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+		if options.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)):
 			_show_branch_picker(index, options)
 			return
 		if kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
@@ -1231,7 +1291,7 @@ func _travel_to(index: int) -> void:
 		var enter_next := func():
 			var kind := g.get_node_kind(index)
 			var opts: Array[String] = g.content.node_branch_options(index)
-			if opts.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)) and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+			if opts.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)):
 				_show_branch_picker(index, opts)
 				return
 			if kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):
@@ -1266,7 +1326,7 @@ func _travel_to(index: int) -> void:
 	g.profile.position = index; SpiritSave.write(g.profile)
 	var kind := g.get_node_kind(index)
 	var opts: Array[String] = g.content.node_branch_options(index)
-	if opts.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)) and not g._is_stage_event_claimed(index) and not g._is_replay(index):
+	if opts.size() == 2 and not g.profile.get("map_choices", {}).has(str(index)):
 		_show_branch_picker(index, opts)
 		return
 	if kind in ["event","merchant","rest","bonus"] and not g._is_stage_event_claimed(index) and not g._is_replay(index):

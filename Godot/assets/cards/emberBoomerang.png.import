@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cpgqfgxno5lm6"
-path="res://.godot/imported/ashRecall.jpg-c6c626d1fc06640b9bb7b7275d1a73cf.ctex"
+uid="uid://b2bqbnfyema1i"
+path="res://.godot/imported/emberBoomerang.png-64dd2d720cc63652637c1ef72f20d9f0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/cards/ashRecall.jpg"
-dest_files=["res://.godot/imported/ashRecall.jpg-c6c626d1fc06640b9bb7b7275d1a73cf.ctex"]
+source_file="res://assets/cards/emberBoomerang.png"
+dest_files=["res://.godot/imported/emberBoomerang.png-64dd2d720cc63652637c1ef72f20d9f0.ctex"]
 
 [params]
 
