@@ -2639,7 +2639,9 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 			break
 	if box == null: return
 
-	var popup := g._label("−%d" % amount, 38 if not defeated else 44, Color("ff4d3d") if defeated else Color("fff6cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	var text_color: Color = Color("ff4d3d") if defeated else (Color("ffd700") if amount >= 20 else Color("fff6cf"))
+	var popup_text: String = ("CRIT −%d" % amount) if (amount >= 25 and not defeated) else ("−%d" % amount)
+	var popup := g._label(popup_text, 44 if (defeated or amount >= 20) else 38, text_color, HORIZONTAL_ALIGNMENT_CENTER)
 	popup.position = box.global_position + Vector2(box.size.x / 2.0 - 50.0, 26.0)
 	popup.size = Vector2(100, 44)
 	popup.z_index = 380
@@ -3034,6 +3036,45 @@ func _animate_player_hit(amount: int) -> void:
 	await float_tw.finished
 	popup.queue_free()
 
+func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, font_size: int = 24) -> void:
+	if g.overlay == null: return
+	var box: Control = null
+	for candidate in g.enemy_boxes:
+		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index", -1)) == enemy_index:
+			box = candidate
+			break
+	var target_pos := Vector2(195, 220)
+	if box != null:
+		target_pos = box.global_position + Vector2(box.size.x / 2.0, 20.0)
+	_spawn_floating_text(target_pos, text, color, font_size)
+
+func _spawn_player_floating_text(text: String, color: Color, font_size: int = 24) -> void:
+	if g.overlay == null: return
+	var target_pos := Vector2(195, 480)
+	_spawn_floating_text(target_pos, text, color, font_size)
+
+func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: int = 24) -> void:
+	if g.overlay == null: return
+	var label := g._label(text, font_size, color, HORIZONTAL_ALIGNMENT_CENTER)
+	label.position = pos - Vector2(60, 18)
+	label.size = Vector2(120, 36)
+	label.z_index = 400
+	label.pivot_offset = Vector2(60, 18)
+	label.scale = Vector2(0.4, 0.4)
+	label.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.06, 0.95))
+	label.add_theme_constant_override("outline_size", 5)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	g.overlay.add_child(label)
+
+	var tw := label.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(label, "scale", Vector2(1.2, 1.2), g._battle_delay(0.14)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_property(label, "scale", Vector2.ONE, g._battle_delay(0.08))
+	tw.chain().tween_interval(g._battle_delay(0.35))
+	tw.chain().tween_property(label, "position:y", label.position.y - 36.0, g._battle_delay(0.35)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(label, "modulate:a", 0.0, g._battle_delay(0.35))
+	tw.chain().tween_callback(label.queue_free)
+
 func _combat_event(kind: String, payload: Dictionary) -> void:
 	if g.battle_log: g.battle_log.record(kind, payload, int(g.combat.state.get("turn", 0)) if g.combat else 0)
 	if kind == "intent":
@@ -3060,6 +3101,48 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		if r_type == "combustion": g.play_sfx("resonance_combustion")
 		elif r_type == "sunder": g.play_sfx("resonance_sunder")
 		elif r_type == "fortify": g.play_sfx("resonance_fortify")
+	elif kind == "shatter":
+		var enemy_idx: int = int(payload.get("enemy", 0))
+		var s_amt: int = int(payload.get("amount", 8))
+		g._toast("❄ 寒霜碎裂 −%d" % s_amt, Color("80d8ff"))
+		_spawn_enemy_floating_text(enemy_idx, "❄ −%d" % s_amt, Color("80d8ff"))
+	elif kind == "dodge":
+		var enemy_idx: int = int(payload.get("enemy", 0))
+		g._toast("⚡ 闪避 (DODGE)!", Color("ffe066"))
+		_spawn_enemy_floating_text(enemy_idx, "DODGE!", Color("ffe066"))
+	elif kind == "mirror_shield_blocked":
+		g._toast("✦ 镜盾抵消 (NEGATED) ✦", Color("c084fc"))
+		_spawn_player_floating_text("NEGATED", Color("c084fc"))
+	elif kind == "boss_phase_change":
+		var p_num: int = int(payload.get("phase", 2))
+		_shake_screen(8.0, 0.4)
+		g.play_sfx("boss_phase2")
+		_show_boss_phase_banner("Phase %d" % p_num, "首领阶段转换！" if g.lang != "en" else "Boss enters Phase %d!" % p_num)
+	elif kind == "boss_mechanic":
+		var m_kind: String = str(payload.get("kind", ""))
+		var e_idx: int = int(payload.get("enemy", 0))
+		if m_kind == "undying":
+			_shake_screen(10.0, 0.5)
+			g._toast("☠ 不灭复生 (UNDYING)!", Color("ff5959"))
+			_spawn_enemy_floating_text(e_idx, "REVIVED!", Color("ff5959"))
+		elif m_kind == "mark":
+			g._toast("🎯 猎人印记 −%d" % payload.get("amount", 0), Color("ff8a8a"))
+		elif m_kind == "counterspell":
+			g._toast("⚡ 咒法反制: 灼烧 +%d" % payload.get("amount", 0), Color("ff9868"))
+		elif m_kind == "absorb_burn":
+			g._toast("🔥 灼烧汲取: 护盾 +%d" % payload.get("amount", 0), Color("ffa94d"))
+			_spawn_enemy_floating_text(e_idx, "🛡 +%d" % payload.get("amount", 0), Color("ffa94d"))
+		elif m_kind == "enrage":
+			g._toast("💢 激怒: 攻击 +%d" % payload.get("amount", 0), Color("ff4d4d"))
+			_spawn_enemy_floating_text(e_idx, "ENRAGE +%d" % payload.get("amount", 0), Color("ff4d4d"))
+		elif m_kind == "soul_tide":
+			g._toast("🌀 魂潮侵蚀: 诅咒入魂", Color("a78bfa"))
+		elif m_kind == "mirror_shield":
+			g._toast("🛡 镜盾构筑完成", Color("60a5fa"))
+		elif m_kind == "heal_on_attack":
+			_spawn_enemy_floating_text(e_idx, "+%d HP" % payload.get("amount", 0), Color("9bffd3"))
+		elif m_kind == "burn_on_hit":
+			_spawn_player_floating_text("♨ +%d" % payload.get("amount", 0), Color("ff9868"))
 
 func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	if g.overlay == null: return

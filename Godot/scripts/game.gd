@@ -3431,6 +3431,21 @@ func _build_victory_recap_card(stats: Dictionary) -> Control:
 	row.add_child(_label(tf("ui.recap_cards", int(stats.get("cards_played", 0))), 10, Color("a8dcff")))
 	row.add_child(_label(tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 10, Color("9fd8ff")))
 	vstack.add_child(row)
+
+	var tally: Dictionary = stats.get("cards_tally", {})
+	var top_card_id := ""
+	var top_count := 0
+	for cid in tally:
+		if int(tally[cid]) > top_count:
+			top_count = int(tally[cid])
+			top_card_id = str(cid)
+	if not top_card_id.is_empty():
+		var c_info := content.card(top_card_id)
+		var c_name := str(c_info.get("name_en" if lang == "en" else "name", top_card_id))
+		var mvp_label := _label("✦ MVP: %s ×%d" % [c_name, top_count], 9, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+		vstack.add_child(mvp_label)
+		panel.custom_minimum_size = Vector2(0, 70)
+
 	return panel
 
 func _unique(values: Array) -> Array:

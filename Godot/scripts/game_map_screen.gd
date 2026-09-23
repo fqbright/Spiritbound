@@ -1389,6 +1389,9 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 		g._bind_touch_guard(card, func():
 			# Persist choice, dismiss picker, re-render pin, then dispatch.
 			g.make_map_choice(index, chosen_kind)
+			if g.profile.get("relics", []).has("spiritCompass"):
+				g.profile.gold = int(g.profile.get("gold", 0)) + 15
+				g._toast("寻灵罗盘：获得 15 金币！" if is_zh else "Spirit Compass: +15 Gold!", g.GOLD)
 			if backdrop.is_inside_tree(): backdrop.queue_free()
 			# Re-render the map pin so it shows the resolved kind immediately.
 			g.show_map()

@@ -568,6 +568,36 @@ const RELICS = [
 	{"id":"cursedTome","icon":"🕮","icon_mark":"leaf","color":"b359ff","zh":"死灵禁典","en":"Cursed Tome","detail":"每回合多抽 1 张牌，但每回合受到 2 点伤害。","detail_en":"Draw 1 additional card each turn, but take 2 damage each turn."},
 	{"id":"titanBell","icon":"🔔","icon_mark":"shield_mark","color":"ffd700","zh":"泰坦古钟","en":"Titan Bell","detail":"最大生命 +20，战斗开始获 15 护盾。每两回合能量上限 -1。","detail_en":"+20 Max HP, start battle with 15 Shield. -1 Energy every 2 turns."},
 	{"id":"chaosPrism","icon":"💎","icon_mark":"sparkle","color":"ff4081","zh":"混沌棱镜","en":"Chaos Prism","detail":"每次攻击造成伤害时施加 1 层易伤，但敌人初始护盾 +6。","detail_en":"Attacks apply 1 Vulnerable, but enemies start with +6 Shield."},
+	{"id":"soulLantern","icon":"✦","icon_mark":"flame","color":"78e9ff","zh":"引魂灯","en":"Soul Lantern","detail":"打出消耗牌时，下回合开始额外获得 1 点能量。","detail_en":"Gain 1 extra Energy next turn when an Exhaust card is played."},
+	{"id":"spiritArmor","icon":"⬡","icon_mark":"shield_mark","color":"8ff5cf","zh":"玄甲残片","en":"Spirit Armor","detail":"回合结束时保留最多 30 点未被击破的护盾。","detail_en":"Retain up to 30 unspent Shield at end of turn."},
+	{"id":"prismaticRune","icon":"✧","icon_mark":"sparkle","color":"d1a8ff","zh":"万象符石","en":"Prismatic Rune","detail":"战斗开始时，随机为手牌中 1 张卡牌注入回响效果。","detail_en":"Start battle: randomly grant Echo effect to 1 hand card."},
+	{"id":"venomFlask","icon":"❥","icon_mark":"drop","color":"80e4c0","zh":"蚀毒灵盅","en":"Venom Flask","detail":"回合开始时，对所有中毒敌人造成其当前中毒层数 50% 的穿透伤害。","detail_en":"At turn start, deal piercing damage equal to 50% of enemy Poison."},
+	{"id":"echoMirror","icon":"◎","icon_mark":"rings","color":"ffd47c","zh":"双极古镜","en":"Echo Mirror","detail":"每回合打出的第一张技能牌额外重复触发一次。","detail_en":"First Skill card played each turn triggers twice."},
+	{"id":"ironThorns","icon":"✕","icon_mark":"cross_blade","color":"d4a373","zh":"荆棘铁棘","en":"Iron Thorns","detail":"受到直接攻击伤害时，对攻击者反弹 3 点伤害。","detail_en":"Reflect 3 damage when taking attack damage."},
+	{"id":"phoenixFeather","icon":"♨","icon_mark":"flame","color":"ff7373","zh":"涅槃翎羽","en":"Phoenix Feather","detail":"受到致命伤害时免死并回复 20% 生命（单场战斗一次）。","detail_en":"Survive lethal damage once per battle, restoring 20% HP."},
+	{"id":"jadePendant","icon":"◈","icon_mark":"sparkle","color":"9fd8c9","zh":"清灵玉佩","en":"Jade Pendant","detail":"每打出 3 张同属性卡牌，额外抽 1 张牌。","detail_en":"Every 3 same-element cards played, draw 1 card."},
+	{"id":"voidHourglass","icon":"»","icon_mark":"chevrons","color":"b9a2ff","zh":"太虚沙漏","en":"Void Hourglass","detail":"战斗开始时，对所有敌人施加 1 层虚弱与 1 层易伤。","detail_en":"Start of battle: apply 1 Weak and 1 Vulnerable to all enemies."},
+	{"id":"gamblerCoin","icon":"◒","icon_mark":"rings","color":"ffe08a","zh":"赌徒金铢","en":"Gambler Coin","detail":"战斗胜利获得的金币奖励提升 30%。","detail_en":"Gain 30% more Gold from battle victories."},
+	{"id":"stormOrb","icon":"ϟ","icon_mark":"bolt","color":"78e9ff","zh":"雷暴宝珠","en":"Storm Orb","detail":"每打出 4 张攻击牌，对所有敌人施加 1 层易伤。","detail_en":"Every 4 Attack cards played, apply 1 Vulnerable to all enemies."},
+	{"id":"bloodChalice","icon":"❥","icon_mark":"drop","color":"ff5252","zh":"猩红圣杯","en":"Blood Chalice","detail":"击杀敌人时，手牌中所有攻击牌本场伤害永久 +2。","detail_en":"Killing a foe gives +2 damage to all Attacks in hand for this battle."},
+	{"id":"heavyAnchor","icon":"⚓","icon_mark":"shield_mark","color":"607d8b","zh":"定海玄锚","en":"Heavy Anchor","detail":"单次获得 15 点以上护盾时，对随机敌人造成 6 点冲击伤害。","detail_en":"Whenever gaining 15+ Shield in one action, deal 6 damage to an enemy."},
+	{"id":"spiritCompass","icon":"🧭","icon_mark":"sparkle","color":"a2d9ff","zh":"寻灵罗盘","en":"Spirit Compass","detail":"在地图上选择分叉节点时，立即获得 15 金币。","detail_en":"Gain 15 bonus Gold upon choosing a map fork."},
+	{"id":"dragonScale","icon":"⬡","icon_mark":"shield_mark","color":"4caf50","zh":"青龙逆鳞","en":"Dragon Scale","detail":"每当受到生命伤害时，立刻抽 1 张牌。","detail_en":"Draw 1 card whenever you take unblocked HP damage."},
+	{"id":"lotusIncense","icon":"❦","icon_mark":"leaf","color":"e1bee7","zh":"静心清莲","en":"Lotus Incense","detail":"回合结束时若手牌为空，下回合初始抽牌数 +2。","detail_en":"If your hand is empty at turn end, draw +2 cards next turn."},
+	{"id":"frostNeedle","icon":"»","icon_mark":"chevrons","color":"80deea","zh":"幽霜灵针","en":"Frost Needle","detail":"施加减益状态时，目标敌人失去 2 点护盾。","detail_en":"Applying any debuff strips 2 Shield from the target."},
+	{"id":"goldenAbacus","icon":"✦","icon_mark":"rings","color":"ffd54f","zh":"天机金算","en":"Golden Abacus","detail":"强化卡牌的金币消耗降低 25%。","detail_en":"Card upgrade gold costs are reduced by 25%."},
+	{"id":"celestialBell","icon":"ϟ","icon_mark":"bolt","color":"fff59d","zh":"惊云玉磬","en":"Celestial Bell","detail":"第 1 回合造成的伤害提升 25%。","detail_en":"Deal 25% more damage on Turn 1."},
+	{"id":"shadowCloak","icon":"≋","icon_mark":"wave","color":"90a4ae","zh":"夜行幽斗","en":"Shadow Cloak","detail":"第 1 回合获得 12 点护盾。","detail_en":"Gain 12 Shield on Turn 1."},
+	{"id":"vitalityGourd","icon":"❦","icon_mark":"leaf","color":"c8e6c9","zh":"乾坤葫芦","en":"Vitality Gourd","detail":"以满生命值通过关卡时，生命上限永久 +1。","detail_en":"Clearing a stage at full HP permanently grants +1 Max HP."},
+	{"id":"blazingBrazier","icon":"♨","icon_mark":"flame","color":"ffab91","zh":"烈阳神鼎","en":"Blazing Brazier","detail":"施加燃烧时有 50% 几率额外追加 2 层。","detail_en":"Applying Burn has a 50% chance to apply 2 extra stacks."},
+	{"id":"serpentFang","icon":"✕","icon_mark":"cross_blade","color":"aed581","zh":"青蛇妖牙","en":"Serpent Fang","detail":"攻击中毒敌人时伤害提升 35%。","detail_en":"Attacks against poisoned enemies deal 35% more damage."},
+	{"id":"mysticScroll","icon":"🕮","icon_mark":"sparkle","color":"ce93d8","zh":"上古残卷","en":"Mystic Scroll","detail":"战斗开始时，随机从抽牌堆抽取 1 张 0 费用卡牌。","detail_en":"Start of battle: draw 1 random 0-cost card from draw pile."},
+	{"id":"obsidianIdol","icon":"⬡","icon_mark":"shield_mark","color":"78909c","zh":"黑曜石偶","en":"Obsidian Idol","detail":"打破敌人护盾时，对其造成 8 点碎盾冲击伤害。","detail_en":"Breaking an enemy Shield deals 8 shatter damage."},
+	{"id":"swiftBoots","icon":"»","icon_mark":"chevrons","color":"b2dfdb","zh":"神行飞履","en":"Swift Boots","detail":"每回合第一次打出耗费 2 点以上能量的卡牌时，返还 1 点能量。","detail_en":"First 2+ energy card played each turn refunds 1 Energy."},
+	{"id":"cinderBand","icon":"♨","icon_mark":"flame","color":"ff8a65","zh":"烬火戒环","en":"Cinder Band","detail":"自身带有燃烧时，攻击牌伤害 +3。","detail_en":"While you have Burn, your attacks deal +3 damage."},
+	{"id":"moonstone","icon":"◈","icon_mark":"rings","color":"b39ddb","zh":"太阴月石","en":"Moonstone","detail":"奇数回合抽牌数 +1，偶数回合获得 6 点护盾。","detail_en":"Odd turns: draw +1 card; Even turns: gain 6 Shield."},
+	{"id":"spiritBanner","icon":"✦","icon_mark":"cross_blade","color":"ffcc80","zh":"聚灵战旗","en":"Spirit Banner","detail":"击杀随从敌人时，对主首领造成 12 点震慑伤害。","detail_en":"Defeating an add deals 12 damage to the stage boss."},
+	{"id":"harmoniousBell","icon":"≋","icon_mark":"wave","color":"80cbc4","zh":"六合玲珑铎","en":"Harmonious Bell","detail":"牌组中每拥有 4 种不同属性卡牌，开局手牌数 +1。","detail_en":"Every 4 distinct elements in deck grants +1 opening hand card."},
 ]
 
 # High-stakes, high-impact relics reserved for Great Boss kills specifically — a regular
@@ -973,10 +1003,12 @@ const HERO_CLASSES = [
 		"sprite": "hero_fox_spirit",
 		"relic": "foxCharm",
 		"deck": [
-			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
-			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
-			"foxfire", "foxfire", "foxfire",
-			"wildSpark", "wildSpark"
+			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward",
+			"foxfire", "foxfire", "foxfire", "foxfire",
+			"wildSpark", "wildSpark", "wildSpark",
+			"emberClaw", "emberClaw",
+			"foxBlessing", "foxBlessing"
 		]
 	},
 	{
@@ -988,10 +1020,12 @@ const HERO_CLASSES = [
 		"sprite": "hero_stone_sentinel",
 		"relic": "ancientSeed",
 		"deck": [
-			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
-			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
-			"stoneBreaker", "stoneBreaker",
-			"ironHide"
+			"strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
+			"stoneBreaker", "stoneBreaker", "stoneBreaker", "stoneBreaker",
+			"ironHide", "ironHide", "ironHide",
+			"steadyPulse", "steadyPulse",
+			"stoneRebound", "stoneRebound"
 		]
 	},
 	{
@@ -1003,10 +1037,12 @@ const HERO_CLASSES = [
 		"sprite": "hero_shadow_stalker",
 		"relic": "starShard",
 		"deck": [
-			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
-			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
-			"moonfang", "moonfang",
-			"cinderHex"
+			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward",
+			"moonfang", "moonfang", "moonfang", "moonfang",
+			"cinderHex", "cinderHex", "cinderHex",
+			"twinMoon", "twinMoon",
+			"piercingBolt", "piercingBolt"
 		]
 	},
 	{
@@ -1018,11 +1054,12 @@ const HERO_CLASSES = [
 		"sprite": "hero_miasma_witch",
 		"relic": "bloodJade",
 		"deck": [
-			"strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike", "strike",
-			"ward", "ward", "ward", "ward", "ward", "ward", "ward", "ward",
-			"toxinDart", "toxinDart", "toxinDart",
-			"witherTouch", "witherTouch",
-			"miasmaBrew"
+			"strike", "strike", "strike", "strike", "strike", "strike",
+			"ward", "ward", "ward", "ward", "ward", "ward",
+			"toxinDart", "toxinDart", "toxinDart", "toxinDart", "toxinDart",
+			"witherTouch", "witherTouch", "witherTouch", "witherTouch",
+			"miasmaBrew", "miasmaBrew",
+			"miasma_shield", "miasma_shield"
 		]
 	}
 ]
@@ -1554,6 +1591,233 @@ func phantom_arena_encounter(unlocked: int, seed_idx: int = 0) -> Dictionary:
 		"background": 2
 	}
 
+const RANDOM_STORY_EVENTS: Array[Dictionary] = [
+	{
+		"id": "ancient_sanctum", "icon": "⛩️", "color": "ffd700",
+		"title_zh": "古修遗府", "title_en": "Ancient Sanctum",
+		"desc_zh": "你在绝壁间发现了一座上古大能的遗留洞府，石门半掩，古老的符光在昏暗中流转。案几上摆放着灵光闪烁的法宝残片，石榻旁则有一炉温热的洗髓灵泉。",
+		"desc_en": "You stumble upon an ancient immortal's hidden dwelling. Glimmering relic fragments rest on a stone altar beside a steaming cleansing spring.",
+		"choices": [
+			{"label_zh": "取走法宝（失去 12 生命，获得 1 件遗物）", "label_en": "Take Relic (-12 HP, Gain Relic)", "type": "damage_for_relic", "hp_cost": 12},
+			{"label_zh": "饮用灵泉（恢复 20 点生命）", "label_en": "Drink Spring (Heal 20 HP)", "type": "heal", "heal_amount": 20},
+			{"label_zh": "搜寻古币（获得 45 金币）", "label_en": "Loot Coins (Gain 45 Gold)", "type": "gold", "gold_amount": 45}
+		]
+	},
+	{
+		"id": "mystic_spring", "icon": "🍵", "color": "78e9ff",
+		"title_zh": "迷雾泉眼", "title_en": "Mystic Spring",
+		"desc_zh": "林深雾浓处，一湾泛着幽蓝光晕的泉眼静静流淌。微风拂过，水面荡起净化心灵的涟漪，似乎能涤除体内沉淀的浊气与执念。",
+		"desc_en": "Deep in the misty woods lies an azure spring. Its ripples carry pure spiritual essence capable of cleansing corruption.",
+		"choices": [
+			{"label_zh": "涤净心魔（从牌组移除 1 张卡牌）", "label_en": "Purify Mind (Remove 1 Card)", "type": "purge"},
+			{"label_zh": "淬炼道法（强化 1 张卡牌）", "label_en": "Attune Card (Upgrade 1 Card)", "type": "upgrade"},
+			{"label_zh": "汲取生机（回复 16 点生命）", "label_en": "Drink Water (Heal 16 HP)", "type": "heal", "heal_amount": 16}
+		]
+	},
+	{
+		"id": "sword_graveyard", "icon": "⚔️", "color": "ff7373",
+		"title_zh": "万剑古冢", "title_en": "Sword Graveyard",
+		"desc_zh": "残阳如血，千百柄锈蚀斑斑的古剑斜插在荒丘之上。其中一柄青锋虽断，却依然发出摄人心魄的龙吟之声，狂暴的煞气环绕其侧。",
+		"desc_en": "Countless rusted blades pierce this barren mound. A broken blade among them still hums with lethal intent and lingering wrath.",
+		"choices": [
+			{"label_zh": "拔出狂刃（获得 65 金币，受到 10 点反噬伤害）", "label_en": "Draw Blade (Gain 65 Gold, Take 10 DMG)", "type": "damage_for_gold", "hp_cost": 10, "gold_amount": 65},
+			{"label_zh": "参悟剑意（强化 1 张攻击卡牌）", "label_en": "Meditate (Upgrade 1 Card)", "type": "upgrade"},
+			{"label_zh": "静默祭奠（获得 25 金币离开）", "label_en": "Pay Respects (Gain 25 Gold)", "type": "gold", "gold_amount": 25}
+		]
+	},
+	{
+		"id": "wishing_well", "icon": "🏺", "color": "ffe08a",
+		"title_zh": "祈愿古井", "title_en": "Wishing Well",
+		"desc_zh": "一口爬满青苔的古井横在荒野路旁，井底深不见底，偶尔闪过幽绿的金光。路旁的残碑记载：诚心投金者，井神必有所酬。",
+		"desc_en": "An ancient moss-covered well sits along the road. Ancient runes suggest that sincere offerings are rewarded.",
+		"choices": [
+			{"label_zh": "投入 35 金币祈愿法宝（获得 1 件遗物）", "label_en": "Offer 35 Gold (Gain 1 Relic)", "type": "buy_relic", "gold_cost": 35},
+			{"label_zh": "投入 15 金币祈愿甘霖（恢复 22 点生命）", "label_en": "Offer 15 Gold (Heal 22 HP)", "type": "buy_heal", "gold_cost": 15, "heal_amount": 22},
+			{"label_zh": "不予理会，直接离开", "label_en": "Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "cursed_altar", "icon": "🩸", "color": "ff5252",
+		"title_zh": "祭血邪坛", "title_en": "Blood Altar",
+		"desc_zh": "幽暗的密林深处耸立着一座以黑曜石雕凿的祭坛，其上刻满了噬血符文。空气中弥漫着淡淡的血腥气，低沉的呢喃声在脑海中回荡。",
+		"desc_en": "An ominous obsidian altar pulses in the shadows. Dark whispers promise immense power in exchange for life essence.",
+		"choices": [
+			{"label_zh": "割腕献血（失去 15 生命，获得 90 金币）", "label_en": "Blood Sacrifice (-15 HP, Gain 90 Gold)", "type": "damage_for_gold", "hp_cost": 15, "gold_amount": 90},
+			{"label_zh": "破除邪坛（承受 6 点伤害，净化 1 张卡牌）", "label_en": "Shatter Altar (-6 HP, Purge 1 Card)", "type": "damage_and_purge", "hp_cost": 6},
+			{"label_zh": "绕行避开", "label_en": "Walk Away", "type": "leave"}
+		]
+	},
+	{
+		"id": "alchemy_furnace", "icon": "♨️", "color": "ff9868",
+		"title_zh": "残破丹炉", "title_en": "Ancient Crucible",
+		"desc_zh": "一座丈高的青铜丹炉倾覆在废墟中，炉膛内余烬未熄，阵阵奇异的药香扑鼻而来。炉壁上似乎还残留着未成型的极品丹药。",
+		"desc_en": "A bronze alchemy furnace rests among ruins. Embers still flicker within, radiating a warm, restorative scent.",
+		"choices": [
+			{"label_zh": "吸收药气（回复 18 点生命）", "label_en": "Inhale Vapor (Heal 18 HP)", "type": "heal", "heal_amount": 18},
+			{"label_zh": "火中取栗（获得 50 金币，受到 8 点灼伤）", "label_en": "Reach Into Flame (Gain 50 Gold, -8 HP)", "type": "damage_for_gold", "hp_cost": 8, "gold_amount": 50},
+			{"label_zh": "借火淬牌（强化 1 张卡牌）", "label_en": "Forge Card (Upgrade 1 Card)", "type": "upgrade"}
+		]
+	},
+	{
+		"id": "fox_spirit_shrine", "icon": "🦊", "color": "ffb765",
+		"title_zh": "灵狐古祠", "title_en": "Fox Spirit Shrine",
+		"desc_zh": "一座供奉九尾灵狐神祇的木制小祠，祠前供桌洁净，红烛摇曳。神龛中隐隐传来狐仙的温和呼唤，似乎在注视着同族的求道者。",
+		"desc_en": "A delicate wooden shrine dedicated to the celestial nine-tailed fox. Warm candles flicker before a serene effigy.",
+		"choices": [
+			{"label_zh": "虔诚祈福（强化 1 张卡牌，并回复 10 生命）", "label_en": "Pray (Upgrade Card & Heal 10 HP)", "type": "upgrade_and_heal", "heal_amount": 10},
+			{"label_zh": "献上供金（花费 25 金币，获得 1 件遗物）", "label_en": "Tithe 25 Gold (Gain Relic)", "type": "buy_relic", "gold_cost": 25},
+			{"label_zh": "恭敬行礼离开", "label_en": "Bow and Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "shadow_gambler", "icon": "🎲", "color": "b9a2ff",
+		"title_zh": "幽冥赌坊", "title_en": "Ghost Casino",
+		"desc_zh": "黑雾中浮现出一张发光的石桌，一位头戴斗笠的幽冥客正在百无聊赖地抛掷着骨骰。他抬起头，露出一抹诡异的笑容：'道友，要来赌一把命数么？'",
+		"desc_en": "A shadowy figure sits by a luminous stone table, tossing bone dice. 'Care to test your destiny, traveler?'",
+		"choices": [
+			{"label_zh": "下注豪赌（花费 30 金币，50% 获 80 金币，50% 颗粒无收）", "label_en": "Roll Dice (30 Gold: 50% Win 80 Gold)", "type": "gamble", "gold_cost": 30, "win_gold": 80},
+			{"label_zh": "讨价还价（用 10 点生命换取 50 金币）", "label_en": "Trade Vitality (-10 HP, Gain 50 Gold)", "type": "damage_for_gold", "hp_cost": 10, "gold_amount": 50},
+			{"label_zh": "摇头不赌", "label_en": "Decline", "type": "leave"}
+		]
+	},
+	{
+		"id": "spirit_tree", "icon": "🌳", "color": "8ff5cf",
+		"title_zh": "通天神木", "title_en": "Spirit Arbor",
+		"desc_zh": "一棵遮天蔽日的参天古树傲立在天地之间，每一片碧绿的树叶都在吞吐着纯净的日月精华。树枝上结着数颗青翠欲滴的灵果。",
+		"desc_en": "A colossal arbor pierces the clouds. Every emerald leaf breathes cosmic vitality, bearing luminescent spiritual fruits.",
+		"choices": [
+			{"label_zh": "采摘灵果（恢复全部已损生命的 50%）", "label_en": "Eat Fruit (Heal 25 HP)", "type": "heal", "heal_amount": 25},
+			{"label_zh": "折取神枝（从牌组移除 1 张卡牌）", "label_en": "Break Branch (Purge 1 Card)", "type": "purge"},
+			{"label_zh": "席地悟道（获得 40 金币）", "label_en": "Meditate (Gain 40 Gold)", "type": "gold", "gold_amount": 40}
+		]
+	},
+	{
+		"id": "meteor_crater", "icon": "☄️", "color": "c9a6ff",
+		"title_zh": "陨星天坑", "title_en": "Meteor Crater",
+		"desc_zh": "地面裂开巨大的焦黑巨坑，天坑中央沉睡着一颗散发着冰冷星辉的天外陨铁，周围环绕着扭曲空间的狂乱引力波。",
+		"desc_en": "A smoldering crater cradles fallen celestial meteoric iron, distorting gravity and humming with cosmic power.",
+		"choices": [
+			{"label_zh": "强取陨星核（承受 14 点伤害，获得 1 件遗物）", "label_en": "Seize Meteor Core (-14 HP, Gain Relic)", "type": "damage_for_relic", "hp_cost": 14},
+			{"label_zh": "采集星尘（获得 55 金币）", "label_en": "Gather Stardust (Gain 55 Gold)", "type": "gold", "gold_amount": 55},
+			{"label_zh": "退避三舍", "label_en": "Step Back", "type": "leave"}
+		]
+	},
+	{
+		"id": "lost_traveler", "icon": "🧳", "color": "fff59d",
+		"title_zh": "迷途行商", "title_en": "Lost Peddler",
+		"desc_zh": "一名背着巨大行囊的游方行商正对着残缺的地图愁眉苦脸。见到你走来，他如释重负：'多谢仙长！若能为小人指明出山路径，必有重谢！'",
+		"desc_en": "A peddler with an enormous pack sighs over a ruined map. 'Noble traveler, guide me through this labyrinth!'",
+		"choices": [
+			{"label_zh": "指点迷津（获得 50 金币报酬）", "label_en": "Guide Way (Gain 50 Gold)", "type": "gold", "gold_amount": 50},
+			{"label_zh": "分享补给（失去 20 金币，获得 1 件遗物）", "label_en": "Share Supplies (Pay 20 Gold, Gain Relic)", "type": "buy_relic", "gold_cost": 20},
+			{"label_zh": "互道安好离开", "label_en": "Farewell", "type": "leave"}
+		]
+	},
+	{
+		"id": "phantom_duel", "icon": "🪞", "color": "e1bee7",
+		"title_zh": "心魔古镜", "title_en": "Mirror of Shadows",
+		"desc_zh": "半空中悬浮着一面水银凝固般的平光宝镜，镜中映出的倒影不仅没有你的面容，反而狞笑着拔出利刃，向你的神识刺来！",
+		"desc_en": "A mercurial mirror floats in midair. Your reflection grins sinisterly and strikes at your conscious mind.",
+		"choices": [
+			{"label_zh": "斩破心魔（受到 8 点精神冲击，强化 1 张卡牌）", "label_en": "Conquer Shadow (-8 HP, Upgrade 1 Card)", "type": "damage_and_upgrade", "hp_cost": 8},
+			{"label_zh": "碎镜求生（获得 45 金币）", "label_en": "Shatter Mirror (Gain 45 Gold)", "type": "gold", "gold_amount": 45},
+			{"label_zh": "紧闭心神后退", "label_en": "Close Mind and Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "monk_meditation", "icon": "🧘", "color": "d4a373",
+		"title_zh": "禅林僧庐", "title_en": "Zen Hermitage",
+		"desc_zh": "山崖松柏间隐约露出一座枯木草堂，一缕檀香徐徐升起。一位老僧端坐蒲团，闭目合十：'施主风尘仆仆，何不歇息片刻？'",
+		"desc_en": "A quiet thatched cottage nestled in pine trees. An elderly monk offers serene shelter from the arduous path.",
+		"choices": [
+			{"label_zh": "静心歇息（恢复 24 点生命值）", "label_en": "Rest (Heal 24 HP)", "type": "heal", "heal_amount": 24},
+			{"label_zh": "断舍离执念（净化移除 1 张卡牌）", "label_en": "Let Go (Purge 1 Card)", "type": "purge"},
+			{"label_zh": "合十礼毕离去", "label_en": "Depart Peacefully", "type": "leave"}
+		]
+	},
+	{
+		"id": "beast_carcass", "icon": "🦴", "color": "aed581",
+		"title_zh": "远古巨兽遗骸", "title_en": "Beast Carcass",
+		"desc_zh": "山谷中横陈着一具长达数十丈的上古蛮兽骸骨，骨节晶莹剔透，胸腔内似乎还封存着未曾散尽的狂暴兽核。",
+		"desc_en": "The petrified skeleton of a primordial titan lies in the valley. A crystalline core still hums inside its ribs.",
+		"choices": [
+			{"label_zh": "硬取兽核（获得 70 金币，受到 11 点反震伤害）", "label_en": "Extract Core (Gain 70 Gold, -11 HP)", "type": "damage_for_gold", "hp_cost": 11, "gold_amount": 70},
+			{"label_zh": "采集骨粉（强化 1 张卡牌）", "label_en": "Grind Bones (Upgrade 1 Card)", "type": "upgrade"},
+			{"label_zh": "敬畏避让", "label_en": "Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "abandoned_mine", "icon": "⛏️", "color": "ffd54f",
+		"title_zh": "废弃灵矿", "title_en": "Abandoned Mine",
+		"desc_zh": "深邃的灵矿坑道入口散落着数辆生锈的矿车，岩壁深处依稀闪烁着未开采完的灵石光泽，但隐约传来妖兽的低吼。",
+		"desc_en": "An overgrown spirit mine opening. Uncut gemstone veins glint deep in the shafts alongside distant beast growls.",
+		"choices": [
+			{"label_zh": "冒险深采（获得 80 金币，受到 12 点塌方伤害）", "label_en": "Deep Mining (Gain 80 Gold, -12 HP)", "type": "damage_for_gold", "hp_cost": 12, "gold_amount": 80},
+			{"label_zh": "外围捡拾（安全获得 35 金币）", "label_en": "Safe Scavenge (Gain 35 Gold)", "type": "gold", "gold_amount": 35},
+			{"label_zh": "离开矿洞", "label_en": "Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "celestial_chess", "icon": "♟️", "color": "90a4ae",
+		"title_zh": "残局仙弈", "title_en": "Celestial Chess",
+		"desc_zh": "青石棋盘上黑白棋子布列玄奥，天元之位空悬。棋局散发出古老悠远的推演法则，仿佛在等待一位有缘人落子破局。",
+		"desc_en": "A celestial Weiqi board carved from mountain granite. The unresolved game radiates deep cosmic harmony.",
+		"choices": [
+			{"label_zh": "落子定乾坤（扣除 10 生命，获得 1 件遗物）", "label_en": "Place Stone (-10 HP, Gain 1 Relic)", "type": "damage_for_relic", "hp_cost": 10},
+			{"label_zh": "复盘观局（强化 1 张卡牌）", "label_en": "Observe Strategy (Upgrade 1 Card)", "type": "upgrade"},
+			{"label_zh": "拱手作别", "label_en": "Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "poison_swamp", "icon": "🍄", "color": "9b59b6",
+		"title_zh": "幽腐毒沼", "title_en": "Putrid Mire",
+		"desc_zh": "泥沼中咕嘟冒泡，散发着甜腻而危险的腐臭。几株极其罕见的七彩毒灵芝在烂木上静静绽放，价值连城却剧毒无比。",
+		"desc_en": "Bubbling violet bogs emit sweet, perilous vapors. Rare rainbow death-mushrooms blossom atop decaying roots.",
+		"choices": [
+			{"label_zh": "采摘毒菇（获得 65 金币，受到 9 点腐蚀伤害）", "label_en": "Harvest Shroom (Gain 65 Gold, -9 HP)", "type": "damage_for_gold", "hp_cost": 9, "gold_amount": 65},
+			{"label_zh": "以毒攻毒（从牌组移除 1 张卡牌）", "label_en": "Purge Venom (Purge 1 Card)", "type": "purge"},
+			{"label_zh": "屏息疾行离开", "label_en": "Hasten Past", "type": "leave"}
+		]
+	},
+	{
+		"id": "reincarnation_well", "icon": "🌀", "color": "80cbc4",
+		"title_zh": "轮回残碑", "title_en": "Pillar of Rebirth",
+		"desc_zh": "断裂的黑玉石碑孤零零矗立在阴阳交界处。碑文记载着上古轮回法门，抚摸石碑能让你窥见几世前斩断宿命的因果。",
+		"desc_en": "A fractured black jade stele rests on the threshold of life and death, whispering ancient laws of karmic rebirth.",
+		"choices": [
+			{"label_zh": "铭刻宿命（失去 8 生命，从牌组移除 1 张卡牌）", "label_en": "Inscribe Fate (-8 HP, Purge 1 Card)", "type": "damage_and_purge", "hp_cost": 8},
+			{"label_zh": "勘破前尘（恢复 20 点生命值）", "label_en": "Enlightenment (Heal 20 HP)", "type": "heal", "heal_amount": 20},
+			{"label_zh": "默默离开", "label_en": "Walk Away", "type": "leave"}
+		]
+	},
+	{
+		"id": "ruined_library", "icon": "📖", "color": "ffcc80",
+		"title_zh": "倾塌藏经阁", "title_en": "Ruined Archive",
+		"desc_zh": "昔日仙门的藏经重地如今已大半沉入地脉，金丝玉简散落一地。翻阅这些残卷，或许能寻得失传已久的秘术真传。",
+		"desc_en": "A half-sunken repository of ancient doctrines. Golden bamboo scrolls litter the dust, holding forgotten arts.",
+		"choices": [
+			{"label_zh": "精研残经（强化 1 张卡牌）", "label_en": "Study Scroll (Upgrade 1 Card)", "type": "upgrade"},
+			{"label_zh": "拾取残卷（获得 45 金币）", "label_en": "Scavenge Texts (Gain 45 Gold)", "type": "gold", "gold_amount": 45},
+			{"label_zh": "不予打扰离开", "label_en": "Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "celestial_merchant", "icon": "💎", "color": "ff4081",
+		"title_zh": "太虚幻商", "title_en": "Void Smuggler",
+		"desc_zh": "一扇虚空裂隙悄然在面前展开，一名浑身裹在星屑斗篷下的商人探出身来：'来自异界的道友，我这里有凡间难得一见的奇珍异宝……'",
+		"desc_en": "A rift opens in reality. A smuggler cloaked in starlight emerges, offering wonders beyond mundane realms.",
+		"choices": [
+			{"label_zh": "倾囊求购（花费 40 金币，获得 1 件遗物）", "label_en": "Purchase Relic (40 Gold: Gain Relic)", "type": "buy_relic", "gold_cost": 40},
+			{"label_zh": "出售秘宝（从牌组移除 1 张牌，获得 35 金币）", "label_en": "Sell Card (Purge 1 Card, Gain 35 Gold)", "type": "purge_for_gold", "gold_amount": 35},
+			{"label_zh": "拒绝交易离开", "label_en": "Decline", "type": "leave"}
+		]
+	}
+]
+
+func random_story_event(stage_index: int, seed_val: int = 0) -> Dictionary:
+	var idx: int = abs(stage_index * 7 + seed_val * 13) % RANDOM_STORY_EVENTS.size()
+	return RANDOM_STORY_EVENTS[idx]
+
 # Phase 9 — World Events: a rotating 4-week thematic event, computed purely from a `period`
 # integer (game.gd's _ensure_world_event_current() is the one place that turns wall-clock time
 # into that integer — see its own comment for why, mirroring daily_trial_tags()'s own
@@ -1843,16 +2107,37 @@ func difficulty_modifier(tier: int) -> Dictionary:
 	if tier <= 0: return {}
 	var hp_pct: int = int(round(float(tier) * 12.0))
 	var gold_pct: int = int(round(float(tier) * 10.0))
-	# Bilingual name/detail built directly into the dict rather than routed through UI_TEXT,
-	# matching game_battle_screen.gd's own _modifier() flavor-modifier pool and
-	# daily_trial_modifier()'s tag-synthesized text — both are procedurally generated content,
-	# not fixed static labels, so they carry both languages inline for the caller to pick from.
-	return {
+	var mod: Dictionary = {
 		"health_scale": 1.0 + float(tier) * 0.12, "damage_bonus": tier, "reward_scale": 1.0 + float(tier) * 0.1,
 		"name": "挑战等级 A%d" % tier, "name_en": "Challenge Tier A%d" % tier,
-		"detail": "敌人生命 +%d%%，伤害 +%d，金币 +%d%%" % [hp_pct, tier, gold_pct],
-		"detail_en": "Enemy HP +%d%%, damage +%d, gold +%d%%" % [hp_pct, tier, gold_pct],
+		"tier": tier
 	}
+	var details: Array[String] = ["生命+%d%% 伤害+%d 金币+%d%%" % [hp_pct, tier, gold_pct]]
+	var details_en: Array[String] = ["HP+%d%% DMG+%d Gold+%d%%" % [hp_pct, tier, gold_pct]]
+	if tier >= 1:
+		mod["elite_shield_start"] = 10
+		details.append("精英开场+10护盾")
+		details_en.append("Elites start with +10 Shield")
+	if tier >= 2:
+		mod["enemy_opening_shield"] = 5
+		details.append("敌人初始+5护盾")
+		details_en.append("Enemies gain +5 initial Shield")
+	if tier >= 3:
+		mod["draw_penalty"] = 1
+		details.append("回合抽牌-1(下限1)")
+		details_en.append("-1 Draw per turn (min 1)")
+	if tier >= 4:
+		mod["inflict_debuffs"] = true
+		details.append("敌攻附带虚弱/易伤")
+		details_en.append("Enemy hits apply Weak/Vulnerable")
+	if tier >= 5:
+		mod["boss_enrage_boost"] = 3
+		details.append("首领狂怒攻击力额外+3")
+		details_en.append("Bosses gain +3 Enrage damage")
+
+	mod["detail"] = " · ".join(details)
+	mod["detail_en"] = " · ".join(details_en)
+	return mod
 
 # Each tier from A1 up used to become selectable the instant _difficulty_tier_section()'s own
 # overall gate (unlocked>=25) opened — all the way to A5 at once, +60% enemy HP and +5 flat

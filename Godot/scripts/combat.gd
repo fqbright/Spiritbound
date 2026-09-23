@@ -97,6 +97,11 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	if _has_relic("chaosPrism"):
 		for enemy in state.enemies:
 			enemy.shield += 6
+	var op_shield: int = int(modifier.get("enemy_opening_shield", 0))
+	var elite_shield: int = int(modifier.get("elite_shield_start", 0)) if bool(encounter.get("is_elite", false)) else 0
+	if op_shield > 0 or elite_shield > 0:
+		for enemy in state.enemies:
+			enemy.shield += op_shield + elite_shield
 	# Hero Mastery: small always-on bonuses from the active hero's permanent Lv1-5 perks —
 	# the same battle-start/first-attack/per-turn hooks relics and equipment already use
 	# (see _resolve_effects, play(), end_turn()), just keyed off save-file progression
@@ -127,10 +132,33 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		state.enemies[0].health = player_max
 		state.player.max_health = boss_max
 		state.player.health = boss_max
-	# Turn 1 is strictly 2 energy and 5 cards under all conditions, except cursedTome's own
-	# explicit "+1 draw / -2 HP every turn" and optional draw_turn1 elixir bonus.
 	var draw_bonus: int = int(hero_bonuses.get("draw_turn1", 0))
+	if _has_relic("voidHourglass"):
+		for enemy in state.enemies:
+			enemy.weak += 1
+			enemy.vulnerable += 1
+	if _has_relic("shadowCloak"):
+		state.player.shield += 12
+	if _has_relic("harmoniousBell"):
+		var unique_elems := {}
+		for c_id in deck:
+			var dc := content.card(str(c_id))
+			var el: String = str(dc.get("element", ""))
+			if el != "": unique_elems[el] = true
+		if unique_elems.size() >= 4:
+			draw_bonus += 1
 	_draw(5 + draw_bonus + (1 if _has_relic("cursedTome") else 0))
+	if _has_relic("mysticScroll") and state.hand.size() < 10:
+		for i in range(state.draw.size() - 1, -1, -1):
+			var c_card := content.card(str(state.draw[i].card_id))
+			if c_card.get("cost", 1) == 0:
+				var pulled: Dictionary = state.draw[i]
+				state.draw.remove_at(i)
+				state.hand.append(pulled)
+				break
+	if _has_relic("prismaticRune") and not state.hand.is_empty():
+		var pick_idx := rng.randi_range(0, state.hand.size() - 1)
+		state.runes[state.hand[pick_idx].card_id] = "echo"
 	if _has_relic("cursedTome"): _damage_player(2)
 	_plan_intents()
 	return state
@@ -208,6 +236,10 @@ func _execute_intent(enemy_index: int) -> void:
 				emit_signal("event","equipment",{"id":"mistCloak"})
 			var taken := _damage_player(amount)
 			enemy.attacks += 1
+			if taken > 0 and bool(state.get("modifier", {}).get("inflict_debuffs", false)):
+				if rng.randf() < 0.25:
+					if rng.randf() < 0.5: state.player.weak = int(state.player.get("weak", 0)) + 1
+					else: state.player.vulnerable = int(state.player.get("vulnerable", 0)) + 1
 			# Chapter 10 phase 2 laces its swings with Burn — read as a flag each attack rather
 			# than latched on the transition, so a reload can't drop the boss's phase-2 identity.
 			if _mech_phase(enemy) >= 2:
@@ -278,10 +310,33 @@ func play(hand_index: int, target_index := -1) -> bool:
 	elif rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
 	elif card.exhaust: state.exhaust.append(instance)
 	else: state.discard.append(instance)
+	if card.cost >= 2 and _has_relic("swiftBoots") and not bool(state.get("swift_boots_used", false)):
+		state.energy += 1
+		state.swift_boots_used = true
+	if card.exhaust and _has_relic("soulLantern"):
+		state.soul_lantern_pending = int(state.get("soul_lantern_pending", 0)) + 1
+	if _has_relic("jadePendant"):
+		var el: String = str(card.get("element", ""))
+		if el != "":
+			if el == str(state.get("last_played_element", "")):
+				state.same_element_counter = int(state.get("same_element_counter", 0)) + 1
+				if int(state.same_element_counter) >= 3:
+					state.same_element_counter = 0
+					_draw(1)
+			else:
+				state.last_played_element = el
+				state.same_element_counter = 1
+	if harmful and _has_relic("stormOrb"):
+		state.storm_orb_counter = int(state.get("storm_orb_counter", 0)) + 1
+		if int(state.storm_orb_counter) >= 4:
+			state.storm_orb_counter = 0
+			for e in state.enemies:
+				if e.health > 0: e.vulnerable = int(e.get("vulnerable", 0)) + 1
 	var bonus := int(state.upgrades.get(card.id,0))
 	# Strength is the permanent counterpart to Focus's one-shot burst: it never resets, so
 	# a Power card that grants it pays off over the whole fight rather than a single hit.
 	if harmful: bonus += int(state.player.get("strength", 0))
+	if harmful and int(state.player.get("burn", 0)) > 0 and _has_relic("cinderBand"): bonus += 3
 	if harmful and state.player.focus > 0: bonus += 3 * state.player.focus; state.player.focus = 0
 	if harmful and not state.first_attack:
 		if state.equipment.has("emberBlade"):
@@ -297,6 +352,9 @@ func play(hand_index: int, target_index := -1) -> bool:
 	if harmful: state.first_attack = true
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
+	if not harmful and _has_relic("echoMirror") and not bool(state.get("echo_mirror_used", false)):
+		state.echo_mirror_used = true
+		_resolve_effects(card, target_index, bonus + resonance, 1.0)
 	if rune == "echo" and state.phase == "player": dealt += _resolve_effects(card, target_index, bonus + resonance, .5)
 	# Reverb (余韵): a full free re-cast queued for the START of next turn, not this same turn —
 	# unlike the "echo" rune above (immediate, same turn, half value), so the two don't stack
@@ -402,6 +460,7 @@ func end_turn() -> void:
 		if str(instance.card_id) == "decay_blight":
 			_damage_player(3)
 			if state.phase != "player": return
+	state.empty_hand_at_end = state.hand.is_empty()
 	var kept_hand: Array = []
 	for instance in state.hand:
 		if str(instance.card_id) == "void_curse": state.exhaust.append(instance)
@@ -409,16 +468,14 @@ func end_turn() -> void:
 	state.hand = kept_hand
 
 	state.turn += 1
-	# Energy opens at 2 and climbs by 1 every two turns (turns 1-2 -> 2, 3-4 -> 3, 5-6 -> 4, ...)
-	# instead of a flat amount, so a long fight gradually loosens up rather than staying as
-	# tight on turn 20 as it was on turn 1. titanBell trades that growth away entirely (its
-	# own "-1 energy cap every 2 turns" exactly cancels the climb, floored at the opening 2
-	# rather than actually going negative) in exchange for the big battle-start HP/shield
-	# it already grants in create().
 	var energy_growth: int = int((state.turn - 1) / 2)
 	if _has_relic("titanBell"): energy_growth = 0
 	state.energy = 2 + energy_growth
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
+	var sl_pending: int = int(state.get("soul_lantern_pending", 0))
+	if sl_pending > 0:
+		state.energy += sl_pending
+		state.soul_lantern_pending = 0
 	var overload_due: int = int(state.get("overload_pending", 0))
 	if overload_due > 0:
 		state.energy = maxi(1, state.energy - overload_due)
@@ -426,10 +483,18 @@ func end_turn() -> void:
 	var kept_shield: int = 0
 	if _has_resonance("res_sun_moon"):
 		kept_shield = state.player.shield
+	elif _has_relic("spiritArmor"):
+		kept_shield = mini(30, state.player.shield)
 	elif _has_relic("mirrorScale"):
 		kept_shield = int(state.player.shield / 2)
 	state.player.shield = kept_shield
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
+	if _has_relic("venomFlask"):
+		for vi in state.enemies.size():
+			var ven_e: Dictionary = state.enemies[vi]
+			if ven_e.health > 0 and int(ven_e.get("poison", 0)) > 0:
+				var v_dmg := maxi(1, int(round(float(ven_e.poison) * 0.5)))
+				_damage_enemy(vi, v_dmg, true)
 	if _has_resonance("res_blood_seed"):
 		var target_hp: int = state.player.health + 4
 		if target_hp > state.player.max_health:
@@ -448,14 +513,15 @@ func end_turn() -> void:
 		state.player.health = mini(state.player.max_health, state.player.health + inscr_heal)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0:
 		state.energy += 2 + (2 if _has_resonance("res_sun_moon") else 0)
-	# Energy Famine (Phase 8 Curse Run mutator): a hard cap applied last, after every other
-	# energy source this turn (foxCharm/overload/thunderSeal above), so it holds regardless of
-	# what else would have granted energy.
 	var energy_cap: int = int(state.get("modifier", {}).get("energy_cap", 0))
 	if energy_cap > 0: state.energy = mini(state.energy, energy_cap)
-	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""
-	# A fixed 2-card draw each turn (+1 if wind stride boon active, +1 again if cursedTome, +1 if res_fox_wind on Turn 2)
+	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""; state.swift_boots_used = false; state.echo_mirror_used = false
 	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
+	if _has_relic("moonstone"):
+		if state.turn % 2 == 1: turn_draw += 1
+		else: state.player.shield += 6
+	if _has_relic("lotusIncense") and bool(state.get("empty_hand_at_end", false)):
+		turn_draw += 2
 	# Fewer Draws (Phase 8 Curse Run mutator): floored at 1 so a long fight can never fully
 	# stall the hand from growing at all.
 	turn_draw = maxi(1, turn_draw - int(state.get("modifier", {}).get("draw_penalty", 0)))
@@ -514,11 +580,10 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					# landing a hit, checked per target since cleave can hit a mix of burning
 					# and non-burning enemies in the same swing.
 					var flame_bonus := 3 if state.get("rune_sets", []).has("set_flame") and int(state.enemies[index].get("burn", 0)) > 0 else 0
+					if state.turn == 1 and _has_relic("celestialBell"): dmg_mult *= 1.25
+					if int(state.enemies[index].get("poison", 0)) > 0 and _has_relic("serpentFang"): dmg_mult *= 1.35
 					var hit := _damage_enemy(index,int(round(amount * execute * critical * dmg_mult)) + flame_bonus,card.get("special","") == "pierce" or state.equipment.has("stoneSpear"))
 					dealt += hit
-					# chaosPrism's payoff for the +6 enemy shield it hands out at battle start:
-					# every attack that actually lands stacks Vulnerable, snowballing the rest
-					# of the fight once that opening shield is chewed through.
 					if hit > 0 and _has_relic("chaosPrism") and state.enemies[index].health > 0:
 						state.enemies[index].vulnerable = int(state.enemies[index].get("vulnerable", 0)) + 1
 			"shield":
@@ -527,6 +592,10 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					shield_gain = int(round(shield_gain * 1.5))
 					emit_signal("event","rune_set",{"id":"set_stone"})
 				state.player.shield += shield_gain
+				if _has_relic("heavyAnchor") and shield_gain >= 15:
+					var anchor_target := _smart_target()
+					if anchor_target >= 0:
+						_damage_enemy(anchor_target, 6, false)
 				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + shield_gain
 				if state.equipment.has("tideCharm") and not state.tide_used:
 					state.tide_used = true
@@ -534,10 +603,6 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					var tc_shield: int = [0, 2, 4, 6][clampi(_equip_tier("tideCharm"), 0, 3)]
 					if tc_shield > 0: state.player.shield += tc_shield
 			"heal":
-				# No Mercy (Phase 8 Curse Run mutator): card-based healing is nullified for the
-				# whole run. Scoped to this one operation deliberately — auditing every other
-				# heal source (rest sites, ancientSeed, mastery heal_per_turn) is out of scope
-				# for an opt-in combat handicap.
 				if not state.get("modifier", {}).get("no_heal", false):
 					state.player.health = mini(state.player.max_health,state.player.health + amount)
 			"draw": _draw(amount)
@@ -547,9 +612,13 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 				if effect.status == "burn" and target_index >= 0 and bool(state.enemies[target_index].mechanics.get("burn_immune", false)):
 					final_amt = 0
 				elif effect.status == "burn" and state.get("boons", []).has("boon_flame_affinity"): final_amt += 2
+				elif effect.status == "burn" and _has_relic("blazingBrazier") and rng.randf() < 0.5: final_amt += 2
 				if final_amt > 0:
 					if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
-					elif target_index >= 0: state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
+					elif target_index >= 0:
+						state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
+						if _has_relic("frostNeedle"):
+							state.enemies[target_index].shield = maxi(0, int(state.enemies[target_index].get("shield", 0)) - 2)
 	return dealt
 
 func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
@@ -560,12 +629,14 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if enemy.mechanics.get("dodge_every",0) > 0 and enemy.hits % enemy.mechanics.dodge_every == 0: emit_signal("event","dodge",{"enemy":index}); return 0
 	if int(enemy.mechanics.get("frost_armor", 0)) > 0:
 		amount = maxi(1, amount - int(enemy.mechanics.frost_armor))
-	# Vulnerable is the counterplay to armor-heavy late enemies: raw damage scales up before
-	# shield absorption, same slot in the pipeline pierce and Stone Spear already use.
 	if int(enemy.get("vulnerable", 0)) > 0:
 		amount = int(round(amount * 1.5)) + (2 if _has_resonance("res_chaos_titan") else 0)
+	var old_shield: int = int(enemy.shield)
 	var absorbed := 0 if pierce else mini(enemy.shield,amount)
 	enemy.shield -= absorbed
+	if _has_relic("obsidianIdol") and old_shield > 0 and enemy.shield == 0 and not pierce:
+		enemy.health -= 8
+		emit_signal("event","shatter",{"enemy":index,"amount":8})
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
 	if state.has("stats"): state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
@@ -606,6 +677,13 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 			_draw(sb_draw)
 			if sb_shield > 0: state.player.shield += sb_shield
 		if _has_relic("bloodJade"): state.player.health = mini(state.player.max_health, state.player.health + 3)
+		if _has_relic("bloodChalice"):
+			for h_inst in state.hand:
+				var h_c: Dictionary = content.card(str(h_inst.get("card_id", "")))
+				if _is_attack(h_c):
+					state.upgrades[h_c.id] = int(state.upgrades.get(h_c.id, 0)) + 2
+		if _has_relic("spiritBanner") and index > 0 and not state.enemies.is_empty() and state.enemies[0].health > 0:
+			_damage_enemy(0, 12, true)
 		if _has_resonance("res_nether_pact"):
 			state.pact_cleansed_turns = int(state.get("pact_cleansed_turns", 0)) + 1
 			_draw(1)
@@ -640,6 +718,8 @@ func _trigger_great_boss_phase_2(enemy: Dictionary) -> void:
 			state.player.weak = int(state.player.get("weak", 0)) + 2
 			emit_signal("event", "boss_phase", {"chapter": 40, "phase": 2, "name": "风暴领域", "name_en": "Cyclone Domain", "desc": "开启风暴护体每2次受击闪避1次，使玩家陷入2层虚弱！", "desc_en": "Gains Dodge every 2 hits, inflicts 2 Weak on player!"})
 		50:
+			enemy.damage += 8
+			enemy.shield += 30
 			enemy.burn = 0
 			enemy.poison = 0
 			enemy.vulnerable = 0
@@ -695,17 +775,16 @@ func _check_mechanics_phases(enemy_index: int, enemy: Dictionary) -> void:
 		if boost3 > 0: enemy.damage += boost3
 		emit_signal("event", "boss_phase_change", {"enemy": enemy_index, "phase": 3})
 
+# Helper for mechanics that behave differently per phase (e.g. phase-2 Summon shuts off).
 func _mech_phase(enemy: Dictionary) -> int:
 	return int(enemy.get("phase", 1))
 
-# Chapter 50 phase 3 gains an extra swing per turn. Kept as a helper so the phase-gate and the
-# mechanics key live in one place rather than being re-derived at each call site.
 func _attacks_twice(enemy: Dictionary) -> bool:
 	return bool(enemy.mechanics.get("phase3_double_attack", false)) and _mech_phase(enemy) >= 3
 
-# Runs at the *end of the player's turn* — i.e. the top of end_turn(), before enemies act —
-# because every mechanic here reads player-turn state (hand size, cards played, damage blocked)
-# that is about to be reset for the next turn.
+# Runs at the *end of the player's turn* — inside end_turn(), before any enemy executes its
+# intent, so the player's choices (how many cards they kept, how many they played, whether they
+# stacked burn) determine what happens.
 func _apply_boss_player_turn_end() -> void:
 	for enemy_index in state.enemies.size():
 		var enemy: Dictionary = state.enemies[enemy_index]
@@ -748,29 +827,22 @@ func _apply_boss_player_turn_start() -> void:
 		var m: Dictionary = enemy.mechanics
 		# Soul Tide (Chapter 20): clogs the hand with unplayable curses. Removed at the end of
 		# the player's turn by end_turn()'s existing void_curse sweep, so the hand isn't
-		# permanently degraded — it's a per-turn tempo tax, not a slow death spiral.
+		# permanently bricked — only that turn's draw is taxed.
 		if m.has("soul_tide_curse"):
-			var count: int = int(m.get("soul_tide_count", 1))
-			if _mech_phase(enemy) >= 2: count = int(m.get("phase2_soul_tide", count))
-			var curse_id: String = str(m.soul_tide_curse)
-			for i in count:
-				if state.hand.size() >= 10: break
-				state.hand.append({"card_id": curse_id})
-				emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"soul_tide","card":curse_id})
-		# Memory Erase (Chapter 40): permanently exhausts the player's most expensive card for
-		# the rest of the battle. Deliberately "most expensive" and not random — a random
-		# exhaust would be unattributable, whereas this one is a legible "protect your top end"
-		# pressure the player can play around.
-		if m.has("exhaust_hand_every"):
-			var interval: int = int(m.exhaust_hand_every)
-			if _mech_phase(enemy) >= 2: interval = int(m.get("phase2_exhaust_every", interval))
-			if interval > 0 and state.turn % interval == 0:
+			var curses_due: int = int(m.get("phase2_soul_tide", 2)) if _mech_phase(enemy) >= 2 else int(m.get("soul_tide_count", 1))
+			for c in curses_due:
+				if state.hand.size() < 10:
+					state.hand.append({"uid": 9000 + c, "card_id": str(m.soul_tide_curse)})
+			emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"soul_tide","count":curses_due})
+		# Memory Erase (Chapter 40): permanently exhausts the player's most expensive card.
+		if m.has("exhaust_hand_every") and int(m.exhaust_hand_every) > 0:
+			var interval: int = int(m.get("phase2_exhaust_every", 2)) if _mech_phase(enemy) >= 2 else int(m.exhaust_hand_every)
+			if state.turn % interval == 0 and not state.hand.is_empty():
 				var idx := _most_expensive_hand_index()
 				if idx >= 0:
 					var erased: Dictionary = state.hand[idx]
 					state.hand.remove_at(idx)
 					state.exhaust.append(erased)
-					emit_signal("event","boss_mechanic",{"enemy":enemy_index,"kind":"memory_erase","card":erased.card_id})
 		# Mirror Shield (Chapter 50, phase 2): arms the negate, consumed by play().
 		var mirror: bool = bool(m.get("phase2_mirror_shield", false)) and _mech_phase(enemy) >= 2
 		state.mirror_shield_active = mirror
@@ -825,7 +897,18 @@ func _damage_player(amount: int, pierce := false) -> int:
 			state.player.health = pm_hp
 			state.phoenix_used = true
 			emit_signal("event","equipment",{"id":"phoenixMail"})
+		elif _has_relic("phoenixFeather") and not bool(state.get("phoenix_used", false)):
+			state.player.health = maxi(1, int(state.player.max_health * 0.2))
+			state.phoenix_used = true
+			emit_signal("event","relic",{"id":"phoenixFeather"})
 		else: state.phase = "lost"
+	if dealt > 0:
+		if _has_relic("dragonScale"):
+			_draw(1)
+		if _has_relic("ironThorns"):
+			var thorn_target := _smart_target()
+			if thorn_target >= 0:
+				_damage_enemy(thorn_target, 3, true)
 	emit_signal("event","player_hit",{"amount":dealt})
 	return dealt
 

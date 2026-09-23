@@ -438,12 +438,14 @@ func _grant_stage_rewards() -> void:
 		g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + int(inscr_rewards.dust)
 	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
 	if float(m_bonuses.get("gold_mult", 1.0)) > 1.0: multiplier *= float(m_bonuses.gold_mult)
-	# A cleared stage can no longer be re-entered at all (see _show_replay_mode_prompt), so
-	# every campaign win reaching here is a genuine first clear — no more halved "replay"
-	# rewards to compute.
+	if g.profile.get("relics", []).has("gamblerCoin"): multiplier *= 1.3
 	g.pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": ""}
 	g.profile.gold += int(g.pending_rewards.gold)
-	g.profile.health = 60
+	if g.profile.get("relics", []).has("vitalityGourd") and g.pre_battle_health >= 60 and g.combat != null and int(g.combat.state.player.health) >= 60:
+		g.profile.health = int(g.profile.get("health", 60)) + 1
+		g._toast("乾坤葫芦：生命上限永久 +1！" if g.lang == "zh-Hans" else "Vitality Gourd: +1 Max HP!", g.JADE)
+	else:
+		g.profile.health = 60
 	g.profile.unlocked = maxi(int(g.profile.unlocked), mini(g.content.encounters.size() - 1, g.current_stage + 1))
 	g.profile.position = g.current_stage
 	g._check_feature_unlocks()
@@ -553,10 +555,9 @@ func show_reward_details() -> void:
 		page.add_child(rate_btn)
 		LogService.event(LogService.EV_RATE_PROMPT_SHOWN, {}, g)
 
-	if g.current_stage < 3 or int(g.profile.unlocked) <= 3:
-		var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
-		if not stats.is_empty():
-			page.add_child(g._build_victory_recap_card(stats))
+	var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
+	if not stats.is_empty():
+		page.add_child(g._build_victory_recap_card(stats))
 
 	var spoils := HBoxContainer.new()
 	spoils.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -781,26 +782,141 @@ func show_event(index: int, kind: String) -> void:
 		11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	if kind == "event":
-		page.add_child(g._button(g.t("ui.event_blood_pact"), func():
-			g.profile.gold += 50
-			g._advance_quest("earn_gold", 50)
-			_mark_stage_event_claimed(index)
-			SpiritSave.write(g.profile)
-			g._haptic("heavy")
-			g.begin_battle(index)
-		, Color("591d1d"), Vector2(300, 48)))
-		page.add_child(g._button(g.t("ui.event_spirit_blessing"), func():
-			g.show_deck_purge(func(): show_event(index, "event"), 0, func():
-				_mark_stage_event_claimed(index)
-				g.begin_battle(index)
-			)
-		, Color("21594e"), Vector2(300, 48)))
-		page.add_child(g._button(g.t("ui.rest_smith_choice"), func():
-			g.show_deck_upgrade(func(): show_event(index, "event"), func():
-				_mark_stage_event_claimed(index)
-				g.begin_battle(index)
-			)
-		, g.EMBER, Vector2(300, 48)))
+		var story_ev: Dictionary = g.content.random_story_event(index, int(g.profile.get("unlocked", 0)))
+		var ev_icon: String = str(story_ev.get("icon", "📜"))
+		var ev_title: String = str(story_ev.get("title_zh" if g.lang == "zh-Hans" else "title_en", "奇遇"))
+		var ev_desc: String = str(story_ev.get("desc_zh" if g.lang == "zh-Hans" else "desc_en", ""))
+
+		# Story Narrative Card Panel
+		var story_panel := PanelContainer.new()
+		story_panel.custom_minimum_size = Vector2(330, 0)
+		story_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		story_panel.add_theme_stylebox_override("panel", g._panel(Color("132832"), 12, Color(str(story_ev.get("color", "ffd700")))))
+		var story_vbox := VBoxContainer.new()
+		story_vbox.add_theme_constant_override("separation", 8)
+		story_panel.add_child(story_vbox)
+
+		var title_row := HBoxContainer.new()
+		title_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		title_row.add_theme_constant_override("separation", 6)
+		story_vbox.add_child(title_row)
+		title_row.add_child(g._label(ev_icon, 20, Color(str(story_ev.get("color", "ffd700")))))
+		title_row.add_child(g._label(ev_title, 16, g.GOLD))
+
+		var desc_lbl := Label.new()
+		desc_lbl.text = ev_desc
+		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_lbl.add_theme_font_size_override("font_size", 11)
+		desc_lbl.add_theme_color_override("font_color", Color("d1e5e8"))
+		story_vbox.add_child(desc_lbl)
+		page.add_child(story_panel)
+
+		# Render choice buttons
+		for choice in story_ev.get("choices", []):
+			var ch_label: String = str(choice.get("label_zh" if g.lang == "zh-Hans" else "label_en", "选择"))
+			var ch_type: String = str(choice.get("type", "leave"))
+			var btn := g._button(ch_label, func():
+				match ch_type:
+					"heal":
+						var heal_val: int = int(choice.get("heal_amount", 15))
+						g.profile.health = mini(60, int(g.profile.get("health", 60)) + heal_val)
+						g._toast(g.tf("ui.heal_toast", heal_val) if g.lang == "zh-Hans" else "+%d HP!" % heal_val, g.JADE)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"gold":
+						var gold_val: int = int(choice.get("gold_amount", 40))
+						g.profile.gold = int(g.profile.get("gold", 0)) + gold_val
+						g._advance_quest("earn_gold", gold_val)
+						g._toast("+%d 金币！" % gold_val if g.lang == "zh-Hans" else "+%d Gold!" % gold_val, g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"damage_for_gold":
+						var hp_cost: int = int(choice.get("hp_cost", 10))
+						var gold_val: int = int(choice.get("gold_amount", 50))
+						g.profile.health = maxi(1, int(g.profile.get("health", 60)) - hp_cost)
+						g.profile.gold = int(g.profile.get("gold", 0)) + gold_val
+						g._advance_quest("earn_gold", gold_val)
+						g._toast("获得 %d 金币，损失 %d 生命" % [gold_val, hp_cost] if g.lang == "zh-Hans" else "+%d Gold, -%d HP" % [gold_val, hp_cost], g.EMBER)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"damage_for_relic":
+						var hp_cost: int = int(choice.get("hp_cost", 12))
+						g.profile.health = maxi(1, int(g.profile.get("health", 60)) - hp_cost)
+						var available: Array = g.content.RELICS.filter(func(r): return not g.profile.relics.has(r.id) and not SpiritContent.BOSS_RELIC_IDS.has(r.id))
+						if not available.is_empty():
+							var relic_picked: Dictionary = available[randi() % available.size()]
+							g.profile.relics.append(relic_picked.id)
+							g._toast("获得遗物：%s" % str(relic_picked.zh if g.lang == "zh-Hans" else relic_picked.en), g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"buy_relic":
+						var g_cost: int = int(choice.get("gold_cost", 30))
+						if int(g.profile.get("gold", 0)) < g_cost:
+							g._toast(g.t("ui.shop_need_gold"), g.EMBER)
+							return
+						g.profile.gold = int(g.profile.get("gold", 0)) - g_cost
+						var available: Array = g.content.RELICS.filter(func(r): return not g.profile.relics.has(r.id) and not SpiritContent.BOSS_RELIC_IDS.has(r.id))
+						if not available.is_empty():
+							var relic_picked: Dictionary = available[randi() % available.size()]
+							g.profile.relics.append(relic_picked.id)
+							g._toast("获得遗物：%s" % str(relic_picked.zh if g.lang == "zh-Hans" else relic_picked.en), g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"buy_heal":
+						var g_cost: int = int(choice.get("gold_cost", 15))
+						if int(g.profile.get("gold", 0)) < g_cost:
+							g._toast(g.t("ui.shop_need_gold"), g.EMBER)
+							return
+						g.profile.gold = int(g.profile.get("gold", 0)) - g_cost
+						var heal_val: int = int(choice.get("heal_amount", 20))
+						g.profile.health = mini(60, int(g.profile.get("health", 60)) + heal_val)
+						g._toast(g.tf("ui.heal_toast", heal_val) if g.lang == "zh-Hans" else "+%d HP!" % heal_val, g.JADE)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"gamble":
+						var g_cost: int = int(choice.get("gold_cost", 30))
+						if int(g.profile.get("gold", 0)) < g_cost:
+							g._toast(g.t("ui.shop_need_gold"), g.EMBER)
+							return
+						g.profile.gold = int(g.profile.get("gold", 0)) - g_cost
+						if randf() < 0.5:
+							var win_val: int = int(choice.get("win_gold", 80))
+							g.profile.gold = int(g.profile.get("gold", 0)) + win_val
+							g._advance_quest("earn_gold", win_val)
+							g._toast("赌圣降临！赢得 %d 金币！" % win_val if g.lang == "zh-Hans" else "Jackpot! Won %d Gold!" % win_val, g.GOLD)
+						else:
+							g._toast("手气不佳，输掉了赌注！" if g.lang == "zh-Hans" else "Unlucky, lost the gamble!", g.MUTED)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"purge", "damage_and_purge":
+						var hp_cost: int = int(choice.get("hp_cost", 0))
+						if hp_cost > 0: g.profile.health = maxi(1, int(g.profile.get("health", 60)) - hp_cost)
+						g.show_deck_purge(func(): show_event(index, "event"), 0, func():
+							_mark_stage_event_claimed(index)
+							g.begin_battle(index)
+						)
+					"upgrade", "damage_and_upgrade", "upgrade_and_heal":
+						var hp_cost: int = int(choice.get("hp_cost", 0))
+						if hp_cost > 0: g.profile.health = maxi(1, int(g.profile.get("health", 60)) - hp_cost)
+						var heal_val: int = int(choice.get("heal_amount", 0))
+						if heal_val > 0: g.profile.health = mini(60, int(g.profile.get("health", 60)) + heal_val)
+						g.show_deck_upgrade(func(): show_event(index, "event"), func():
+							_mark_stage_event_claimed(index)
+							g.begin_battle(index)
+						)
+					_:
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+			, Color("1f4a54"), Vector2(320, 42))
+			page.add_child(btn)
 	elif kind == "bonus":
 		page.add_child(g._button(g.t("ui.bonus_gold_choice"), func():
 			g.profile.gold += 60
