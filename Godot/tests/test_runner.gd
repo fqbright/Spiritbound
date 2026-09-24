@@ -1394,6 +1394,95 @@ func run() -> void:
 	check(int(delete_game2.profile.gold) == 12345, "a failed cloud deletion does not touch the local profile")
 	delete_game2.free()
 
+	# Authentication & Cloud Linking Verification (Apple, Google, Supabase)
+	check(typeof(SpiritAuth.is_apple_available()) == TYPE_BOOL, "is_apple_available returns boolean")
+	check(typeof(SpiritAuth.is_google_available()) == TYPE_BOOL, "is_google_available returns boolean")
+
+	# 1. Apple Sign-In simulation & linking
+	var auth_game := SpiritGame.new()
+	auth_game.content = content
+	auth_game.profile = SpiritSave.defaults(content)
+	var apple_login_res := [false, ""]
+	SpiritAuth.simulate_mode = true
+	SpiritAuth.sign_in_with_apple(auth_game, func(ok, prov): apple_login_res[0] = ok; apple_login_res[1] = prov)
+	check(apple_login_res[0] and apple_login_res[1] == "apple", "sign_in_with_apple simulation completes successfully")
+	check(auth_game.profile.account.provider == "apple", "account provider set to 'apple'")
+	check(str(auth_game.profile.account.user_id).begins_with("apple_"), "apple user_id formatted with prefix")
+	check(str(auth_game.profile.account.email).ends_with("@privaterelay.appleid.com"), "apple private relay email generated")
+	check(SpiritSave.is_cloud_linked(auth_game.profile), "profile recognized as cloud linked after apple sign-in")
+	check(SpiritSave.account_provider(auth_game.profile) == "apple", "account_provider returns 'apple'")
+
+	# 2. Native Apple Login callback handling (success & cancel)
+	var native_apple_res := [false, ""]
+	SpiritAuth._on_native_apple_login({
+		"status": "success",
+		"user_id": "apple.native.001",
+		"email": "hero@privaterelay.appleid.com",
+		"display_name": "剑心",
+		"id_token": ""
+	}, auth_game, func(ok, prov): native_apple_res[0] = ok; native_apple_res[1] = prov)
+	check(native_apple_res[0] and native_apple_res[1] == "apple", "native apple login callback handles success")
+	check(auth_game.profile.account.user_id == "apple.native.001", "native apple user_id saved")
+	check(auth_game.profile.account.email == "hero@privaterelay.appleid.com", "native apple email saved")
+
+	var native_apple_fail := [true, ""]
+	var fresh_apple_game := SpiritGame.new()
+	fresh_apple_game.content = content
+	fresh_apple_game.profile = SpiritSave.defaults(content)
+	SpiritAuth._on_native_apple_login({
+		"status": "cancelled",
+		"error": "User cancelled Apple ID sheet"
+	}, fresh_apple_game, func(ok, prov): native_apple_fail[0] = ok; native_apple_fail[1] = prov)
+	check(not native_apple_fail[0], "native apple login callback handles cancellation")
+	check(not SpiritSave.is_cloud_linked(fresh_apple_game.profile), "cancelled apple login does not link profile")
+	fresh_apple_game.free()
+
+	# 3. Google Sign-In simulation & linking
+	var google_login_res := [false, ""]
+	SpiritAuth.sign_in_with_google(auth_game, func(ok, prov): google_login_res[0] = ok; google_login_res[1] = prov)
+	check(google_login_res[0] and google_login_res[1] == "google", "sign_in_with_google simulation completes successfully")
+	check(auth_game.profile.account.provider == "google", "account provider set to 'google'")
+	check(str(auth_game.profile.account.user_id).begins_with("google_"), "google user_id formatted with prefix")
+	check(str(auth_game.profile.account.email).ends_with("@gmail.com"), "google email formatted with domain")
+	check(SpiritSave.is_cloud_linked(auth_game.profile), "profile recognized as cloud linked after google sign-in")
+	check(SpiritSave.account_provider(auth_game.profile) == "google", "account_provider returns 'google'")
+
+	# 4. Native Google Login callback handling (success & cancel)
+	var native_google_res := [false, ""]
+	SpiritAuth._on_native_google_login({
+		"status": "success",
+		"user_id": "google.native.002",
+		"email": "master@gmail.com",
+		"display_name": "灵皇",
+		"id_token": ""
+	}, auth_game, func(ok, prov): native_google_res[0] = ok; native_google_res[1] = prov)
+	check(native_google_res[0] and native_google_res[1] == "google", "native google login callback handles success")
+	check(auth_game.profile.account.user_id == "google.native.002", "native google user_id saved")
+	check(auth_game.profile.account.email == "master@gmail.com", "native google email saved")
+
+	var native_google_fail := [true, ""]
+	var fresh_google_game := SpiritGame.new()
+	fresh_google_game.content = content
+	fresh_google_game.profile = SpiritSave.defaults(content)
+	SpiritAuth._on_native_google_login({
+		"status": "cancelled",
+		"error": "Google sign-in cancelled"
+	}, fresh_google_game, func(ok, prov): native_google_fail[0] = ok; native_google_fail[1] = prov)
+	check(not native_google_fail[0], "native google login callback handles cancellation")
+	check(not SpiritSave.is_cloud_linked(fresh_google_game.profile), "cancelled google login does not link profile")
+	fresh_google_game.free()
+
+	# 5. Sign Out restores guest state
+	var sign_out_res := [false]
+	SpiritAuth.sign_out(auth_game, func(ok): sign_out_res[0] = ok)
+	check(sign_out_res[0], "sign_out completes successfully")
+	check(not SpiritSave.is_cloud_linked(auth_game.profile), "sign_out unlinks account")
+	check(SpiritSave.account_provider(auth_game.profile) == "guest", "sign_out restores provider to guest")
+	check(auth_game.profile.account.user_id == "", "sign_out clears user_id")
+	check(auth_game.profile.account.email == "", "sign_out clears email")
+	auth_game.free()
+	SpiritAuth.simulate_mode = false
+
 	# Samsara Combat perks verification: shield_start/draw_turn1 flow through hero_bonuses, the
 	# same mechanism Hero Mastery perks already use (see _current_hero_mastery_bonuses()) — A6+
 	# difficulty's own real combat effect (health_scale/damage_bonus) is a completely separate

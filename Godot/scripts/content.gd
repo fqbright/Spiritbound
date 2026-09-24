@@ -2902,6 +2902,7 @@ const UI_TEXT = {
 	"ui.title_return": {"zh-Hans":"返回主界面", "en":"Return to Title"},
 	"ui.auth_title_account_status": {"zh-Hans":"账号状态", "en":"Account Status"},
 	"ui.auth_apple_unavailable": {"zh-Hans":"Apple 登录需在后台配置密钥，请使用【邮箱登录/注册】同步云存档。", "en":"Apple Sign-In requires backend configuration. Please use Email Login to sync."},
+	"ui.auth_google_unavailable": {"zh-Hans":"Google 登录需在后台配置密钥，请使用【邮箱登录/注册】同步云存档。", "en":"Google Sign-In requires backend configuration. Please use Email Login to sync."},
 	"ui.intro_skip": {"zh-Hans":"跳过 ⏭", "en":"Skip ⏭"},
 	"ui.intro_act1": {"zh-Hans":"混沌初开 · 万灵归虚", "en":"From primordial chaos, spirits arose..."},
 	"ui.intro_act2": {"zh-Hans":"远古封印 · 灵潮涌动", "en":"Ancient seals shatter, mystical tides surge..."},

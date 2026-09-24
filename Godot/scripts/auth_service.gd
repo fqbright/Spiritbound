@@ -87,6 +87,8 @@ static func reset_password(game: SpiritGame, email: String, on_done: Callable = 
 		if on_done.is_valid():
 			on_done.call(false)
 
+static var simulate_mode: bool = false
+
 static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable()) -> void:
 	if Engine.has_singleton("AppleSignIn"):
 		var apple_plugin = Engine.get_singleton("AppleSignIn")
@@ -96,7 +98,7 @@ static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable())
 			apple_plugin.call("start_login")
 			return
 
-	if DisplayServer.get_name() != "headless":
+	if not simulate_mode and DisplayServer.get_name() != "headless":
 		game._toast(game.t("ui.auth_apple_unavailable"), game.GOLD)
 		game.show_auth_modal(on_done)
 		if on_done.is_valid():
@@ -141,7 +143,14 @@ static func sign_in_with_google(game: SpiritGame, on_done: Callable = Callable()
 			google_plugin.call("start_login")
 			return
 
-	# Fallback / Dev / Sandbox simulation
+	if not simulate_mode and DisplayServer.get_name() != "headless":
+		game._toast(game.t("ui.auth_google_unavailable"), game.GOLD)
+		game.show_auth_modal(on_done)
+		if on_done.is_valid():
+			on_done.call(false, "google_unavailable")
+		return
+
+	# Fallback / Dev / Sandbox simulation (headless test environment only)
 	var account: Dictionary = game.profile.get("account", {})
 	var current_name: String = str(account.get("name", "")).strip_edges()
 	if current_name.is_empty():
