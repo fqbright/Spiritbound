@@ -862,17 +862,17 @@ func show_title_screen() -> void:
 
 	# Account Switch / Login Button
 	var auth_btn := _button(t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title"), func():
-		show_auth_modal(func(): show_title_screen())
+		show_auth_modal(func(): show_map())
 	, JADE, Vector2(0, 40))
 	auth_btn.name = "TitleAuthBtn"
 	page.add_child(auth_btn)
 
-	# Quick OAuth row
+	# Quick OAuth row (Apple, Google, Guest)
 	var oauth_row := HBoxContainer.new()
 	oauth_row.add_theme_constant_override("separation", 8)
 
 	var apple_btn := _button("Apple", func():
-		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_title_screen())
+		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
 	, Color("080808"), Vector2(0, 38))
 	apple_btn.name = "TitleAppleBtn"
 	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -885,6 +885,24 @@ func show_title_screen() -> void:
 	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	apple_btn.add_child(apple_icon)
 	oauth_row.add_child(apple_btn)
+
+	var google_btn := _button("Google", func():
+		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
+	, Color("f0f2f5"), Vector2(0, 38))
+	google_btn.name = "TitleGoogleBtn"
+	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
+	google_btn.add_theme_color_override("font_hover_color", Color("111111"))
+	google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
+	var google_icon := TextureRect.new()
+	google_icon.texture = load("res://assets/icons/icon_google.png")
+	google_icon.custom_minimum_size = Vector2(16, 16)
+	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	google_icon.position = Vector2(10, 11)
+	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	google_btn.add_child(google_icon)
+	oauth_row.add_child(google_btn)
 
 	var guest_btn := _button(t("ui.auth_guest_start"), func():
 		if not SpiritSave.has_account_name(profile):
@@ -917,7 +935,7 @@ func show_title_screen() -> void:
 
 	page.add_child(bot_row)
 
-	page.add_child(_label("v1.0.5 · Build 25", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label("v1.0.5 · Build 26", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 func show_account_setup(from_rename: bool = false) -> void:
 	_close_settings()
@@ -2952,11 +2970,8 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 			SpiritAuth.sign_up_with_supabase(self, email_val, pass_val, name_val, func(ok: bool, res_code: String):
 				submit_btn.disabled = false
 				if ok:
-					if res_code == "supabase":
-						_close_auth_modal()
-						if on_success.is_valid(): on_success.call()
-					else:
-						hint_lbl.text = t("ui.auth_signup_check_email")
+					_close_auth_modal()
+					if on_success.is_valid(): on_success.call()
 				else:
 					hint_lbl.text = res_code
 			)

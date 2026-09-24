@@ -191,7 +191,7 @@ static func link_account(profile: Dictionary, provider: String, user_id: String,
 	profile.account.user_id = user_id
 	if not email.is_empty():
 		profile.account.email = email
-	if not display_name.is_empty() and str(profile.account.get("name", "")).strip_edges().is_empty():
+	if not display_name.is_empty():
 		profile.account.name = display_name
 	profile.account.linked_at = int(Time.get_unix_time_from_system())
 	profile.account.cloud_synced_at = int(Time.get_unix_time_from_system())

@@ -206,5 +206,18 @@ if [ $INSTALLED -eq 0 ]; then
 fi
 
 echo "✨ Launching Spiritbound on $DEVICE_NAME..."
-xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$BUNDLE_ID"
-echo "🎉 Game successfully launched on your iPhone!"
+LAUNCHED=0
+for attempt in {1..5}; do
+    if xcrun devicectl device process launch --device "$DEVICE_ID" --terminate-existing "$BUNDLE_ID" 2>/dev/null; then
+        LAUNCHED=1
+        echo "🎉 Game successfully launched on your iPhone!"
+        break
+    else
+        echo "   Waiting for device unlock to launch... ($attempt/5)"
+        sleep 2
+    fi
+done
+
+if [ $LAUNCHED -eq 0 ]; then
+    echo "📱 App installed successfully! Please tap the Spiritbound icon on your iPhone screen to open."
+fi
