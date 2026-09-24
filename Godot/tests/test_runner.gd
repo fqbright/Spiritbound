@@ -523,7 +523,7 @@ func run() -> void:
 		if int(c.cost) < 1 or int(c.cost) > 3 or c.effects.is_empty():
 			invalid_cards += 1
 	var curse_cards: Array = content.cards.filter(func(c): return c.get("rarity", "") == "Curse")
-	check(invalid_cards == 0 and content.cards.size() == 53 and curse_cards.size() == 2, "all 51 collectible cards have valid costs/effects and 2 curses exist")
+	check(invalid_cards == 0 and content.cards.size() == 159 and curse_cards.size() == 2, "all 157 collectible cards have valid costs/effects and 2 curses exist")
 
 	var collect_all_ach: Dictionary = SpiritContent.ACHIEVEMENTS.filter(func(a): return a.id == "collect_all")[0]
 	check(int(collect_all_ach.target) == content.cards.size() - curse_cards.size(), "collect_all achievement target (%d) tracks the live non-Curse card count (%d), not a stale literal" % [int(collect_all_ach.target), content.cards.size() - curse_cards.size()])

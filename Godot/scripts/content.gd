@@ -1382,7 +1382,7 @@ const ACHIEVEMENTS = [
 	# This has drifted silently before as cards were added; test_runner.gd now asserts this
 	# target against the live count so a future addition fails loudly instead of quietly
 	# making "collect all" completable early.
-	{"id":"collect_all","kind":"card_collection","target":51,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	{"id":"collect_all","kind":"card_collection","target":157,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},

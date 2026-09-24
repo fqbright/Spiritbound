@@ -83,7 +83,7 @@ const EXPECTED_DIGEST := NO_DIGEST
 # lives on the ShopDeckScreen composition object, which needs a live SpiritGame plus its own
 # _init() to construct, while this probe only reaches game.gd's public/delegator surface plus
 # SpiritContent/SpiritCombat directly.
-const SHOP_STOCK_COUNT := 6
+const SHOP_STOCK_COUNT := 10
 
 # Regression floors for the farmed-depth guardrail in _report(), one per retry budget since
 # quick mode's single retry is a meaningfully harsher policy than full mode's eight and reaches

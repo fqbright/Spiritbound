@@ -3474,13 +3474,16 @@ func _card_synergy_tags(card: Dictionary) -> String:
 	for effect in card.get("effects", []):
 		var op: String = str(effect.get("operation", ""))
 		if op == "status":
-			var glyph: String = {"burn":"🔥","poison":"☣","vulnerable":"💢","weak":"🌀","strength":"💪"}.get(str(effect.get("status", "")), "")
+			var glyph: String = {"burn":"🔥","poison":"☣","vulnerable":"💢","weak":"🌀","strength":"💪","focus":"✨"}.get(str(effect.get("status", "")), "")
 			if not glyph.is_empty() and not tags.has(glyph): tags.append(glyph)
 		elif op == "draw" and not tags.has("🃏"):
 			tags.append("🃏")
 	var special: String = str(card.get("special", ""))
-	var special_glyph: String = {"cleave":"⚔","critical":"✹"}.get(special, "")
+	var special_glyph: String = {"cleave":"⚔","critical":"✹","pierce":"🗡","stun":"⚡","recycleDiscard":"♻","recoverExhaust":"⚚"}.get(special, "")
 	if not special_glyph.is_empty() and not tags.has(special_glyph): tags.append(special_glyph)
+	if card.get("boomerang", false) and not tags.has("🪃"): tags.append("🪃")
+	if card.get("reverb", false) and not tags.has("🔊"): tags.append("🔊")
+	if int(card.get("overload", 0)) > 0 and not tags.has("⚡"): tags.append("⚡")
 	return " ".join(tags)
 
 # Appends the synergy-tag glyphs to an existing "Kind · Element" line, with no trailing

@@ -415,7 +415,7 @@
         {
           "operation": "damage",
           "target": "opponent",
-          "amount": 8
+          "amount": 11
         }
       ],
       "special": "cleave"
@@ -612,7 +612,7 @@
         {
           "operation": "damage",
           "target": "opponent",
-          "amount": 10
+          "amount": 12
         }
       ]
     },
@@ -1057,6 +1057,2250 @@
       "kind": "Attack",
       "element": "poison",
       "overload": 1
+    },
+    {
+      "id": "cinder_slash",
+      "nameKey": "card.cinder_slash",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "flame_barrier",
+      "nameKey": "card.flame_barrier",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "fire"
+    },
+    {
+      "id": "ignite_burst",
+      "nameKey": "card.ignite_burst",
+      "rarity": "Uncommon",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "scorch_wave",
+      "nameKey": "card.scorch_wave",
+      "rarity": "Uncommon",
+      "pool": "CrimsonFox",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire",
+      "special": "cleave"
+    },
+    {
+      "id": "flame_dance",
+      "nameKey": "card.flame_dance",
+      "rarity": "Uncommon",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire",
+      "boomerang": true
+    },
+    {
+      "id": "pyro_surge",
+      "nameKey": "card.pyro_surge",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 1
+        }
+      ],
+      "kind": "Tactic",
+      "element": "fire"
+    },
+    {
+      "id": "crimson_lotus",
+      "nameKey": "card.crimson_lotus",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "strength",
+          "amount": 2
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 3
+        }
+      ],
+      "kind": "Power",
+      "element": "fire"
+    },
+    {
+      "id": "ember_rain",
+      "nameKey": "card.ember_rain",
+      "rarity": "Uncommon",
+      "pool": "CrimsonFox",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "solar_eruption",
+      "nameKey": "card.solar_eruption",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 15
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire",
+      "overload": 1
+    },
+    {
+      "id": "cauterize",
+      "nameKey": "card.cauterize",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 4
+        }
+      ],
+      "kind": "Skill",
+      "element": "fire"
+    },
+    {
+      "id": "molten_fist",
+      "nameKey": "card.molten_fist",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "blazing_reverb",
+      "nameKey": "card.blazing_reverb",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire",
+      "reverb": true
+    },
+    {
+      "id": "inferno_pillar",
+      "nameKey": "card.inferno_pillar",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "cost": 3,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 18
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 4
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "heat_haze",
+      "nameKey": "card.heat_haze",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "fire"
+    },
+    {
+      "id": "spark_flurry",
+      "nameKey": "card.spark_flurry",
+      "rarity": "Common",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "granite_shield",
+      "nameKey": "card.granite_shield",
+      "rarity": "Common",
+      "pool": "StoneSentinel",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 8
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone"
+    },
+    {
+      "id": "quake_strike",
+      "nameKey": "card.quake_strike",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "boulder_hurl",
+      "nameKey": "card.boulder_hurl",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "obsidian_plating",
+      "nameKey": "card.obsidian_plating",
+      "rarity": "Uncommon",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 15
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone"
+    },
+    {
+      "id": "crystal_spikes",
+      "nameKey": "card.crystal_spikes",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone",
+      "special": "pierce"
+    },
+    {
+      "id": "tectonic_slam",
+      "nameKey": "card.tectonic_slam",
+      "rarity": "Rare",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 9
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone",
+      "special": "stun"
+    },
+    {
+      "id": "earth_rebound",
+      "nameKey": "card.earth_rebound",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 7
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone",
+      "boomerang": true
+    },
+    {
+      "id": "stone_sentinel_vow",
+      "nameKey": "card.stone_sentinel_vow",
+      "rarity": "Rare",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "strength",
+          "amount": 2
+        },
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 8
+        }
+      ],
+      "kind": "Power",
+      "element": "stone"
+    },
+    {
+      "id": "fossil_armor",
+      "nameKey": "card.fossil_armor",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone"
+    },
+    {
+      "id": "magma_slam",
+      "nameKey": "card.magma_slam",
+      "rarity": "Uncommon",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "burn",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "avalanche",
+      "nameKey": "card.avalanche",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 3,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 14
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone",
+      "special": "cleave"
+    },
+    {
+      "id": "diamond_bulwark",
+      "nameKey": "card.diamond_bulwark",
+      "rarity": "Rare",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 18
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone"
+    },
+    {
+      "id": "crag_cleave",
+      "nameKey": "card.crag_cleave",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone",
+      "special": "cleave"
+    },
+    {
+      "id": "bedrock_stance",
+      "nameKey": "card.bedrock_stance",
+      "rarity": "Uncommon",
+      "pool": "StoneSentinel",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "strength",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "stone"
+    },
+    {
+      "id": "shale_shards",
+      "nameKey": "card.shale_shards",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        }
+      ],
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "zephyr_blade",
+      "nameKey": "card.zephyr_blade",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale"
+    },
+    {
+      "id": "cyclone_veil",
+      "nameKey": "card.cyclone_veil",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 7
+        }
+      ],
+      "kind": "Skill",
+      "element": "gale"
+    },
+    {
+      "id": "tempest_slash",
+      "nameKey": "card.tempest_slash",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale",
+      "boomerang": true
+    },
+    {
+      "id": "wind_stride",
+      "nameKey": "card.wind_stride",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "gale"
+    },
+    {
+      "id": "howling_gale",
+      "nameKey": "card.howling_gale",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale",
+      "special": "cleave"
+    },
+    {
+      "id": "tailwind_boost",
+      "nameKey": "card.tailwind_boost",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Tactic",
+      "element": "gale"
+    },
+    {
+      "id": "storm_vortex",
+      "nameKey": "card.storm_vortex",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale",
+      "reverb": true
+    },
+    {
+      "id": "feather_ward",
+      "nameKey": "card.feather_ward",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "gale"
+    },
+    {
+      "id": "whirlwind_kick",
+      "nameKey": "card.whirlwind_kick",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale"
+    },
+    {
+      "id": "eye_of_storm",
+      "nameKey": "card.eye_of_storm",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "strength",
+          "amount": 1
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Power",
+      "element": "gale"
+    },
+    {
+      "id": "tornado_strike",
+      "nameKey": "card.tornado_strike",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale"
+    },
+    {
+      "id": "gale_rebound",
+      "nameKey": "card.gale_rebound",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale",
+      "boomerang": true
+    },
+    {
+      "id": "aero_barrier",
+      "nameKey": "card.aero_barrier",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 12
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "gale"
+    },
+    {
+      "id": "skyward_thrust",
+      "nameKey": "card.skyward_thrust",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 13
+        }
+      ],
+      "kind": "Attack",
+      "element": "gale",
+      "special": "pierce"
+    },
+    {
+      "id": "tempest_echo",
+      "nameKey": "card.tempest_echo",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 9
+        }
+      ],
+      "kind": "Skill",
+      "element": "gale",
+      "reverb": true
+    },
+    {
+      "id": "frost_javelin",
+      "nameKey": "card.frost_javelin",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "water"
+    },
+    {
+      "id": "glacial_barrier",
+      "nameKey": "card.glacial_barrier",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 7
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "tidal_surge",
+      "nameKey": "card.tidal_surge",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 10
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "water"
+    },
+    {
+      "id": "frozen_veil",
+      "nameKey": "card.frozen_veil",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 11
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "blizzard",
+      "nameKey": "card.blizzard",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "water",
+      "special": "cleave"
+    },
+    {
+      "id": "ice_shard_barrage",
+      "nameKey": "card.ice_shard_barrage",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "water"
+    },
+    {
+      "id": "crystal_dew",
+      "nameKey": "card.crystal_dew",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 6
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "frostbite",
+      "nameKey": "card.frostbite",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "water"
+    },
+    {
+      "id": "rime_aegis",
+      "nameKey": "card.rime_aegis",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 15
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "aqua_lotus",
+      "nameKey": "card.aqua_lotus",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 5
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "torrential_blast",
+      "nameKey": "card.torrential_blast",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 12
+        }
+      ],
+      "kind": "Attack",
+      "element": "water"
+    },
+    {
+      "id": "ice_mirror",
+      "nameKey": "card.ice_mirror",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 10
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "permafrost",
+      "nameKey": "card.permafrost",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 3,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 16
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 2
+        },
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "water"
+    },
+    {
+      "id": "chill_strike",
+      "nameKey": "card.chill_strike",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "water"
+    },
+    {
+      "id": "tide_whisper",
+      "nameKey": "card.tide_whisper",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Tactic",
+      "element": "water",
+      "special": "recycleDiscard"
+    },
+    {
+      "id": "venom_fang",
+      "nameKey": "card.venom_fang",
+      "rarity": "Common",
+      "pool": "MiasmaWitch",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison"
+    },
+    {
+      "id": "miasma_cloud",
+      "nameKey": "card.miasma_cloud",
+      "rarity": "Common",
+      "pool": "MiasmaWitch",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        }
+      ],
+      "kind": "Skill",
+      "element": "poison"
+    },
+    {
+      "id": "toxic_spores",
+      "nameKey": "card.toxic_spores",
+      "rarity": "Uncommon",
+      "pool": "MiasmaWitch",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison"
+    },
+    {
+      "id": "corrosive_acid",
+      "nameKey": "card.corrosive_acid",
+      "rarity": "Uncommon",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison"
+    },
+    {
+      "id": "plague_ward",
+      "nameKey": "card.plague_ward",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 7
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "poison"
+    },
+    {
+      "id": "viper_coil",
+      "nameKey": "card.viper_coil",
+      "rarity": "Uncommon",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison",
+      "special": "stun"
+    },
+    {
+      "id": "noxious_brew",
+      "nameKey": "card.noxious_brew",
+      "rarity": "Uncommon",
+      "pool": "MiasmaWitch",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 4
+        }
+      ],
+      "kind": "Tactic",
+      "element": "poison",
+      "special": "recycleDiscard"
+    },
+    {
+      "id": "epidemic",
+      "nameKey": "card.epidemic",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison",
+      "special": "cleave"
+    },
+    {
+      "id": "wither_burst",
+      "nameKey": "card.wither_burst",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 4
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison",
+      "overload": 1
+    },
+    {
+      "id": "decay_wave",
+      "nameKey": "card.decay_wave",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 4
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 2
+        }
+      ],
+      "kind": "Skill",
+      "element": "poison"
+    },
+    {
+      "id": "toxic_leech",
+      "nameKey": "card.toxic_leech",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        },
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 4
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison"
+    },
+    {
+      "id": "venomous_haze",
+      "nameKey": "card.venomous_haze",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 4
+        }
+      ],
+      "kind": "Skill",
+      "element": "poison"
+    },
+    {
+      "id": "caustic_splash",
+      "nameKey": "card.caustic_splash",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 3
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison"
+    },
+    {
+      "id": "poison_reverb",
+      "nameKey": "card.poison_reverb",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        }
+      ],
+      "kind": "Attack",
+      "element": "poison",
+      "reverb": true
+    },
+    {
+      "id": "plague_tome",
+      "nameKey": "card.plague_tome",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "strength",
+          "amount": 1
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "poison",
+          "amount": 3
+        }
+      ],
+      "kind": "Power",
+      "element": "poison"
+    },
+    {
+      "id": "astral_guidance",
+      "nameKey": "card.astral_guidance",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        },
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Tactic",
+      "element": "spirit"
+    },
+    {
+      "id": "spirit_blade",
+      "nameKey": "card.spirit_blade",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit"
+    },
+    {
+      "id": "soul_barrier",
+      "nameKey": "card.soul_barrier",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 7
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "enlighten",
+      "nameKey": "card.enlighten",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "focus",
+          "amount": 2
+        }
+      ],
+      "kind": "Power",
+      "element": "spirit"
+    },
+    {
+      "id": "karma_mirror",
+      "nameKey": "card.karma_mirror",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 10
+        },
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "strength",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "celestial_lance",
+      "nameKey": "card.celestial_lance",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 11
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit",
+      "special": "pierce"
+    },
+    {
+      "id": "spirit_mend",
+      "nameKey": "card.spirit_mend",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 8
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "soul_shatter",
+      "nameKey": "card.soul_shatter",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 9
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 2
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit"
+    },
+    {
+      "id": "spectral_chains",
+      "nameKey": "card.spectral_chains",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit",
+      "special": "stun"
+    },
+    {
+      "id": "samsara_cycle",
+      "nameKey": "card.samsara_cycle",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Tactic",
+      "element": "spirit",
+      "special": "recoverExhaust"
+    },
+    {
+      "id": "ethereal_strike",
+      "nameKey": "card.ethereal_strike",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit",
+      "boomerang": true
+    },
+    {
+      "id": "divine_intervention",
+      "nameKey": "card.divine_intervention",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 13
+        },
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 6
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "inner_peace",
+      "nameKey": "card.inner_peace",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 5
+        },
+        {
+          "operation": "heal",
+          "target": "actor",
+          "amount": 4
+        }
+      ],
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "astral_projection",
+      "nameKey": "card.astral_projection",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit",
+      "reverb": true
+    },
+    {
+      "id": "spirit_surge",
+      "nameKey": "card.spirit_surge",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        },
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "focus",
+          "amount": 1
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit"
+    },
+    {
+      "id": "cosmos_seal",
+      "nameKey": "card.cosmos_seal",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 3,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 16
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "spirit",
+      "special": "pierce"
+    },
+    {
+      "id": "lightning_strike",
+      "nameKey": "card.lightning_strike",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "thunder"
+    },
+    {
+      "id": "static_charge",
+      "nameKey": "card.static_charge",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "actor",
+          "status": "focus",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "thunder"
+    },
+    {
+      "id": "chain_lightning",
+      "nameKey": "card.chain_lightning",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        }
+      ],
+      "kind": "Attack",
+      "element": "thunder",
+      "special": "cleave"
+    },
+    {
+      "id": "thunderclap",
+      "nameKey": "card.thunderclap",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "thunder"
+    },
+    {
+      "id": "ball_lightning",
+      "nameKey": "card.ball_lightning",
+      "rarity": "Common",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        }
+      ],
+      "kind": "Attack",
+      "element": "thunder",
+      "boomerang": true
+    },
+    {
+      "id": "overcharge_bolt",
+      "nameKey": "card.overcharge_bolt",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 12
+        }
+      ],
+      "kind": "Attack",
+      "element": "thunder",
+      "overload": 2
+    },
+    {
+      "id": "storm_fury",
+      "nameKey": "card.storm_fury",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 9
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "thunder",
+      "special": "cleave"
+    },
+    {
+      "id": "volt_shield",
+      "nameKey": "card.volt_shield",
+      "rarity": "Uncommon",
+      "pool": "Universal",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 11
+        },
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "thunder"
+    },
+    {
+      "id": "shadow_strike",
+      "nameKey": "card.shadow_strike",
+      "rarity": "Common",
+      "pool": "ShadowStalker",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "kind": "Attack",
+      "element": "void"
+    },
+    {
+      "id": "night_veil",
+      "nameKey": "card.night_veil",
+      "rarity": "Common",
+      "pool": "ShadowStalker",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 6
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "weak",
+          "amount": 1
+        }
+      ],
+      "kind": "Skill",
+      "element": "void"
+    },
+    {
+      "id": "void_rend",
+      "nameKey": "card.void_rend",
+      "rarity": "Uncommon",
+      "pool": "ShadowStalker",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 11
+        }
+      ],
+      "kind": "Attack",
+      "element": "void",
+      "special": "pierce"
+    },
+    {
+      "id": "dark_bargain",
+      "nameKey": "card.dark_bargain",
+      "rarity": "Rare",
+      "pool": "ShadowStalker",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "energy",
+          "target": "actor",
+          "amount": 2
+        }
+      ],
+      "kind": "Tactic",
+      "element": "void",
+      "overload": 1
+    },
+    {
+      "id": "eclipse_slash",
+      "nameKey": "card.eclipse_slash",
+      "rarity": "Rare",
+      "pool": "ShadowStalker",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 9
+        }
+      ],
+      "kind": "Attack",
+      "element": "void",
+      "special": "critical"
+    },
+    {
+      "id": "shadow_echo",
+      "nameKey": "card.shadow_echo",
+      "rarity": "Uncommon",
+      "pool": "ShadowStalker",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 7
+        }
+      ],
+      "kind": "Attack",
+      "element": "void",
+      "reverb": true
+    },
+    {
+      "id": "void_implosion",
+      "nameKey": "card.void_implosion",
+      "rarity": "Rare",
+      "pool": "Universal",
+      "cost": 3,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 17
+        },
+        {
+          "operation": "status",
+          "target": "opponent",
+          "status": "vulnerable",
+          "amount": 2
+        }
+      ],
+      "kind": "Attack",
+      "element": "void"
     }
   ],
   "statuses": [
@@ -1290,7 +3534,113 @@
       "card.windReverb": "Lingering Gale",
       "card.spiritReverb": "Lingering Focus",
       "card.fireOverload": "Overload Blaze",
-      "card.poisonOverload": "Overload Venom"
+      "card.poisonOverload": "Overload Venom",
+      "card.cinder_slash": "Cinder Slash",
+      "card.flame_barrier": "Flame Barrier",
+      "card.ignite_burst": "Ignite Burst",
+      "card.scorch_wave": "Scorch Wave",
+      "card.flame_dance": "Flame Dance",
+      "card.pyro_surge": "Pyro Surge",
+      "card.crimson_lotus": "Crimson Lotus",
+      "card.ember_rain": "Ember Rain",
+      "card.solar_eruption": "Solar Eruption",
+      "card.cauterize": "Cauterize",
+      "card.molten_fist": "Molten Fist",
+      "card.blazing_reverb": "Blazing Reverb",
+      "card.inferno_pillar": "Inferno Pillar",
+      "card.heat_haze": "Heat Haze",
+      "card.spark_flurry": "Spark Flurry",
+      "card.granite_shield": "Granite Shield",
+      "card.quake_strike": "Quake Strike",
+      "card.boulder_hurl": "Boulder Hurl",
+      "card.obsidian_plating": "Obsidian Plating",
+      "card.crystal_spikes": "Crystal Spikes",
+      "card.tectonic_slam": "Tectonic Slam",
+      "card.earth_rebound": "Earth Rebound",
+      "card.stone_sentinel_vow": "Sentinel's Vow",
+      "card.fossil_armor": "Fossil Armor",
+      "card.magma_slam": "Magma Slam",
+      "card.avalanche": "Avalanche",
+      "card.diamond_bulwark": "Diamond Bulwark",
+      "card.crag_cleave": "Crag Cleave",
+      "card.bedrock_stance": "Bedrock Stance",
+      "card.shale_shards": "Shale Shards",
+      "card.zephyr_blade": "Zephyr Blade",
+      "card.cyclone_veil": "Cyclone Veil",
+      "card.tempest_slash": "Tempest Slash",
+      "card.wind_stride": "Wind Stride",
+      "card.howling_gale": "Howling Gale",
+      "card.tailwind_boost": "Tailwind Boost",
+      "card.storm_vortex": "Storm Vortex",
+      "card.feather_ward": "Feather Ward",
+      "card.whirlwind_kick": "Whirlwind Kick",
+      "card.eye_of_storm": "Eye of the Storm",
+      "card.tornado_strike": "Tornado Strike",
+      "card.gale_rebound": "Rebounding Gale",
+      "card.aero_barrier": "Aero Barrier",
+      "card.skyward_thrust": "Skyward Thrust",
+      "card.tempest_echo": "Tempest Echo",
+      "card.frost_javelin": "Frost Javelin",
+      "card.glacial_barrier": "Glacial Barrier",
+      "card.tidal_surge": "Tidal Surge",
+      "card.frozen_veil": "Frozen Veil",
+      "card.blizzard": "Blizzard",
+      "card.ice_shard_barrage": "Ice Shard Barrage",
+      "card.crystal_dew": "Crystal Dew",
+      "card.frostbite": "Frostbite",
+      "card.rime_aegis": "Rime Aegis",
+      "card.aqua_lotus": "Aqua Lotus",
+      "card.torrential_blast": "Torrential Blast",
+      "card.ice_mirror": "Ice Mirror",
+      "card.permafrost": "Permafrost",
+      "card.chill_strike": "Chill Strike",
+      "card.tide_whisper": "Tide Whisper",
+      "card.venom_fang": "Venom Fang",
+      "card.miasma_cloud": "Miasma Cloud",
+      "card.toxic_spores": "Toxic Spores",
+      "card.corrosive_acid": "Corrosive Acid",
+      "card.plague_ward": "Plague Ward",
+      "card.viper_coil": "Viper's Coil",
+      "card.noxious_brew": "Noxious Brew",
+      "card.epidemic": "Epidemic",
+      "card.wither_burst": "Wither Burst",
+      "card.decay_wave": "Wave of Decay",
+      "card.toxic_leech": "Toxic Leech",
+      "card.venomous_haze": "Venomous Haze",
+      "card.caustic_splash": "Caustic Splash",
+      "card.poison_reverb": "Poison Reverb",
+      "card.plague_tome": "Tome of Pestilence",
+      "card.astral_guidance": "Astral Guidance",
+      "card.spirit_blade": "Spirit Blade",
+      "card.soul_barrier": "Soul Barrier",
+      "card.enlighten": "Enlighten",
+      "card.karma_mirror": "Karma Mirror",
+      "card.celestial_lance": "Celestial Lance",
+      "card.spirit_mend": "Spirit Mend",
+      "card.soul_shatter": "Soul Shatter",
+      "card.spectral_chains": "Spectral Chains",
+      "card.samsara_cycle": "Samsara Cycle",
+      "card.ethereal_strike": "Ethereal Strike",
+      "card.divine_intervention": "Divine Intervention",
+      "card.inner_peace": "Inner Peace",
+      "card.astral_projection": "Astral Projection",
+      "card.spirit_surge": "Spirit Surge",
+      "card.cosmos_seal": "Cosmos Seal",
+      "card.lightning_strike": "Lightning Strike",
+      "card.static_charge": "Static Charge",
+      "card.chain_lightning": "Chain Lightning",
+      "card.thunderclap": "Thunderclap",
+      "card.ball_lightning": "Ball Lightning",
+      "card.overcharge_bolt": "Overcharge Bolt",
+      "card.storm_fury": "Storm Fury",
+      "card.volt_shield": "Volt Shield",
+      "card.shadow_strike": "Shadow Strike",
+      "card.night_veil": "Night Veil",
+      "card.void_rend": "Void Rend",
+      "card.dark_bargain": "Dark Bargain",
+      "card.eclipse_slash": "Eclipse Slash",
+      "card.shadow_echo": "Shadow Echo",
+      "card.void_implosion": "Void Implosion"
     },
     "zh-Hans": {
       "card.strike": "击打",
@@ -1470,7 +3820,113 @@
       "card.windReverb": "余韵疾风",
       "card.spiritReverb": "余韵凝心",
       "card.fireOverload": "过载烈焰",
-      "card.poisonOverload": "过载蚀毒"
+      "card.poisonOverload": "过载蚀毒",
+      "card.cinder_slash": "烬火斩",
+      "card.flame_barrier": "炽焰结界",
+      "card.ignite_burst": "燃点爆发",
+      "card.scorch_wave": "焦灼热浪",
+      "card.flame_dance": "烈火飞旋",
+      "card.pyro_surge": "炎阳脉冲",
+      "card.crimson_lotus": "红莲业火",
+      "card.ember_rain": "流火烬雨",
+      "card.solar_eruption": "日耀喷涌",
+      "card.cauterize": "余烬封创",
+      "card.molten_fist": "炽熔重拳",
+      "card.blazing_reverb": "烈焰回响",
+      "card.inferno_pillar": "地火焚天",
+      "card.heat_haze": "烈日幻烟",
+      "card.spark_flurry": "星火连缀",
+      "card.granite_shield": "花岗重盾",
+      "card.quake_strike": "震地猛击",
+      "card.boulder_hurl": "飞岩投掷",
+      "card.obsidian_plating": "黑曜石甲",
+      "card.crystal_spikes": "晶刺突击",
+      "card.tectonic_slam": "地脉重碾",
+      "card.earth_rebound": "岩脉回弹",
+      "card.stone_sentinel_vow": "磐石誓约",
+      "card.fossil_armor": "化石坚壳",
+      "card.magma_slam": "熔岩裂地",
+      "card.avalanche": "山崩巨石",
+      "card.diamond_bulwark": "金刚壁垒",
+      "card.crag_cleave": "断崖崩斩",
+      "card.bedrock_stance": "基岩沉势",
+      "card.shale_shards": "页岩破片",
+      "card.zephyr_blade": "微风轻刃",
+      "card.cyclone_veil": "旋风纱幕",
+      "card.tempest_slash": "风暴迅斩",
+      "card.wind_stride": "御风踏步",
+      "card.howling_gale": "呼啸狂风",
+      "card.tailwind_boost": "顺风乘势",
+      "card.storm_vortex": "暴风涡流",
+      "card.feather_ward": "轻羽护身",
+      "card.whirlwind_kick": "旋岚疾踢",
+      "card.eye_of_storm": "风眼寂静",
+      "card.tornado_strike": "龙卷破击",
+      "card.gale_rebound": "回旋罡风",
+      "card.aero_barrier": "气流屏障",
+      "card.skyward_thrust": "破空冲宵",
+      "card.tempest_echo": "风啸回音",
+      "card.frost_javelin": "冰霜标枪",
+      "card.glacial_barrier": "冰川壁障",
+      "card.tidal_surge": "潮汐奔涌",
+      "card.frozen_veil": "凝霜灵纱",
+      "card.blizzard": "极寒暴雪",
+      "card.ice_shard_barrage": "碎冰连弹",
+      "card.crystal_dew": "玉露涤灵",
+      "card.frostbite": "深寒入骨",
+      "card.rime_aegis": "白霜坚壁",
+      "card.aqua_lotus": "碧水幽莲",
+      "card.torrential_blast": "激流爆破",
+      "card.ice_mirror": "玄冰明镜",
+      "card.permafrost": "万年永冻",
+      "card.chill_strike": "凛寒突袭",
+      "card.tide_whisper": "听潮寻灵",
+      "card.venom_fang": "毒液尖牙",
+      "card.miasma_cloud": "瘴气浓雾",
+      "card.toxic_spores": "剧毒孢子",
+      "card.corrosive_acid": "腐蚀毒酸",
+      "card.plague_ward": "瘟疫护身",
+      "card.viper_coil": "巨蝰绞缠",
+      "card.noxious_brew": "烈毒佳酿",
+      "card.epidemic": "疫毒蔓延",
+      "card.wither_burst": "凋零爆发",
+      "card.decay_wave": "腐朽浪潮",
+      "card.toxic_leech": "噬血毒蛭",
+      "card.venomous_haze": "毒瘴迷魂",
+      "card.caustic_splash": "强酸飞溅",
+      "card.poison_reverb": "剧毒回荡",
+      "card.plague_tome": "万毒秘典",
+      "card.astral_guidance": "星灵指引",
+      "card.spirit_blade": "灵光化刃",
+      "card.soul_barrier": "魂光屏障",
+      "card.enlighten": "灵光顿悟",
+      "card.karma_mirror": "业火明镜",
+      "card.celestial_lance": "天界圣枪",
+      "card.spirit_mend": "灵魄愈合",
+      "card.soul_shatter": "裂魂断魄",
+      "card.spectral_chains": "幽灵锁链",
+      "card.samsara_cycle": "轮回流转",
+      "card.ethereal_strike": "虚灵绝影斩",
+      "card.divine_intervention": "神圣降临",
+      "card.inner_peace": "澄心明意",
+      "card.astral_projection": "星宿投影",
+      "card.spirit_surge": "灵力澎湃",
+      "card.cosmos_seal": "寰宇天印",
+      "card.lightning_strike": "雷霆击顶",
+      "card.static_charge": "静电充能",
+      "card.chain_lightning": "连锁闪电",
+      "card.thunderclap": "霹雳震空",
+      "card.ball_lightning": "雷球闪现",
+      "card.overcharge_bolt": "过载雷矢",
+      "card.storm_fury": "风雷狂暴",
+      "card.volt_shield": "电弧雷盾",
+      "card.shadow_strike": "暗影突袭",
+      "card.night_veil": "幽夜面纱",
+      "card.void_rend": "虚空撕裂",
+      "card.dark_bargain": "暗黑盟约",
+      "card.eclipse_slash": "日食黯月斩",
+      "card.shadow_echo": "暗影残响",
+      "card.void_implosion": "虚无坍缩"
     }
   }
 }

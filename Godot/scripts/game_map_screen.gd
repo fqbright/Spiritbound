@@ -349,6 +349,12 @@ func show_map() -> void:
 	right_box.add_child(btn_quests)
 	right_box.add_child(btn_camp)
 	right_box.add_child(btn_settings)
+	if not SpiritSave.is_cloud_linked(g.profile):
+		var lang_hdr: String = str(g.profile.get("language", "zh-Hans"))
+		var btn_login := g._button("登录" if lang_hdr.begins_with("zh") else "Login", func(): g.show_auth_modal(func(): g.show_map()), g.JADE, Vector2(52, btn_size.y))
+		btn_login.name = "HeaderLoginBtn"
+		btn_login.add_theme_font_size_override("font_size", 12)
+		right_box.add_child(btn_login)
 	header.add_child(right_box)
 	header_holder.add_child(header)
 
@@ -1363,23 +1369,29 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 	var lang := str(g.profile.get("language", "zh-Hans"))
 	var is_zh := lang.begins_with("zh")
 
+	# Bring overlay to top so modal receives all touches ahead of underlying map
+	if g.root and g.overlay:
+		g.root.move_child(g.overlay, g.root.get_child_count() - 1)
+
 	# Semi-transparent backdrop.
 	var backdrop := ColorRect.new()
 	backdrop.name = "BranchPicker"
-	backdrop.color = Color(0, 0, 0, 0.72)
+	backdrop.color = Color(0, 0, 0, 0.78)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	g.overlay.add_child(backdrop)
 
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(center)
+
 	# Centre column.
 	var col := VBoxContainer.new()
-	col.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	col.custom_minimum_size = Vector2(340, 0)
-	col.size = col.custom_minimum_size
-	col.position = Vector2(-170, -160)
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", 16)
-	backdrop.add_child(col)
+	center.add_child(col)
 
 	# Title.
 	var title := Label.new()
@@ -1392,7 +1404,7 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 	var sub := Label.new()
 	sub.text = "两条路只能走一条，一旦选择无法更改" if is_zh else "Choose once — you cannot change later"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.add_theme_font_size_override("font_size", 13)
+	sub.add_theme_font_size_override("font_size", 12)
 	sub.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	col.add_child(sub)
 
@@ -1405,7 +1417,7 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 	for opt in options:
 		var m: Dictionary = meta.get(opt, {"icon":"❓","name_zh":opt,"name_en":opt,"desc_zh":"","desc_en":""})
 		var card := Button.new()
-		card.custom_minimum_size = Vector2(152, 170)
+		card.custom_minimum_size = Vector2(154, 196)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.focus_mode = Control.FOCUS_NONE
 		card.add_theme_stylebox_override("normal",  g._panel(Color("1a3a42"), 14, Color("3a7a8a")))
@@ -1413,11 +1425,20 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 		card.add_theme_stylebox_override("pressed", g._panel(Color("2a5f6a"), 14, g.GOLD))
 		row.add_child(card)
 
+		var margin := MarginContainer.new()
+		margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		margin.add_theme_constant_override("margin_left", 8)
+		margin.add_theme_constant_override("margin_right", 8)
+		margin.add_theme_constant_override("margin_top", 10)
+		margin.add_theme_constant_override("margin_bottom", 10)
+		margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(margin)
+
 		var vbox := VBoxContainer.new()
 		vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-		vbox.add_theme_constant_override("separation", 8)
+		vbox.add_theme_constant_override("separation", 6)
 		vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(vbox)
+		margin.add_child(vbox)
 
 		var icon_lbl := Label.new()
 		icon_lbl.text = m["icon"]
@@ -1441,12 +1462,14 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 		desc_lbl.add_theme_font_size_override("font_size", 11)
 		desc_lbl.add_theme_color_override("font_color", Color(0.75, 0.85, 0.85))
 		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vbox.add_child(desc_lbl)
 
 		# Capture opt by value — GDScript lambdas close over variables, not values.
 		var chosen_kind: String = opt
-		g._bind_touch_guard(card, func():
+		var select_option := func():
 			# Persist choice, dismiss picker, re-render pin, then dispatch.
 			g.make_map_choice(index, chosen_kind)
 			if g.profile.get("relics", []).has("spiritCompass"):
@@ -1467,7 +1490,8 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 					return
 				g.spend_stamina(5)
 				g.begin_battle(index)
-		)
+
+		card.pressed.connect(select_option)
 
 func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void:
 	g._clear(); g._play_music(false)

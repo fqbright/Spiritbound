@@ -164,7 +164,7 @@ func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void
 
 		list.add_child(row)
 
-const SHOP_STOCK_COUNT := 6
+const SHOP_STOCK_COUNT := 10
 
 # Stock and the day's sale slot are derived from the day number rather than stored, so
 # they need no save-file field and can't drift out of sync with the daily quest reset.
@@ -886,28 +886,37 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 		sale_badge.add_child(sale_lbl)
 		btn.add_child(sale_badge)
 
-	# 4. Carved-out space in the lower-middle portion for card info
+	# 4. Carved-out space in the lower portion for card info (smaller to show more card art)
 	var info_box := PanelContainer.new()
-	info_box.position = Vector2(8, 86)
-	info_box.custom_minimum_size = Vector2(160, 138)
+	info_box.position = Vector2(8, 126)
+	info_box.custom_minimum_size = Vector2(160, 98)
 	info_box.size = info_box.custom_minimum_size
-	var box_style := g._panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
+	var box_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 8, border_color)
 	# Slender border g.overlay margin
-	box_style.content_margin_left = 12; box_style.content_margin_right = 12
-	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
+	box_style.content_margin_left = 8; box_style.content_margin_right = 8
+	box_style.content_margin_top = 2; box_style.content_margin_bottom = 2
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
 	btn.add_child(info_box)
 
 	var stack := VBoxContainer.new()
-	stack.add_theme_constant_override("separation", 2)
+	stack.add_theme_constant_override("separation", 1)
 	stack.mouse_filter = Control.MOUSE_FILTER_PASS
 	info_box.add_child(stack)
 
-	stack.add_child(g._label(g.content.text(card.nameKey, g.lang), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(g._label(g._kind_element_line(card), 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var name_lbl := g._label(g.content.text(card.nameKey, g.lang), 11, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	name_lbl.add_theme_constant_override("outline_size", 2)
+	stack.add_child(name_lbl)
+
+	var kind_lbl := g._label(g._kind_element_line(card), 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	kind_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	kind_lbl.add_theme_constant_override("outline_size", 2)
+	stack.add_child(kind_lbl)
+
 	var desc := g._label(g._card_description(card), 8, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
-	desc.custom_minimum_size.y = 24
+	desc.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	desc.add_theme_constant_override("outline_size", 2)
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc)
 
@@ -937,7 +946,7 @@ func _shop_card_tile(card: Dictionary, price: int, on_sale := false) -> Control:
 
 	var buy := Button.new()
 	buy.name = "BuyButton"
-	buy.custom_minimum_size.y = 34
+	buy.custom_minimum_size.y = 30
 	buy.focus_mode = Control.FOCUS_NONE
 	# The price used to be welded into this button's own text ("购买 ◆200"). A Label cannot embed
 	# a texture, which is exactly why the coin had to be a glyph; the price is now a real
@@ -1317,8 +1326,11 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	var in_deck: int = g.profile.deck.count(card.id)
 	var accent := g._card_color(card)
 	var rune_id: String = g.profile.card_runes.get(card.id, "")
+	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
 
 	var border_color: Color = accent if in_deck > 0 else Color("24373d")
+	if up_lvl > 0:
+		border_color = border_color.lerp(g.GOLD, 0.55)
 	var tile := Panel.new()
 	tile.custom_minimum_size = Vector2(176, 232)
 	tile.size = tile.custom_minimum_size
@@ -1332,7 +1344,7 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	g._apply_card_foil(art, str(card.get("rarity", "Common")), int(g.profile.upgrades.get(card.id, 0)) > 0)
+	g._apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0)
 	tile.add_child(art)
 
 	# 2. Ornate frame around the entire card perimeter
@@ -1369,13 +1381,13 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 
 	# 4. Carved-out space in the lower-middle portion for card info
 	var info_box := PanelContainer.new()
-	info_box.position = Vector2(8, 86)
-	info_box.custom_minimum_size = Vector2(160, 138)
+	info_box.position = Vector2(8, 126)
+	info_box.custom_minimum_size = Vector2(160, 98)
 	info_box.size = info_box.custom_minimum_size
-	var box_style := g._panel(Color(0.06, 0.12, 0.16, 0.90), 8, border_color)
+	var box_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 8, border_color)
 	# Slender border g.overlay margin
 	box_style.content_margin_left = 12; box_style.content_margin_right = 12
-	box_style.content_margin_top = 4; box_style.content_margin_bottom = 4
+	box_style.content_margin_top = 2; box_style.content_margin_bottom = 2
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
 	tile.add_child(info_box)
@@ -1385,11 +1397,19 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	stack.mouse_filter = Control.MOUSE_FILTER_PASS
 	info_box.add_child(stack)
 
-	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
-	stack.add_child(g._label(g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	stack.add_child(g._label(g._kind_element_line(card), 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var name_lbl := g._label(g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	name_lbl.add_theme_constant_override("outline_size", 2)
+	stack.add_child(name_lbl)
+
+	var kind_lbl := g._label(g._kind_element_line(card), 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	kind_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	kind_lbl.add_theme_constant_override("outline_size", 2)
+	stack.add_child(kind_lbl)
 
 	var desc := g._label(g._card_description(card), 8, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	desc.add_theme_constant_override("outline_size", 2)
 	desc.custom_minimum_size.y = 24
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc)

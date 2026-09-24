@@ -1425,6 +1425,10 @@ func _clear_hold_preview() -> void:
 func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	var accent: Color = g._card_color(card)
 	var border_col: Color = g._rune_color(rune_id, accent)
+	var card_rarity: String = str(card.get("rarity", "Common"))
+	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
+	if up_lvl > 0:
+		border_col = border_col.lerp(g.GOLD, 0.55)
 	var size := Vector2(230.0, 320.0)
 
 	# Same full-bleed-art-plus-rules-box language as _card_view's hand cards, just at a size
@@ -1449,24 +1453,22 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var card_rarity: String = str(card.get("rarity", "Common"))
-	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
 	_apply_card_foil(art, card_rarity, up_lvl > 0)
 	frame.add_child(art)
 
 	var info_box := PanelContainer.new()
 	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	info_box.anchor_left = 0.0; info_box.anchor_right = 1.0
-	info_box.anchor_top = 0.52; info_box.anchor_bottom = 1.0
+	info_box.anchor_top = 0.58; info_box.anchor_bottom = 1.0
 	info_box.offset_left = 0; info_box.offset_right = 0
 	info_box.offset_top = 0; info_box.offset_bottom = 0
 	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var info_style := g._panel(Color(0.05, 0.09, 0.11, 0.97), 0)
+	var info_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 0)
 	info_style.corner_radius_top_left = 8; info_style.corner_radius_top_right = 8
 	info_style.border_width_top = 3; info_style.border_color = border_col
 	# ~8% of the card width, clearing the slender border g.overlay added below
 	info_style.content_margin_left = 20; info_style.content_margin_right = 20
-	info_style.content_margin_top = 8; info_style.content_margin_bottom = 8
+	info_style.content_margin_top = 6; info_style.content_margin_bottom = 6
 	info_box.add_theme_stylebox_override("panel", info_style)
 	frame.add_child(info_box)
 
@@ -1477,12 +1479,18 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 
 	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else "")
 	var name_lbl := g._label(name_text, 16, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	name_lbl.add_theme_constant_override("outline_size", 3)
 	stack.add_child(name_lbl)
 
 	var kind_lbl := g._label(g._kind_element_line(card), 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	kind_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	kind_lbl.add_theme_constant_override("outline_size", 2)
 	stack.add_child(kind_lbl)
 
 	var desc_lbl := g._label(g._card_description(card), 13, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	desc_lbl.add_theme_constant_override("outline_size", 2)
 	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc_lbl)
 
@@ -1504,8 +1512,15 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	cost_badge.add_child(cost_lbl)
 	frame.add_child(cost_badge)
 
+	var rarity_row := g._rarity_star_row(card_rarity, g.GOLD, BoxContainer.ALIGNMENT_END)
+	rarity_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rarity_row.position = Vector2(size.x - 70.0, 10.0)
+	rarity_row.size = Vector2(56, 16)
+	frame.add_child(rarity_row)
+
 	var rune_info: Dictionary = g.content.rune(rune_id)
 	if not rune_info.is_empty():
+		rarity_row.position = Vector2(size.x - 100.0, 10.0)
 		var rune_icon_path := "res://assets/icons/rune_%s.png" % rune_id
 		if ResourceLoader.exists(rune_icon_path):
 			var r_tr := TextureRect.new()
@@ -1601,6 +1616,15 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var accent: Color = g._card_color(card)
 	var rune_id: String = g.profile.card_runes.get(card.id, "")
 	var border_col: Color = g._rune_color(rune_id, accent)
+	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
+	if up_lvl > 0:
+		border_col = border_col.lerp(g.GOLD, 0.55)
+
+	var can_afford: bool = true
+	if g.combat != null and g.combat.state != null:
+		can_afford = int(card.cost) <= int(g.combat.state.energy)
+	if not can_afford:
+		tile.modulate = Color(0.70, 0.72, 0.78, 0.88)
 
 	# 1. Base card container with clipping. Plain Panel, not PanelContainer — a Container
 	# force-fits every direct child (art, the bottom info box, badges) to its own full rect,
@@ -1629,6 +1653,8 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var card_rarity: String = str(card.get("rarity", "Common"))
+	_apply_card_foil(art, card_rarity, up_lvl > 0)
 	card_clip.add_child(art)
 
 	# 3. A solid text box from the middle down, like a normal trading card's rules box —
@@ -1638,23 +1664,22 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	info_box.anchor_left = 0.0
 	info_box.anchor_right = 1.0
-	info_box.anchor_top = 0.52
+	info_box.anchor_top = 0.58
 	info_box.anchor_bottom = 1.0
 	info_box.offset_left = 0
 	info_box.offset_right = 0
 	info_box.offset_top = 0
 	info_box.offset_bottom = 0
 	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var info_style := g._panel(Color(0.05, 0.09, 0.11, 0.97), 0)
+	var info_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 0)
 	info_style.corner_radius_top_left = 6; info_style.corner_radius_top_right = 6
 	info_style.border_width_top = 2; info_style.border_color = border_col
 	# ~8% of the card width, clearing the slender border g.overlay added below
 	info_style.content_margin_left = 11; info_style.content_margin_right = 11
-	info_style.content_margin_top = 3; info_style.content_margin_bottom = 3
+	info_style.content_margin_top = 2; info_style.content_margin_bottom = 2
 	info_box.add_theme_stylebox_override("panel", info_style)
 	card_clip.add_child(info_box)
 
-	var card_rarity: String = str(card.get("rarity", "Common"))
 	var hand_border := TextureRect.new()
 	hand_border.texture = g._get_card_frame_texture(card_rarity)
 	hand_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1668,17 +1693,22 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	info_stack.add_theme_constant_override("separation", 1)
 	info_box.add_child(info_stack)
 
-	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
 	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else "")
 	var name_lbl := g._label(name_text, 10, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	name_lbl.add_theme_constant_override("outline_size", 2)
 	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(name_lbl)
 
 	var kind_lbl := g._label(g._kind_element_line(card), 7, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	kind_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	kind_lbl.add_theme_constant_override("outline_size", 2)
 	kind_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(kind_lbl)
 
 	var desc_lbl := g._label(g._card_description(card), 8, Color("e4ede8"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	desc_lbl.add_theme_constant_override("outline_size", 2)
 	desc_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc_lbl.clip_text = true
@@ -1689,10 +1719,16 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	cost_badge.custom_minimum_size = Vector2(26, 26)
 	cost_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cost_badge.position = Vector2(-6, -6)
-	cost_badge.add_theme_stylebox_override("panel", g._panel(accent, 13, Color("2b1a10")))
-	var cost_lbl := g._label(str(int(card.cost)), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
-	cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	cost_badge.add_child(cost_lbl)
+	if can_afford:
+		cost_badge.add_theme_stylebox_override("panel", g._panel(accent, 13, Color("2b1a10")))
+		var cost_lbl := g._label(str(int(card.cost)), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
+		cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cost_badge.add_child(cost_lbl)
+	else:
+		cost_badge.add_theme_stylebox_override("panel", g._panel(Color("221012"), 13, Color("5a2024")))
+		var cost_lbl := g._label(str(int(card.cost)), 16, Color("e06060"), HORIZONTAL_ALIGNMENT_CENTER)
+		cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cost_badge.add_child(cost_lbl)
 	tile.add_child(cost_badge)
 
 	var rune_info: Dictionary = g.content.rune(rune_id)
