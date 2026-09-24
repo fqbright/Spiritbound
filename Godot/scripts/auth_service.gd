@@ -33,9 +33,19 @@ static func sign_in_with_supabase(game: SpiritGame, email: String, password: Str
 			on_done.call(true, "supabase")
 	else:
 		var err: String = str(res.get("error", "Login failed"))
-		game._toast(err, game.MUTED)
+		var err_lower := err.to_lower()
+		var user_friendly := ""
+		if err_lower.contains("email not confirmed"):
+			user_friendly = game.t("ui.auth_email_not_confirmed")
+		elif err_lower.contains("invalid login") or err_lower.contains("invalid_grant"):
+			user_friendly = game.t("ui.auth_wrong_credentials")
+		elif err_lower.contains("rate limit"):
+			user_friendly = game.t("ui.auth_rate_limited")
+		else:
+			user_friendly = err
+		game._toast(user_friendly, game.MUTED)
 		if on_done.is_valid():
-			on_done.call(false, "supabase")
+			on_done.call(false, user_friendly)
 
 static func sign_up_with_supabase(game: SpiritGame, email: String, password: String, display_name: String, on_done: Callable = Callable()) -> void:
 	var res = await SupabaseClient.sign_up(email, password, display_name, game)
@@ -54,12 +64,17 @@ static func sign_up_with_supabase(game: SpiritGame, email: String, password: Str
 				on_done.call(true, "supabase")
 	else:
 		var err: String = str(res.get("error", "Registration failed"))
-		if err.contains("rate limit"):
-			game._toast(game.t("ui.auth_rate_limited"), game.MUTED)
+		var err_lower := err.to_lower()
+		var user_friendly := ""
+		if err_lower.contains("rate limit"):
+			user_friendly = game.t("ui.auth_rate_limited")
+		elif err_lower.contains("already registered") or err_lower.contains("user already exists"):
+			user_friendly = game.t("ui.auth_email_taken")
 		else:
-			game._toast(err, game.MUTED)
+			user_friendly = err
+		game._toast(user_friendly, game.MUTED)
 		if on_done.is_valid():
-			on_done.call(false, "error")
+			on_done.call(false, user_friendly)
 
 static func reset_password(game: SpiritGame, email: String, on_done: Callable = Callable()) -> void:
 	var res = await SupabaseClient.reset_password(email, game)

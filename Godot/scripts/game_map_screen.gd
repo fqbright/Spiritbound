@@ -349,12 +349,31 @@ func show_map() -> void:
 	right_box.add_child(btn_quests)
 	right_box.add_child(btn_camp)
 	right_box.add_child(btn_settings)
-	if not SpiritSave.is_cloud_linked(g.profile):
-		var lang_hdr: String = str(g.profile.get("language", "zh-Hans"))
-		var btn_login := g._button("登录" if lang_hdr.begins_with("zh") else "Login", func(): g.show_auth_modal(func(): g.show_map()), g.JADE, Vector2(52, btn_size.y))
-		btn_login.name = "HeaderLoginBtn"
-		btn_login.add_theme_font_size_override("font_size", 12)
-		right_box.add_child(btn_login)
+	var lang_hdr: String = str(g.profile.get("language", "zh-Hans"))
+	var is_cloud := SpiritSave.is_cloud_linked(g.profile)
+	var login_text := ""
+	var login_color: Color = g.JADE
+	if not is_cloud:
+		login_text = "登录" if lang_hdr.begins_with("zh") else "Login"
+		login_color = Color("c4923e")
+	else:
+		var acc_name: String = str(g.profile.get("account", {}).get("name", "")).strip_edges()
+		if acc_name.is_empty():
+			acc_name = str(g.profile.get("account", {}).get("email", "")).split("@")[0]
+		if acc_name.length() > 4:
+			acc_name = acc_name.substr(0, 4)
+		login_text = "☁️" + (acc_name if not acc_name.is_empty() else ("云端" if lang_hdr.begins_with("zh") else "Cloud"))
+		login_color = g.JADE
+
+	var btn_login := g._button(login_text, func():
+		if is_cloud:
+			g.show_settings()
+		else:
+			g.show_auth_modal(func(): g.show_map())
+	, login_color, Vector2(56, btn_size.y))
+	btn_login.name = "HeaderLoginBtn"
+	btn_login.add_theme_font_size_override("font_size", 11)
+	right_box.add_child(btn_login)
 	header.add_child(right_box)
 	header_holder.add_child(header)
 

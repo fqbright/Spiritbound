@@ -489,12 +489,18 @@ func _ready() -> void:
 			# matters is intro_completed vs account_setup_shown: reaching the name prompt at all is
 			# what a skip rate would otherwise hide.
 			LogService.event(LogService.EV_INTRO_COMPLETED, {}, self)
-			if SpiritSave.has_account_name(profile): show_map()
-			else: show_account_setup()
+			if DisplayServer.get_name() == "headless":
+				if SpiritSave.has_account_name(profile): show_map()
+				else: show_account_setup()
+			else:
+				show_title_screen()
 		)
 	else:
-		if SpiritSave.has_account_name(profile): show_map()
-		else: show_account_setup()
+		if DisplayServer.get_name() == "headless":
+			if SpiritSave.has_account_name(profile): show_map()
+			else: show_account_setup()
+		else:
+			show_title_screen()
 
 const DAY_SECONDS := 86400
 const WEEK_SECONDS := 604800
@@ -770,6 +776,148 @@ func _reset_draft_run() -> void:
 	draft.losses = 0
 	profile.draft_arena = draft
 	SpiritSave.write(profile)
+
+func show_title_screen() -> void:
+	current_screen_name = "title"
+	_close_settings()
+	_close_auth_modal()
+	_clear()
+	_play_music(false)
+
+	var backdrop := _background("spirit-world-map-v1.jpg", 0.40)
+	root.add_child(backdrop)
+	root.move_child(backdrop, 0)
+
+	var page := _create_page(12)
+	page.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	# Fox spirit crest
+	var crest := TextureRect.new()
+	crest.texture = _get_character_texture("fox")
+	crest.custom_minimum_size = Vector2(0, 100)
+	crest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	page.add_child(crest)
+
+	# Logo
+	var logo := TextureRect.new()
+	logo.name = "TitleScreenLogo"
+	var logo_tex: Texture2D = load("res://assets/ui/spiritbound_logo.png")
+	logo.texture = logo_tex
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.custom_minimum_size = Vector2(230, 60)
+	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	page.add_child(logo)
+
+	page.add_child(_label(t("ui.auth_start_subtitle"), 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+
+	# Account Status Card
+	var is_linked := SpiritSave.is_cloud_linked(profile)
+	var acc_name: String = str(profile.get("account", {}).get("name", "")).strip_edges()
+	if acc_name.is_empty():
+		acc_name = "灵界探险家" if lang.begins_with("zh") else "Spirit Explorer"
+	var acc_email: String = str(profile.get("account", {}).get("email", ""))
+
+	var acc_card := PanelContainer.new()
+	var acc_style := _panel(Color("0c1a1e", 0.9), 10, JADE if is_linked else Color("c4923e"))
+	acc_style.content_margin_left = 14
+	acc_style.content_margin_right = 14
+	acc_style.content_margin_top = 10
+	acc_style.content_margin_bottom = 10
+	acc_card.add_theme_stylebox_override("panel", acc_style)
+
+	var acc_vbox := VBoxContainer.new()
+	acc_vbox.add_theme_constant_override("separation", 4)
+	acc_card.add_child(acc_vbox)
+
+	var acc_top_row := HBoxContainer.new()
+	acc_top_row.add_theme_constant_override("separation", 6)
+
+	var acc_icon_lbl := _label("☁️" if is_linked else "👤", 13, JADE if is_linked else GOLD)
+	acc_top_row.add_child(acc_icon_lbl)
+
+	var display_label := acc_name
+	if is_linked and not acc_email.is_empty():
+		display_label += " (" + acc_email + ")"
+	var acc_name_lbl := _label(display_label, 12, TEXT)
+	acc_name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	acc_top_row.add_child(acc_name_lbl)
+
+	var status_tag := _label(t("ui.auth_cloud_synced") if is_linked else t("ui.auth_status_guest"), 9, JADE if is_linked else Color("e09c48"))
+	acc_top_row.add_child(status_tag)
+	acc_vbox.add_child(acc_top_row)
+
+	page.add_child(acc_card)
+
+	# Main Start Button
+	var start_btn := _button(t("ui.auth_start_adventure"), func():
+		if not SpiritSave.has_account_name(profile):
+			_create_account(acc_name)
+		else:
+			show_map()
+	, EMBER, Vector2(0, 50))
+	start_btn.name = "TitleStartBtn"
+	page.add_child(start_btn)
+
+	# Account Switch / Login Button
+	var auth_btn := _button(t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title"), func():
+		show_auth_modal(func(): show_title_screen())
+	, JADE, Vector2(0, 40))
+	auth_btn.name = "TitleAuthBtn"
+	page.add_child(auth_btn)
+
+	# Quick OAuth row
+	var oauth_row := HBoxContainer.new()
+	oauth_row.add_theme_constant_override("separation", 8)
+
+	var apple_btn := _button("Apple", func():
+		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_title_screen())
+	, Color("080808"), Vector2(0, 38))
+	apple_btn.name = "TitleAppleBtn"
+	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var apple_icon := TextureRect.new()
+	apple_icon.texture = load("res://assets/icons/icon_apple.png")
+	apple_icon.custom_minimum_size = Vector2(16, 16)
+	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	apple_icon.position = Vector2(10, 11)
+	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	apple_btn.add_child(apple_icon)
+	oauth_row.add_child(apple_btn)
+
+	var guest_btn := _button(t("ui.auth_guest_start"), func():
+		if not SpiritSave.has_account_name(profile):
+			_create_account("灵界探险家")
+		show_map()
+	, Color("17363e"), Vector2(0, 38))
+	guest_btn.name = "TitleGuestBtn"
+	guest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	oauth_row.add_child(guest_btn)
+
+	page.add_child(oauth_row)
+
+	# Bottom utility row: Language, Settings, Version
+	var bot_row := HBoxContainer.new()
+	bot_row.add_theme_constant_override("separation", 10)
+	bot_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var lang_btn := _button("中 / EN", func():
+		lang = "en" if lang == "zh-Hans" else "zh-Hans"
+		profile.language = lang
+		SpiritSave.write(profile)
+		show_title_screen()
+	, Color("142226"), Vector2(70, 32))
+	bot_row.add_child(lang_btn)
+
+	var set_btn := _button(t("ui.nav_settings"), func():
+		show_settings()
+	, Color("142226"), Vector2(70, 32))
+	bot_row.add_child(set_btn)
+
+	page.add_child(bot_row)
+
+	page.add_child(_label("v1.0.5 · Build 25", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 func show_account_setup(from_rename: bool = false) -> void:
 	_close_settings()
@@ -2593,6 +2741,14 @@ func show_settings() -> void:
 		sync_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sync_row.add_child(sync_btn)
 
+		var switch_btn := _button(t("ui.auth_switch_account"), func():
+			_close_settings()
+			show_auth_modal(func(): show_settings())
+		, Color("17363e"), Vector2(0, 38))
+		switch_btn.name = "SwitchAccountBtn"
+		switch_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sync_row.add_child(switch_btn)
+
 		var signout_btn := _button(t("ui.auth_sign_out"), func():
 			SpiritAuth.sign_out(self, func(_ok):
 				_close_settings()
@@ -2631,6 +2787,17 @@ func show_settings() -> void:
 	replay_intro_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	intro_box.add_child(replay_intro_btn)
 	list.add_child(intro_box)
+
+	var ret_title_box := VBoxContainer.new()
+	ret_title_box.add_theme_constant_override("separation", 6)
+	var return_title_btn := _button(t("ui.title_return"), func():
+		_close_settings()
+		show_title_screen()
+	, Color("17363e"), Vector2(0, 36))
+	return_title_btn.name = "ReturnTitleBtn"
+	return_title_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ret_title_box.add_child(return_title_btn)
+	list.add_child(ret_title_box)
 
 	list.add_child(account_box)
 
@@ -2778,10 +2945,12 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 			hint_lbl.text = t("ui.auth_invalid_input")
 			return
 		hint_lbl.text = t("ui.auth_syncing")
+		submit_btn.disabled = true
 		if is_signup_mode["value"]:
 			var name_val := name_input.text.strip_edges()
 			if name_val.is_empty(): name_val = "驭灵者"
 			SpiritAuth.sign_up_with_supabase(self, email_val, pass_val, name_val, func(ok: bool, res_code: String):
+				submit_btn.disabled = false
 				if ok:
 					if res_code == "supabase":
 						_close_auth_modal()
@@ -2789,15 +2958,16 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 					else:
 						hint_lbl.text = t("ui.auth_signup_check_email")
 				else:
-					hint_lbl.text = t("ui.auth_rate_limited")
+					hint_lbl.text = res_code
 			)
 		else:
-			SpiritAuth.sign_in_with_supabase(self, email_val, pass_val, func(ok: bool, _prov: String):
+			SpiritAuth.sign_in_with_supabase(self, email_val, pass_val, func(ok: bool, res_code: String):
+				submit_btn.disabled = false
 				if ok:
 					_close_auth_modal()
 					if on_success.is_valid(): on_success.call()
 				else:
-					hint_lbl.text = t("ui.auth_invalid_input")
+					hint_lbl.text = res_code
 			)
 	)
 
@@ -2850,6 +3020,17 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 
 	vbox.add_child(oauth_row)
 
+	# Guest play button
+	var guest_btn := _button(t("ui.auth_guest_start"), func():
+		_close_auth_modal()
+		if not SpiritSave.has_account_name(profile):
+			_create_account("灵界探险家")
+		_toast(t("ui.auth_status_guest"), GOLD)
+		if on_success.is_valid(): on_success.call()
+	, Color("142226"), Vector2(0, 32))
+	guest_btn.name = "AuthGuestBtn"
+	vbox.add_child(guest_btn)
+
 	# Forgot password helper
 	var forgot_btn := _button(t("ui.auth_btn_forgot"), func():
 		var email_val := email_input.text.strip_edges()
@@ -2862,6 +3043,16 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 	, Color("142226"), Vector2(0, 32))
 	forgot_btn.name = "AuthForgotBtn"
 	vbox.add_child(forgot_btn)
+
+	if SpiritSave.is_cloud_linked(profile):
+		var signout_btn := _button(t("ui.auth_sign_out"), func():
+			SpiritAuth.sign_out(self, func(_ok):
+				_close_auth_modal()
+				if on_success.is_valid(): on_success.call()
+			)
+		, Color("351818"), Vector2(0, 32))
+		signout_btn.name = "AuthSignOutBtn"
+		vbox.add_child(signout_btn)
 
 func _close_auth_modal() -> void:
 	if overlay == null: return
