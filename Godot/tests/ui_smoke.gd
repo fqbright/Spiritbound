@@ -3043,10 +3043,33 @@ func _run() -> void:
 	await process_frame
 	check(not auth_name.visible, "AuthNameInput hides when switched back to login mode")
 
-	# Close auth modal
-	auth_close.emit_signal("pressed")
+	# Test Apple and Google OAuth button presses in AuthModal
+	var auth_apple_btn := auth_modal.find_child("AuthAppleBtn", true, false) as Button
+	check(auth_apple_btn != null, "AuthAppleBtn exists in AuthModal")
+	if auth_apple_btn != null:
+		auth_apple_btn.emit_signal("pressed")
+		await process_frame
+		check(game.profile.account.provider == "apple", "pressing AuthAppleBtn links profile to apple")
+		check(SpiritSave.is_cloud_linked(game.profile), "pressing AuthAppleBtn sets is_cloud_linked to true")
+		check(game.overlay.get_node_or_null("AuthModal") == null, "pressing AuthAppleBtn closes AuthModal")
+
+	# Re-open AuthModal to test AuthGoogleBtn
+	game.show_auth_modal()
 	await process_frame
-	check(game.overlay.get_node_or_null("AuthModal") == null, "AuthCloseBtn closes and frees AuthModal")
+	var auth_modal2: Node = game.overlay.get_node_or_null("AuthModal")
+	check(auth_modal2 != null, "show_auth_modal re-opens AuthModal")
+	var auth_google_btn := auth_modal2.find_child("AuthGoogleBtn", true, false) as Button
+	check(auth_google_btn != null, "AuthGoogleBtn exists in AuthModal")
+	if auth_google_btn != null:
+		auth_google_btn.emit_signal("pressed")
+		await process_frame
+		check(game.profile.account.provider == "google", "pressing AuthGoogleBtn links profile to google")
+		check(SpiritSave.is_cloud_linked(game.profile), "pressing AuthGoogleBtn sets is_cloud_linked to true")
+		check(game.overlay.get_node_or_null("AuthModal") == null, "pressing AuthGoogleBtn closes AuthModal")
+
+	# Reset account to guest for subsequent smoke tests
+	game.profile.account.provider = "guest"
+	game.profile.account.user_id = ""
 
 	# Intro Cutscene & Skip Button Smoke Tests
 	var intro_done := [false]

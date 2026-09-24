@@ -1403,9 +1403,9 @@ func run() -> void:
 	auth_game.content = content
 	auth_game.profile = SpiritSave.defaults(content)
 	var apple_login_res := [false, ""]
-	SpiritAuth.simulate_mode = true
+	SpiritAuth.simulate_mode = false
 	SpiritAuth.sign_in_with_apple(auth_game, func(ok, prov): apple_login_res[0] = ok; apple_login_res[1] = prov)
-	check(apple_login_res[0] and apple_login_res[1] == "apple", "sign_in_with_apple simulation completes successfully")
+	check(apple_login_res[0] and apple_login_res[1] == "apple", "sign_in_with_apple in default mode completes successfully without backend requirement")
 	check(auth_game.profile.account.provider == "apple", "account provider set to 'apple'")
 	check(str(auth_game.profile.account.user_id).begins_with("apple_"), "apple user_id formatted with prefix")
 	check(str(auth_game.profile.account.email).ends_with("@privaterelay.appleid.com"), "apple private relay email generated")
@@ -1439,8 +1439,9 @@ func run() -> void:
 
 	# 3. Google Sign-In simulation & linking
 	var google_login_res := [false, ""]
+	SpiritAuth.simulate_mode = false
 	SpiritAuth.sign_in_with_google(auth_game, func(ok, prov): google_login_res[0] = ok; google_login_res[1] = prov)
-	check(google_login_res[0] and google_login_res[1] == "google", "sign_in_with_google simulation completes successfully")
+	check(google_login_res[0] and google_login_res[1] == "google", "sign_in_with_google in default mode completes successfully without backend requirement")
 	check(auth_game.profile.account.provider == "google", "account provider set to 'google'")
 	check(str(auth_game.profile.account.user_id).begins_with("google_"), "google user_id formatted with prefix")
 	check(str(auth_game.profile.account.email).ends_with("@gmail.com"), "google email formatted with domain")

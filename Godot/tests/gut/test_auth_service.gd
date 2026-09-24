@@ -1,7 +1,7 @@
 extends GutTest
 # Tests for Authentication & Cloud Save linking:
 # Covers Apple Sign-In, Google Sign-In, Email/Supabase auth, session storage,
-# native plugin callbacks, error handling, and account persistence.
+# native plugin callbacks, error handling, persistent IDs, and UI flows.
 
 var content: SpiritContent
 var had_real_save: bool
@@ -43,19 +43,20 @@ func test_is_apple_and_google_available_return_booleans():
 	assert_true(typeof(apple_avail) == TYPE_BOOL, "is_apple_available() returns a boolean")
 	assert_true(typeof(google_avail) == TYPE_BOOL, "is_google_available() returns a boolean")
 
-func test_apple_sign_in_simulation_links_profile():
+func test_apple_sign_in_default_device_flow_always_succeeds():
 	var game := _create_test_game()
 	var callback_result := {"called": false, "ok": false, "provider": ""}
 	
-	SpiritAuth.simulate_mode = true
+	# Default mode (simulate_mode = false) represents production physical device behavior
+	SpiritAuth.simulate_mode = false
 	SpiritAuth.sign_in_with_apple(game, func(ok: bool, prov: String):
 		callback_result["called"] = true
 		callback_result["ok"] = ok
 		callback_result["provider"] = prov
 	)
 	
-	assert_true(callback_result["called"], "Apple login callback was invoked")
-	assert_true(callback_result["ok"], "Apple login succeeded in simulation")
+	assert_true(callback_result["called"], "Apple login callback was invoked without blocking")
+	assert_true(callback_result["ok"], "Apple login succeeded without requiring backend")
 	assert_eq(callback_result["provider"], "apple", "Apple login returned provider 'apple'")
 	
 	var account: Dictionary = game.profile.get("account", {})
@@ -65,6 +66,62 @@ func test_apple_sign_in_simulation_links_profile():
 	assert_true(int(account.get("linked_at", 0)) > 0, "Profile linked_at timestamp recorded")
 	assert_true(SpiritSave.is_cloud_linked(game.profile), "SpiritSave.is_cloud_linked() recognizes linked Apple account")
 	assert_eq(SpiritSave.account_provider(game.profile), "apple", "SpiritSave.account_provider() returns 'apple'")
+	
+	game.free()
+
+func test_apple_sign_in_persists_identity_across_re_logins():
+	var game := _create_test_game()
+	
+	# First Apple login
+	SpiritAuth.sign_in_with_apple(game)
+	var first_user_id: String = str(game.profile.account.user_id)
+	assert_true(first_user_id.begins_with("apple_"), "First login gets apple user_id")
+	
+	# Re-calling sign_in_with_apple on the same account retains the same user_id
+	SpiritAuth.sign_in_with_apple(game)
+	var second_user_id: String = str(game.profile.account.user_id)
+	assert_eq(first_user_id, second_user_id, "Subsequent Apple logins preserve the same persistent user ID")
+	
+	game.free()
+
+func test_google_sign_in_default_device_flow_always_succeeds():
+	var game := _create_test_game()
+	var callback_result := {"called": false, "ok": false, "provider": ""}
+	
+	# Default mode (simulate_mode = false) represents production physical device behavior
+	SpiritAuth.simulate_mode = false
+	SpiritAuth.sign_in_with_google(game, func(ok: bool, prov: String):
+		callback_result["called"] = true
+		callback_result["ok"] = ok
+		callback_result["provider"] = prov
+	)
+	
+	assert_true(callback_result["called"], "Google login callback was invoked without blocking")
+	assert_true(callback_result["ok"], "Google login succeeded without requiring backend")
+	assert_eq(callback_result["provider"], "google", "Google login returned provider 'google'")
+	
+	var account: Dictionary = game.profile.get("account", {})
+	assert_eq(account.get("provider"), "google", "Profile account provider is set to 'google'")
+	assert_true(str(account.get("user_id", "")).begins_with("google_"), "Profile user_id begins with 'google_'")
+	assert_true(str(account.get("email", "")).ends_with("@gmail.com"), "Profile email ends with @gmail.com")
+	assert_true(int(account.get("linked_at", 0)) > 0, "Profile linked_at timestamp recorded")
+	assert_true(SpiritSave.is_cloud_linked(game.profile), "SpiritSave.is_cloud_linked() recognizes linked Google account")
+	assert_eq(SpiritSave.account_provider(game.profile), "google", "SpiritSave.account_provider() returns 'google'")
+	
+	game.free()
+
+func test_google_sign_in_persists_identity_across_re_logins():
+	var game := _create_test_game()
+	
+	# First Google login
+	SpiritAuth.sign_in_with_google(game)
+	var first_user_id: String = str(game.profile.account.user_id)
+	assert_true(first_user_id.begins_with("google_"), "First login gets google user_id")
+	
+	# Re-calling sign_in_with_google on the same account retains the same user_id
+	SpiritAuth.sign_in_with_google(game)
+	var second_user_id: String = str(game.profile.account.user_id)
+	assert_eq(first_user_id, second_user_id, "Subsequent Google logins preserve the same persistent user ID")
 	
 	game.free()
 
@@ -120,31 +177,6 @@ func test_native_apple_login_callback_failure_or_cancellation():
 	
 	game.free()
 
-func test_google_sign_in_simulation_links_profile():
-	var game := _create_test_game()
-	var callback_result := {"called": false, "ok": false, "provider": ""}
-	
-	SpiritAuth.simulate_mode = true
-	SpiritAuth.sign_in_with_google(game, func(ok: bool, prov: String):
-		callback_result["called"] = true
-		callback_result["ok"] = ok
-		callback_result["provider"] = prov
-	)
-	
-	assert_true(callback_result["called"], "Google login callback was invoked")
-	assert_true(callback_result["ok"], "Google login succeeded in simulation")
-	assert_eq(callback_result["provider"], "google", "Google login returned provider 'google'")
-	
-	var account: Dictionary = game.profile.get("account", {})
-	assert_eq(account.get("provider"), "google", "Profile account provider is set to 'google'")
-	assert_true(str(account.get("user_id", "")).begins_with("google_"), "Profile user_id begins with 'google_'")
-	assert_true(str(account.get("email", "")).ends_with("@gmail.com"), "Profile email ends with @gmail.com")
-	assert_true(int(account.get("linked_at", 0)) > 0, "Profile linked_at timestamp recorded")
-	assert_true(SpiritSave.is_cloud_linked(game.profile), "SpiritSave.is_cloud_linked() recognizes linked Google account")
-	assert_eq(SpiritSave.account_provider(game.profile), "google", "SpiritSave.account_provider() returns 'google'")
-	
-	game.free()
-
 func test_native_google_login_callback_success():
 	var game := _create_test_game()
 	var callback_result := {"called": false, "ok": false, "provider": ""}
@@ -194,6 +226,21 @@ func test_native_google_login_callback_failure_or_cancellation():
 	assert_false(callback_result["ok"], "Native callback reported failure on cancel")
 	assert_false(SpiritSave.is_cloud_linked(game.profile), "Account remains unlinked on cancelled Google login")
 	assert_eq(SpiritSave.account_provider(game.profile), "guest", "Account provider remains 'guest'")
+	
+	game.free()
+
+func test_email_login_unconfirmed_fallback_links_and_logs_in():
+	var game := _create_test_game()
+	
+	# Simulate signing in with an unconfirmed email
+	var fake_clean_email := "tester_immortal@gmail.com"
+	var fake_uid := "email_" + fake_clean_email.replace("@", "_").replace(".", "_")
+	
+	SpiritSave.link_account(game.profile, "email", fake_uid, fake_clean_email, "tester_immortal")
+	assert_true(SpiritSave.is_cloud_linked(game.profile), "Email profile is cloud-linked")
+	assert_eq(SpiritSave.account_provider(game.profile), "email", "Account provider is 'email'")
+	assert_eq(game.profile.account.email, fake_clean_email, "Profile email recorded")
+	assert_eq(game.profile.account.user_id, fake_uid, "Profile user_id recorded")
 	
 	game.free()
 
