@@ -122,7 +122,14 @@ func _setup_battle_background(encounter: Dictionary, stage_lvl: int) -> void:
 	# 1. Base dark foundation
 	var base_rect := ColorRect.new()
 	base_rect.name = "BattleBaseRect"
-	base_rect.color = g.BG
+	var dt := Time.get_datetime_dict_from_system()
+	var hour: int = int(dt.get("hour", 12))
+	var celestial_tint := Color(1.0, 1.0, 1.0)
+	if hour >= 5 and hour < 11: celestial_tint = Color(1.04, 0.98, 0.90)
+	elif hour >= 11 and hour < 17: celestial_tint = Color(0.98, 1.01, 1.04)
+	elif hour >= 17 and hour < 21: celestial_tint = Color(1.05, 0.92, 0.88)
+	else: celestial_tint = Color(0.90, 0.92, 1.04)
+	base_rect.color = g.BG * celestial_tint
 	base_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	base_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg_root.add_child(base_rect)
@@ -248,6 +255,18 @@ func _add_battle_ambience(parent: Node, chapter: int, is_boss: bool, is_world_bo
 			motes.color = Color(0.75, 0.50, 0.95, 0.55)
 	if is_world_boss:
 		motes.color = motes.color.lerp(Color(1.0, 0.35, 0.35), 0.35)
+
+	# Celestial Time Cycle Ambient Particle Tint
+	var dt := Time.get_datetime_dict_from_system()
+	var hour: int = int(dt.get("hour", 12))
+	if hour >= 5 and hour < 11:
+		motes.color = motes.color.lerp(Color("fef08a"), 0.22) # Golden Dawn
+	elif hour >= 11 and hour < 17:
+		motes.color = motes.color.lerp(Color("e0f2fe"), 0.15) # Radiant Noon
+	elif hour >= 17 and hour < 21:
+		motes.color = motes.color.lerp(Color("fca5a5"), 0.28) # Crimson Dusk
+	else:
+		motes.color = motes.color.lerp(Color("c4b5fd"), 0.32) # Midnight Starlight
 
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 0.0))
@@ -1014,6 +1033,25 @@ func _build_player_stage() -> Control:
 	glow.add_theme_stylebox_override("panel", _target_ring(false))
 	glow.visible = false
 	stage.add_child(glow)
+
+	# Hero Qi-Gauge Awakening Aura (Phase 16)
+	if g.combat and g.combat.can_cast_ultimate():
+		var ult_aura := Panel.new()
+		ult_aura.name = "PlayerAwakeningAura"
+		ult_aura.custom_minimum_size = Vector2(110.0, 110.0)
+		ult_aura.size = ult_aura.custom_minimum_size
+		ult_aura.position = Vector2(player_x - 55.0, 16.0)
+		ult_aura.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var aura_style := g._panel(Color(1.0, 0.85, 0.2, 0.15), 55, Color(1.0, 0.9, 0.35, 0.85))
+		aura_style.border_width_left = 3; aura_style.border_width_right = 3
+		aura_style.border_width_top = 3; aura_style.border_width_bottom = 3
+		ult_aura.add_theme_stylebox_override("panel", aura_style)
+		stage.add_child(ult_aura)
+		var atw := ult_aura.create_tween().set_loops()
+		atw.tween_property(ult_aura, "scale", Vector2(1.12, 1.12), 0.7).set_trans(Tween.TRANS_SINE)
+		atw.parallel().tween_property(ult_aura, "modulate:a", 0.45, 0.7).set_trans(Tween.TRANS_SINE)
+		atw.tween_property(ult_aura, "scale", Vector2(0.96, 0.96), 0.7).set_trans(Tween.TRANS_SINE)
+		atw.parallel().tween_property(ult_aura, "modulate:a", 0.95, 0.7).set_trans(Tween.TRANS_SINE)
 
 	# Player Multi-part Rig (Body + Fluffy Ethereal Tail + Floating Foxfire Orb + Ground Aura)
 	# — Fox Spirit only, since the rig assets (fox_body/fox_tail/fox_orb/ground_aura) are
@@ -2345,7 +2383,7 @@ func _show_cancel_zone(active: bool) -> void:
 	zone.add_child(lbl)
 	g.overlay.add_child(zone)
 
-func _build_pile_element_summary(pile: Array) -> Control:
+func _build_pile_element_summary(pile: Array, is_draw_pile: bool = false) -> Control:
 	var box := HBoxContainer.new()
 	box.custom_minimum_size = Vector2(340, 22)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -2358,6 +2396,9 @@ func _build_pile_element_summary(pile: Array) -> Control:
 	var toxin_c := 0
 	var total_cost := 0
 	var counted := 0
+	var atk_c := 0
+	var skl_c := 0
+	var pwr_c := 0
 
 	for item in pile:
 		var c_id: String = ""
@@ -2378,6 +2419,11 @@ func _build_pile_element_summary(pile: Array) -> Control:
 		elif el in ["earth", "stone"]: earth_c += 1
 		elif el in ["toxic", "poison", "miasma"]: toxin_c += 1
 
+		var kind: String = str(c_data.get("kind", "Skill"))
+		if kind == "Attack": atk_c += 1
+		elif kind in ["Skill", "Defense"]: skl_c += 1
+		else: pwr_c += 1
+
 	if fire_c > 0: box.add_child(g._label("🔥%d" % fire_c, 10, Color("ff8a8a")))
 	if water_c > 0: box.add_child(g._label("❄️%d" % water_c, 10, Color("67e8f9")))
 	if storm_c > 0: box.add_child(g._label("⚡%d" % storm_c, 10, Color("facc15")))
@@ -2387,6 +2433,19 @@ func _build_pile_element_summary(pile: Array) -> Control:
 	var avg_cost: float = float(total_cost) / float(maxi(1, counted))
 	var avg_lbl := g._label("%s: %.1f" % [g.t("ui.avg_cost"), avg_cost], 10, g.GOLD)
 	box.add_child(avg_lbl)
+
+	if is_draw_pile and counted > 0:
+		var root_col := VBoxContainer.new()
+		root_col.add_theme_constant_override("separation", 3)
+		root_col.add_child(box)
+
+		var p_atk: int = int(round(float(atk_c) / float(counted) * 100.0))
+		var p_skl: int = int(round(float(skl_c) / float(counted) * 100.0))
+		var p_pwr: int = maxi(0, 100 - p_atk - p_skl)
+		var forecast_lbl := g._label(g.tf("ui.draw_forecast_fmt", [p_atk, p_skl, p_pwr]), 9, Color("a5f3fc"), HORIZONTAL_ALIGNMENT_CENTER)
+		forecast_lbl.name = "DrawPileForecastLabel"
+		root_col.add_child(forecast_lbl)
+		return root_col
 
 	return box
 
@@ -2433,7 +2492,7 @@ func show_pile_inspector(title_key: String, pile: Array) -> void:
 	header.add_child(spacer_r)
 
 	if not pile.is_empty():
-		vbox.add_child(_build_pile_element_summary(pile))
+		vbox.add_child(_build_pile_element_summary(pile, title_key == "ui.pile_draw_title"))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL

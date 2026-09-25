@@ -1160,6 +1160,40 @@ func _clear() -> void:
 # iOS-style interactive back: a drag that starts on the left screen edge pops the page.
 func _input(event: InputEvent) -> void:
 	if _handle_targeting(event): return
+
+	# Desktop & Tablet Ergonomic Keyboard Shortcuts (Phase 16)
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key: int = event.keycode
+		if key == KEY_ESCAPE:
+			if overlay and overlay.get_child_count() > 0:
+				var top_modal := overlay.get_child(overlay.get_child_count() - 1)
+				if top_modal and is_instance_valid(top_modal):
+					top_modal.queue_free()
+					get_viewport().set_input_as_handled()
+					return
+			elif _back_action.is_valid():
+				var action := _back_action
+				_back_action = Callable()
+				action.call()
+				get_viewport().set_input_as_handled()
+				return
+		elif combat != null and combat.state != null and combat.state.phase == "player" and not resolving:
+			if key == KEY_SPACE or key == KEY_ENTER:
+				_pass_turn()
+				get_viewport().set_input_as_handled()
+				return
+			elif key == KEY_E:
+				if combat.can_cast_ultimate():
+					_battle_screen._cast_hero_ultimate(0)
+					get_viewport().set_input_as_handled()
+					return
+			elif key >= KEY_1 and key <= KEY_9:
+				var card_idx: int = key - KEY_1
+				if card_idx < combat.state.hand.size():
+					_battle_screen._tap_card(card_idx)
+					get_viewport().set_input_as_handled()
+					return
+
 	if not _back_action.is_valid(): return
 	var pressed := false
 	var released := false

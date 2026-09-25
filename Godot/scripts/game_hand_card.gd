@@ -14,6 +14,7 @@ var target_enemy_idx := -1
 var preview_index := -1
 var is_previewing := false
 var _press_time_ms := 0
+var _last_drag_pos := Vector2.ZERO
 
 # Below this, a press-then-release-without-dragging counts as a quick tap that plays the
 # card. At or above it, the same release just closes the peek without playing — press and
@@ -81,6 +82,7 @@ func _on_touch_down(local_pos: Vector2) -> void:
 	is_dragging = false
 	_press_time_ms = Time.get_ticks_msec()
 	drag_start = global_position + local_pos
+	_last_drag_pos = drag_start
 	z_index = 60
 	Input.vibrate_handheld(15)
 	# Light up what this card may hit as soon as it leaves the hand.
@@ -104,6 +106,8 @@ func _on_touch_down(local_pos: Vector2) -> void:
 func _on_drag(local_pos: Vector2) -> void:
 	var cur_global := global_position + local_pos
 	var delta: Vector2 = cur_global - drag_start
+	var vel_x: float = cur_global.x - _last_drag_pos.x if _last_drag_pos != Vector2.ZERO else 0.0
+	_last_drag_pos = cur_global
 	if not is_dragging and delta.length() > 6.0:
 		is_dragging = true
 		# A peek is "let me read this," not a drag — the instant a real drag starts,
@@ -113,8 +117,9 @@ func _on_drag(local_pos: Vector2) -> void:
 	if is_dragging:
 		if current_tween: current_tween.kill()
 		global_position = cur_global - Vector2(custom_minimum_size.x / 2.0, custom_minimum_size.y / 2.0)
-		rotation = clampf(delta.x * 0.002, -0.18, 0.18)
-		scale = Vector2(1.12, 1.12)
+		var target_rot: float = clampf(vel_x * 0.012 + delta.x * 0.0012, -0.22, 0.22)
+		rotation = lerpf(rotation, target_rot, 0.45)
+		scale = Vector2(1.15, 1.15)
 		if game and game.has_method("_preview_energy_drain"):
 			game._preview_energy_drain(int(card_data.get("cost", 0)))
 		target_enemy_idx = -1
@@ -137,6 +142,7 @@ func _on_drag(local_pos: Vector2) -> void:
 				else: game._clear_damage_preview()
 
 func _on_touch_up() -> void:
+	_last_drag_pos = Vector2.ZERO
 	if not is_held: return
 	is_held = false
 	preview_index = -1

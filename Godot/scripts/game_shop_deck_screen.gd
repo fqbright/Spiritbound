@@ -183,9 +183,11 @@ const SHOP_STOCK_COUNT := 10
 
 # Stock and the day's sale slot are derived from the day number rather than stored, so
 # they need no save-file field and can't drift out of sync with the daily quest reset.
+var _shop_rerolls := 0
+
 func _shop_period() -> Dictionary:
 	var day: int = g._current_day()
-	return g.content.roll_shop_stock(day, SHOP_STOCK_COUNT)
+	return g.content.roll_shop_stock(day + _shop_rerolls * 101, SHOP_STOCK_COUNT)
 
 func _shop_reset_at() -> int:
 	var day: int = g._current_day()
@@ -389,7 +391,27 @@ func show_shop() -> void:
 		_build_shop_exchange(page)
 
 func _build_shop_curated(page: VBoxContainer) -> void:
-	page.add_child(g._label(g.tf("ui.shop_refresh", g._format_countdown(_shop_reset_at())), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var timer_row := HBoxContainer.new()
+	timer_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	timer_row.add_theme_constant_override("separation", 10)
+	timer_row.add_child(g._label(g.tf("ui.shop_refresh", g._format_countdown(_shop_reset_at())), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+
+	var restock_cost := 15
+	var can_restock: bool = int(g.profile.gold) >= restock_cost
+	var restock_btn := g._button("%s (🪙%d)" % [g.t("ui.shop_restock_btn"), restock_cost], func():
+		if int(g.profile.gold) >= restock_cost:
+			g.profile.gold -= restock_cost
+			_shop_rerolls += 1
+			SpiritSave.write(g.profile)
+			g.play_sfx("coin")
+			g._toast(g.t("ui.shop_restock_toast"), g.GOLD)
+			show_shop()
+		else:
+			g._toast(g.t("ui.gold_insufficient"), Color("ef4444"))
+	, Color("1f2937") if can_restock else Color("111827"), Vector2(80, 24))
+	restock_btn.name = "ShopRestockBtn"
+	timer_row.add_child(restock_btn)
+	page.add_child(timer_row)
 
 	var svc_row := HBoxContainer.new()
 	svc_row.custom_minimum_size.y = 56

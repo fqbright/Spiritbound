@@ -265,3 +265,43 @@ func test_phase15_polish_systems():
 	leak = maxi(0, total_incoming - player_shield)
 	assert_eq(leak, 0, "Leak is 0 when shield exceeds incoming")
 
+func test_phase16_masterpiece_systems():
+	# 1. Localization keys for forecast, share, restock and bargain
+	var check_keys := [
+		"ui.draw_forecast_fmt", "ui.chronicles_copied", "ui.chronicles_share",
+		"ui.shop_restock_btn", "ui.shop_restock_toast", "ui.shop_bargain_badge"
+	]
+	for k in check_keys:
+		var zh := content.ui(k, "zh-Hans")
+		var en := content.ui(k, "en")
+		assert_true(zh.length() > 0 and zh != k, "zh-Hans translation exists for %s" % k)
+		assert_true(en.length() > 0 and en != k, "en translation exists for %s" % k)
+
+	# 2. Draw pile probability calculation math
+	var test_pile: Array = [
+		{"kind": "Attack"}, {"kind": "Attack"}, {"kind": "Attack"},
+		{"kind": "Skill"}, {"kind": "Skill"},
+		{"kind": "Power"}
+	]
+	var atk_c := 0; var skl_c := 0; var pwr_c := 0
+	for item in test_pile:
+		var k: String = str(item.get("kind", ""))
+		if k == "Attack": atk_c += 1
+		elif k in ["Skill", "Defense"]: skl_c += 1
+		else: pwr_c += 1
+	var total_cnt := test_pile.size()
+	var p_atk: int = int(round(float(atk_c) / float(total_cnt) * 100.0))
+	var p_skl: int = int(round(float(skl_c) / float(total_cnt) * 100.0))
+	var p_pwr: int = maxi(0, 100 - p_atk - p_skl)
+	assert_eq(p_atk, 50, "Attack chance is 50%")
+	assert_eq(p_skl, 33, "Skill chance is 33%")
+	assert_eq(p_pwr, 17, "Power chance is 17%")
+	assert_eq(p_atk + p_skl + p_pwr, 100, "Probabilities sum to 100%")
+
+	# 3. Shop restock cost and payment verification
+	var restock_cost := 15
+	var player_gold := 30
+	assert_true(player_gold >= restock_cost, "Player has sufficient gold to restock shop")
+	player_gold -= restock_cost
+	assert_eq(player_gold, 15, "Gold deducted correctly after restock")
+

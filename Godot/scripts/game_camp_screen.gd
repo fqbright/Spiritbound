@@ -4800,6 +4800,19 @@ func _show_run_history_modal() -> void:
 			var line2 := g._label(line2_txt, 10, g.MUTED)
 			details.add_child(line2)
 
+			var copy_btn := g._button("📋", func():
+				var share_text := "📜【灵境决·修真战报】\n"
+				share_text += "道号: %s\n" % hero_name
+				share_text += "结局: %s · 结算第 %d 关\n" % [result_str, stage_num]
+				share_text += "耗时: %d 回合 · 牌库: %s\n" % [turn_cnt, cards_str]
+				share_text += "灵境决 (Spiritbound) 欢迎道友切磋论道！"
+				DisplayServer.clipboard_set(share_text)
+				g._toast(g.t("ui.chronicles_copied"), g.GOLD)
+			, Color("1e293b"), Vector2(32, 28))
+			copy_btn.name = "ChroniclesCopyBtn"
+			copy_btn.tooltip_text = g.t("ui.chronicles_share")
+			row.add_child(copy_btn)
+
 			list.add_child(card_p)
 
 
