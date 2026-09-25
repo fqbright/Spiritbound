@@ -607,11 +607,60 @@ func show_reward_details() -> void:
 		return
 
 	list.add_child(g._label(g.t("ui.reward_choose"), 13, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
-	var options: Array = g.content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
-	for offset in 3:
-		list.add_child(_reward_card_row(options[(g.current_stage + offset) % options.size()]))
+	var reward_options := _get_reward_card_options()
+	for card in reward_options:
+		list.add_child(_reward_card_row(card))
+	var skip_btn := g._button(g.t("ui.reward_skip"), _finish_reward, Color("2d2218"), Vector2(0, 36))
+	skip_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	list.add_child(skip_btn)
 	if g.auto_battle_active:
 		_auto_handle_card_reward()
+
+const CAPSTONE_IDS: Array[String] = [
+	"samadhiFire", "spiritSurge",
+	"shieldSlam", "bastionForm",
+	"thousandBlades", "shadowClone",
+	"catalyst", "bloodPact"
+]
+
+func _is_capstone_card(card_id: String) -> bool:
+	return CAPSTONE_IDS.has(card_id)
+
+func _get_hero_capstone_cards(hero_id: String) -> Array[String]:
+	match hero_id:
+		"stone_sentinel": return ["shieldSlam", "bastionForm"]
+		"shadow_stalker": return ["thousandBlades", "shadowClone"]
+		"miasma_witch": return ["catalyst", "bloodPact"]
+		_: return ["samadhiFire", "spiritSurge"]
+
+func _get_reward_card_options() -> Array:
+	var pool: Array = g.content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
+	var result: Array = []
+
+	# P0: Guaranteed Hero Capstone Card on Boss 1 (Chapter 1 Stage 4) or first boss clear
+	var is_first_boss := (g.current_stage == 4 or (g.current_stage % 5 == 4 and not bool(g.profile.get("first_boss_capstone_awarded", false))))
+	if is_first_boss:
+		var hero_id: String = str(g.profile.get("hero_class", "fox_spirit"))
+		var cap_ids := _get_hero_capstone_cards(hero_id)
+		var chosen_id: String = cap_ids[0]
+		if int(g.profile.collection.get(chosen_id, 0)) > 0 and cap_ids.size() > 1:
+			chosen_id = cap_ids[1]
+		var cap_card: Dictionary = g.content.card(chosen_id)
+		if not cap_card.is_empty():
+			result.append(cap_card)
+			g.profile["first_boss_capstone_awarded"] = true
+			SpiritSave.write(g.profile)
+
+	for offset in 3:
+		var candidate: Dictionary = pool[(g.current_stage + offset) % pool.size()]
+		if not result.has(candidate) and result.size() < 3:
+			result.append(candidate)
+	while result.size() < 3 and not pool.is_empty():
+		for candidate in pool:
+			if not result.has(candidate):
+				result.append(candidate)
+				if result.size() >= 3: break
+	return result
 
 # The rating ask's tap handler. Kept out of show_reward_details()'s body (it has to be a
 # separate function to be a button callback at all) but placed right after it so the trigger and
@@ -628,11 +677,10 @@ func _rate_prompt_tapped() -> void:
 func _auto_handle_card_reward() -> void:
 	await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
 	if not g.auto_battle_active: return
-	var options: Array = g.content.cards.filter(func(card): return card.rarity != "Starter" and card.get("rarity", "") != "Curse")
+	var options := _get_reward_card_options()
 	var chosen: Dictionary = {}
 	var best_score: float = -99999.0
-	for offset in 3:
-		var candidate: Dictionary = options[(g.current_stage + offset) % options.size()]
+	for candidate in options:
 		var sc: float = g._card_build_score(candidate)
 		if sc > best_score:
 			best_score = sc
@@ -643,14 +691,15 @@ func _auto_handle_card_reward() -> void:
 		_finish_reward()
 
 func _reward_card_row(card: Dictionary) -> Control:
-	var accent := g._card_color(card)
+	var is_cap := _is_capstone_card(str(card.get("id", "")))
+	var accent := Color("ffd700") if is_cap else g._card_color(card)
 	var owned: int = int(g.profile.collection.get(card.id, 0))
 	var in_deck: int = g.profile.deck.count(card.id)
 
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size.y = 126
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", g._panel(Color("11242a"), 12, accent))
+	panel.add_theme_stylebox_override("panel", g._panel(Color("181a10") if is_cap else Color("11242a"), 12, accent))
 
 	var pad := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 8)
@@ -675,7 +724,10 @@ func _reward_card_row(card: Dictionary) -> Control:
 	right.add_theme_constant_override("separation", 3)
 	row.add_child(right)
 
-	right.add_child(g._label(g.content.text(card.nameKey, g.lang), 14, g.TEXT))
+	if is_cap:
+		right.add_child(g._label("✦ " + g.t("ui.capstone_card_badge") + " ✦", 10, Color("ffd700")))
+
+	right.add_child(g._label(g.content.text(card.nameKey, g.lang), 14, Color("fff2b2") if is_cap else g.TEXT))
 	right.add_child(g._label("%s · %s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("element.%s" % card.get("element", "spirit")), card.rarity], 9, g.GOLD))
 	var desc := g._label(g._card_description(card), 10, Color("cfe3e0"), HORIZONTAL_ALIGNMENT_LEFT, true)
 	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -941,11 +993,13 @@ func show_event(index: int, kind: String) -> void:
 	elif kind == "rest":
 		g._maybe_show_tutorial("rest_purify")
 		page.add_child(g._button(g.t("ui.rest_heal_choice"), func():
+			g.profile.health = mini(60, int(g.profile.get("health", 60)) + 25)
 			g.profile.gold += 35
 			g._advance_quest("earn_gold", 35)
 			_mark_stage_event_claimed(index)
 			SpiritSave.write(g.profile)
 			g._haptic("tap")
+			g._toast("打坐调息：生命回复 25 点！" if g.lang == "zh-Hans" else "Rested: Restored 25 HP!", g.JADE)
 			g.begin_battle(index)
 		, Color("21594e"), Vector2(300, 48)))
 		page.add_child(g._button(g.t("ui.rest_purify_choice"), func():

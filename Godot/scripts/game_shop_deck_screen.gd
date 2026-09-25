@@ -67,16 +67,17 @@ func show_deck_purge(return_callback: Callable, cost := 0, on_done := Callable()
 			if cost > 0 and int(g.profile.gold) < cost:
 				g._toast(g.t("ui.shop_no_gold"))
 				return
+			if g.profile.deck.size() <= 12:
+				g._toast(g.t("ui.deck_too_small"))
+				return
 			if cost > 0: g.profile.gold -= cost
-			var replacement_id := "foxfire" if card.id == "strike" else ("mirrorWard" if card.id == "ward" else "wildSpark")
 			var idx: int = g.profile.deck.find(card.id)
-			if idx >= 0: g.profile.deck[idx] = replacement_id
+			if idx >= 0: g.profile.deck.remove_at(idx)
 			if int(g.profile.collection.get(card.id, 0)) > 0:
 				g.profile.collection[card.id] = maxi(0, int(g.profile.collection[card.id]) - 1)
-			g.profile.collection[replacement_id] = int(g.profile.collection.get(replacement_id, 0)) + 1
 			SpiritSave.write(g.profile)
 			g._haptic("heavy")
-			g._toast(g.tf("ui.purged_toast", [g.content.text(card.nameKey, g.lang), g.content.text(g.content.card(replacement_id).nameKey, g.lang)]), g.JADE)
+			g._toast(g.tf("ui.card_purged_toast", g.content.text(card.nameKey, g.lang)), g.JADE)
 			if on_done.is_valid(): on_done.call()
 			else: return_callback.call()
 		, g.EMBER, Vector2(88, 38))
@@ -143,22 +144,36 @@ func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void
 
 		if not maxed:
 			var next_lvl := up_lvl + 1
-			var btn_label := "+1" if up_lvl == 0 else g.t("ui.awaken_btn")
-			var btn_color := g.GOLD if up_lvl == 0 else g.EMBER
-			var up_btn := g._button(btn_label, func():
+			var flow_title := ("+1 " if up_lvl == 0 else (g.t("ui.awaken_btn") + "·")) + g.t("ui.upgrade_branch_flow")
+			var flow_btn := g._button(flow_title, func():
 				g.profile.upgrades[card_id] = next_lvl
+				if not g.profile.get("card_branches") is Dictionary: g.profile.card_branches = {}
+				g.profile.card_branches[card_id] = "flow"
 				SpiritSave.write(g.profile)
 				g._haptic("heavy")
-				if next_lvl >= SpiritContent.MAX_CARD_UPGRADE: g._toast(g.tf("ui.awakened_toast_fmt", [card_name]), g.EMBER)
-				else: g._toast(g.tf("ui.upgraded_toast", [card_name, card_name]), g.GOLD)
+				g._toast(g.tf("ui.upgrade_branch_chosen", [card_name, g.t("ui.upgrade_branch_flow")]), g.JADE)
 				if on_done.is_valid(): on_done.call()
 				else: return_callback.call()
-			, btn_color, Vector2(56, 38))
-			up_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			hbox.add_child(up_btn)
+			, Color("1e4a42"), Vector2(80, 38))
+			flow_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hbox.add_child(flow_btn)
+
+			var surge_title := ("+1 " if up_lvl == 0 else (g.t("ui.awaken_btn") + "·")) + g.t("ui.upgrade_branch_surge")
+			var surge_btn := g._button(surge_title, func():
+				g.profile.upgrades[card_id] = next_lvl
+				if not g.profile.get("card_branches") is Dictionary: g.profile.card_branches = {}
+				g.profile.card_branches[card_id] = "surge"
+				SpiritSave.write(g.profile)
+				g._haptic("heavy")
+				g._toast(g.tf("ui.upgrade_branch_chosen", [card_name, g.t("ui.upgrade_branch_surge")]), g.GOLD)
+				if on_done.is_valid(): on_done.call()
+				else: return_callback.call()
+			, g.EMBER if up_lvl > 0 else g.GOLD, Vector2(80, 38))
+			surge_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hbox.add_child(surge_btn)
 		else:
 			var done_lbl := g._label(g.t("ui.awakened_label"), 11, g.JADE, HORIZONTAL_ALIGNMENT_CENTER)
-			done_lbl.custom_minimum_size = Vector2(56, 38)
+			done_lbl.custom_minimum_size = Vector2(74, 38)
 			done_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			hbox.add_child(done_lbl)
 

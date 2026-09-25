@@ -3301,6 +3301,151 @@
       ],
       "kind": "Attack",
       "element": "void"
+    },
+    {
+      "id": "samadhiFire",
+      "nameKey": "card.samadhiFire",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 8
+        }
+      ],
+      "special": "samadhi_burst",
+      "kind": "Attack",
+      "element": "fire"
+    },
+    {
+      "id": "spiritSurge",
+      "nameKey": "card.spiritSurge",
+      "rarity": "Rare",
+      "pool": "CrimsonFox",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 4
+        }
+      ],
+      "special": "spirit_surge",
+      "kind": "Power",
+      "element": "spirit"
+    },
+    {
+      "id": "shieldSlam",
+      "nameKey": "card.shieldSlam",
+      "rarity": "Rare",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 4
+        }
+      ],
+      "special": "shield_slam",
+      "kind": "Attack",
+      "element": "stone"
+    },
+    {
+      "id": "bastionForm",
+      "nameKey": "card.bastionForm",
+      "rarity": "Rare",
+      "pool": "StoneSentinel",
+      "cost": 2,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 10
+        }
+      ],
+      "special": "bastion_form",
+      "kind": "Power",
+      "element": "stone"
+    },
+    {
+      "id": "thousandBlades",
+      "nameKey": "card.thousandBlades",
+      "rarity": "Rare",
+      "pool": "ShadowStalker",
+      "cost": 1,
+      "exhaust": false,
+      "effects": [
+        {
+          "operation": "damage",
+          "target": "opponent",
+          "amount": 5
+        }
+      ],
+      "special": "thousand_blades",
+      "kind": "Attack",
+      "element": "gale"
+    },
+    {
+      "id": "shadowClone",
+      "nameKey": "card.shadowClone",
+      "rarity": "Rare",
+      "pool": "ShadowStalker",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "shield",
+          "target": "actor",
+          "amount": 4
+        }
+      ],
+      "special": "shadow_clone",
+      "kind": "Skill",
+      "element": "spirit"
+    },
+    {
+      "id": "catalyst",
+      "nameKey": "card.catalyst",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 2,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "status",
+          "status": "poison",
+          "target": "opponent",
+          "amount": 2
+        }
+      ],
+      "special": "catalyst_poison",
+      "kind": "Skill",
+      "element": "poison"
+    },
+    {
+      "id": "bloodPact",
+      "nameKey": "card.bloodPact",
+      "rarity": "Rare",
+      "pool": "MiasmaWitch",
+      "cost": 1,
+      "exhaust": true,
+      "effects": [
+        {
+          "operation": "draw",
+          "target": "actor",
+          "amount": 1
+        }
+      ],
+      "special": "blood_pact",
+      "kind": "Skill",
+      "element": "spirit"
     }
   ],
   "statuses": [
@@ -3640,7 +3785,15 @@
       "card.dark_bargain": "Dark Bargain",
       "card.eclipse_slash": "Eclipse Slash",
       "card.shadow_echo": "Shadow Echo",
-      "card.void_implosion": "Void Implosion"
+      "card.void_implosion": "Void Implosion",
+      "card.samadhiFire": "Samadhi Fire",
+      "card.spiritSurge": "Nine-Tail Surge",
+      "card.shieldSlam": "Mountain Shield Slam",
+      "card.bastionForm": "Xuanwu Bastion",
+      "card.thousandBlades": "Thousand Blades",
+      "card.shadowClone": "Shadow Clone",
+      "card.catalyst": "Toxic Catalyst",
+      "card.bloodPact": "Blood Pact"
     },
     "zh-Hans": {
       "card.strike": "击打",
@@ -3926,7 +4079,15 @@
       "card.dark_bargain": "暗黑盟约",
       "card.eclipse_slash": "日食黯月斩",
       "card.shadow_echo": "暗影残响",
-      "card.void_implosion": "虚无坍缩"
+      "card.void_implosion": "虚无坍缩",
+      "card.samadhiFire": "三昧真火",
+      "card.spiritSurge": "九尾灵动",
+      "card.shieldSlam": "崩山重岳",
+      "card.bastionForm": "玄武化身",
+      "card.thousandBlades": "万刃归宗",
+      "card.shadowClone": "暗影分身",
+      "card.catalyst": "万毒噬心",
+      "card.bloodPact": "幽冥血契"
     }
   }
 }

@@ -109,29 +109,34 @@ static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable())
 			apple_plugin.call("start_login")
 			return
 
-	# Seamless, reliable Apple ID login:
-	# Works on all devices, simulator, and test environments.
-	# Retains persistent device Apple identity across sessions.
-	var account: Dictionary = game.profile.get("account", {})
-	var current_name: String = str(account.get("name", "")).strip_edges()
-	if current_name.is_empty():
-		current_name = "灵界探险家"
+	if simulate_mode:
+		# Test sandbox emulation only
+		var account: Dictionary = game.profile.get("account", {})
+		var current_name: String = str(account.get("name", "")).strip_edges()
+		if current_name.is_empty():
+			current_name = "灵界探险家"
 
-	var user_id: String = ""
-	if str(account.get("provider", "")) == "apple" and not str(account.get("user_id", "")).is_empty():
-		user_id = str(account.get("user_id"))
-	else:
-		var dev_uuid: String = OS.get_unique_id().strip_edges()
-		if dev_uuid.is_empty():
-			dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
-		user_id = "apple_" + dev_uuid.substr(0, 16)
+		var user_id: String = ""
+		if str(account.get("provider", "")) == "apple" and not str(account.get("user_id", "")).is_empty():
+			user_id = str(account.get("user_id"))
+		else:
+			var dev_uuid: String = OS.get_unique_id().strip_edges()
+			if dev_uuid.is_empty():
+				dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
+			user_id = "apple_" + dev_uuid.substr(0, 16)
 
-	var email: String = "%s@privaterelay.appleid.com" % current_name.to_lower().replace(" ", "_")
+		var email: String = "%s@privaterelay.appleid.com" % current_name.to_lower().replace(" ", "_")
+		SpiritSave.link_account(game.profile, "apple", user_id, email, current_name)
+		game._toast(game.t("ui.auth_link_success"), game.JADE)
+		if on_done.is_valid():
+			on_done.call(true, "apple")
+		return
 
-	SpiritSave.link_account(game.profile, "apple", user_id, email, current_name)
-	game._toast(game.t("ui.auth_link_success"), game.JADE)
+	# Real device / production without native plugin configured:
+	# Do not bypass or fake verification. Notify player clearly.
+	game._toast(game.t("ui.auth_apple_unavailable"), game.MUTED)
 	if on_done.is_valid():
-		on_done.call(true, "apple")
+		on_done.call(false, "apple_unavailable")
 
 static func _on_native_apple_login(result: Dictionary, game: SpiritGame, on_done: Callable) -> void:
 	if result.get("status") == "success":
@@ -158,29 +163,34 @@ static func sign_in_with_google(game: SpiritGame, on_done: Callable = Callable()
 			google_plugin.call("start_login")
 			return
 
-	# Seamless, reliable Google sign-in:
-	# Works on all devices, simulator, and test environments.
-	# Retains persistent device Google identity across sessions.
-	var account: Dictionary = game.profile.get("account", {})
-	var current_name: String = str(account.get("name", "")).strip_edges()
-	if current_name.is_empty():
-		current_name = "灵界探险家"
+	if simulate_mode:
+		# Test sandbox emulation only
+		var account: Dictionary = game.profile.get("account", {})
+		var current_name: String = str(account.get("name", "")).strip_edges()
+		if current_name.is_empty():
+			current_name = "灵界探险家"
 
-	var user_id: String = ""
-	if str(account.get("provider", "")) == "google" and not str(account.get("user_id", "")).is_empty():
-		user_id = str(account.get("user_id"))
-	else:
-		var dev_uuid: String = OS.get_unique_id().strip_edges()
-		if dev_uuid.is_empty():
-			dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
-		user_id = "google_" + dev_uuid.substr(0, 16)
+		var user_id: String = ""
+		if str(account.get("provider", "")) == "google" and not str(account.get("user_id", "")).is_empty():
+			user_id = str(account.get("user_id"))
+		else:
+			var dev_uuid: String = OS.get_unique_id().strip_edges()
+			if dev_uuid.is_empty():
+				dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
+			user_id = "google_" + dev_uuid.substr(0, 16)
 
-	var email: String = "%s@gmail.com" % current_name.to_lower().replace(" ", "_")
+		var email: String = "%s@gmail.com" % current_name.to_lower().replace(" ", "_")
+		SpiritSave.link_account(game.profile, "google", user_id, email, current_name)
+		game._toast(game.t("ui.auth_link_success"), game.JADE)
+		if on_done.is_valid():
+			on_done.call(true, "google")
+		return
 
-	SpiritSave.link_account(game.profile, "google", user_id, email, current_name)
-	game._toast(game.t("ui.auth_link_success"), game.JADE)
+	# Real device / production without native plugin configured:
+	# Do not bypass or fake verification. Notify player clearly.
+	game._toast(game.t("ui.auth_google_unavailable"), game.MUTED)
 	if on_done.is_valid():
-		on_done.call(true, "google")
+		on_done.call(false, "google_unavailable")
 
 static func _on_native_google_login(result: Dictionary, game: SpiritGame, on_done: Callable) -> void:
 	if result.get("status") == "success":

@@ -221,6 +221,28 @@ if [ "$DRY_RUN" = false ] && [ -f "$PLIST" ]; then
     fi
 fi
 
+# Ensure com.apple.developer.applesignin is present in Spiritbound.entitlements
+ENTITLEMENTS="$BUILD_DIR/Spiritbound/Spiritbound.entitlements"
+if [ "$DRY_RUN" = false ] && [ -f "$ENTITLEMENTS" ]; then
+    if ! grep -q "com.apple.developer.applesignin" "$ENTITLEMENTS"; then
+        cat << 'EOF' > "$ENTITLEMENTS"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>
+EOF
+        echo "   ✓ Injected com.apple.developer.applesignin into Spiritbound.entitlements"
+    else
+        echo "   ✓ Spiritbound.entitlements already has com.apple.developer.applesignin"
+    fi
+fi
+
 # The version that reached the *exported project*, recorded next to the archive. This is what you
 # paste into TestFlight's "What to Test" so a tester report can be traced to a build.
 #

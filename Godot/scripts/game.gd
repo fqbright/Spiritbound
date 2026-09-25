@@ -87,7 +87,7 @@ var compendium_tab := "cards"
 var camp_tab := "character"
 var shop_tab := "curated"
 var battle_speed := 1.0
-const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0]
+const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0, 3.0]
 var auto_battle_active: bool = false
 var auto_battle_stats: Dictionary = {"stages_cleared": 0, "gold_earned": 0}
 # Kept deliberately conservative (vs. e.g. iOS Dynamic Type's much wider range) — every screen
@@ -652,7 +652,7 @@ func _cycle_speed() -> void:
 	var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button if root != null and is_instance_valid(root) else null
 	if speed_btn != null and is_instance_valid(speed_btn):
 		speed_btn.text = speed_label
-	else:
+	elif is_inside_tree() and combat != null:
 		show_battle()
 	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
 		_battle_screen._maybe_step_auto_battle()
@@ -2096,7 +2096,8 @@ func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Cont
 	# priority; without this, any interactive element in the screen underneath a modal that
 	# happens to sit at the same position (the map's stage pins and header buttons, in
 	# particular) silently swallows every tap meant for the modal itself.
-	self.root.move_child(overlay, self.root.get_child_count() - 1)
+	if overlay and overlay.get_parent() == self.root:
+		self.root.move_child(overlay, self.root.get_child_count() - 1)
 	var root := Control.new()
 	root.name = node_name
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -3169,14 +3170,46 @@ func get_idle_harvest_unclaimed_gold() -> int:
 	return int((float(secs) / 3600.0) * float(rate))
 
 func claim_idle_harvest() -> int:
+	var secs := get_idle_harvest_unclaimed_seconds()
 	var gold_gain := get_idle_harvest_unclaimed_gold()
 	var harvest: Dictionary = profile.get("idle_harvest", {})
 	harvest.last_claim_time = int(Time.get_unix_time_from_system())
 	profile.idle_harvest = harvest
-	if gold_gain > 0:
+
+	var bonuses: Array[String] = []
+	# P2: Deep Offline Expeditions (4h / 8h / 12h Milestones)
+	if secs >= 14400: # 4 Hours: 20 Spirit Dust + Rare Rune
+		profile.spirit_dust = int(profile.get("spirit_dust", 0)) + 20
+		var rare_runes := ["r_fire_1", "r_water_1", "r_wood_1", "r_stone_1", "r_void_1"]
+		var r_id: String = rare_runes[int(profile.get("position", 0)) % rare_runes.size()]
+		if not profile.has("rune_inventory") or not profile.rune_inventory is Dictionary:
+			profile.rune_inventory = {}
+		profile.rune_inventory[r_id] = int(profile.rune_inventory.get(r_id, 0)) + 1
+		bonuses.append("+20 灵力尘 & 稀有符文")
+
+	if secs >= 28800: # 8 Hours: 10 Spirit Jade + Inscription Material
+		profile.spirit_jade = int(profile.get("spirit_jade", 0)) + 10
+		profile.spirit_dust = int(profile.get("spirit_dust", 0)) + 30
+		bonuses.append("+10 灵玉 & 灵石")
+
+	if secs >= 43200: # 12 Hours: Guaranteed Capstone Gold Card
+		var hero_id: String = str(profile.get("hero_class", "fox_spirit"))
+		var cap_id: String = "samadhiFire"
+		match hero_id:
+			"stone_sentinel": cap_id = "shieldSlam"
+			"shadow_stalker": cap_id = "shadowClone"
+			"miasma_witch": cap_id = "catalyst"
+			_: cap_id = "samadhiFire"
+		profile.collection[cap_id] = int(profile.collection.get(cap_id, 0)) + 1
+		bonuses.append("极道金卡: " + content.text(content.card(cap_id).get("nameKey", ""), lang))
+
+	if gold_gain > 0 or not bonuses.is_empty():
 		profile.gold += gold_gain
 		SpiritSave.write(profile)
-		_toast(tf("ui.idle_harvest_toast", gold_gain), GOLD)
+		var toast_text: String = tf("ui.idle_harvest_toast", gold_gain)
+		if not bonuses.is_empty():
+			toast_text += "\n✦ 闭关游历获宝: " + " | ".join(bonuses)
+		_toast(toast_text, GOLD)
 	return gold_gain
 
 func fast_idle_harvest() -> int:
@@ -3391,6 +3424,37 @@ func show_idle_harvest_modal() -> void:
 	var cap_lbl := _label(tf("ui.idle_harvest_cap_fmt", int(get_idle_harvest_unclaimed_seconds() / 3600)), 11, MUTED)
 	info_vbox.add_child(cap_lbl)
 	list.add_child(info_box)
+
+	# Deep Offline Expedition Milestones (4h / 8h / 12h)
+	var exp_panel := PanelContainer.new()
+	exp_panel.add_theme_stylebox_override("panel", _panel(Color("0f1d24"), 10, Color("1f404d")))
+	var exp_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: exp_pad.add_theme_constant_override("margin_%s" % s, 8)
+	exp_panel.add_child(exp_pad)
+	var exp_box := VBoxContainer.new()
+	exp_box.add_theme_constant_override("separation", 5)
+	exp_pad.add_child(exp_box)
+
+	exp_box.add_child(_label(t("ui.idle_expedition_title"), 11, GOLD))
+	var cur_secs := get_idle_harvest_unclaimed_seconds()
+	var milestones := [
+		{"sec": 14400, "label": t("ui.idle_expedition_4h"), "tag": "4h"},
+		{"sec": 28800, "label": t("ui.idle_expedition_8h"), "tag": "8h"},
+		{"sec": 43200, "label": t("ui.idle_expedition_12h"), "tag": "12h"}
+	]
+	for ms in milestones:
+		var m_row := HBoxContainer.new()
+		m_row.add_theme_constant_override("separation", 6)
+		var reached: bool = cur_secs >= int(ms.sec)
+		var tag_lbl := _label("[%s]" % ms.tag, 10, Color("ffd700") if reached else MUTED)
+		m_row.add_child(tag_lbl)
+		var desc_lbl := _label(str(ms.label), 9, Color("ffffff") if reached else Color("8899a6"))
+		desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		m_row.add_child(desc_lbl)
+		var st_lbl := _label(t("ui.idle_expedition_unlocked") if reached else t("ui.idle_expedition_in_progress"), 9, JADE if reached else MUTED)
+		m_row.add_child(st_lbl)
+		exp_box.add_child(m_row)
+	list.add_child(exp_panel)
 
 	var claim_btn := _button(t("ui.idle_harvest_claim"), func():
 		var ex: Node = overlay.get_node_or_null("IdleHarvestModal")

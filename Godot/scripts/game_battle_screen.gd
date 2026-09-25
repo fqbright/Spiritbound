@@ -73,7 +73,7 @@ func begin_battle(index: int) -> void:
 	var battle_deck: Array = g.profile.deck
 	if g.in_draft_battle and g.profile.get("draft_arena", {}).get("deck", []).size() >= 15:
 		battle_deck = g.profile.draft_arena.deck
-	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses(),g.profile.equipment_tiers,g.profile.equipment_inscriptions)
+	g.combat.create(seed,g.content.encounters[index],battle_deck,60,g.profile.upgrades,equipped,g.profile.card_runes,g.active_modifier,g.profile.relics,g._current_hero_mastery_bonuses(),g.profile.equipment_tiers,g.profile.equipment_inscriptions,g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(_combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[index].name)):
@@ -3127,6 +3127,20 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		if not str(payload.rune).is_empty():
 			g._advance_quest("play_runed_cards", 1)
 			var rune := g.content.rune(payload.rune); g._toast("%s %s" % [rune.icon, g._rune_name(rune)],Color(rune.color))
+	elif kind == "damage_dealt":
+		var e_idx: int = int(payload.get("enemy", 0))
+		var dmg: int = int(payload.get("damage", 0))
+		var abs_amt: int = int(payload.get("absorbed", 0))
+		var is_vuln: bool = bool(payload.get("vulnerable", false))
+		if abs_amt > 0:
+			_spawn_enemy_floating_text(e_idx, "🛡 −%d" % abs_amt, Color("67e8f9"), 20)
+		if dmg > 0:
+			var txt: String = "💥 −%d" % dmg if is_vuln else "−%d" % dmg
+			var col: Color = Color("fbbf24") if is_vuln else Color("f87171")
+			var f_size: int = 28 if (is_vuln or dmg >= 20) else 24
+			_spawn_enemy_floating_text(e_idx, txt, col, f_size)
+			if dmg >= 25:
+				_shake_screen(mini(12.0, float(dmg) * 0.35), 0.25)
 	elif kind == "boss_phase":
 		var p_name: String = payload.get("name_en", "") if g.lang == "en" else payload.get("name", "")
 		var p_desc: String = payload.get("desc_en", "") if g.lang == "en" else payload.get("desc", "")

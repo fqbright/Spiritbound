@@ -1064,6 +1064,93 @@ const HERO_CLASSES = [
 	}
 ]
 
+const SEVEN_DAY_JOURNEY = [
+	{
+		"day": 1,
+		"title_zh": "第一日 · 灵狐初醒",
+		"title_en": "Day 1: Fox Awakening",
+		"desc_zh": "打出 5 张攻击牌",
+		"desc_en": "Play 5 Attack cards in combat",
+		"target_type": "cards_played",
+		"target_count": 5,
+		"reward_card": "samadhiFire",
+		"gold": 100,
+		"jade": 20
+	},
+	{
+		"day": 2,
+		"title_zh": "第二日 · 磐石之御",
+		"title_en": "Day 2: Bulwark Defense",
+		"desc_zh": "累计获得 30 点护盾",
+		"desc_en": "Gain 30 total shield in combat",
+		"target_type": "shield_gained",
+		"target_count": 30,
+		"reward_card": "shieldSlam",
+		"gold": 150,
+		"jade": 20
+	},
+	{
+		"day": 3,
+		"title_zh": "第三日 · 幽影连袭",
+		"title_en": "Day 3: Shadow Flurry",
+		"desc_zh": "单场战斗打出 8 张牌",
+		"desc_en": "Play 8 cards in a single combat",
+		"target_type": "cards_single_battle",
+		"target_count": 8,
+		"reward_card": "shadowClone",
+		"gold": 200,
+		"jade": 25
+	},
+	{
+		"day": 4,
+		"title_zh": "第四日 · 瘴毒爆发",
+		"title_en": "Day 4: Miasma Eruption",
+		"desc_zh": "累计造成 50 点伤害",
+		"desc_en": "Deal 50 total damage in combat",
+		"target_type": "damage_dealt",
+		"target_count": 50,
+		"reward_card": "catalyst",
+		"gold": 250,
+		"jade": 25
+	},
+	{
+		"day": 5,
+		"title_zh": "第五日 · 元素共鸣",
+		"title_en": "Day 5: Elemental Surge",
+		"desc_zh": "完成 2 场战斗胜利",
+		"desc_en": "Achieve 2 combat victories",
+		"target_type": "victories",
+		"target_count": 2,
+		"reward_card": "spiritSurge",
+		"gold": 300,
+		"jade": 30
+	},
+	{
+		"day": 6,
+		"title_zh": "第六日 · 潜修深渊",
+		"title_en": "Day 6: Deep Cultivation",
+		"desc_zh": "击败 1 位精英或领主敌人",
+		"desc_en": "Defeat 1 elite or boss enemy",
+		"target_type": "elites_or_bosses",
+		"target_count": 1,
+		"reward_card": "bastionForm",
+		"gold": 350,
+		"jade": 35
+	},
+	{
+		"day": 7,
+		"title_zh": "第七日 · 极道飞升",
+		"title_en": "Day 7: Heavenly Ascension",
+		"desc_zh": "累计赢得 5 场战斗胜利",
+		"desc_en": "Achieve 5 total victories",
+		"target_type": "victories",
+		"target_count": 5,
+		"reward_card": "bloodPact",
+		"gold": 500,
+		"jade": 50
+	}
+]
+
 const ABYSS_BOONS = [
 	{
 		"id": "boon_blood_lust",
@@ -1382,7 +1469,7 @@ const ACHIEVEMENTS = [
 	# This has drifted silently before as cards were added; test_runner.gd now asserts this
 	# target against the live count so a future addition fails loudly instead of quietly
 	# making "collect all" completable early.
-	{"id":"collect_all","kind":"card_collection","target":157,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	{"id":"collect_all","kind":"card_collection","target":165,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},
@@ -1870,6 +1957,15 @@ func hero_name(h: Dictionary, language := "zh-Hans") -> String:
 
 func hero_desc(h: Dictionary, language := "zh-Hans") -> String:
 	return str(h.get("desc_en" if language == "en" else "desc", ""))
+
+func seven_day_journey() -> Array:
+	return SEVEN_DAY_JOURNEY
+
+func seven_day_journey_day(day: int) -> Dictionary:
+	for entry in SEVEN_DAY_JOURNEY:
+		if int(entry.get("day", 0)) == day:
+			return entry
+	return {}
 
 func abyss_encounter(floor: int) -> Dictionary:
 	var hp: int = 45 + floor * 12
@@ -2464,6 +2560,20 @@ const UI_TEXT = {
 	"desc.special.stun": {"zh-Hans":"眩晕目标一回合", "en":"Stuns target for a turn"},
 	"desc.special.recoverExhaust": {"zh-Hans":"取回一张消耗牌", "en":"Return an exhausted card"},
 	"desc.special.recycleDiscard": {"zh-Hans":"回收弃牌堆至多2张", "en":"Recycle up to 2 discards"},
+	"desc.special.samadhi_burst": {"zh-Hans":"引爆并翻倍目标灼烧层数", "en":"Detonates & doubles enemy Burn"},
+	"desc.special.spirit_surge": {"zh-Hans":"本回合每出牌抽1张并得2护盾", "en":"Rest of turn: plays draw 1 & gain 2 Shield"},
+	"desc.special.shield_slam": {"zh-Hans":"造成相当于当前护盾100%破甲伤害", "en":"Deal pierce damage equal to 100% current Shield"},
+	"desc.special.bastion_form": {"zh-Hans":"回合结束至多保留35点护盾", "en":"Retain up to 35 Shield between turns"},
+	"desc.special.thousand_blades": {"zh-Hans":"手中每保留1张牌追加4点伤害", "en":"Deals 4 bonus damage per card in hand"},
+	"desc.special.shadow_clone": {"zh-Hans":"下张攻击或法术连续触发两次", "en":"Next attack or skill casts twice"},
+	"desc.special.catalyst_poison": {"zh-Hans":"使目标的中毒层数翻倍(×2)", "en":"Multiplies target Poison stacks by 2"},
+	"desc.special.blood_pact": {"zh-Hans":"扣减5生命：获得2能量并抽3张牌", "en":"Lose 5 HP: gain 2 Energy & draw 3 cards"},
+	"ui.reward_skip": {"zh-Hans":"放弃奖励", "en":"Skip Reward"},
+	"ui.card_purged_toast": {"zh-Hans":"已从卡组永久移出【%s】", "en":"Permanently removed %s from deck"},
+	"ui.deck_too_small": {"zh-Hans":"道心不可空，卡组至少保留12张卡牌", "en":"Deck must contain at least 12 cards"},
+	"ui.upgrade_branch_flow": {"zh-Hans":"灵变 (-1能耗)", "en":"Flow (-1 Cost)"},
+	"ui.upgrade_branch_surge": {"zh-Hans":"极变 (+3效能)", "en":"Surge (+3 Power)"},
+	"ui.upgrade_branch_chosen": {"zh-Hans":"【%s】进阶为【%s】", "en":"%s upgraded to %s"},
 	"desc.boomerang": {"zh-Hans":"回旋，回到手牌", "en":"Boomerang: returns to hand"},
 	"desc.reverb": {"zh-Hans":"余韵，下回合免费重施", "en":"Reverb: free recast next turn"},
 	"desc.overload": {"zh-Hans":"过载%d，下回合能量减少", "en":"Overload %d: next turn's energy is reduced"},
@@ -2845,6 +2955,27 @@ const UI_TEXT = {
 	"ui.recap_damage": {"zh-Hans":"造成伤害: %d", "en":"Damage Dealt: %d"},
 	"ui.recap_cards": {"zh-Hans":"出牌次数: %d", "en":"Cards Played: %d"},
 	"ui.recap_shield": {"zh-Hans":"获得护盾: %d", "en":"Shield Gained: %d"},
+	"ui.capstone_card_badge": {"zh-Hans":"极道核心金卡", "en":"Capstone Card"},
+	"ui.seven_day_journey_title": {"zh-Hans":"七日飞升路", "en":"7-Day Archetype Journey"},
+	"ui.seven_day_journey_sub": {"zh-Hans":"每日流派修行试炼，领取极道核心金卡与海量灵石", "en":"Daily archetype trials to claim capstone gold cards & bountiful rewards"},
+	"ui.seven_day_journey_claim": {"zh-Hans":"领取奖励", "en":"Claim Reward"},
+	"ui.seven_day_journey_claimed": {"zh-Hans":"已领取", "en":"Claimed"},
+	"ui.seven_day_journey_locked": {"zh-Hans":"未解锁", "en":"Locked"},
+	"ui.seven_day_journey_go": {"zh-Hans":"前往历练", "en":"Go"},
+	"ui.seven_day_journey_day_fmt": {"zh-Hans":"第 %d 天", "en":"Day %d"},
+	"ui.seven_day_journey_reward_toast": {"zh-Hans":"成功领取第 %d 日飞升奖励！", "en":"Claimed Day %d Journey Rewards!"},
+	"ui.idle_expedition_title": {"zh-Hans":"闭关游历探索", "en":"Offline Expeditions"},
+	"ui.idle_expedition_sub": {"zh-Hans":"离线挂机闭关，累计时长解锁珍稀秘宝", "en":"Cultivate offline to unlock timed treasure milestones"},
+	"ui.idle_expedition_4h": {"zh-Hans":"4小时里程碑: 灵力尘 + 稀有符文", "en":"4h Milestone: Spirit Dust + Rare Rune"},
+	"ui.idle_expedition_8h": {"zh-Hans":"8小时里程碑: 灵玉 + 铭文石", "en":"8h Milestone: Spirit Jade + Inscription"},
+	"ui.idle_expedition_12h": {"zh-Hans":"12小时大满贯: 极道核心金卡", "en":"12h Milestone: Capstone Gold Card"},
+	"ui.idle_expedition_unlocked": {"zh-Hans":"已达成", "en":"Unlocked"},
+	"ui.idle_expedition_in_progress": {"zh-Hans":"闭关中", "en":"Cultivating"},
+	"ui.deck_inspector_title": {"zh-Hans":"通关卡组检视", "en":"Deck Inspector"},
+	"ui.deck_inspector_btn": {"zh-Hans":"查卡组", "en":"Deck"},
+	"ui.deck_inspector_deck_size": {"zh-Hans":"卡组规模: %d 张", "en":"Deck Size: %d Cards"},
+	"ui.deck_inspector_runes": {"zh-Hans":"符文与铭文搭配", "en":"Runes & Inscriptions"},
+	"ui.deck_inspector_close": {"zh-Hans":"关闭", "en":"Close"},
 	"ui.settings_account": {"zh-Hans":"账号与云存档", "en":"Account & Cloud Save"},
 	"ui.settings_account_desc": {"zh-Hans":"绑定 Apple 或 Google 账号以安全备份游戏进度并实现跨设备同步", "en":"Link Apple or Google account to back up save data and enable cross-device sync"},
 	"ui.auth_apple": {"zh-Hans":"通过 Apple 登录", "en":"Sign in with Apple"},

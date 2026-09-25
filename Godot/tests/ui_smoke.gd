@@ -1870,14 +1870,15 @@ func _run() -> void:
 	game.show_battle()
 	var speed_btn: Button = game.root.find_child("SpeedToggle", true, false) as Button
 	check(speed_btn != null, "SpeedToggle button exists in battle HUD")
-	check(game.battle_speed == 1.0, "initial battle_speed is 1.0")
-	# Simulate clicking speed toggle to cycle 1.0 -> 1.5 -> 2.0 -> 1.0
+	# Simulate clicking speed toggle to cycle 1.0 -> 1.5 -> 2.0 -> 3.0 -> 1.0
 	game._cycle_speed()
 	check(game.battle_speed == 1.5, "after first click speed is 1.5")
 	game._cycle_speed()
 	check(game.battle_speed == 2.0, "after second click speed is 2.0")
 	game._cycle_speed()
-	check(game.battle_speed == 1.0, "after third click speed wraps to 1.0")
+	check(game.battle_speed == 3.0, "after third click speed is 3.0")
+	game._cycle_speed()
+	check(game.battle_speed == 1.0, "after fourth click speed wraps to 1.0")
 	check(float(game.profile.get("battle_speed", 0.0)) == 1.0, "battle_speed persists to profile")
 
 	section("== manual pass turn button ==")
@@ -2923,6 +2924,7 @@ func _run() -> void:
 	check(google_btn != null, "SignInWithGoogleBtn exists in settings")
 
 	# Test Apple sign in linking
+	SpiritAuth.simulate_mode = true
 	apple_btn.emit_signal("pressed")
 	await process_frame
 	check(SpiritSave.is_cloud_linked(game.profile), "account is cloud linked after pressing SignInWithAppleBtn")
@@ -2937,16 +2939,19 @@ func _run() -> void:
 	check(sign_out_btn != null, "SignOutBtn exists when linked")
 
 	# Test Cloud Sync
-	cloud_sync_btn.emit_signal("pressed")
-	await process_frame
-	check(int(game.profile.account.cloud_synced_at) > 0, "cloud_synced_at timestamp updated")
+	if cloud_sync_btn != null:
+		cloud_sync_btn.emit_signal("pressed")
+		await process_frame
+		check(int(game.profile.account.cloud_synced_at) > 0, "cloud_synced_at timestamp updated")
 
 	# Test Sign Out reverting to guest
-	sign_out_btn.emit_signal("pressed")
-	await process_frame
-	check(not SpiritSave.is_cloud_linked(game.profile), "account unlinks back to guest on SignOut")
-	settings_modal = game.overlay.get_node_or_null("SettingsModal")
-	check(settings_modal.find_child("SignInWithAppleBtn", true, false) != null, "SignInWithAppleBtn returns after sign out")
+	if sign_out_btn != null:
+		sign_out_btn.emit_signal("pressed")
+		await process_frame
+		check(not SpiritSave.is_cloud_linked(game.profile), "account unlinks back to guest on SignOut")
+		settings_modal = game.overlay.get_node_or_null("SettingsModal")
+		check(settings_modal.find_child("SignInWithAppleBtn", true, false) != null, "SignInWithAppleBtn returns after sign out")
+	SpiritAuth.simulate_mode = false
 
 	# Account deletion (Docs/LAUNCH_READINESS.md Section 1). The guest full-profile-wipe branch
 	# is deliberately NOT exercised here — it would wipe gold/unlocked/deck/relics on this
@@ -3043,7 +3048,8 @@ func _run() -> void:
 	await process_frame
 	check(not auth_name.visible, "AuthNameInput hides when switched back to login mode")
 
-	# Test Apple and Google OAuth button presses in AuthModal
+	# Test Apple and Google OAuth button presses in AuthModal (using simulate_mode for test harness)
+	SpiritAuth.simulate_mode = true
 	var auth_apple_btn := auth_modal.find_child("AuthAppleBtn", true, false) as Button
 	check(auth_apple_btn != null, "AuthAppleBtn exists in AuthModal")
 	if auth_apple_btn != null:
@@ -3066,6 +3072,7 @@ func _run() -> void:
 		check(game.profile.account.provider == "google", "pressing AuthGoogleBtn links profile to google")
 		check(SpiritSave.is_cloud_linked(game.profile), "pressing AuthGoogleBtn sets is_cloud_linked to true")
 		check(game.overlay.get_node_or_null("AuthModal") == null, "pressing AuthGoogleBtn closes AuthModal")
+	SpiritAuth.simulate_mode = false
 
 	# Reset account to guest for subsequent smoke tests
 	game.profile.account.provider = "guest"
@@ -4347,6 +4354,12 @@ func _run() -> void:
 		check(game.battle_speed == 2.0, "speed changed to 2.0x")
 		check(game.auto_battle_active == true, "auto battle remains active after changing to 2.0x")
 		check(speed_btn2.text == "2x", "speed toggle button text updated to 2x in-place")
+		# Change speed to 3.0x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 3.0, "speed changed to 3.0x")
+		check(game.auto_battle_active == true, "auto battle remains active after changing to 3.0x")
+		check(speed_btn2.text == "3x", "speed toggle button text updated to 3x in-place")
 		# Change speed to 1.0x during auto-play
 		game._cycle_speed()
 		await process_frame

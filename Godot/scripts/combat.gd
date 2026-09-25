@@ -10,7 +10,7 @@ var rng := RandomNumberGenerator.new()
 func _init(game_content: SpiritContent) -> void:
 	content = game_content
 
-func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, upgrades := {}, equipment := [], card_runes := {}, modifier := {}, relics := [], hero_bonuses := {}, equipment_tiers := {}, equipment_inscriptions := {}) -> Dictionary:
+func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, upgrades := {}, equipment := [], card_runes := {}, modifier := {}, relics := [], hero_bonuses := {}, equipment_tiers := {}, equipment_inscriptions := {}, card_branches := {}) -> Dictionary:
 	rng.seed = seed
 	var health_scale: float = modifier.get("health_scale", 1.0)
 	var damage_bonus: int = modifier.get("damage_bonus", 0)
@@ -35,13 +35,16 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
 		"boomerang_queue":[],"reverb_queue":[],"overload_pending":0,
-		"upgrades":upgrades.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
+		"upgrades":upgrades.duplicate(true),"card_branches":card_branches.duplicate(true),"equipment":equipment.duplicate(),"runes":card_runes.duplicate(true),
 		"relics":relics.duplicate(),
 		"relic_resonances":resonance_ids,
 		"pact_cleansed_turns":0,
 		"boons":modifier.get("boons",[]).duplicate(),
 		"rune_sets":content.active_rune_sets(card_runes),
 		"gale_used":false,
+		"spirit_surge_active":false,
+		"bastion_form_active":false,
+		"shadow_clone_active":false,
 		"swift_used":false,"first_attack":false,"moon_used":false,"tide_used":false,"elements":{},"mist_hits":0,"soul_heals":0,"phoenix_used":false,
 		"revive_chance":modifier.get("revive",0.0),"revives":1 if modifier.get("revive",0.0) > 0 else 0,"modifier":modifier,
 		"hero_bonuses":hero_bonuses.duplicate(true),
@@ -266,7 +269,11 @@ func play(hand_index: int, target_index := -1) -> bool:
 	if state.phase != "player" or hand_index < 0 or hand_index >= state.hand.size(): return false
 	var instance: Dictionary = state.hand[hand_index]
 	var card := content.card(instance.card_id)
-	if card.is_empty() or card.cost > state.energy: return false
+	if card.is_empty(): return false
+	var actual_cost: int = int(card.cost)
+	if state.get("card_branches", {}).get(card.id, "") == "flow":
+		actual_cost = maxi(0, actual_cost - 1)
+	if actual_cost > state.energy: return false
 	# Mirror Shield (Chapter 50, phase 2): the first card played each turn is negated outright.
 	# The card stays in hand and nothing is spent, so the tax is tempo rather than card
 	# advantage — the player still has the card, they just lose the turn's best first play to it.
@@ -282,7 +289,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 		if target_index < 0 or target_index >= state.enemies.size() or state.enemies[target_index].health <= 0: return false
 	else: target_index = -1
 	var rune: String = state.runes.get(card.id, "")
-	state.energy -= card.cost
+	state.energy -= actual_cost
 	if state.has("stats"):
 		state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
 		if not state.stats.has("cards_tally"): state.stats.cards_tally = {}
@@ -292,7 +299,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 	state.cards_played_this_turn = int(state.get("cards_played_this_turn", 0)) + 1
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
-	if rune == "swift" and not state.swift_used: state.energy += card.cost; state.swift_used = true
+	if rune == "swift" and not state.swift_used: state.energy += actual_cost; state.swift_used = true
 	if card.get("kind","") == "Tactic" and state.equipment.has("moonStaff") and not state.moon_used:
 		state.energy += 1
 		state.moon_used = true
@@ -403,10 +410,59 @@ func play(hand_index: int, target_index := -1) -> bool:
 				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 4
 				emit_signal("event", "resonance", {"type": "fortify", "amount": 4})
 		state.last_element = element
-	if card.get("special","") == "stun" and target_index >= 0: state.enemies[target_index].stun += 1
-	if card.get("special","") == "recoverExhaust" and not state.exhaust.is_empty() and state.hand.size() < 10: state.hand.append(state.exhaust.pop_back())
-	if card.get("special","") == "recycleDiscard":
+	var sp := str(card.get("special", ""))
+	if sp == "stun" and target_index >= 0: state.enemies[target_index].stun += 1
+	elif sp == "recoverExhaust" and not state.exhaust.is_empty() and state.hand.size() < 10: state.hand.append(state.exhaust.pop_back())
+	elif sp == "recycleDiscard":
 		for i in mini(2,state.discard.size()): state.draw.push_front(state.discard.pop_back())
+	elif sp == "samadhi_burst" and target_index >= 0:
+		var e: Dictionary = state.enemies[target_index]
+		if int(e.get("burn", 0)) > 0:
+			var burst_dmg: int = int(e.burn) * 2
+			var b_hit := _damage_enemy(target_index, burst_dmg, true)
+			dealt += b_hit
+			e.burn = int(e.burn) * 2
+			emit_signal("event", "samadhi_burst", {"target": target_index, "damage": burst_dmg})
+	elif sp == "spirit_surge":
+		state.spirit_surge_active = true
+		emit_signal("event", "spirit_surge", {})
+	elif sp == "shield_slam" and target_index >= 0:
+		var slam_dmg: int = maxi(1, int(state.player.shield))
+		var hit := _damage_enemy(target_index, slam_dmg, true)
+		dealt += hit
+		emit_signal("event", "shield_slam", {"target": target_index, "damage": slam_dmg})
+	elif sp == "bastion_form":
+		state.bastion_form_active = true
+		emit_signal("event", "bastion_form", {})
+	elif sp == "thousand_blades" and target_index >= 0:
+		var hand_bonus: int = state.hand.size() * 4
+		var hit := _damage_enemy(target_index, hand_bonus, false)
+		dealt += hit
+		emit_signal("event", "thousand_blades", {"target": target_index, "bonus": hand_bonus})
+	elif sp == "shadow_clone":
+		state.shadow_clone_active = true
+		emit_signal("event", "shadow_clone", {})
+	elif sp == "catalyst_poison" and target_index >= 0:
+		var cur_p: int = int(state.enemies[target_index].get("poison", 0))
+		if cur_p > 0:
+			state.enemies[target_index].poison = cur_p * 2
+			emit_signal("event", "catalyst", {"target": target_index, "poison": cur_p * 2})
+	elif sp == "blood_pact":
+		state.player.health = maxi(1, int(state.player.health) - 5)
+		state.energy = mini(10, state.energy + 2)
+		_draw(2)
+		emit_signal("event", "blood_pact", {"energy": 2, "cards": 3, "health_cost": 5})
+
+	if bool(state.get("shadow_clone_active", false)) and sp != "shadow_clone":
+		state.shadow_clone_active = false
+		emit_signal("event", "shadow_clone_proc", {"card": card.id})
+		dealt += _resolve_effects(card, target_index, bonus + resonance, 1.0)
+
+	if bool(state.get("spirit_surge_active", false)):
+		_draw(1)
+		state.player.shield += 2
+		emit_signal("event", "spirit_surge_proc", {"draw": 1, "shield": 2})
+
 	emit_signal("event","card",{"card":card.id,"rune":rune,"target":target_index,"damage":dealt})
 	return true
 
@@ -485,9 +541,13 @@ func end_turn() -> void:
 		kept_shield = state.player.shield
 	elif _has_relic("spiritArmor"):
 		kept_shield = mini(30, state.player.shield)
+	elif bool(state.get("bastion_form_active", false)):
+		kept_shield = mini(35, state.player.shield)
 	elif _has_relic("mirrorScale"):
 		kept_shield = int(state.player.shield / 2)
 	state.player.shield = kept_shield
+	state.spirit_surge_active = false
+	state.shadow_clone_active = false
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
 	if _has_relic("venomFlask"):
 		for vi in state.enemies.size():
@@ -562,8 +622,9 @@ func end_turn() -> void:
 
 func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: float) -> int:
 	var dealt := 0
+	var surge_bonus: int = 3 if state.get("card_branches", {}).get(card.id, "") == "surge" else 0
 	for effect in card.effects:
-		var amount := maxi(1,int(round((effect.amount + bonus if effect.operation == "damage" else effect.amount + int(state.upgrades.get(card.id,0))) * scale)))
+		var amount := maxi(1,int(round((effect.amount + bonus + surge_bonus if effect.operation == "damage" else effect.amount + int(state.upgrades.get(card.id,0)) + surge_bonus) * scale)))
 		match effect.operation:
 			"damage":
 				var targets := range(state.enemies.size()) if card.get("special","") == "cleave" else [target_index]
@@ -639,6 +700,7 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 		emit_signal("event","shatter",{"enemy":index,"amount":8})
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
+	emit_signal("event", "damage_dealt", {"enemy": index, "damage": dealt, "absorbed": absorbed, "pierce": pierce, "vulnerable": int(enemy.get("vulnerable", 0)) > 0})
 	if state.has("stats"): state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
 	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
 		_trigger_great_boss_phase_2(enemy)
@@ -951,6 +1013,7 @@ func _is_attack(card: Dictionary) -> bool:
 # a card that only applies Burn was being played with no target, and _resolve_effects drops
 # opponent statuses when target_index is -1, so those cards silently did nothing.
 func _targets_opponent(card: Dictionary) -> bool:
+	if card.get("special", "") in ["shield_slam", "catalyst_poison"]: return true
 	for effect in card.effects:
 		if effect.get("target", "") == "opponent": return true
 	return false

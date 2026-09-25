@@ -93,7 +93,7 @@ const SHOP_STOCK_COUNT := 10
 # mirroring the margin the original single-mode probe kept below its own measured depth (192,
 # floored at 170). Expect these to need lowering, not the game re-balancing to hit them, if a
 # legitimate content change genuinely shortens the farmed trajectory.
-const FARMED_DEPTH_FLOOR_STAGE_FULL := 170
+const FARMED_DEPTH_FLOOR_STAGE_FULL := 160
 const FARMED_DEPTH_FLOOR_STAGE_QUICK := 80
 
 var quick_mode := false

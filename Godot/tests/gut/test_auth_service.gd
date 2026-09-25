@@ -43,12 +43,11 @@ func test_is_apple_and_google_available_return_booleans():
 	assert_true(typeof(apple_avail) == TYPE_BOOL, "is_apple_available() returns a boolean")
 	assert_true(typeof(google_avail) == TYPE_BOOL, "is_google_available() returns a boolean")
 
-func test_apple_sign_in_default_device_flow_always_succeeds():
+func test_apple_sign_in_simulation_flow_succeeds():
 	var game := _create_test_game()
 	var callback_result := {"called": false, "ok": false, "provider": ""}
 	
-	# Default mode (simulate_mode = false) represents production physical device behavior
-	SpiritAuth.simulate_mode = false
+	SpiritAuth.simulate_mode = true
 	SpiritAuth.sign_in_with_apple(game, func(ok: bool, prov: String):
 		callback_result["called"] = true
 		callback_result["ok"] = ok
@@ -56,7 +55,7 @@ func test_apple_sign_in_default_device_flow_always_succeeds():
 	)
 	
 	assert_true(callback_result["called"], "Apple login callback was invoked without blocking")
-	assert_true(callback_result["ok"], "Apple login succeeded without requiring backend")
+	assert_true(callback_result["ok"], "Apple login in simulate mode succeeded")
 	assert_eq(callback_result["provider"], "apple", "Apple login returned provider 'apple'")
 	
 	var account: Dictionary = game.profile.get("account", {})
@@ -67,10 +66,24 @@ func test_apple_sign_in_default_device_flow_always_succeeds():
 	assert_true(SpiritSave.is_cloud_linked(game.profile), "SpiritSave.is_cloud_linked() recognizes linked Apple account")
 	assert_eq(SpiritSave.account_provider(game.profile), "apple", "SpiritSave.account_provider() returns 'apple'")
 	
+	# Test unmocked production behavior does not fake login when native singleton is missing
+	SpiritAuth.simulate_mode = false
+	var unmocked_result := {"called": false, "ok": true}
+	var game_unmocked := _create_test_game()
+	SpiritAuth.sign_in_with_apple(game_unmocked, func(ok: bool, _p: String):
+		unmocked_result["called"] = true
+		unmocked_result["ok"] = ok
+	)
+	assert_true(unmocked_result["called"], "Unmocked sign-in returns callback")
+	assert_false(unmocked_result["ok"], "Unmocked sign-in does not fake success without native plugin")
+	assert_false(SpiritSave.is_cloud_linked(game_unmocked.profile), "Unmocked failed sign-in does not link profile")
+	game_unmocked.free()
+	
 	game.free()
 
 func test_apple_sign_in_persists_identity_across_re_logins():
 	var game := _create_test_game()
+	SpiritAuth.simulate_mode = true
 	
 	# First Apple login
 	SpiritAuth.sign_in_with_apple(game)
@@ -82,14 +95,14 @@ func test_apple_sign_in_persists_identity_across_re_logins():
 	var second_user_id: String = str(game.profile.account.user_id)
 	assert_eq(first_user_id, second_user_id, "Subsequent Apple logins preserve the same persistent user ID")
 	
+	SpiritAuth.simulate_mode = false
 	game.free()
 
-func test_google_sign_in_default_device_flow_always_succeeds():
+func test_google_sign_in_simulation_flow_succeeds():
 	var game := _create_test_game()
 	var callback_result := {"called": false, "ok": false, "provider": ""}
 	
-	# Default mode (simulate_mode = false) represents production physical device behavior
-	SpiritAuth.simulate_mode = false
+	SpiritAuth.simulate_mode = true
 	SpiritAuth.sign_in_with_google(game, func(ok: bool, prov: String):
 		callback_result["called"] = true
 		callback_result["ok"] = ok
@@ -97,7 +110,7 @@ func test_google_sign_in_default_device_flow_always_succeeds():
 	)
 	
 	assert_true(callback_result["called"], "Google login callback was invoked without blocking")
-	assert_true(callback_result["ok"], "Google login succeeded without requiring backend")
+	assert_true(callback_result["ok"], "Google login in simulate mode succeeded")
 	assert_eq(callback_result["provider"], "google", "Google login returned provider 'google'")
 	
 	var account: Dictionary = game.profile.get("account", {})
@@ -108,10 +121,13 @@ func test_google_sign_in_default_device_flow_always_succeeds():
 	assert_true(SpiritSave.is_cloud_linked(game.profile), "SpiritSave.is_cloud_linked() recognizes linked Google account")
 	assert_eq(SpiritSave.account_provider(game.profile), "google", "SpiritSave.account_provider() returns 'google'")
 	
+	SpiritAuth.simulate_mode = false
+	
 	game.free()
 
 func test_google_sign_in_persists_identity_across_re_logins():
 	var game := _create_test_game()
+	SpiritAuth.simulate_mode = true
 	
 	# First Google login
 	SpiritAuth.sign_in_with_google(game)
@@ -123,6 +139,7 @@ func test_google_sign_in_persists_identity_across_re_logins():
 	var second_user_id: String = str(game.profile.account.user_id)
 	assert_eq(first_user_id, second_user_id, "Subsequent Google logins preserve the same persistent user ID")
 	
+	SpiritAuth.simulate_mode = false
 	game.free()
 
 func test_native_apple_login_callback_success():

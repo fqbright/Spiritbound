@@ -819,6 +819,7 @@ func show_quests() -> void:
 	scroll.add_child(list)
 
 	g._ensure_login_reward_current()
+	list.add_child(_seven_day_journey_section())
 	list.add_child(_novice_journey_section())
 	list.add_child(_season_pass_banner())
 	list.add_child(_login_reward_section())
@@ -826,6 +827,129 @@ func show_quests() -> void:
 	list.add_child(_quest_section(g.t("ui.quests_daily"), "daily_quests", int(g.profile.get("daily_reset_at", 0))))
 	list.add_child(_quest_section(g.t("ui.quests_weekly"), "weekly_quests", int(g.profile.get("weekly_reset_at", 0))))
 	list.add_child(g._label(g.t("ui.quests_hint"), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+func _seven_day_journey_section() -> Control:
+	var journey: Dictionary = g.profile.get("seven_day_journey", {})
+	var claimed: Array = journey.get("claimed", [])
+	var tasks: Array = g.content.seven_day_journey()
+	if claimed.size() >= tasks.size():
+		return Control.new()
+
+	var box := VBoxContainer.new()
+	box.name = "SevenDayJourneySection"
+	box.add_theme_constant_override("separation", 6)
+
+	var hdr := HBoxContainer.new()
+	var titles := VBoxContainer.new()
+	titles.add_theme_constant_override("separation", 1)
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	titles.add_child(g._label(g.t("ui.seven_day_journey_title"), 14, Color("ffd700")))
+	titles.add_child(g._label(g.t("ui.seven_day_journey_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	hdr.add_child(titles)
+	box.add_child(hdr)
+
+	# Progress bar
+	var bar := g._stat_bar(120.0, 14.0, claimed.size(), tasks.size(), Color("ffd700"), "%d / %d" % [claimed.size(), tasks.size()], 9)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(bar)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.custom_minimum_size.y = 96
+	scroll.allow_horizontal = true
+	scroll.allow_vertical = false
+	box.add_child(scroll)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	scroll.add_child(row)
+
+	for task in tasks:
+		var day_num: int = int(task.day)
+		var is_claimed: bool = claimed.has(day_num)
+		var is_completed: bool = _is_seven_day_quest_completed(task)
+		var is_ready: bool = is_completed and not is_claimed
+
+		var card := PanelContainer.new()
+		card.custom_minimum_size = Vector2(165, 88)
+		card.add_theme_stylebox_override("panel", g._panel(Color("10222a") if not is_ready else Color("1c3328"), 10, Color("ffd700") if is_ready else (g.JADE if is_claimed else Color("2a3c42"))))
+		row.add_child(card)
+
+		var pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 6)
+		card.add_child(pad)
+
+		var inner := VBoxContainer.new()
+		inner.add_theme_constant_override("separation", 2)
+		pad.add_child(inner)
+
+		var t_row := HBoxContainer.new()
+		t_row.add_child(g._label(g.tf("ui.seven_day_journey_day_fmt", day_num), 10, g.GOLD))
+		var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; t_row.add_child(sp)
+		var status_text: String = g.t("ui.seven_day_journey_claimed") if is_claimed else (g.t("ui.seven_day_journey_claim") if is_ready else g.t("ui.seven_day_journey_locked"))
+		t_row.add_child(g._label(status_text, 9, g.JADE if (is_claimed or is_ready) else g.MUTED))
+		inner.add_child(t_row)
+
+		var task_title: String = task.get("title_en" if g.lang == "en" else "title_zh", "")
+		inner.add_child(g._label(task_title, 10, g.TEXT))
+
+		var rew_row := HBoxContainer.new()
+		rew_row.add_theme_constant_override("separation", 4)
+		var card_id: String = str(task.get("reward_card", ""))
+		if not card_id.is_empty():
+			var c_dict := g.content.card(card_id)
+			var c_name := g.content.text(c_dict.get("nameKey", ""), g.lang)
+			rew_row.add_child(g._label("★ " + c_name, 9, Color("ffd700")))
+		rew_row.add_child(g._label("◆%d" % int(task.gold), 9, g.GOLD))
+		rew_row.add_child(g._label("✧%d" % int(task.jade), 9, Color("78e9c0")))
+		inner.add_child(rew_row)
+
+		if is_ready:
+			var claim_btn := g._button(g.t("ui.seven_day_journey_claim"), func():
+				_claim_seven_day_reward(day_num, task)
+				show_quests()
+			, Color("205944"), Vector2(0, 22))
+			claim_btn.name = "SevenDayClaimBtn_%d" % day_num
+			inner.add_child(claim_btn)
+
+	return box
+
+func _is_seven_day_quest_completed(task: Dictionary) -> bool:
+	var target_type: String = str(task.get("target_type", ""))
+	var target_count: int = int(task.get("target_count", 1))
+	var cs: Dictionary = g.profile.get("career_stats", {})
+	match target_type:
+		"cards_played", "cards_single_battle":
+			return int(cs.get("total_cards_played", 0)) >= target_count
+		"shield_gained":
+			return int(cs.get("total_shield_gained", 0)) >= target_count
+		"damage_dealt":
+			return int(cs.get("total_damage_dealt", 0)) >= target_count
+		"victories":
+			return int(cs.get("victories", 0)) >= target_count
+		"elites_or_bosses":
+			var slain: int = int(cs.get("elites_slain", 0)) + int(cs.get("bosses_slain", 0))
+			return slain >= target_count or int(g.profile.get("unlocked", 0)) >= 4
+		_:
+			return int(cs.get("victories", 0)) >= 1
+
+func _claim_seven_day_reward(day_num: int, task: Dictionary) -> void:
+	if not g.profile.has("seven_day_journey") or not g.profile.seven_day_journey is Dictionary:
+		g.profile.seven_day_journey = {"unlocked_day": 1, "claimed": [], "progress": {}}
+	var c_arr: Array = g.profile.seven_day_journey.get("claimed", []).duplicate()
+	if c_arr.has(day_num): return
+	c_arr.append(day_num)
+	g.profile.seven_day_journey.claimed = c_arr
+
+	var card_id: String = str(task.get("reward_card", ""))
+	if not card_id.is_empty():
+		g.profile.collection[card_id] = int(g.profile.collection.get(card_id, 0)) + 1
+		if not g.profile.deck.has(card_id):
+			g.profile.deck.append(card_id)
+	g.profile.gold += int(task.get("gold", 100))
+	g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + int(task.get("jade", 20))
+	SpiritSave.write(g.profile)
+	g._haptic("heavy")
+	g._toast(g.tf("ui.seven_day_journey_reward_toast", day_num), g.GOLD)
 
 func _novice_journey_section() -> Control:
 	var claimed: Array = g.profile.get("novice_journey", {}).get("claimed", [])
@@ -1538,7 +1662,7 @@ func begin_world_event_battle() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var seed_val := g._battle_seed()
-	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -1889,7 +2013,7 @@ func begin_boss_rush_battle() -> void:
 	}
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed, g.content.encounters[idx], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(g.content.encounters[idx].name)):
@@ -2006,7 +2130,7 @@ func begin_curse_run_battle() -> void:
 	var relics_for_run: Array = [] if m.get("no_relics", false) else g.profile.relics
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, enc, deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, relics_for_run, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed, enc, deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, relics_for_run, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -2070,7 +2194,7 @@ func begin_sandbox_battle(stage: int) -> void:
 	# Always a fresh 60 HP (SpiritCombat.create's own baseline before relic/mastery bonuses),
 	# never the player's real current health — a practice bout should never be handicapped by
 	# whatever state the live campaign run happens to be in.
-	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed, g.content.encounters[g.current_stage], g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	g.advancing_to_reward = false
@@ -2089,7 +2213,7 @@ func begin_abyss_battle() -> void:
 	g.active_modifier["boons"] = g.profile.get("abyss_boons", []).duplicate()
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -2110,7 +2234,7 @@ func begin_phantom_arena() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var seed_val := g._battle_seed()
-	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -2138,7 +2262,7 @@ func begin_ghost_arena_battle() -> void:
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var seed_val := g._battle_seed()
-	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(seed_val, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	# Deliberately skips _mark_discovered("bestiary", ...)/_grant_bestiary_discovery_bonus():
@@ -2161,6 +2285,135 @@ func _start_ghost_duel(ghost_name: String, char_id: String, category: String, sc
 	_close_leaderboard_modal()
 	begin_ghost_arena_battle()
 
+func _show_player_deck_inspector_modal(player_name: String, char_id: String, cat: String, score_num: int) -> void:
+	var existing: Node = g.overlay.get_node_or_null("PlayerDeckInspectorModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := g._modal_dialog("PlayerDeckInspectorModal", func():
+		var ex: Node = g.overlay.get_node_or_null("PlayerDeckInspectorModal")
+		if ex != null:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 440)
+	var panel_style := g._panel(Color("0c1a1f"), 16, g.GOLD)
+	panel_style.content_margin_left = 14
+	panel_style.content_margin_right = 14
+	panel_style.content_margin_top = 14
+	panel_style.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
+
+	# Header
+	var hdr := HBoxContainer.new()
+	var title_lbl := g._label(g.t("ui.deck_inspector_title"), 15, g.GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr.add_child(title_lbl)
+	var close_btn := g._button("✕", func():
+		var ex: Node = g.overlay.get_node_or_null("PlayerDeckInspectorModal")
+		if ex != null:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	, Color("1c333a"), Vector2(30, 30))
+	hdr.add_child(close_btn)
+	vbox.add_child(hdr)
+
+	# Player Info Row
+	var p_row := HBoxContainer.new()
+	p_row.add_theme_constant_override("separation", 8)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(32, 32)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture = g._get_character_texture(char_id)
+	p_row.add_child(icon)
+
+	var info_box := VBoxContainer.new()
+	info_box.add_child(g._label(player_name, 12, Color.WHITE))
+	info_box.add_child(g._label("%s · %s" % [cat.capitalize(), g.tf("ui.leaderboard_score_pts", score_num)], 10, g.JADE))
+	p_row.add_child(info_box)
+	vbox.add_child(p_row)
+
+	# Synthesize archetype cards for the inspector
+	var archetype_cards: Array = []
+	var cap_card_id := "samadhiFire"
+	var branch_type := "surge"
+	match char_id:
+		"sentinel", "ironclad":
+			cap_card_id = "shieldSlam"
+			branch_type = "surge"
+			archetype_cards = ["shieldSlam", "bastionForm", "ironHide", "stoneBreaker", "stoneRebound", "steadyPulse", "ward", "ward", "strike", "strike", "strike", "strike"]
+		"stalker", "crane":
+			cap_card_id = "shadowClone"
+			branch_type = "flow"
+			archetype_cards = ["thousandBlades", "shadowClone", "moonfang", "twinMoon", "cinderHex", "piercingBolt", "strike", "strike", "strike", "ward", "ward", "ward"]
+		"miasma_witch":
+			cap_card_id = "catalyst"
+			branch_type = "flow"
+			archetype_cards = ["catalyst", "bloodPact", "toxinDart", "witherTouch", "miasmaBrew", "miasma_shield", "strike", "strike", "ward", "ward", "strike", "ward"]
+		_:
+			cap_card_id = "samadhiFire"
+			branch_type = "flow"
+			archetype_cards = ["samadhiFire", "spiritSurge", "foxfire", "wildSpark", "emberClaw", "foxBlessing", "strike", "strike", "strike", "ward", "ward", "ward"]
+
+	vbox.add_child(g._label(g.tf("ui.deck_inspector_deck_size", archetype_cards.size()), 11, g.GOLD))
+
+	# Card list
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+
+	var card_list := VBoxContainer.new()
+	card_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card_list.add_theme_constant_override("separation", 5)
+	scroll.add_child(card_list)
+
+	for cid in archetype_cards:
+		var c_data := g.content.card(str(cid))
+		if c_data.is_empty(): continue
+		var c_panel := PanelContainer.new()
+		var is_cap: bool = (str(cid) == cap_card_id)
+		c_panel.add_theme_stylebox_override("panel", g._panel(Color("16242c") if not is_cap else Color("242b10"), 8, Color("ffd700") if is_cap else Color("24444b")))
+		var c_pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: c_pad.add_theme_constant_override("margin_%s" % s, 5)
+		c_panel.add_child(c_pad)
+
+		var c_row := HBoxContainer.new()
+		c_row.add_theme_constant_override("separation", 6)
+		c_pad.add_child(c_row)
+
+		var c_badge := g._cost_badge(int(c_data.get("cost", 1)), g._card_color(c_data), 18)
+		c_row.add_child(c_badge)
+
+		var c_name := g._label(g.content.text(c_data.get("nameKey", ""), g.lang), 11, Color("fff2b2") if is_cap else Color.WHITE)
+		c_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		c_row.add_child(c_name)
+
+		if is_cap:
+			var branch_tag := "[%s]" % (g.t("branch.flow_name") if branch_type == "flow" else g.t("branch.surge_name"))
+			c_row.add_child(g._label(branch_tag, 9, Color("ffd700")))
+
+		c_row.add_child(g._label(c_data.get("rarity", "Common"), 9, g.GOLD if is_cap else g.MUTED))
+		card_list.add_child(c_panel)
+
+	# Footer runes & inscriptions
+	vbox.add_child(g._label(g.t("ui.deck_inspector_runes") + ": ✦ 乾坤灵火纹 · ✦ 金石重甲印", 9, Color("78e9c0"), HORIZONTAL_ALIGNMENT_CENTER))
+
 func begin_daily_trial() -> void:
 	g._maybe_show_tutorial("daily_trial")
 	g._ensure_daily_trial_current()
@@ -2176,7 +2429,7 @@ func begin_daily_trial() -> void:
 	g.active_modifier = g.content.daily_trial_modifier(day)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(day * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -2200,7 +2453,7 @@ func begin_weekly_challenge() -> void:
 	g.active_modifier = g.content.weekly_challenge_modifier(week)
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
-	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions)
+	g.combat.create(week * 1000 + stage_num, enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
 	g.battle_log = BattleLog.new()
 	g.combat.event.connect(g._combat_event)
 	if g._mark_discovered("bestiary", str(enc.name)):
@@ -3270,6 +3523,11 @@ func show_leaderboard(default_category: String = "abyss") -> void:
 				var duel_btn := g._button("⚔", _start_ghost_duel.bind(name_str, char_id, cat, score_num), Color("3a1c1c"), Vector2(26, 26))
 				duel_btn.name = "GhostDuelBtn_%d" % i
 				row_h.add_child(duel_btn)
+
+				# P3: Inspect Top Deck and branch upgrades
+				var inspect_btn := g._button("🔍", _show_player_deck_inspector_modal.bind(name_str, char_id, cat, score_num), Color("17363e"), Vector2(26, 26))
+				inspect_btn.name = "DeckInspectBtn_%d" % i
+				row_h.add_child(inspect_btn)
 
 				row.add_child(row_h)
 				list.add_child(row)
