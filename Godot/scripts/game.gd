@@ -637,6 +637,7 @@ func _battle_delay(seconds: float) -> float:
 	return seconds / battle_speed
 
 func _haptic(kind: String) -> void:
+	if not bool(profile.get("haptics_enabled", true)): return
 	match kind:
 		"tap": Input.vibrate_handheld(10)
 		"card_drag": Input.vibrate_handheld(12)
@@ -1424,7 +1425,9 @@ func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.
 		return
 	player.stop()
 	player.stream = stream
-	player.volume_db = volume_db
+	var sfx_vol: float = float(profile.get("sfx_volume", 1.0))
+	var vol_offset: float = 0.0 if sfx_vol >= 0.99 else linear_to_db(maxf(sfx_vol, 0.01))
+	player.volume_db = volume_db + vol_offset
 	if pitch_range > 0.0:
 		player.pitch_scale = randf_range(1.0 - pitch_range, 1.0 + pitch_range)
 	else:
@@ -1433,6 +1436,10 @@ func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.
 
 func _play_music(battle := false, stage_level: int = 0) -> void:
 	if muted: return
+	var mus_vol: float = float(profile.get("music_volume", 1.0))
+	var target_db: float = 0.0 if mus_vol >= 0.99 else linear_to_db(maxf(mus_vol, 0.01))
+	if map_music != null: map_music.volume_db = target_db
+	if battle_music != null: battle_music.volume_db = target_db
 	if battle:
 		if map_music != null: map_music.stop()
 		if battle_music_streams.is_empty(): return
@@ -1787,9 +1794,21 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 # `game`/`self`, and because SpiritGame's screen transitions call each other by bare name
 # (show_map() -> show_camp() -> show_quests() -> ...); see MapScreen's own header comment for
 # why this is composition (a `g` back-reference) rather than inheritance.
+var offline_harvest_welcome_seen := false
+
+func _maybe_show_offline_harvest_welcome() -> void:
+	if offline_harvest_welcome_seen: return
+	if overlay == null or DisplayServer.get_name() == "headless": return
+	var unclaimed_secs := get_idle_harvest_unclaimed_seconds()
+	var unclaimed_gold := get_idle_harvest_unclaimed_gold()
+	if unclaimed_secs >= 3600 and unclaimed_gold >= 50:
+		offline_harvest_welcome_seen = true
+		show_idle_harvest_modal()
+
 func show_map() -> void:
 	current_screen_name = "map"
 	await _map_screen.show_map()
+	_maybe_show_offline_harvest_welcome()
 func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void: await _map_screen.show_chapter_transition(cleared_ch, next_ch, on_complete)
 func _travel_to(index: int) -> void: await _map_screen._travel_to(index)
 
@@ -2707,16 +2726,46 @@ func show_settings() -> void:
 	var audio_box := VBoxContainer.new()
 	audio_box.add_theme_constant_override("separation", 6)
 	audio_box.add_child(_label(t("ui.settings_audio"), 12, TEXT))
-	var audio_row := HBoxContainer.new()
-	audio_row.add_theme_constant_override("separation", 8)
-	var music_btn := _button(t("ui.settings_audio_on") if not muted else t("ui.settings_audio_off"), func(): _toggle_music_settings(), JADE if not muted else Color("2c333a"), Vector2(0, 36))
-	music_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	audio_row.add_child(music_btn)
-	var sfx_btn := _button(t("ui.settings_sfx_on") if not sfx_muted else t("ui.settings_sfx_off"), func(): _toggle_sfx_settings(), JADE if not sfx_muted else Color("2c333a"), Vector2(0, 36))
-	sfx_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	audio_row.add_child(sfx_btn)
-	audio_box.add_child(audio_row)
+
+	# Music row
+	var music_row := HBoxContainer.new()
+	music_row.add_theme_constant_override("separation", 6)
+	var music_btn := _button(t("ui.settings_audio_on") if not muted else t("ui.settings_audio_off"), func(): _toggle_music_settings(), JADE if not muted else Color("2c333a"), Vector2(80, 32))
+	music_btn.name = "MusicToggleBtn"
+	music_row.add_child(music_btn)
+	var cur_m_vol: float = float(profile.get("music_volume", 1.0)) if not muted else 0.0
+	for m_opt in [1.0, 0.7, 0.4]:
+		var m_active := not muted and is_equal_approx(cur_m_vol, m_opt)
+		var v_btn := _button("%d%%" % int(m_opt * 100), func(): _change_music_volume(m_opt), JADE if m_active else Color("1c333a"), Vector2(0, 32))
+		v_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		music_row.add_child(v_btn)
+	audio_box.add_child(music_row)
+
+	# SFX row
+	var sfx_row := HBoxContainer.new()
+	sfx_row.add_theme_constant_override("separation", 6)
+	var sfx_btn := _button(t("ui.settings_sfx_on") if not sfx_muted else t("ui.settings_sfx_off"), func(): _toggle_sfx_settings(), JADE if not sfx_muted else Color("2c333a"), Vector2(80, 32))
+	sfx_btn.name = "SfxToggleBtn"
+	sfx_row.add_child(sfx_btn)
+	var cur_s_vol: float = float(profile.get("sfx_volume", 1.0)) if not sfx_muted else 0.0
+	for s_opt in [1.0, 0.7, 0.4]:
+		var s_active := not sfx_muted and is_equal_approx(cur_s_vol, s_opt)
+		var v_btn := _button("%d%%" % int(s_opt * 100), func(): _change_sfx_volume(s_opt), JADE if s_active else Color("1c333a"), Vector2(0, 32))
+		v_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sfx_row.add_child(v_btn)
+	audio_box.add_child(sfx_row)
 	list.add_child(audio_box)
+
+	# 3b. Haptic Feedback Option
+	var haptic_box := VBoxContainer.new()
+	haptic_box.add_theme_constant_override("separation", 4)
+	haptic_box.add_child(_label(t("ui.settings_haptics"), 12, TEXT))
+	haptic_box.add_child(_label(t("ui.settings_haptics_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var haptic_active: bool = bool(profile.get("haptics_enabled", true))
+	var haptic_btn := _button(t("ui.settings_on") if haptic_active else t("ui.settings_off"), func(): _toggle_haptics(), JADE if haptic_active else Color("1c333a"), Vector2(0, 36))
+	haptic_btn.name = "HapticsToggleBtn"
+	haptic_box.add_child(haptic_btn)
+	list.add_child(haptic_box)
 
 	# 4. Reduce Motion Option
 	var motion_box := VBoxContainer.new()
@@ -3180,18 +3229,65 @@ func _change_battle_speed(new_speed: float) -> void:
 func _toggle_music_settings() -> void:
 	muted = not muted
 	profile.music_muted = muted
+	if muted:
+		profile.music_volume = 0.0
+		if map_music != null: map_music.stop()
+		if battle_music != null: battle_music.stop()
+	else:
+		profile.music_volume = 1.0
+		_play_music(false)
 	SpiritSave.write(profile)
-	if muted: map_music.stop(); battle_music.stop()
-	else: _play_music(false)
 	_close_settings()
-	show_settings()
+	if is_inside_tree(): show_settings()
+
+func _change_music_volume(vol: float) -> void:
+	profile.music_volume = vol
+	if vol <= 0.0:
+		muted = true
+		profile.music_muted = true
+		if map_music != null: map_music.stop()
+		if battle_music != null: battle_music.stop()
+	else:
+		muted = false
+		profile.music_muted = false
+		var db_val: float = 0.0 if vol >= 0.99 else linear_to_db(vol)
+		if map_music != null: map_music.volume_db = db_val
+		if battle_music != null: battle_music.volume_db = db_val
+		if map_music != null and battle_music != null:
+			if not map_music.playing and not battle_music.playing:
+				_play_music(false)
+	SpiritSave.write(profile)
+	_close_settings()
+	if is_inside_tree(): show_settings()
 
 func _toggle_sfx_settings() -> void:
 	sfx_muted = not sfx_muted
 	profile.sfx_muted = sfx_muted
+	profile.sfx_volume = 0.0 if sfx_muted else 1.0
 	SpiritSave.write(profile)
 	_close_settings()
-	show_settings()
+	if is_inside_tree(): show_settings()
+
+func _change_sfx_volume(vol: float) -> void:
+	profile.sfx_volume = vol
+	if vol <= 0.0:
+		sfx_muted = true
+		profile.sfx_muted = true
+	else:
+		sfx_muted = false
+		profile.sfx_muted = false
+	SpiritSave.write(profile)
+	_close_settings()
+	if is_inside_tree(): show_settings()
+
+func _toggle_haptics() -> void:
+	var current: bool = bool(profile.get("haptics_enabled", true))
+	profile.haptics_enabled = not current
+	SpiritSave.write(profile)
+	if profile.haptics_enabled:
+		Input.vibrate_handheld(20)
+	_close_settings()
+	if is_inside_tree(): show_settings()
 
 func _toggle_reduce_motion() -> void:
 	var current: bool = bool(profile.get("reduce_motion", false))

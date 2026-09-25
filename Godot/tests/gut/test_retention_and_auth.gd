@@ -346,3 +346,76 @@ func test_achievement_claim_and_claim_all_grants_spirit_jade():
 	assert_true(int(game.profile.spirit_jade) >= 45, "Spirit jade includes all claimed achievements")
 	game.free()
 
+func test_boss_lethal_slow_mo_time_scale_safety():
+	var game := _create_game()
+	Engine.time_scale = 0.35
+	game._battle_screen._leave_battle()
+	assert_eq(Engine.time_scale, 1.0, "_leave_battle guarantees Engine.time_scale is restored to 1.0")
+	game.free()
+
+func test_deck_mana_curve_and_archetype_analytics():
+	var game := _create_game()
+	game.show_deck()
+	var box: Node = game.root.find_child("DeckAnalyticsBox", true, false)
+	assert_not_null(box, "DeckAnalyticsBox rendered in deck view")
+	game.free()
+
+func test_exhaust_pile_chip_visibility():
+	var game := _create_game()
+	game.begin_battle(0)
+	var chip_none: Node = game.root.find_child("ExhaustPileChip", true, false)
+	assert_null(chip_none, "ExhaustPileChip is not visible when exhaust pile is empty")
+
+	game.combat.state.exhaust.append({"id": "void_curse", "name": "Void Curse"})
+	game._battle_screen.show_battle()
+	var chip_present: Node = game.root.find_child("ExhaustPileChip", true, false)
+	assert_not_null(chip_present, "ExhaustPileChip appears dynamically when exhaust pile has cards")
+	game._battle_screen._leave_battle()
+	game.free()
+
+func test_win_streak_progression_and_bonus():
+	var game := _create_game()
+	game.profile.win_streak = 0
+	game.begin_battle(0)
+	game.combat.state.phase = "won"
+	game._battle_screen._advance_to_reward()
+	assert_eq(int(game.profile.win_streak), 1, "Win streak increments to 1 after first win")
+
+	game.begin_battle(0)
+	game.combat.state.phase = "won"
+	game._battle_screen._advance_to_reward()
+	assert_eq(int(game.profile.win_streak), 2, "Win streak increments to 2 after second win")
+
+	# Battle top bar shows streak badge when streak >= 2
+	game.begin_battle(0)
+	game.combat.state.phase = "player"
+	game._battle_screen.show_battle()
+	var badge: Node = game.root.find_child("BattleWinStreakBadge", true, false)
+	assert_not_null(badge, "BattleWinStreakBadge displays on top bar during win streak")
+
+	# Leave battle resets streak
+	game._battle_screen._leave_battle()
+	assert_eq(int(game.profile.win_streak), 0, "Leaving battle without winning resets win streak to 0")
+	game.free()
+
+func test_haptics_and_volume_settings_toggles():
+	var game := _create_game()
+	game.profile.haptics_enabled = true
+	game._toggle_haptics()
+	assert_false(bool(game.profile.haptics_enabled), "Toggling haptics disables it")
+	game._toggle_haptics()
+	assert_true(bool(game.profile.haptics_enabled), "Toggling haptics re-enables it")
+
+	game._change_music_volume(0.7)
+	assert_almost_eq(float(game.profile.music_volume), 0.7, 0.01, "Music volume sets to 0.7")
+	assert_false(game.muted, "Music is not muted at 0.7")
+
+	game._change_sfx_volume(0.4)
+	assert_almost_eq(float(game.profile.sfx_volume), 0.4, 0.01, "SFX volume sets to 0.4")
+	assert_false(game.sfx_muted, "SFX is not muted at 0.4")
+
+	game._change_music_volume(0.0)
+	assert_true(game.muted, "Music volume 0.0 mutes music")
+	game.free()
+
+

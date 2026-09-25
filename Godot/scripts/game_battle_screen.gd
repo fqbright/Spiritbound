@@ -269,6 +269,11 @@ func show_battle() -> void:
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 44
 	top.add_child(g._label("%d-%d  %s" % [encounter.chapter,encounter.level,g._current_stage_label()], 13, g.JADE))
+	var streak: int = int(g.profile.get("win_streak", 0))
+	if streak >= 2:
+		var streak_pill := g._label("🔥 " + g.tf("ui.win_streak_badge", streak), 11, Color("ffa94d"))
+		streak_pill.name = "BattleWinStreakBadge"
+		top.add_child(streak_pill)
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(spacer)
 	top.add_child(g._label(g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD))
 	var speed_label: String = (str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x"
@@ -364,6 +369,10 @@ func show_battle() -> void:
 		else:
 			g.play_sfx("battle_defeat")
 			g._record_battle_result(false)
+			g.profile.win_streak = 0
+			if g.profile.get("career_stats") is Dictionary:
+				g.profile.career_stats.current_win_streak = 0
+			SpiritSave.write(g.profile)
 			var diag: Dictionary = g.diagnose_battle_defeat()
 			var diag_card := PanelContainer.new()
 			diag_card.name = "DefeatDiagnosisCard"
@@ -412,19 +421,20 @@ func _intent_style(intent: Dictionary) -> Dictionary:
 	var amount := int(intent.get("amount", 0))
 	# "text" (with its symbol) still goes into toasts, which have no room for a drawn icon;
 	# "amount_text" is the plain number the banner shows next to the icon instead.
+	var is_threat := (amount >= 15 or kind == "critical")
 	match kind:
 		"critical":
-			return {"text": g.tf("ui.intent_critical", amount), "amount_text": str(amount), "bg": Color(0.42, 0.10, 0.08, 0.72), "border": Color(1.0, 0.60, 0.36, 0.9), "text_color": Color("ffe1c9")}
+			return {"text": g.tf("ui.intent_critical", amount), "amount_text": str(amount), "bg": Color(0.42, 0.10, 0.08, 0.72), "border": Color(1.0, 0.60, 0.36, 0.9), "text_color": Color("ffe1c9"), "high_threat": is_threat}
 		"defend":
-			return {"text": g.tf("ui.intent_defend", amount), "amount_text": str(amount), "bg": Color(0.06, 0.18, 0.28, 0.72), "border": Color(0.48, 0.80, 1.0, 0.9), "text_color": Color("d6ecff")}
+			return {"text": g.tf("ui.intent_defend", amount), "amount_text": str(amount), "bg": Color(0.06, 0.18, 0.28, 0.72), "border": Color(0.48, 0.80, 1.0, 0.9), "text_color": Color("d6ecff"), "high_threat": is_threat}
 		"empower":
-			return {"text": g.tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "bg": Color(0.22, 0.10, 0.32, 0.72), "border": Color(0.82, 0.58, 1.0, 0.9), "text_color": Color("ecdcff")}
+			return {"text": g.tf("ui.intent_empower", amount), "amount_text": "+%d" % amount, "bg": Color(0.22, 0.10, 0.32, 0.72), "border": Color(0.82, 0.58, 1.0, 0.9), "text_color": Color("ecdcff"), "high_threat": is_threat}
 		"curse":
-			return {"text": g.tf("ui.intent_curse", amount), "amount_text": str(amount), "bg": Color(0.14, 0.24, 0.10, 0.72), "border": Color(0.68, 0.92, 0.44, 0.9), "text_color": Color("e2f7c6")}
+			return {"text": g.tf("ui.intent_curse", amount), "amount_text": str(amount), "bg": Color(0.14, 0.24, 0.10, 0.72), "border": Color(0.68, 0.92, 0.44, 0.9), "text_color": Color("e2f7c6"), "high_threat": is_threat}
 		"attack_defend":
-			return {"text": g.tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "bg": Color(0.28, 0.15, 0.10, 0.72), "border": Color(0.96, 0.70, 0.46, 0.9), "text_color": Color("ffe7d2")}
+			return {"text": g.tf("ui.intent_attack_defend", [amount, int(intent.get("shield", 0))]), "amount_text": "%d/%d" % [amount, int(intent.get("shield", 0))], "bg": Color(0.28, 0.15, 0.10, 0.72), "border": Color(0.96, 0.70, 0.46, 0.9), "text_color": Color("ffe7d2"), "high_threat": is_threat}
 		_:
-			return {"text": g.tf("ui.intent_attack", amount), "amount_text": str(amount), "bg": Color(0.32, 0.10, 0.07, 0.72), "border": Color(0.96, 0.60, 0.38, 0.9), "text_color": Color("ffe1c9")}
+			return {"text": g.tf("ui.intent_attack", amount), "amount_text": str(amount), "bg": Color(0.32, 0.10, 0.07, 0.72), "border": Color(0.96, 0.60, 0.38, 0.9), "text_color": Color("ffe1c9"), "high_threat": is_threat}
 
 func _get_hit_flash_shader() -> Shader:
 	if g._hit_flash_shader == null: g._hit_flash_shader = load("res://assets/shaders/hit_flash.gdshader")
@@ -757,15 +767,17 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	intent_bg.position = Vector2(center_x - intent_w / 2.0, base_intent_y)
 	intent_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Floating oriental runic seal: sleek translucent spirit pill with glowing border & soft shadow
+	var is_threat: bool = bool(intent_style.get("high_threat", false))
 	var intent_box := StyleBoxFlat.new()
 	intent_box.bg_color = intent_style.bg
-	intent_box.border_color = intent_style.border
-	intent_box.set_border_width_all(1)
+	intent_box.border_color = Color("ff4d4d") if is_threat else intent_style.border
+	intent_box.set_border_width_all(2 if is_threat else 1)
 	intent_box.set_corner_radius_all(11)
-	intent_box.shadow_color = Color(0, 0, 0, 0.45)
-	intent_box.shadow_size = 2
+	intent_box.shadow_color = Color(0.6, 0.05, 0.05, 0.6) if is_threat else Color(0, 0, 0, 0.45)
+	intent_box.shadow_size = 4 if is_threat else 2
 	intent_box.content_margin_left = 6; intent_box.content_margin_right = 6
 	intent_bg.add_theme_stylebox_override("panel", intent_box)
+	intent_bg.pivot_offset = intent_bg.custom_minimum_size / 2.0
 	unit.add_child(intent_bg)
 
 	var intent_row := HBoxContainer.new()
@@ -783,10 +795,14 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	intent_row.add_child(g._label(intent_style.amount_text, 13, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var telegraph := intent_bg.create_tween().set_loops()
-	telegraph.tween_property(intent_bg, "position:y", base_intent_y - 3.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	telegraph.parallel().tween_property(intent_bg, "modulate", Color(1.22, 1.22, 1.22), 1.0).set_trans(Tween.TRANS_SINE)
-	telegraph.tween_property(intent_bg, "position:y", base_intent_y + 1.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	telegraph.parallel().tween_property(intent_bg, "modulate", Color.WHITE, 1.0).set_trans(Tween.TRANS_SINE)
+	telegraph.tween_property(intent_bg, "position:y", base_intent_y - 3.0, 0.8 if is_threat else 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	telegraph.parallel().tween_property(intent_bg, "modulate", Color(1.35, 1.15, 1.15) if is_threat else Color(1.22, 1.22, 1.22), 0.8 if is_threat else 1.0).set_trans(Tween.TRANS_SINE)
+	if is_threat:
+		telegraph.parallel().tween_property(intent_bg, "scale", Vector2(1.08, 1.08), 0.4).set_trans(Tween.TRANS_SINE)
+	telegraph.tween_property(intent_bg, "position:y", base_intent_y + 1.0, 0.8 if is_threat else 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	telegraph.parallel().tween_property(intent_bg, "modulate", Color.WHITE, 0.8 if is_threat else 1.0).set_trans(Tween.TRANS_SINE)
+	if is_threat:
+		telegraph.parallel().tween_property(intent_bg, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_SINE)
 
 	var element: String = enemy.get("element", "")
 	if not element.is_empty():
@@ -1150,6 +1166,11 @@ func _add_hand(page: VBoxContainer) -> void:
 	var discard_chip := _pile_chip(g.combat.state.discard.size(), g.t("ui.discard_pile"), Color("a8b2b5"), func(): show_pile_inspector("ui.pile_discard_title", g.combat.state.discard))
 	discard_chip.name = "DiscardPileChip"
 	status.add_child(discard_chip)
+
+	if g.combat.state.get("exhaust", []).size() > 0:
+		var exhaust_chip := _pile_chip(g.combat.state.exhaust.size(), g.t("ui.exhaust_pile"), Color("b578c7"), func(): show_pile_inspector("ui.pile_exhaust_title", g.combat.state.exhaust))
+		exhaust_chip.name = "ExhaustPileChip"
+		status.add_child(exhaust_chip)
 
 	var pass_btn := g._button(g.t("ui.pass_turn"), g._pass_turn, Color("1c2a30"), Vector2(48, 44))
 	pass_btn.name = "PassTurnBtn"
@@ -2784,6 +2805,29 @@ func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 	g._haptic("lethal")
 	_shake_screen(14.0, 0.45)
 
+	var is_boss: bool = (g.current_stage % 5 == 0 and g.current_stage > 0)
+	if not is_boss and g.combat != null and g.combat.state != null:
+		for e in g.combat.state.enemies:
+			if int(e.get("tier", 1)) >= 3 or bool(e.get("is_boss", false)):
+				is_boss = true
+				break
+
+	if is_boss:
+		Engine.time_scale = 0.35
+		var flash := ColorRect.new()
+		flash.name = "BossFinisherFlash"
+		flash.color = Color(1.0, 0.96, 0.88, 0.65)
+		flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		flash.z_index = 475
+		g.overlay.add_child(flash)
+		var f_tw := flash.create_tween()
+		f_tw.tween_property(flash, "modulate:a", 0.0, 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		f_tw.tween_callback(flash.queue_free)
+		if g.get_tree():
+			await g.get_tree().create_timer(0.32, true, false, true).timeout
+		Engine.time_scale = 1.0
+
 	var top_bar := ColorRect.new()
 	top_bar.color = Color("04090c")
 	top_bar.custom_minimum_size = Vector2(390, 64)
@@ -2870,12 +2914,42 @@ func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 	btm_bar.queue_free()
 	banner.queue_free()
 
+func _animate_heavy_damage_vignette() -> void:
+	if g.overlay == null: return
+	var vig := Panel.new()
+	vig.name = "HeavyDamageVignette"
+	vig.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vig.z_index = 420
+	var v_style := StyleBoxFlat.new()
+	v_style.bg_color = Color(0.65, 0.05, 0.05, 0.22)
+	v_style.border_color = Color(0.95, 0.12, 0.12, 0.8)
+	v_style.border_width_left = 14; v_style.border_width_right = 14
+	v_style.border_width_top = 14; v_style.border_width_bottom = 14
+	vig.add_theme_stylebox_override("panel", v_style)
+	g.overlay.add_child(vig)
+	var tw := vig.create_tween()
+	tw.tween_property(vig, "modulate:a", 0.0, g._battle_delay(0.40)).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func():
+		if is_instance_valid(vig):
+			if vig.get_parent(): vig.get_parent().remove_child(vig)
+			vig.queue_free()
+	)
+
 func _advance_to_reward() -> void:
 	# show_battle can run several times while the win is on screen; only one hand-off.
 	if g.advancing_to_reward: return
 	g.advancing_to_reward = true
 	g.play_sfx("battle_victory")
-	await g.get_tree().create_timer(g._battle_delay(0.8)).timeout
+	var streak: int = int(g.profile.get("win_streak", 0)) + 1
+	g.profile.win_streak = streak
+	g.profile.max_win_streak = maxi(int(g.profile.get("max_win_streak", 0)), streak)
+	if g.profile.get("career_stats") is Dictionary:
+		g.profile.career_stats.current_win_streak = streak
+		g.profile.career_stats.longest_win_streak = maxi(int(g.profile.career_stats.get("longest_win_streak", 0)), streak)
+	SpiritSave.write(g.profile)
+	if g.is_inside_tree() and g.get_tree() != null:
+		await g.get_tree().create_timer(g._battle_delay(0.8)).timeout
 	g.advancing_to_reward = false
 	if g.combat == null or g.combat.state.phase != "won": return
 	if g.in_sandbox:
@@ -2910,8 +2984,12 @@ func _enemy_turn() -> void:
 	if before_shield > 0 and after_shield == 0 and after_health < before_health:
 		await _animate_shield_break()
 	if after_health < before_health:
+		var dmg: int = before_health - after_health
+		var max_hp: int = int(g.combat.state.player.get("max_health", 60))
+		if dmg >= 15 or dmg >= int(max_hp * 0.20):
+			_animate_heavy_damage_vignette()
 		g._haptic("heavy")
-		await _animate_player_hit(before_health - after_health)
+		await _animate_player_hit(dmg)
 		if after_health <= 25 and after_health > 0:
 			g._maybe_show_tutorial("combat_survival")
 
@@ -3481,6 +3559,12 @@ func _clear_danger_vignette() -> void:
 		)
 
 func _leave_battle() -> void:
+	Engine.time_scale = 1.0
+	if g.combat != null and g.combat.state != null and g.combat.state.phase != "won":
+		g.profile.win_streak = 0
+		if g.profile.get("career_stats") is Dictionary:
+			g.profile.career_stats.current_win_streak = 0
+		SpiritSave.write(g.profile)
 	_dismiss_first_card_drag_hint()
 	_clear_danger_vignette()
 	if g.overlay != null:

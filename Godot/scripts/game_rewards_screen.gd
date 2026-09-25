@@ -53,6 +53,19 @@ func show_reward() -> void:
 
 		page.add_child(tel_box)
 
+	var cur_streak: int = int(g.profile.get("win_streak", 0))
+	if cur_streak >= 2:
+		var streak_box := PanelContainer.new()
+		streak_box.name = "RewardWinStreakBadge"
+		streak_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var s_style := g._panel(Color(0.22, 0.08, 0.03, 0.94), 10, Color("ff9933"))
+		s_style.content_margin_left = 14; s_style.content_margin_right = 14
+		s_style.content_margin_top = 4; s_style.content_margin_bottom = 4
+		streak_box.add_theme_stylebox_override("panel", s_style)
+		var s_lbl := g._label("🔥 " + g.tf("ui.win_streak_badge", cur_streak) + " (" + g.t("ui.win_streak_bonus") + " +%d%%)" % mini(cur_streak * 5, 25), 11, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+		streak_box.add_child(s_lbl)
+		page.add_child(streak_box)
+
 	var chest := TextureRect.new()
 	var atlas := AtlasTexture.new()
 	atlas.atlas = g._texture("chest-atlas-v1.png")
@@ -477,7 +490,12 @@ func _grant_stage_rewards() -> void:
 	var m_bonuses: Dictionary = g.content.meridian_bonuses(g.profile.get("meridians", {}))
 	if float(m_bonuses.get("gold_mult", 1.0)) > 1.0: multiplier *= float(m_bonuses.gold_mult)
 	if g.profile.get("relics", []).has("gamblerCoin"): multiplier *= 1.3
-	g.pending_rewards = {"gold": int(round(encounter.reward * multiplier)), "equipment": "", "rune": "", "relic": ""}
+	var streak: int = int(g.profile.get("win_streak", 0))
+	var streak_mult: float = 1.0 + minf(float(streak) * 0.05, 0.25) if streak >= 2 else 1.0
+	multiplier *= streak_mult
+	var total_gold := int(round(encounter.reward * multiplier))
+	var streak_bonus_gold := int(round(total_gold - (total_gold / streak_mult))) if streak >= 2 else 0
+	g.pending_rewards = {"gold": total_gold, "streak_bonus_gold": streak_bonus_gold, "equipment": "", "rune": "", "relic": ""}
 	g.profile.gold += int(g.pending_rewards.gold)
 	if g.profile.get("relics", []).has("vitalityGourd") and g.pre_battle_health >= 60 and g.combat != null and int(g.combat.state.player.health) >= 60:
 		g.profile.health = int(g.profile.get("health", 60)) + 1
@@ -602,6 +620,11 @@ func show_reward_details() -> void:
 	spoils.add_theme_constant_override("separation", 14)
 	page.add_child(spoils)
 	spoils.add_child(g._label(g.tf("ui.reward_gold_line", int(g.pending_rewards.get("gold", 0))), 15, g.GOLD))
+	var s_bonus: int = int(g.pending_rewards.get("streak_bonus_gold", 0))
+	if s_bonus > 0:
+		var streak_pill := g._label("🔥 " + g.t("ui.win_streak_bonus") + " (+%d)" % s_bonus, 12, Color("ffa94d"))
+		streak_pill.name = "RewardStreakBonusLabel"
+		spoils.add_child(streak_pill)
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true

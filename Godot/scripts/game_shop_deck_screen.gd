@@ -1120,6 +1120,104 @@ func _rarity_star_row(rarity: String, color := g.GOLD, align := BoxContainer.ALI
 		row.add_child(star)
 	return row
 
+func _build_deck_analytics_box() -> PanelContainer:
+	var box := PanelContainer.new()
+	box.name = "DeckAnalyticsBox"
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var b_style := g._panel(Color("0d1a1e", 0.92), 10, Color("1e3d47"))
+	b_style.content_margin_left = 12; b_style.content_margin_right = 12
+	b_style.content_margin_top = 8; b_style.content_margin_bottom = 8
+	box.add_theme_stylebox_override("panel", b_style)
+
+	var hbox := HBoxContainer.new()
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.add_theme_constant_override("separation", 14)
+	box.add_child(hbox)
+
+	# 1. Mana Curve Column
+	var curve_vbox := VBoxContainer.new()
+	curve_vbox.add_theme_constant_override("separation", 4)
+	var curve_title := g._label(g.t("ui.deck_mana_curve"), 10, g.GOLD)
+	curve_vbox.add_child(curve_title)
+
+	var cost_counts := {0: 0, 1: 0, 2: 0, 3: 0}
+	var type_counts := {"Attack": 0, "Skill": 0, "Power": 0}
+	var elem_counts := {}
+
+	for card_id in g.profile.deck:
+		var c: Dictionary = g.content.card(str(card_id))
+		var cost: int = int(c.get("cost", 1))
+		var capped_cost: int = mini(cost, 3)
+		cost_counts[capped_cost] = cost_counts.get(capped_cost, 0) + 1
+		var kind: String = str(c.get("kind", "Attack"))
+		if type_counts.has(kind):
+			type_counts[kind] += 1
+		else:
+			type_counts["Skill"] += 1
+		var elem: String = str(c.get("element", ""))
+		if not elem.is_empty():
+			elem_counts[elem] = elem_counts.get(elem, 0) + 1
+
+	var max_cost_c: int = 1
+	for k in cost_counts:
+		max_cost_c = maxi(max_cost_c, int(cost_counts[k]))
+
+	var bars_row := HBoxContainer.new()
+	bars_row.add_theme_constant_override("separation", 8)
+	curve_vbox.add_child(bars_row)
+
+	var cost_colors := [Color("48dbfb"), Color("1dd1a1"), Color("feca57"), Color("ff6b6b")]
+	for i in range(4):
+		var col := VBoxContainer.new()
+		col.alignment = BoxContainer.ALIGNMENT_END
+		col.add_theme_constant_override("separation", 2)
+		var c_val: int = int(cost_counts.get(i, 0))
+		var num_lbl := g._label(str(c_val), 9, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		col.add_child(num_lbl)
+
+		var bar := ColorRect.new()
+		var bar_h: float = maxf(4.0, float(c_val) / float(max_cost_c) * 22.0)
+		bar.custom_minimum_size = Vector2(16, bar_h)
+		bar.color = cost_colors[i]
+		col.add_child(bar)
+
+		var cost_lbl := g._label("%d⚡" % i if i < 3 else "3+⚡", 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		col.add_child(cost_lbl)
+		bars_row.add_child(col)
+
+	hbox.add_child(curve_vbox)
+
+	var sep := VSeparator.new()
+	hbox.add_child(sep)
+
+	# 2. Archetype Ratio Column
+	var type_vbox := VBoxContainer.new()
+	type_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	type_vbox.add_theme_constant_override("separation", 4)
+	var type_title := g._label(g.t("ui.deck_archetype_ratio"), 10, g.GOLD)
+	type_vbox.add_child(type_title)
+
+	var t_row := HBoxContainer.new()
+	t_row.add_theme_constant_override("separation", 8)
+	t_row.add_child(g._label("⚔️ %s: %d" % [g.t("ui.deck_type_attack"), type_counts["Attack"]], 10, Color("fca5a5")))
+	t_row.add_child(g._label("🛡️ %s: %d" % [g.t("ui.deck_type_skill"), type_counts["Skill"]], 10, Color("93c5fd")))
+	t_row.add_child(g._label("⚡ %s: %d" % [g.t("ui.deck_type_power"), type_counts["Power"]], 10, Color("fde047")))
+	type_vbox.add_child(t_row)
+
+	# Dominant Element (if any element has >= 2 cards)
+	var dom_elem := ""
+	var dom_max := 1
+	for e in elem_counts:
+		if int(elem_counts[e]) > dom_max:
+			dom_max = int(elem_counts[e])
+			dom_elem = e
+	if not dom_elem.is_empty():
+		var elem_tag := g._label("✦ %s: %s (%d)" % [g.t("ui.deck_dominant_element"), g.t("element." + dom_elem), dom_max], 10, g.JADE)
+		type_vbox.add_child(elem_tag)
+
+	hbox.add_child(type_vbox)
+	return box
+
 func show_deck() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
@@ -1172,6 +1270,8 @@ func show_deck() -> void:
 		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		elem_chips.add_child(chip)
 	page.add_child(elem_chips)
+
+	page.add_child(_build_deck_analytics_box())
 
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true
