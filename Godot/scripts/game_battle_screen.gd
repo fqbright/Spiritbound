@@ -83,7 +83,12 @@ func begin_battle(index: int) -> void:
 	g.selected_card = -1
 	g._last_hand_size = 0
 	show_battle()
-	if index == 0 and not bool(g.profile.get("tutorial_seen", false)): _show_battle_tutorial()
+	if index == 0 and not bool(g.profile.get("tutorial_seen", false)):
+		_show_battle_tutorial()
+	elif index == 0 and not bool(g.profile.get("first_card_dragged", false)):
+		_show_first_card_drag_hint()
+	elif not g.in_sandbox and (index % 5 == 4 or int(g.content.encounters[index].get("tier", 1)) >= 3):
+		_show_boss_intro_banner(g.content.encounters[index])
 	_maybe_end_turn()
 	if g.auto_battle_active: _maybe_step_auto_battle()
 
@@ -257,6 +262,7 @@ func show_battle() -> void:
 		_shake_screen(4.0, 0.2)
 	g._clear(); g._play_music(true, stage_lvl); g.enemy_boxes.clear()
 	_setup_battle_background(encounter, stage_lvl)
+	_update_danger_vignette()
 	var page := g._create_page(4)
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 44
@@ -1377,9 +1383,13 @@ func _finish_tutorial() -> void:
 	# Fired on both the "start" and "skip" exits on purpose — the funnel question is "did the
 	# player get past the tutorial", not "how did they dismiss it".
 	LogService.event(LogService.EV_TUTORIAL_COMPLETED, {}, g)
-	if g.overlay == null: return
-	var existing := g.overlay.get_node_or_null("BattleTutorial")
-	if existing: existing.queue_free()
+	if g.overlay != null:
+		var existing := g.overlay.get_node_or_null("BattleTutorial")
+		if existing:
+			if existing.get_parent(): existing.get_parent().remove_child(existing)
+			existing.queue_free()
+	if not bool(g.profile.get("first_card_dragged", false)):
+		_show_first_card_drag_hint()
 
 # MTG Arena's hold-to-peek: press and hold a card in hand and an enlarged copy floats up so
 # you can actually read it; the moment you drag (HandCard._on_drag) or lift your finger
@@ -2142,6 +2152,7 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	# resumes — see the guard right before show_battle() and battle_session's own comment in
 	# game.gd for what this prevents.
 	var session: int = g.battle_session
+	_dismiss_first_card_drag_hint()
 
 	# 0. The just-played card flies off to the discard pile — fire-and-forget, so it plays
 	# out alongside everything below rather than delaying it.
@@ -2731,7 +2742,7 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 
 func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 	if g.overlay == null: return
-	g._haptic("heavy")
+	g._haptic("lethal")
 	_shake_screen(14.0, 0.45)
 
 	var top_bar := ColorRect.new()
@@ -3232,7 +3243,178 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	seq.tween_property(banner, "modulate:a", 0.0, g._battle_delay(0.3))
 	seq.tween_callback(banner.queue_free)
 
+func _show_boss_intro_banner(encounter: Dictionary) -> void:
+	if g.overlay == null: return
+	var existing := g.overlay.get_node_or_null("BossIntroBanner")
+	if existing != null: return
+
+	g._haptic("heavy")
+	var root_modal := Control.new()
+	root_modal.name = "BossIntroBanner"
+	root_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_modal.mouse_filter = Control.MOUSE_FILTER_PASS
+	root_modal.z_index = 490
+
+	var bg_dim := Button.new()
+	bg_dim.flat = true
+	bg_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg_dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	var dim_style := g._panel(Color(0.04, 0.08, 0.1, 0.45), 0)
+	bg_dim.add_theme_stylebox_override("normal", dim_style)
+	bg_dim.add_theme_stylebox_override("hover", dim_style)
+	bg_dim.add_theme_stylebox_override("pressed", dim_style)
+	bg_dim.pressed.connect(func():
+		if is_instance_valid(root_modal):
+			if root_modal.get_parent(): root_modal.get_parent().remove_child(root_modal)
+			root_modal.queue_free()
+	)
+	root_modal.add_child(bg_dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root_modal.add_child(center)
+
+	var banner := PanelContainer.new()
+	banner.custom_minimum_size = Vector2(310, 80)
+	var b_style := g._panel(Color(0.12, 0.04, 0.06, 0.95), 16, g.GOLD)
+	b_style.border_width_left = 2; b_style.border_width_right = 2
+	b_style.border_width_top = 2; b_style.border_width_bottom = 2
+	banner.add_theme_stylebox_override("panel", b_style)
+	center.add_child(banner)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 18)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	banner.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 4)
+	pad.add_child(vbox)
+
+	var ch_num: int = int(encounter.get("chapter", int(g.profile.get("position", 0)) / 5 + 1))
+	var prefix_text: String = g.tf("ui.boss_intro_prefix", ch_num)
+	var prefix_lbl := g._label(prefix_text, 11, Color("ffb076"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	vbox.add_child(prefix_lbl)
+
+	var boss_name: String = str(encounter.get("name", "领主"))
+	var name_lbl := g._label(boss_name, 20, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER, true)
+	vbox.add_child(name_lbl)
+
+	g.overlay.add_child(root_modal)
+
+	banner.scale = Vector2(0.7, 0.7)
+	banner.modulate.a = 0.0
+	var tw := banner.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(banner, "scale", Vector2.ONE, g._battle_delay(0.25)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(banner, "modulate:a", 1.0, g._battle_delay(0.2))
+
+	var seq := banner.create_tween()
+	seq.tween_interval(g._battle_delay(1.2))
+	seq.tween_property(root_modal, "modulate:a", 0.0, g._battle_delay(0.3))
+	seq.tween_callback(func():
+		if is_instance_valid(root_modal):
+			if root_modal.get_parent(): root_modal.get_parent().remove_child(root_modal)
+			root_modal.queue_free()
+	)
+
+func _show_first_card_drag_hint() -> void:
+	if g.overlay == null or bool(g.profile.get("first_card_dragged", false)): return
+	var existing := g.overlay.get_node_or_null("FirstCardDragHint")
+	if existing != null: return
+
+	var hint := Control.new()
+	hint.name = "FirstCardDragHint"
+	hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.z_index = 480
+	g.overlay.add_child(hint)
+
+	var lbl := g._label(g.t("ui.drag_to_cast"), 12, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER, true)
+	lbl.name = "DragHintLabel"
+	lbl.position = Vector2(40, 500)
+	lbl.custom_minimum_size = Vector2(310, 24)
+	hint.add_child(lbl)
+
+	var finger := Panel.new()
+	finger.name = "DragHintFinger"
+	finger.custom_minimum_size = Vector2(28, 28)
+	finger.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var f_style := g._panel(Color(1.0, 0.85, 0.35, 0.9), 14, Color.WHITE)
+	finger.add_theme_stylebox_override("panel", f_style)
+	hint.add_child(finger)
+
+	var p_start := Vector2(85, 545)
+	var p_end := Vector2(195, 290)
+	finger.position = p_start
+
+	var tw := finger.create_tween().set_loops()
+	tw.tween_property(finger, "position", p_start, 0.0)
+	tw.tween_property(finger, "modulate:a", 1.0, 0.15)
+	tw.tween_property(finger, "position", p_end, g._battle_delay(1.1)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(finger, "modulate:a", 0.0, g._battle_delay(0.25))
+	tw.tween_interval(g._battle_delay(0.35))
+
+func _dismiss_first_card_drag_hint() -> void:
+	if g.overlay == null: return
+	var hint := g.overlay.get_node_or_null("FirstCardDragHint")
+	if hint != null:
+		g.profile.first_card_dragged = true
+		SpiritSave.write(g.profile)
+		var tw := hint.create_tween()
+		tw.tween_property(hint, "modulate:a", 0.0, 0.2)
+		tw.tween_callback(func():
+			if is_instance_valid(hint):
+				if hint.get_parent(): hint.get_parent().remove_child(hint)
+				hint.queue_free()
+		)
+
+func _update_danger_vignette() -> void:
+	if g.overlay == null: return
+	var cur_hp: int = int(g.combat.state.player.health) if g.combat and g.combat.state and g.combat.state.player else 60
+	var is_danger: bool = cur_hp > 0 and cur_hp <= 15
+	var existing := g.overlay.get_node_or_null("DangerVignette")
+	if is_danger:
+		if existing == null:
+			var vig := Panel.new()
+			vig.name = "DangerVignette"
+			vig.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			vig.z_index = 250
+			var v_style := StyleBoxFlat.new()
+			v_style.bg_color = Color.TRANSPARENT
+			v_style.border_color = Color(0.8, 0.08, 0.08, 0.45)
+			v_style.border_width_left = 6; v_style.border_width_right = 6
+			v_style.border_width_top = 6; v_style.border_width_bottom = 6
+			vig.add_theme_stylebox_override("panel", v_style)
+			g.overlay.add_child(vig)
+			var tw := vig.create_tween().set_loops()
+			tw.tween_property(vig, "modulate:a", 0.35, g._battle_delay(0.7)).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(vig, "modulate:a", 0.85, g._battle_delay(0.7)).set_trans(Tween.TRANS_SINE)
+	else:
+		_clear_danger_vignette()
+
+func _clear_danger_vignette() -> void:
+	if g.overlay == null: return
+	var existing := g.overlay.get_node_or_null("DangerVignette")
+	if existing != null:
+		var tw := existing.create_tween()
+		tw.tween_property(existing, "modulate:a", 0.0, 0.25)
+		tw.tween_callback(func():
+			if is_instance_valid(existing):
+				if existing.get_parent(): existing.get_parent().remove_child(existing)
+				existing.queue_free()
+		)
+
 func _leave_battle() -> void:
+	_dismiss_first_card_drag_hint()
+	_clear_danger_vignette()
+	if g.overlay != null:
+		var bb := g.overlay.get_node_or_null("BossIntroBanner")
+		if bb != null:
+			if bb.get_parent(): bb.get_parent().remove_child(bb)
+			bb.queue_free()
 	# Invalidate any in-flight _resolve_play() coroutine still mid-animation from the battle
 	# being left (see battle_session's own comment in game.gd) before it can resume later and
 	# call show_battle(), which would wipe whatever screen we're about to navigate to and

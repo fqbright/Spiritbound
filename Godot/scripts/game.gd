@@ -637,9 +637,15 @@ func _battle_delay(seconds: float) -> float:
 func _haptic(kind: String) -> void:
 	match kind:
 		"tap": Input.vibrate_handheld(10)
+		"card_drag": Input.vibrate_handheld(12)
 		"shield": Input.vibrate_handheld(25)
 		"hit": Input.vibrate_handheld(40)
 		"heavy": Input.vibrate_handheld(75)
+		"lethal":
+			Input.vibrate_handheld(85)
+			if is_inside_tree() and get_tree():
+				var t := get_tree().create_timer(0.1)
+				t.timeout.connect(func(): Input.vibrate_handheld(100))
 		_: Input.vibrate_handheld(15)
 
 func _cycle_speed() -> void:
@@ -3268,6 +3274,7 @@ func claim_idle_harvest() -> int:
 	if gold_gain > 0 or not bonuses.is_empty():
 		profile.gold += gold_gain
 		SpiritSave.write(profile)
+		_spawn_currency_flight(Vector2(195, 450), Vector2(60, 40), 8, GOLD)
 		var toast_text: String = tf("ui.idle_harvest_toast", gold_gain)
 		if not bonuses.is_empty():
 			toast_text += "\n✦ 闭关游历获宝: " + " | ".join(bonuses)
@@ -3286,8 +3293,52 @@ func fast_idle_harvest() -> int:
 	var burst_gold: int = get_idle_harvest_rate() * 2
 	profile.gold += burst_gold
 	SpiritSave.write(profile)
+	_spawn_currency_flight(Vector2(195, 450), Vector2(60, 40), 10, GOLD)
 	_toast(tf("ui.idle_harvest_fast_toast", burst_gold), GOLD)
 	return burst_gold
+
+func _spawn_currency_flight(origin: Vector2, target: Vector2, count: int = 6, color := GOLD) -> void:
+	if overlay == null: return
+	_haptic("tap")
+	for i in count:
+		var coin := Panel.new()
+		coin.custom_minimum_size = Vector2(12, 12)
+		coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		coin.z_index = 800
+		coin.add_theme_stylebox_override("panel", _panel(color, 6, Color.WHITE))
+		overlay.add_child(coin)
+
+		var start_pos := origin + Vector2(randf_range(-30, 30), randf_range(-15, 15))
+		coin.position = start_pos
+		coin.scale = Vector2(0.2, 0.2)
+		coin.modulate.a = 0.0
+
+		var ctrl_pt := (start_pos + target) / 2.0 + Vector2(randf_range(-50, 50), -70.0)
+		var delay := i * 0.04
+		var dur := 0.5
+
+		var tw := coin.create_tween()
+		tw.tween_interval(delay)
+		tw.set_parallel(true)
+		tw.tween_property(coin, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(coin, "modulate:a", 1.0, 0.1)
+
+		var flight_tw := coin.create_tween()
+		flight_tw.tween_interval(delay)
+		flight_tw.tween_method(func(val: float):
+			if is_instance_valid(coin):
+				var p0: Vector2 = start_pos
+				var p1: Vector2 = ctrl_pt
+				var p2: Vector2 = target
+				var inv: float = 1.0 - val
+				coin.position = inv * inv * p0 + 2.0 * inv * val * p1 + val * val * p2
+		, 0.0, 1.0, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		flight_tw.tween_property(coin, "scale", Vector2(0.4, 0.4), 0.1)
+		flight_tw.tween_callback(func():
+			if is_instance_valid(coin):
+				if coin.get_parent(): coin.get_parent().remove_child(coin)
+				coin.queue_free()
+		)
 
 func _ensure_stamina_current() -> void:
 	if not profile.has("stamina") or not profile.stamina is Dictionary:
@@ -3371,12 +3422,19 @@ func show_stamina_modal() -> void:
 	var status_text := ""
 	if cur >= max_val:
 		status_text = t("ui.stamina_full")
+		vbox.add_child(_label(status_text, 11, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	else:
 		var last_time: int = int(profile.stamina.get("last_regen_time", 0))
 		var now: int = int(Time.get_unix_time_from_system())
 		var rem_sec: int = maxi(0, 300 - ((now - last_time) % 300))
 		status_text = tf("ui.stamina_next_regen", "%02d:%02d" % [rem_sec / 60, rem_sec % 60])
-	vbox.add_child(_label(status_text, 11, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+		vbox.add_child(_label(status_text, 11, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+		var total_rem_sec: int = maxi(0, (max_val - cur - 1) * 300 + rem_sec)
+		var hours: int = total_rem_sec / 3600
+		var mins: int = (total_rem_sec % 3600) / 60
+		var full_time_str: String = ("%d小时%02d分" % [hours, mins]) if lang == "zh-Hans" else ("%dh %02dm" % [hours, mins])
+		var full_time_text: String = tf("ui.stamina_full_time", full_time_str)
+		vbox.add_child(_label(full_time_text, 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var can_recharge: bool = int(profile.get("spirit_jade", 0)) >= 10
 	var rech_btn := _button(t("ui.stamina_recharge_btn"), func():

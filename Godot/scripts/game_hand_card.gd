@@ -129,7 +129,9 @@ func _on_drag(local_pos: Vector2) -> void:
 			# Only rebuild the preview when the hovered enemy changes, not on every drag sample.
 			if target_enemy_idx != preview_index:
 				preview_index = target_enemy_idx
-				if target_enemy_idx >= 0: game._show_damage_preview(card_data, target_enemy_idx)
+				if target_enemy_idx >= 0:
+					if game: game._haptic("card_drag")
+					game._show_damage_preview(card_data, target_enemy_idx)
 				else: game._clear_damage_preview()
 
 func _on_touch_up() -> void:
