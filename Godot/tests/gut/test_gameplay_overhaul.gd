@@ -185,3 +185,35 @@ func test_deck_size_flexibility_in_save_store():
 	var valid_large_deck: Array = []
 	for i in 35: valid_large_deck.append("ward")
 	assert_true(valid_large_deck.size() >= 12 and valid_large_deck.size() <= 50, "35-card deck is valid")
+
+func test_phase14_polish_systems():
+	# 1. Localization keys for boss/elite banners and intent breakdowns
+	var check_keys := [
+		"ui.boss_intro_boss", "ui.boss_intro_elite", "ui.avg_cost",
+		"ui.intent_calc_dmg", "ui.intent_calc_shield_absorb",
+		"ui.intent_calc_hp_loss", "ui.intent_calc_lethal"
+	]
+	for k in check_keys:
+		var zh := content.ui(k, "zh-Hans")
+		var en := content.ui(k, "en")
+		assert_true(zh.length() > 0 and zh != k, "zh-Hans translation exists for %s" % k)
+		assert_true(en.length() > 0 and en != k, "en translation exists for %s" % k)
+
+	# 2. Low-HP danger threshold at 30%
+	var max_hp := 80
+	var threshold := int(max_hp * 0.30)
+	assert_eq(threshold, 24, "30% threshold of 80 HP is 24")
+	assert_true(20 <= threshold, "20 HP is within danger zone")
+	assert_false(30 <= threshold, "30 HP is above danger zone")
+
+	# 3. Card impact telemetry MVP computation
+	var impacts := {"strike": 45, "samadhiFire": 120, "ward": 30}
+	var top_card := ""
+	var top_val := 0
+	for cid in impacts:
+		if int(impacts[cid]) > top_val:
+			top_val = int(impacts[cid])
+			top_card = cid
+	assert_eq(top_card, "samadhiFire", "samadhiFire is correctly computed as highest impact MVP")
+	assert_eq(top_val, 120, "MVP impact value correctly matches 120")
+

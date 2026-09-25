@@ -1973,7 +1973,7 @@ func _show_feature_unlock_modal(entry: Dictionary) -> void:
 func _modifier(seed: int, stage: int) -> Dictionary: return _battle_screen._modifier(seed, stage)
 func begin_battle(index: int) -> void: _battle_screen.begin_battle(index)
 func show_battle() -> void: _battle_screen.show_battle()
-func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool) -> void: _battle_screen._apply_card_foil(node, rarity, upgraded)
+func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capstone := false, card_id := "") -> void: _battle_screen._apply_card_foil(node, rarity, upgraded, is_capstone, card_id)
 func _build_player_stage() -> Control: return _battle_screen._build_player_stage()
 func _flash_hit(sprite: CanvasItem, color := Color.WHITE, duration := 0.22) -> void: _battle_screen._flash_hit(sprite, color, duration)
 func _animate_player_curse() -> void: await _battle_screen._animate_player_curse()
@@ -4069,17 +4069,34 @@ func _build_victory_recap_card(stats: Dictionary) -> Control:
 	row2.add_child(_label(tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 9, Color("9fd8ff")))
 	vstack.add_child(row2)
 
+	var card_impacts: Dictionary = stats.get("card_impact", {})
+	if card_impacts.is_empty() and battle_telemetry.has("card_impact"):
+		card_impacts = battle_telemetry.card_impact
 	var tally: Dictionary = stats.get("cards_tally", {})
 	var top_card_id := ""
-	var top_count := 0
-	for cid in tally:
-		if int(tally[cid]) > top_count:
-			top_count = int(tally[cid])
-			top_card_id = str(cid)
+	var top_val := 0
+	var is_impact := false
+	if not card_impacts.is_empty():
+		for cid in card_impacts:
+			if int(card_impacts[cid]) > top_val:
+				top_val = int(card_impacts[cid])
+				top_card_id = str(cid)
+		if not top_card_id.is_empty():
+			is_impact = true
+	if top_card_id.is_empty():
+		for cid in tally:
+			if int(tally[cid]) > top_val:
+				top_val = int(tally[cid])
+				top_card_id = str(cid)
 	if not top_card_id.is_empty():
 		var c_info := content.card(top_card_id)
 		var c_name := str(c_info.get("name_en" if lang == "en" else "name", top_card_id))
-		var mvp_label := _label("✦ MVP: %s ×%d" % [c_name, top_count], 9, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+		var mvp_str := ""
+		if is_impact:
+			mvp_str = "✦ MVP: %s (+%d 战效) ✦" % [c_name, top_val] if lang != "en" else "✦ MVP: %s (+%d Impact) ✦" % [c_name, top_val]
+		else:
+			mvp_str = "✦ MVP: %s ×%d ✦" % [c_name, top_val]
+		var mvp_label := _label(mvp_str, 9, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
 		vstack.add_child(mvp_label)
 		panel.custom_minimum_size = Vector2(0, 92)
 

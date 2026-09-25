@@ -2678,6 +2678,31 @@ func _show_player_deck_inspector_modal(player_name: String, char_id: String, cat
 
 	vbox.add_child(g._label(g.tf("ui.deck_inspector_deck_size", archetype_cards.size()), 11, g.GOLD))
 
+	var elem_box := HBoxContainer.new()
+	elem_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	elem_box.add_theme_constant_override("separation", 6)
+	var fire_c := 0; var water_c := 0; var storm_c := 0; var earth_c := 0; var toxin_c := 0
+	var total_c := 0; var num_c := 0
+	for cid in archetype_cards:
+		var c_info := g.content.card(str(cid))
+		if c_info.is_empty(): continue
+		total_c += int(c_info.get("cost", 1))
+		num_c += 1
+		var el: String = str(c_info.get("element", "")).to_lower()
+		if el in ["fire", "flame"]: fire_c += 1
+		elif el in ["water", "frost", "ice"]: water_c += 1
+		elif el in ["storm", "lightning", "thunder"]: storm_c += 1
+		elif el in ["earth", "stone"]: earth_c += 1
+		elif el in ["toxic", "poison", "miasma"]: toxin_c += 1
+	if fire_c > 0: elem_box.add_child(g._label("🔥%d" % fire_c, 10, Color("ff8a8a")))
+	if water_c > 0: elem_box.add_child(g._label("❄️%d" % water_c, 10, Color("67e8f9")))
+	if storm_c > 0: elem_box.add_child(g._label("⚡%d" % storm_c, 10, Color("facc15")))
+	if earth_c > 0: elem_box.add_child(g._label("🪨%d" % earth_c, 10, Color("d97706")))
+	if toxin_c > 0: elem_box.add_child(g._label("☠️%d" % toxin_c, 10, Color("a3e635")))
+	var avg_cost: float = float(total_c) / float(maxi(1, num_c))
+	elem_box.add_child(g._label("%s: %.1f" % [g.t("ui.avg_cost"), avg_cost], 10, g.GOLD))
+	vbox.add_child(elem_box)
+
 	# Card list
 	var scroll := TouchScrollContainer.new()
 	scroll.allow_vertical = true

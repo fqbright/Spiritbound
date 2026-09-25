@@ -92,7 +92,7 @@ func begin_battle(index: int) -> void:
 		_show_battle_tutorial()
 	elif index == 0 and not bool(g.profile.get("first_card_dragged", false)):
 		_show_first_card_drag_hint()
-	elif not g.in_sandbox and (index % 5 == 4 or int(g.content.encounters[index].get("tier", 1)) >= 3):
+	elif not g.in_sandbox and (index % 5 == 4 or int(g.content.encounters[index].get("tier", 1)) >= 2 or bool(g.content.encounters[index].get("is_boss", false)) or bool(g.content.encounters[index].get("is_elite", false))):
 		_show_boss_intro_banner(g.content.encounters[index])
 	_maybe_end_turn()
 	if g.auto_battle_active: _maybe_step_auto_battle()
@@ -499,6 +499,36 @@ func _intent_style(intent: Dictionary) -> Dictionary:
 		_:
 			return {"text": g.tf("ui.intent_attack", amount), "amount_text": str(amount), "bg": Color(0.32, 0.10, 0.07, 0.72), "border": Color(0.96, 0.60, 0.38, 0.9), "text_color": Color("ffe1c9"), "high_threat": is_threat}
 
+func _show_enemy_intent_popup(enemy: Dictionary) -> void:
+	if g.overlay == null: return
+	var intent: Dictionary = enemy.get("intent", {})
+	var kind: String = str(intent.get("kind", "attack"))
+	var amt: int = int(intent.get("amount", 0))
+	var e_name: String = str(enemy.get("name", g.t("ui.enemy_default_name")))
+	var intent_name := g.t("ui.intent_" + kind)
+	if intent_name == "ui.intent_" + kind: intent_name = kind.capitalize()
+	var title: String = "%s · %s" % [e_name, intent_name]
+	var lines: Array = []
+	if kind in ["attack", "critical", "attack_defend"]:
+		var p_shield: int = int(g.combat.state.player.shield) if g.combat and g.combat.state and g.combat.state.player else 0
+		var p_hp: int = int(g.combat.state.player.health) if g.combat and g.combat.state and g.combat.state.player else 60
+		var absorbed: int = mini(amt, p_shield)
+		var pen_dmg: int = maxi(0, amt - p_shield)
+		lines.append(g.tf("ui.intent_calc_dmg", amt))
+		if p_shield > 0:
+			lines.append(g.tf("ui.intent_calc_shield_absorb", absorbed))
+		lines.append(g.tf("ui.intent_calc_hp_loss", pen_dmg))
+		if pen_dmg >= p_hp:
+			lines.append("⚠ " + g.t("ui.intent_calc_lethal"))
+	elif kind == "defend":
+		lines.append(g.tf("ui.intent_calc_shield_gain", amt))
+	elif kind == "empower":
+		lines.append(g.tf("ui.intent_calc_buff", amt))
+	else:
+		lines.append(g.tf("ui.intent_calc_curse", amt))
+	var det: String = "\n".join(lines)
+	_show_info_popup(g._icon_badge("👁", Color("67e8f9"), 50, 24), title, det, Color("67e8f9"))
+
 func _get_hit_flash_shader() -> Shader:
 	if g._hit_flash_shader == null: g._hit_flash_shader = load("res://assets/shaders/hit_flash.gdshader")
 	return g._hit_flash_shader
@@ -508,8 +538,11 @@ func _get_card_foil_shader() -> Shader:
 		g._card_foil_shader = load("res://assets/shaders/card_foil.gdshader")
 	return g._card_foil_shader
 
-func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capstone := false) -> void:
-	if rarity == "Rare" or upgraded or is_capstone:
+func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capstone := false, card_id := "") -> void:
+	var is_foil_reforge: bool = false
+	if not card_id.is_empty() and g.profile and g.profile.get("foil_cards") is Array:
+		is_foil_reforge = g.profile.foil_cards.has(card_id)
+	if rarity == "Rare" or upgraded or is_capstone or is_foil_reforge:
 		var s := _get_card_foil_shader()
 		if s:
 			var mat := ShaderMaterial.new()
@@ -829,7 +862,11 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	# higher and overlapping the row above the whole enemy area.
 	var base_intent_y: float = depth_t * 26.0 + 2.0
 	intent_bg.position = Vector2(center_x - intent_w / 2.0, base_intent_y)
-	intent_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	intent_bg.mouse_filter = Control.MOUSE_FILTER_PASS
+	intent_bg.gui_input.connect(func(event: InputEvent):
+		if (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) or (event is InputEventScreenTouch and event.pressed):
+			_show_enemy_intent_popup(enemy)
+	)
 	# Floating oriental runic seal: sleek translucent spirit pill with glowing border & soft shadow
 	var is_threat: bool = bool(intent_style.get("high_threat", false))
 	var raw_intent_dmg: int = int(intent.get("amount", 0)) if str(intent.get("kind", "")) == "attack" else 0
@@ -1611,7 +1648,7 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_apply_card_foil(art, card_rarity, up_lvl > 0)
+	_apply_card_foil(art, card_rarity, up_lvl > 0, false, card.id)
 	frame.add_child(art)
 
 	var info_box := PanelContainer.new()
@@ -2227,6 +2264,51 @@ func _show_cancel_zone(active: bool) -> void:
 	zone.add_child(lbl)
 	g.overlay.add_child(zone)
 
+func _build_pile_element_summary(pile: Array) -> Control:
+	var box := HBoxContainer.new()
+	box.custom_minimum_size = Vector2(340, 22)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 8)
+
+	var fire_c := 0
+	var water_c := 0
+	var storm_c := 0
+	var earth_c := 0
+	var toxin_c := 0
+	var total_cost := 0
+	var counted := 0
+
+	for item in pile:
+		var c_id: String = ""
+		if item is Dictionary:
+			c_id = str(item.get("id", item.get("card_id", "")))
+		elif item is String:
+			c_id = item
+		if c_id.is_empty(): continue
+		var c_data := g.content.card(c_id)
+		if c_data.is_empty(): continue
+		var cost: int = int(c_data.get("cost", 1))
+		total_cost += cost
+		counted += 1
+		var el: String = str(c_data.get("element", "")).to_lower()
+		if el in ["fire", "flame"]: fire_c += 1
+		elif el in ["water", "frost", "ice"]: water_c += 1
+		elif el in ["storm", "lightning", "thunder"]: storm_c += 1
+		elif el in ["earth", "stone"]: earth_c += 1
+		elif el in ["toxic", "poison", "miasma"]: toxin_c += 1
+
+	if fire_c > 0: box.add_child(g._label("🔥%d" % fire_c, 10, Color("ff8a8a")))
+	if water_c > 0: box.add_child(g._label("❄️%d" % water_c, 10, Color("67e8f9")))
+	if storm_c > 0: box.add_child(g._label("⚡%d" % storm_c, 10, Color("facc15")))
+	if earth_c > 0: box.add_child(g._label("🪨%d" % earth_c, 10, Color("d97706")))
+	if toxin_c > 0: box.add_child(g._label("☠️%d" % toxin_c, 10, Color("a3e635")))
+
+	var avg_cost: float = float(total_cost) / float(maxi(1, counted))
+	var avg_lbl := g._label("%s: %.1f" % [g.t("ui.avg_cost"), avg_cost], 10, g.GOLD)
+	box.add_child(avg_lbl)
+
+	return box
+
 func show_pile_inspector(title_key: String, pile: Array) -> void:
 	if g.overlay == null: return
 	_clear_pile_inspector()
@@ -2268,6 +2350,9 @@ func show_pile_inspector(title_key: String, pile: Array) -> void:
 	var spacer_r := Control.new()
 	spacer_r.custom_minimum_size = Vector2(8, 0)
 	header.add_child(spacer_r)
+
+	if not pile.is_empty():
+		vbox.add_child(_build_pile_element_summary(pile))
 
 	var scroll := TouchScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -2318,7 +2403,7 @@ func _pile_card_tile(card: Dictionary) -> Control:
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var up_lvl: int = int(g.combat.state.upgrades.get(card.id, 0)) if (g.combat and g.combat.state) else int(g.profile.upgrades.get(card.id, 0))
-	_apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0)
+	_apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0, false, card.id)
 	tile.add_child(art)
 
 	g._add_ornate_frame(tile, tile.custom_minimum_size, accent, str(card.get("rarity", "Common")))
@@ -3944,14 +4029,35 @@ func _show_boss_intro_banner(encounter: Dictionary) -> void:
 	vbox.add_theme_constant_override("separation", 4)
 	pad.add_child(vbox)
 
+	var boss_tier: int = int(encounter.get("tier", 1))
+	var is_boss_tier: bool = (boss_tier >= 3 or int(g.profile.get("position", 0)) % 5 == 4 or bool(encounter.get("is_boss", false)))
+	var title_prefix: String = "⚔️ " + g.t("ui.boss_intro_boss") if is_boss_tier else "✦ " + g.t("ui.boss_intro_elite")
 	var ch_num: int = int(encounter.get("chapter", int(g.profile.get("position", 0)) / 5 + 1))
-	var prefix_text: String = g.tf("ui.boss_intro_prefix", ch_num)
+	var prefix_text: String = "%s · %s" % [title_prefix, g.tf("ui.boss_intro_prefix", ch_num)]
 	var prefix_lbl := g._label(prefix_text, 11, Color("ffb076"), HORIZONTAL_ALIGNMENT_CENTER, true)
 	vbox.add_child(prefix_lbl)
 
 	var boss_name: String = str(encounter.get("name", "领主"))
 	var name_lbl := g._label(boss_name, 20, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER, true)
 	vbox.add_child(name_lbl)
+
+	var tags_row := HBoxContainer.new()
+	tags_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	tags_row.add_theme_constant_override("separation", 6)
+	if g.combat and g.combat.state and not g.combat.state.enemies.is_empty():
+		var first_e: Dictionary = g.combat.state.enemies[0]
+		var elem: String = str(first_e.get("element", encounter.get("element", "")))
+		if not elem.is_empty():
+			var elem_badge := g._label("【%s】" % elem.capitalize(), 10, Color("67e8f9"))
+			tags_row.add_child(elem_badge)
+		var mut: String = str(first_e.get("mutation", ""))
+		if not mut.is_empty():
+			var mut_name := g.t("mut." + mut)
+			if mut_name == "mut." + mut: mut_name = mut
+			var mut_badge := g._label("✦ %s ✦" % mut_name, 10, Color("ff8a8a"))
+			tags_row.add_child(mut_badge)
+	if tags_row.get_child_count() > 0:
+		vbox.add_child(tags_row)
 
 	g.overlay.add_child(root_modal)
 
@@ -4025,7 +4131,8 @@ func _dismiss_first_card_drag_hint() -> void:
 func _update_danger_vignette() -> void:
 	if g.overlay == null: return
 	var cur_hp: int = int(g.combat.state.player.health) if g.combat and g.combat.state and g.combat.state.player else 60
-	var is_danger: bool = cur_hp > 0 and cur_hp <= 15
+	var max_hp: int = int(g.combat.state.player.get("max_health", 60)) if g.combat and g.combat.state and g.combat.state.player else 60
+	var is_danger: bool = cur_hp > 0 and (cur_hp <= int(max_hp * 0.30) or cur_hp <= 18)
 	var existing := g.overlay.get_node_or_null("DangerVignette")
 	if is_danger:
 		if existing == null:
@@ -4036,14 +4143,22 @@ func _update_danger_vignette() -> void:
 			vig.z_index = 250
 			var v_style := StyleBoxFlat.new()
 			v_style.bg_color = Color.TRANSPARENT
-			v_style.border_color = Color(0.8, 0.08, 0.08, 0.45)
-			v_style.border_width_left = 6; v_style.border_width_right = 6
-			v_style.border_width_top = 6; v_style.border_width_bottom = 6
+			v_style.border_color = Color(0.88, 0.08, 0.08, 0.55)
+			v_style.border_width_left = 8; v_style.border_width_right = 8
+			v_style.border_width_top = 8; v_style.border_width_bottom = 8
+			v_style.corner_radius_top_left = 12; v_style.corner_radius_top_right = 12
+			v_style.corner_radius_bottom_left = 12; v_style.corner_radius_bottom_right = 12
+			v_style.shadow_color = Color(0.9, 0.05, 0.05, 0.45)
+			v_style.shadow_size = 14
 			vig.add_theme_stylebox_override("panel", v_style)
 			g.overlay.add_child(vig)
 			var tw := vig.create_tween().set_loops()
-			tw.tween_property(vig, "modulate:a", 0.35, g._battle_delay(0.7)).set_trans(Tween.TRANS_SINE)
-			tw.tween_property(vig, "modulate:a", 0.85, g._battle_delay(0.7)).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(vig, "modulate:a", 0.4, g._battle_delay(0.4)).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(vig, "modulate:a", 1.0, g._battle_delay(0.25)).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(vig, "modulate:a", 0.6, g._battle_delay(0.2)).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(vig, "modulate:a", 1.0, g._battle_delay(0.25)).set_trans(Tween.TRANS_SINE)
+			tw.tween_interval(g._battle_delay(0.5))
+			g._haptic("heavy")
 	else:
 		_clear_danger_vignette()
 

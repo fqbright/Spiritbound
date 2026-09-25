@@ -4018,7 +4018,7 @@ func _run() -> void:
 	check(banner_untextured.is_empty(), "every banner card has a texture, even where the art file is absent (untextured: %s)" % str(banner_untextured))
 	var dupes: Array = []
 	for p in banner_files:
-		if p != "" and banner_files.count(p) > 1 and p not in dupes: dupes.append(p.basename())
+		if p != "" and banner_files.count(p) > 1 and p not in dupes: dupes.append(p.get_file())
 	check(dupes.is_empty(), "no two challenge cards draw the same banner file (duplicated: %s)" % str(dupes))
 	# The two artless cards must be exactly the two whose files are missing from the repo, and their
 	# fallback must be distinct per section (procedural textures report no resource_path).
