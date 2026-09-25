@@ -1160,6 +1160,29 @@ func show_camp() -> void:
 	g._back_action = g.show_map
 	var page := g._create_page(6)
 	page.add_child(g._header(g.t("ui.camp_title"), g.t("ui.camp_sub"), g.show_map))
+
+	var top_bar := HBoxContainer.new()
+	top_bar.name = "CampCelestialBar"
+	top_bar.add_theme_constant_override("separation", 8)
+	top_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var cel := _get_celestial_info()
+	var cel_badge := PanelContainer.new()
+	cel_badge.name = "CelestialTimeBadge"
+	var cel_style := g._panel(cel.bg, 8, cel.color)
+	cel_style.content_margin_left = 10; cel_style.content_margin_right = 10
+	cel_style.content_margin_top = 4; cel_style.content_margin_bottom = 4
+	cel_badge.add_theme_stylebox_override("panel", cel_style)
+	var cel_lbl := g._label(cel.name, 11, cel.color, HORIZONTAL_ALIGNMENT_CENTER)
+	cel_badge.add_child(cel_lbl)
+	top_bar.add_child(cel_badge)
+
+	var chron_btn := g._button(g.t("ui.chronicles_btn"), _show_run_history_modal, Color("1f2937"), Vector2(0, 28))
+	chron_btn.name = "ChroniclesBtn"
+	chron_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_bar.add_child(chron_btn)
+
+	page.add_child(top_bar)
 	var active_tab := g.camp_tab if g.camp_tab in ["character", "collection"] else "character"
 	page.add_child(g._tab_bar([
 		["character", g.t("ui.camp_tab_character")],
@@ -4668,6 +4691,116 @@ func show_bestiary_modal() -> void:
 		info.add_child(g._label("%s | %s%s" % [tier_str, mastery_str, bonus_str], 9, Color("fb923c") if kills >= 5 else g.MUTED))
 
 		list.add_child(item_panel)
+
+func _get_celestial_info() -> Dictionary:
+	var dt := Time.get_datetime_dict_from_system()
+	var hour: int = int(dt.get("hour", 12))
+	if hour >= 5 and hour < 11:
+		return {"name": g.t("ui.celestial_dawn"), "color": Color("f59e0b"), "bg": Color("241708")}
+	elif hour >= 11 and hour < 17:
+		return {"name": g.t("ui.celestial_noon"), "color": Color("38bdf8"), "bg": Color("0b2333")}
+	elif hour >= 17 and hour < 21:
+		return {"name": g.t("ui.celestial_dusk"), "color": Color("f43f5e"), "bg": Color("2e0d17")}
+	else:
+		return {"name": g.t("ui.celestial_midnight"), "color": Color("a78bfa"), "bg": Color("17112c")}
+
+func _show_run_history_modal() -> void:
+	var existing: Node = g.overlay.get_node_or_null("ChroniclesModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := g._modal_dialog("ChroniclesModal", func():
+		var ex: Node = g.overlay.get_node_or_null("ChroniclesModal")
+		if ex != null:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 460)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f172a"), 16, Color("6366f1")))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	pad.add_child(vbox)
+	panel.add_child(pad)
+
+	var hdr := HBoxContainer.new()
+	var title_lbl := g._label(g.t("ui.chronicles_title"), 16, Color("818cf8"))
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr.add_child(title_lbl)
+	var close_btn := g._button("✕", func():
+		var ex: Node = g.overlay.get_node_or_null("ChroniclesModal")
+		if ex != null: ex.queue_free()
+	, Color("1e1b4b"), Vector2(30, 30))
+	hdr.add_child(close_btn)
+	vbox.add_child(hdr)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+
+	var hist: Array = g.profile.get("run_history", [])
+	if hist.is_empty():
+		list.add_child(g._label(g.t("ui.chronicles_empty"), 12, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	else:
+		for i in range(hist.size() - 1, -1, -1):
+			var entry: Dictionary = hist[i]
+			var stage_num: int = int(entry.get("stage", 1))
+			var res_key: String = str(entry.get("result", "victory"))
+			var is_vic: bool = (res_key == "victory")
+			var result_str: String = g.t("ui.chronicles_vic") if is_vic else g.t("ui.chronicles_def")
+			var turn_cnt: int = int(entry.get("turns", 1))
+			var hero_id: String = str(entry.get("hero_class", "fox_spirit"))
+			var hero_name: String = g.t("hero.%s.name" % hero_id)
+			var deck_sz: int = int(entry.get("deck_size", 0))
+
+			var card_p := PanelContainer.new()
+			var accent_col := Color("10b981") if is_vic else Color("ef4444")
+			var card_style := g._panel(Color("1e293b", 0.95), 8, accent_col)
+			card_style.content_margin_left = 10; card_style.content_margin_right = 10
+			card_style.content_margin_top = 6; card_style.content_margin_bottom = 6
+			card_p.add_theme_stylebox_override("panel", card_style)
+
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 8)
+			card_p.add_child(row)
+
+			var icon_lbl := Label.new()
+			icon_lbl.text = "🏆" if is_vic else "💀"
+			icon_lbl.add_theme_font_size_override("font_size", 16)
+			row.add_child(icon_lbl)
+
+			var details := VBoxContainer.new()
+			details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			details.add_theme_constant_override("separation", 2)
+			row.add_child(details)
+
+			var line1 := g._label("%s · %s" % [result_str, hero_name], 12, Color("f8fafc"))
+			details.add_child(line1)
+
+			var cards_str := "%d 张牌" % deck_sz if g.lang != "en" else "%d Cards" % deck_sz
+			var line2_txt := g.tf("ui.chronicles_run_fmt", [turn_cnt, cards_str, str(stage_num)])
+			var line2 := g._label(line2_txt, 10, g.MUTED)
+			details.add_child(line2)
+
+			list.add_child(card_p)
 
 
 

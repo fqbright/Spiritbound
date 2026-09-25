@@ -716,6 +716,21 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	glow.visible = g.selected_card >= 0 and enemy.health > 0
 	unit.add_child(glow)
 
+	var execute_seal := PanelContainer.new()
+	execute_seal.name = "LethalExecuteSeal"
+	var seal_style := g._panel(Color("7f1d1d", 0.95), 14, Color("ef4444"))
+	seal_style.border_width_left = 2; seal_style.border_width_right = 2
+	seal_style.border_width_top = 2; seal_style.border_width_bottom = 2
+	execute_seal.add_theme_stylebox_override("panel", seal_style)
+	execute_seal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var seal_lbl := g._label(g.t("ui.lethal_execute"), 14, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER)
+	seal_lbl.add_theme_color_override("font_outline_color", Color("450a0a"))
+	seal_lbl.add_theme_constant_override("outline_size", 3)
+	execute_seal.add_child(seal_lbl)
+	execute_seal.position = Vector2(center_x - 16, 50)
+	execute_seal.visible = false
+	unit.add_child(execute_seal)
+
 	var art_key := g._art_key_for_enemy(enemy)
 	var sprite := Sprite2D.new()
 	sprite.name = "MonsterSprite"
@@ -1236,6 +1251,25 @@ func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callab
 	chip.size = chip.custom_minimum_size
 	chip.mouse_filter = Control.MOUSE_FILTER_PASS if on_tap.is_valid() else Control.MOUSE_FILTER_IGNORE
 	chip.add_theme_stylebox_override("panel", g._panel(Color("0c1a1f"), 10, Color("1f404d")))
+
+	if count == 0:
+		chip.modulate = Color(1.0, 1.0, 1.0, 0.55)
+	else:
+		if count >= 20:
+			var layer2 := Panel.new()
+			layer2.size = Vector2(48.0, 42.0)
+			layer2.position = Vector2(2.0, -4.0)
+			layer2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			layer2.add_theme_stylebox_override("panel", g._panel(Color("081216", 0.6), 8, Color("16313b", 0.7)))
+			chip.add_child(layer2)
+		if count >= 10:
+			var layer1 := Panel.new()
+			layer1.size = Vector2(50.0, 44.0)
+			layer1.position = Vector2(1.0, -2.0)
+			layer1.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			layer1.add_theme_stylebox_override("panel", g._panel(Color("091519", 0.75), 9, Color("1a3844", 0.85)))
+			chip.add_child(layer1)
+
 	var stack := VBoxContainer.new()
 	stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1319,6 +1353,33 @@ func _add_hand(page: VBoxContainer) -> void:
 
 	var pass_btn := g._button(g.t("ui.pass_turn"), g._pass_turn, Color("1c2a30"), Vector2(48, 44))
 	pass_btn.name = "PassTurnBtn"
+	var total_enemy_incoming: int = g.combat.total_incoming_damage() if g.combat else 0
+	var player_shield: int = int(g.combat.state.player.shield) if (g.combat and g.combat.state and g.combat.state.player) else 0
+	var player_hp: int = int(g.combat.state.player.health) if (g.combat and g.combat.state and g.combat.state.player) else 1
+	var leak_dmg: int = maxi(0, total_enemy_incoming - player_shield)
+	if leak_dmg > 0:
+		var is_lethal: bool = leak_dmg >= player_hp
+		var warn_color := Color("ef4444") if is_lethal else Color("f59e0b")
+		var pass_style := g._panel(Color("2a1414" if is_lethal else "221b14"), 8, warn_color)
+		pass_style.border_width_left = 2; pass_style.border_width_right = 2
+		pass_style.border_width_top = 2; pass_style.border_width_bottom = 2
+		pass_btn.add_theme_stylebox_override("normal", pass_style)
+		pass_btn.tooltip_text = g.t("ui.end_turn_lethal") if is_lethal else g.tf("ui.end_turn_leak", leak_dmg)
+
+		var leak_badge := PanelContainer.new()
+		leak_badge.name = "PassTurnLeakBadge"
+		var b_style := g._panel(Color("450a0a" if is_lethal else "451a03", 0.95), 4, warn_color)
+		b_style.content_margin_left = 3; b_style.content_margin_right = 3
+		b_style.content_margin_top = 1; b_style.content_margin_bottom = 1
+		leak_badge.add_theme_stylebox_override("panel", b_style)
+		leak_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var b_lbl := Label.new()
+		b_lbl.text = "💀" if is_lethal else "-%d" % leak_dmg
+		b_lbl.add_theme_font_size_override("font_size", 9)
+		b_lbl.add_theme_color_override("font_color", Color("fca5a5") if is_lethal else Color("fef08a"))
+		leak_badge.add_child(b_lbl)
+		leak_badge.position = Vector2(pass_btn.custom_minimum_size.x - 14, -6)
+		pass_btn.add_child(leak_badge)
 	status.add_child(pass_btn)
 
 	if g.combat and g.combat.can_undo():
@@ -1420,6 +1481,26 @@ func _status_chip_clickable(status_key: String, glyph: String, amount: int, colo
 	var chip := g._status_chip(glyph, amount, color, height)
 	var title: String = g.t("status.%s.name" % status_key)
 	var desc: String = g.t("status.%s.desc" % status_key)
+	var formula_txt := ""
+	match status_key:
+		"shield":
+			formula_txt = "\n\n📊 " + ("当前可抵消 %d 点直接攻击伤害" % amount if g.lang != "en" else "Absorbs incoming %d attack damage" % amount)
+		"burn":
+			formula_txt = "\n\n📊 " + ("回合结束造成 %d 点穿透伤害并衰减 1 层" % amount if g.lang != "en" else "Deals %d true damage at turn end, decays by 1" % amount)
+		"poison":
+			formula_txt = "\n\n📊 " + ("受到攻击时额外触发 %d 点伤害并递减 1 层" % amount if g.lang != "en" else "Deals %d extra damage when hit, decays by 1" % amount)
+		"vulnerable":
+			formula_txt = "\n\n📊 " + ("受到所有攻击伤害提升 +50%%（持续 %d 回合）" % amount if g.lang != "en" else "Takes +50% attack damage (lasts %d turns)" % amount)
+		"weak":
+			formula_txt = "\n\n📊 " + ("造成的攻击伤害降低 -25%%（持续 %d 回合）" % amount if g.lang != "en" else "Deals -25% attack damage (lasts %d turns)" % amount)
+		"focus":
+			formula_txt = "\n\n📊 " + ("每次造成伤害附加 +%d 点基础攻击提升" % (amount * 3) if g.lang != "en" else "+%d bonus attack damage per hit" % (amount * 3))
+		"strength":
+			formula_txt = "\n\n📊 " + ("所有攻击卡牌伤害固定提升 +%d" % amount if g.lang != "en" else "All attack cards deal +%d flat damage" % amount)
+		"stun":
+			formula_txt = "\n\n📊 " + ("无法行动，跳过 %d 个行动回合" % amount if g.lang != "en" else "Stunned, skips next %d turn(s)" % amount)
+	if not formula_txt.is_empty():
+		desc += formula_txt
 	return _tap_wrap(chip, func():
 		_show_info_popup(g._icon_badge(glyph, color, 60, 26), "%s × %d" % [title, amount], desc, color)
 	)
@@ -2541,6 +2622,7 @@ func _spawn_ultimate_cinematic(hero_class: String, ult_name: String) -> void:
 
 	g.overlay.add_child(cinem)
 	_shake_screen(12.0, 0.4)
+	_camera_punch(1.04, 0.25)
 	_spawn_radial_shockwave(Vector2(640, 360), Color("facc15"))
 	g.play_sfx("boss_phase2")
 	g._haptic("heavy")
@@ -2573,6 +2655,15 @@ func _shake_screen(intensity: float, duration := 0.24) -> void:
 		shake.tween_property(g.root, "position", origin + offset, duration / float(steps))
 	shake.tween_property(g.root, "position", origin, duration / float(steps))
 
+func _camera_punch(intensity: float = 1.035, duration := 0.14) -> void:
+	if g.root == null: return
+	if bool(g.profile.get("reduce_motion", false)): return
+	g.root.pivot_offset = g.root.size / 2.0 if g.root.size != Vector2.ZERO else Vector2(240, 427)
+	var punch := g.root.create_tween()
+	punch.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	punch.tween_property(g.root, "scale", Vector2(intensity, intensity), duration * 0.35)
+	punch.tween_property(g.root, "scale", Vector2.ONE, duration * 0.65)
+
 func _target_ring(hot: bool) -> StyleBoxFlat:
 	var ring := g._panel(Color(1.0, 0.86, 0.42, 0.22 if hot else 0.08), 14, Color(1.0, 0.92, 0.55, 1.0) if hot else Color(1.0, 0.86, 0.42, 0.7))
 	var width := 3 if hot else 2
@@ -2599,6 +2690,8 @@ func _clear_valid_targets() -> void:
 		if box and is_instance_valid(box):
 			var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 			if sprite: sprite.modulate = Color.WHITE
+			var seal: Control = box.get_node_or_null("LethalExecuteSeal")
+			if seal: seal.visible = false
 
 func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 	for box in g.enemy_boxes:
@@ -2608,6 +2701,14 @@ func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 			# Brighten rather than enlarge: the old 1.08x jump read as the model popping.
 			var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 			if sprite: sprite.modulate = Color(1.35, 1.3, 1.15) if targeted else Color.WHITE
+			var seal: Control = box.get_node_or_null("LethalExecuteSeal")
+			if seal:
+				var is_lethal := false
+				if targeted and g.combat and g.combat.state and g.selected_card >= 0 and g.selected_card < g.combat.state.hand.size():
+					var card_dict: Dictionary = g.content.card(str(g.combat.state.hand[g.selected_card].card_id))
+					var pred := _predict_damage(card_dict, enemy_index)
+					is_lethal = bool(pred.lethal)
+				seal.visible = is_lethal
 
 # Stays synchronous so callers get a real bool back; the animation runs in _resolve_play.
 func _attempt_play_card(hand_index: int, target: int) -> bool:
@@ -3729,6 +3830,37 @@ func _spawn_player_floating_text(text: String, color: Color, font_size: int = 24
 	var target_pos := Vector2(195, 480)
 	_spawn_floating_text(target_pos, text, color, font_size)
 
+func _spawn_combo_counter(enemy_index: int, combo_hits: int) -> void:
+	if g.overlay == null or combo_hits < 2: return
+	var box: Control = null
+	for candidate in g.enemy_boxes:
+		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index", -1)) == enemy_index:
+			box = candidate
+			break
+	var target_pos := Vector2(240, 240)
+	if box != null:
+		target_pos = box.global_position + Vector2(box.size.x * 0.75, 40.0)
+	var badge := PanelContainer.new()
+	var style := g._panel(Color("1e1b4b", 0.92), 12, Color("fbbf24", 0.95))
+	style.border_width_left = 2; style.border_width_right = 2
+	style.border_width_top = 2; style.border_width_bottom = 2
+	badge.add_theme_stylebox_override("panel", style)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var lbl := g._label(g.tf("ui.combo_count_fmt", combo_hits), 16, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.add_theme_color_override("font_outline_color", Color("0f172a"))
+	lbl.add_theme_constant_override("outline_size", 4)
+	badge.add_child(lbl)
+	badge.position = target_pos - Vector2(40, 20)
+	badge.scale = Vector2(0.6, 0.6)
+	badge.pivot_offset = Vector2(40, 15)
+	g.overlay.add_child(badge)
+	var tw := g.overlay.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(badge, "scale", Vector2(1.15, 1.15), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(badge, "position:y", target_pos.y - 45.0, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(badge, "modulate:a", 0.0, 0.2).set_delay(0.28)
+	tw.chain().tween_callback(badge.queue_free)
+
 func _trigger_finisher_hitstop() -> void:
 	_shake_screen(12.0, 0.35)
 	if not g.is_inside_tree() or g.get_tree() == null: return
@@ -3851,6 +3983,9 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		elif abs_amt > 0:
 			_spawn_enemy_floating_text(e_idx, "🛡 −%d" % abs_amt, Color("67e8f9"), 20)
 		if dmg > 0:
+			var combo_hits: int = int(g.combat.state.get("turn_combo_count", 0)) if g.combat and g.combat.state else 0
+			if combo_hits >= 2:
+				_spawn_combo_counter(e_idx, combo_hits)
 			var is_crit: bool = is_vuln or dmg >= 20
 			var txt: String = "💥 −%d" % dmg if is_vuln else "−%d" % dmg
 			var col: Color = Color("fbbf24") if is_vuln else Color("f87171")
@@ -3858,6 +3993,7 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 			_spawn_enemy_floating_text(e_idx, txt, col, f_size, is_crit)
 			if dmg >= 25:
 				_shake_screen(mini(12.0, float(dmg) * 0.35), 0.25)
+				_camera_punch(1.03, 0.15)
 			if g.combat and g.combat.state and e_idx < g.combat.state.enemies.size():
 				var en_dict: Dictionary = g.combat.state.enemies[e_idx]
 				var max_hp: int = int(en_dict.get("max_health", 1))

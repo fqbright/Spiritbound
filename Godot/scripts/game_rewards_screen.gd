@@ -798,8 +798,28 @@ func _reward_card_row(card: Dictionary) -> Control:
 	right.add_theme_constant_override("separation", 3)
 	row.add_child(right)
 
+	var card_elem: String = str(card.get("element", "spirit"))
+	var is_synergy := false
+	if not is_cap and card_elem != "" and card_elem != "spirit" and g.profile.get("deck") is Array and not g.profile.deck.is_empty():
+		var elem_counts := {}
+		for cid in g.profile.deck:
+			var c_obj: Dictionary = g.content.card(cid)
+			var el: String = str(c_obj.get("element", "spirit"))
+			if el != "" and el != "spirit":
+				elem_counts[el] = elem_counts.get(el, 0) + 1
+		var max_cnt := 0
+		var dominant_el := ""
+		for el in elem_counts:
+			if elem_counts[el] > max_cnt:
+				max_cnt = elem_counts[el]
+				dominant_el = el
+		if card_elem == dominant_el and max_cnt >= 3:
+			is_synergy = true
+
 	if is_cap:
 		right.add_child(g._label("✦ " + g.t("ui.capstone_card_badge") + " ✦", 10, Color("ffd700")))
+	elif is_synergy:
+		right.add_child(g._label(g.t("ui.card_synergy_badge"), 10, Color("6ee7b7")))
 
 	right.add_child(g._label(g.content.text(card.nameKey, g.lang), 14, Color("fff2b2") if is_cap else g.TEXT))
 	right.add_child(g._label("%s · %s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("element.%s" % card.get("element", "spirit")), card.rarity], 9, g.GOLD))

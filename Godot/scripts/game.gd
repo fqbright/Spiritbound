@@ -1434,10 +1434,15 @@ func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.
 	var sfx_vol: float = float(profile.get("sfx_volume", 1.0))
 	var vol_offset: float = 0.0 if sfx_vol >= 0.99 else linear_to_db(maxf(sfx_vol, 0.01))
 	player.volume_db = volume_db + vol_offset
+	var base_scale: float = 1.0
 	if pitch_range > 0.0:
-		player.pitch_scale = randf_range(1.0 - pitch_range, 1.0 + pitch_range)
-	else:
-		player.pitch_scale = 1.0
+		base_scale = randf_range(1.0 - pitch_range, 1.0 + pitch_range)
+	var combo_boost: float = 0.0
+	if combat != null and combat.state != null:
+		var combo_cnt: int = int(combat.state.get("turn_combo_count", 0))
+		if combo_cnt > 1:
+			combo_boost = minf((combo_cnt - 1) * 0.035, 0.35)
+	player.pitch_scale = clampf(base_scale + combo_boost, 0.5, 2.0)
 	player.play()
 
 func _play_music(battle := false, stage_level: int = 0) -> void:
@@ -3767,6 +3772,21 @@ func _record_battle_result(won: bool) -> void:
 	else:
 		cs.defeats = int(cs.get("defeats", 0)) + 1
 		cs.current_win_streak = 0
+
+	# Chronicles of Past Journeys (Phase 15)
+	if not (profile.get("run_history") is Array):
+		profile["run_history"] = []
+	var history_entry := {
+		"stage": current_stage + 1,
+		"hero_class": str(profile.get("hero_class", "fox_spirit")),
+		"result": "victory" if won else "defeat",
+		"turns": int(combat.state.get("turn", 1)) if combat and combat.state else 1,
+		"deck_size": profile.deck.size() if profile.get("deck") is Array else 0,
+		"timestamp": int(Time.get_unix_time_from_system())
+	}
+	profile.run_history.append(history_entry)
+	if profile.run_history.size() > 10:
+		profile.run_history = profile.run_history.slice(profile.run_history.size() - 10, profile.run_history.size())
 
 	# Minimal analytics (Docs/LAUNCH_READINESS.md Section 3) — a couple of funnel milestones only,
 	# deliberately not an exhaustive instrumentation. Fire-and-forget; never blocks gameplay.

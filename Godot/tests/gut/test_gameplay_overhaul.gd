@@ -217,3 +217,51 @@ func test_phase14_polish_systems():
 	assert_eq(top_card, "samadhiFire", "samadhiFire is correctly computed as highest impact MVP")
 	assert_eq(top_val, 120, "MVP impact value correctly matches 120")
 
+func test_phase15_polish_systems():
+	# 1. Localization keys for celestial cycles, lethal execute, damage leak, synergy and chronicles
+	var check_keys := [
+		"ui.celestial_dawn", "ui.celestial_noon", "ui.celestial_dusk", "ui.celestial_midnight",
+		"ui.end_turn_leak", "ui.end_turn_lethal", "ui.lethal_execute", "ui.card_synergy_badge",
+		"ui.combo_count_fmt", "ui.chronicles_title", "ui.chronicles_empty", "ui.chronicles_run_fmt",
+		"ui.chronicles_btn", "ui.chronicles_vic", "ui.chronicles_def"
+	]
+	for k in check_keys:
+		var zh := content.ui(k, "zh-Hans")
+		var en := content.ui(k, "en")
+		assert_true(zh.length() > 0 and zh != k, "zh-Hans translation exists for %s" % k)
+		assert_true(en.length() > 0 and en != k, "en translation exists for %s" % k)
+
+	# 2. Profile default schema has run_history array
+	var profile: Dictionary = SpiritSave.defaults(content)
+	assert_true(profile.has("run_history"), "Profile has run_history field")
+	assert_true(profile.run_history is Array, "run_history is an Array")
+	assert_eq(profile.run_history.size(), 0, "run_history starts empty")
+
+	# 3. Simulate run history entry capping at 10 items
+	for i in 15:
+		profile.run_history.append({
+			"stage": i + 1,
+			"hero_class": "fox_spirit",
+			"result": "victory" if i % 2 == 0 else "defeat",
+			"turns": 3 + (i % 4),
+			"deck_size": 25,
+			"timestamp": 1700000000 + i
+		})
+		if profile.run_history.size() > 10:
+			profile.run_history = profile.run_history.slice(profile.run_history.size() - 10, profile.run_history.size())
+	assert_eq(profile.run_history.size(), 10, "run_history capped at 10 entries")
+	assert_eq(int(profile.run_history[0].stage), 6, "Oldest entry in slice is stage 6")
+	assert_eq(int(profile.run_history[9].stage), 15, "Newest entry in slice is stage 15")
+
+	# 4. Turn end leak computation logic
+	var total_incoming := 28
+	var player_shield := 12
+	var player_hp := 15
+	var leak := maxi(0, total_incoming - player_shield)
+	assert_eq(leak, 16, "Leak is 16 damage")
+	assert_true(leak >= player_hp, "16 leak is lethal threat against 15 HP")
+
+	player_shield = 30
+	leak = maxi(0, total_incoming - player_shield)
+	assert_eq(leak, 0, "Leak is 0 when shield exceeds incoming")
+
