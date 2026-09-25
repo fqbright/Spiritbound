@@ -247,6 +247,8 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	bonuses.strength_start = int(bonuses.get("strength_start", 0)) + int(m_bonuses.get("strength_start", 0))
 	bonuses.draw_turn1 = int(bonuses.get("draw_turn1", 0)) + int(m_bonuses.get("draw_turn1", 0))
 	bonuses.energy_turn1 = int(bonuses.get("energy_turn1", 0)) + int(m_bonuses.get("energy_turn1", 0))
+	bonuses["familiar_stage"] = int(g.profile.get("familiar_stage", 0))
+	bonuses["astral_roots"] = g.profile.get("astral_roots", {}).duplicate()
 	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into
@@ -1035,6 +1037,31 @@ func show_event(index: int, kind: String) -> void:
 							_mark_stage_event_claimed(index)
 							g.begin_battle(index)
 						)
+					"pawn_relic":
+						var relics: Array = g.profile.get("relics", [])
+						if relics.is_empty():
+							g._toast("身上暂无法宝可供典当！" if g.lang == "zh-Hans" else "No relics to pawn!", g.EMBER)
+							return
+						var sold_relic_id: String = str(relics.pop_back())
+						var gold_gain: int = int(choice.get("gold_amount", 80))
+						g.profile.gold = int(g.profile.get("gold", 0)) + gold_gain
+						g._advance_quest("earn_gold", gold_gain)
+						g._toast("典当法宝，换得 %d 金币！" % gold_gain if g.lang == "zh-Hans" else "Pawned relic for %d Gold!" % gold_gain, g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"blood_pact":
+						var hp_cost: int = int(choice.get("hp_cost", 15))
+						g.profile.health = maxi(1, int(g.profile.get("health", 60)) - hp_cost)
+						var rare_cards: Array = g.content.cards.filter(func(c): return str(c.get("rarity", "")) == "Rare")
+						if not rare_cards.is_empty():
+							var picked_card: Dictionary = rare_cards[randi() % rare_cards.size()]
+							g.profile.deck.append(str(picked_card.get("id", "")))
+							var card_name: String = str(picked_card.zh if g.lang == "zh-Hans" else picked_card.en)
+							g._toast("太古血契达成！获得稀有卡牌：%s" % card_name if g.lang == "zh-Hans" else "Blood pact struck! Gained Rare: %s" % card_name, g.EMBER)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
 					_:
 						_mark_stage_event_claimed(index)
 						SpiritSave.write(g.profile)

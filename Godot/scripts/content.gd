@@ -671,6 +671,46 @@ const RELIC_RESONANCES = [
 		"en": "Chaos Horizon",
 		"detail": "战斗开始额外获得 +15 最大生命与生命；对易伤敌人造成的所有伤害 +2 点。",
 		"detail_en": "Start battle with +15 extra Max HP and HP; all attacks deal +2 damage to Vulnerable targets."
+	},
+	{
+		"id": "res_phoenix_fire",
+		"icon": "♨",
+		"color": "ff7373",
+		"relics": ["cinderBand", "emberCore"],
+		"zh": "火凤燎原",
+		"en": "Phoenix Blaze",
+		"detail": "灼烧引爆伤害 +30%，且开局对所有敌人施加 2 层灼烧。",
+		"detail_en": "Burn deals +30% damage and applies 2 Burn to all foes at battle start."
+	},
+	{
+		"id": "res_glacial_mirror",
+		"icon": "❄",
+		"color": "80deea",
+		"relics": ["frostNeedle", "mirrorScale"],
+		"zh": "玄冰琉璃",
+		"en": "Glacial Aegis",
+		"detail": "开局获得 12 点寒霜护盾，且回合结束保留 60% 护盾。",
+		"detail_en": "Gain 12 Shield at battle start and retain 60% Shield at end of turn."
+	},
+	{
+		"id": "res_abyssal_drain",
+		"icon": "☣",
+		"color": "80e4c0",
+		"relics": ["venomFlask", "serpentFang"],
+		"zh": "九幽毒煞",
+		"en": "Nether Toxin",
+		"detail": "每次敌方中毒结算或受到攻击时，为玩家恢复 1 点生命。",
+		"detail_en": "Heal 1 HP whenever a poisoned foe takes damage or poison resolves."
+	},
+	{
+		"id": "res_bastion_unbreakable",
+		"icon": "🛡️",
+		"color": "ffd700",
+		"relics": ["spiritArmor", "obsidianIdol"],
+		"zh": "金刚不坏",
+		"en": "Adamantine Bastion",
+		"detail": "护盾上限移除，碎盾冲击伤害由 8 点提升至 16 点。",
+		"detail_en": "Shield has no retention cap and shatter impact damage increases from 8 to 16."
 	}
 ]
 
@@ -1902,6 +1942,17 @@ const RANDOM_STORY_EVENTS: Array[Dictionary] = [
 			{"label_zh": "倾囊求购（花费 40 金币，获得 1 件遗物）", "label_en": "Purchase Relic (40 Gold: Gain Relic)", "type": "buy_relic", "gold_cost": 40},
 			{"label_zh": "出售秘宝（从牌组移除 1 张牌，获得 35 金币）", "label_en": "Sell Card (Purge 1 Card, Gain 35 Gold)", "type": "purge_for_gold", "gold_amount": 35},
 			{"label_zh": "拒绝交易离开", "label_en": "Decline", "type": "leave"}
+		]
+	},
+	{
+		"id": "black_market", "icon": "⚖️", "color": "e0a96d",
+		"title_zh": "黑市秘境典当行", "title_en": "Black Market Pawn",
+		"desc_zh": "幽暗隐蔽的地下石坊中挂着一面斑驳的青铜当字幌子。帷幕后的掌柜压低嗓音：'法宝、精血、寿元……只要押上等价之物，包道友满意。'",
+		"desc_en": "In a veiled subterranean enclave, a weathered brass pawnbroker scales gleam in candlelight: 'Relics, lifeblood, essence... all tradeable at true market value.'",
+		"choices": [
+			{"label_zh": "典当法宝（出让 1 件法宝，换取 80 金币）", "label_en": "Pawn Relic (Sacrifice 1 Relic for 80 Gold)", "type": "pawn_relic", "gold_amount": 80},
+			{"label_zh": "太古血契（献祭 15 生命上限，获得 1 张稀有卡牌）", "label_en": "Blood Pact (-15 Max HP, Gain Rare Card)", "type": "blood_pact", "hp_cost": 15},
+			{"label_zh": "明哲保身离去", "label_en": "Decline & Leave", "type": "leave"}
 		]
 	}
 ]
@@ -3505,6 +3556,42 @@ const UI_TEXT = {
 	"push.return.title": {"zh-Hans":"灵界还在等你", "en":"The spirit realm is waiting"},
 	"push.return.body": {"zh-Hans":"体力已回满，远征与悬赏都刷新了。", "en":"Your stamina is full and new bounties have appeared."},
 	"ui.rate_prompt_btn": {"zh-Hans":"⭐ 喜欢的话，留个好评吧", "en":"⭐ Enjoying it? Leave a review"},
+	"ui.combo_meter": {"zh-Hans":"⚡ 连击 x%d", "en":"⚡ Combo x%d"},
+	"ui.lethal_warning": {"zh-Hans":"☠ 危", "en":"☠ LETHAL"},
+	"ui.weather_solar": {"zh-Hans":"🔥 炎阳灵场：回合开始双方附加1点灼烧", "en":"🔥 Solar Field: 1 Burn to all at turn start"},
+	"ui.weather_frost": {"zh-Hans":"❄ 寒霜灵场：回合开始保留坚冰护盾", "en":"❄ Frost Field: Retain basic frost shield at turn start"},
+	"ui.weather_thunder": {"zh-Hans":"⚡ 天罡灵场：每回合打出第3张攻击时天雷贯通", "en":"⚡ Thunder Field: 3rd attack calls piercing lightning"},
+	"ui.weather_leyline": {"zh-Hans":"🌿 灵潮灵场：每回合双方各额外抽1张牌", "en":"🌿 Leyline Field: Draw +1 extra card each turn"},
+	"ui.deck_preset_1": {"zh-Hans":"方案 I", "en":"Preset I"},
+	"ui.deck_preset_2": {"zh-Hans":"方案 II", "en":"Preset II"},
+	"ui.deck_preset_3": {"zh-Hans":"方案 III", "en":"Preset III"},
+	"ui.familiar_stage_0": {"zh-Hans":"一尾幼狐", "en":"One-Tail Kit"},
+	"ui.familiar_stage_1": {"zh-Hans":"三尾灵狐", "en":"Three-Tail Fox"},
+	"ui.familiar_stage_2": {"zh-Hans":"六尾仙狐", "en":"Six-Tail Spirit"},
+	"ui.familiar_stage_3": {"zh-Hans":"九尾天狐", "en":"Nine-Tail Celestial"},
+	"ui.familiar_feed_btn": {"zh-Hans":"灵药投喂 (+25契合)", "en":"Nourish (+25 Affinity)"},
+	"ui.familiar_stage_perk_0": {"zh-Hans":"每日抚摸产出灵尘", "en":"Daily pets yield spirit dust"},
+	"ui.familiar_stage_perk_1": {"zh-Hans":"战役金币收益 +10%", "en":"+10% Gold from battle victories"},
+	"ui.familiar_stage_perk_2": {"zh-Hans":"战斗首回合抽牌数 +1", "en":"Draw +1 extra card on Turn 1"},
+	"ui.familiar_stage_perk_3": {"zh-Hans":"开局赋予10点天狐护障", "en":"Gain 10 Fox Shield at battle start"},
+	"ui.astral_roots_title": {"zh-Hans":"先天灵根星盘", "en":"Innate Astral Roots"},
+	"ui.astral_root_metal": {"zh-Hans":"金之根 (伤害+1)", "en":"Metal Root (ATK +1)"},
+	"ui.astral_root_wood": {"zh-Hans":"木之根 (生命+5)", "en":"Wood Root (HP +5)"},
+	"ui.astral_root_water": {"zh-Hans":"水之根 (护盾+5)", "en":"Water Root (Shield +5)"},
+	"ui.astral_root_fire": {"zh-Hans":"火之根 (灼烧+1)", "en":"Fire Root (Burn +1)"},
+	"ui.astral_root_earth": {"zh-Hans":"土之根 (减伤-1)", "en":"Earth Root (DEF +1)"},
+	"ui.astral_root_upgrade_btn": {"zh-Hans":"点亮灵脉 (消耗 1 星魄)", "en":"Attune Root (Cost 1 Spark)"},
+	"ui.astral_sparks_label": {"zh-Hans":"当前星魄: %d", "en":"Astral Sparks: %d"},
+	"ui.foil_inscribe_btn": {"zh-Hans":"✦ 金漆镀灵 (50灵尘)", "en":"✦ Foil Reforge (50 Dust)"},
+	"ui.foil_inscribed_tag": {"zh-Hans":"✦ 镀金", "en":"✦ Foil"},
+	"ui.pagoda_title": {"zh-Hans":"登仙通天梯", "en":"Celestial Pagoda"},
+	"ui.pagoda_sub": {"zh-Hans":"仙界极限无尽试炼 · 挑战上古天魔", "en":"Endless celestial ladder against primordial fiends"},
+	"ui.pagoda_record_fmt": {"zh-Hans":"最高登仙记录: %d 层", "en":"Highest Floor: %d"},
+	"ui.armor_shattered": {"zh-Hans":"破甲！", "en":"SHATTERED!"},
+	"ui.recap_direct_dmg": {"zh-Hans":"直伤: %d", "en":"Direct: %d"},
+	"ui.recap_dot_dmg": {"zh-Hans":"引爆: %d", "en":"DoT: %d"},
+	"ui.recap_blocked": {"zh-Hans":"格挡: %d", "en":"Blocked: %d"},
+	"ui.recap_rank": {"zh-Hans":"修道评级: %s", "en":"Dao Rank: %s"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

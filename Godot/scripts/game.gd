@@ -636,6 +636,9 @@ func _claim_login_reward(tier_index: int) -> void:
 func _battle_delay(seconds: float) -> float:
 	return seconds / battle_speed
 
+func trigger_haptic(kind: String) -> void:
+	_haptic(kind)
+
 func _haptic(kind: String) -> void:
 	if not bool(profile.get("haptics_enabled", true)): return
 	match kind:
@@ -4001,7 +4004,7 @@ func _show_sweep_result_modal(stage_idx: int, gold: int, dust: int) -> void:
 func _build_victory_recap_card(stats: Dictionary) -> Control:
 	var panel := Panel.new()
 	panel.name = "VictoryRecapCard"
-	panel.custom_minimum_size = Vector2(0, 54)
+	panel.custom_minimum_size = Vector2(0, 80)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_theme_stylebox_override("panel", _panel(Color("122228"), 10, Color("34626d")))
 
@@ -4015,14 +4018,45 @@ func _build_victory_recap_card(stats: Dictionary) -> Control:
 	vstack.add_theme_constant_override("separation", 3)
 	pad.add_child(vstack)
 
-	vstack.add_child(_label(t("ui.recap_title"), 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 14)
-	row.add_child(_label(tf("ui.recap_damage", int(stats.get("damage_dealt", 0))), 10, Color("ff8a8a")))
-	row.add_child(_label(tf("ui.recap_cards", int(stats.get("cards_played", 0))), 10, Color("a8dcff")))
-	row.add_child(_label(tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 10, Color("9fd8ff")))
-	vstack.add_child(row)
+	var turns: int = maxi(1, int(stats.get("turns_taken", 1)))
+	var p_hp: int = int(profile.get("health", 60))
+	var rank_str := "天阶 S" if lang != "en" else "Rank S"
+	var rank_col := Color("ffd700")
+	if turns <= 4 and p_hp >= 45:
+		rank_str = "极境 · 天阶 S" if lang != "en" else "Rank S"
+		rank_col = Color("ffd700")
+	elif turns <= 8 and p_hp >= 25:
+		rank_str = "上品 · 地阶 A" if lang != "en" else "Rank A"
+		rank_col = Color("67e8f9")
+	else:
+		rank_str = "中品 · 玄阶 B" if lang != "en" else "Rank B"
+		rank_col = Color("a7f3d0")
+
+	var title_row := HBoxContainer.new()
+	title_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	title_row.add_theme_constant_override("separation", 10)
+	title_row.add_child(_label(t("ui.recap_title"), 11, GOLD))
+	title_row.add_child(_label("【%s】" % tf("ui.recap_rank", rank_str), 10, rank_col))
+	vstack.add_child(title_row)
+
+	var row1 := HBoxContainer.new()
+	row1.alignment = BoxContainer.ALIGNMENT_CENTER
+	row1.add_theme_constant_override("separation", 12)
+	var direct_dmg: int = int(stats.get("direct_damage", stats.get("damage_dealt", 0)))
+	var dot_dmg: int = int(stats.get("dot_damage", 0))
+	var blocked_dmg: int = int(stats.get("shield_blocked", 0))
+	row1.add_child(_label(tf("ui.recap_direct_dmg", direct_dmg), 9, Color("ff8a8a")))
+	row1.add_child(_label(tf("ui.recap_dot_dmg", dot_dmg), 9, Color("ffa94d")))
+	row1.add_child(_label(tf("ui.recap_blocked", blocked_dmg), 9, Color("93c5fd")))
+	vstack.add_child(row1)
+
+	var row2 := HBoxContainer.new()
+	row2.alignment = BoxContainer.ALIGNMENT_CENTER
+	row2.add_theme_constant_override("separation", 14)
+	row2.add_child(_label(tf("ui.recap_damage", int(stats.get("damage_dealt", 0))), 9, Color("fca5a5")))
+	row2.add_child(_label(tf("ui.recap_cards", int(stats.get("cards_played", 0))), 9, Color("a8dcff")))
+	row2.add_child(_label(tf("ui.recap_shield", int(stats.get("shield_gained", 0))), 9, Color("9fd8ff")))
+	vstack.add_child(row2)
 
 	var tally: Dictionary = stats.get("cards_tally", {})
 	var top_card_id := ""
@@ -4036,7 +4070,7 @@ func _build_victory_recap_card(stats: Dictionary) -> Control:
 		var c_name := str(c_info.get("name_en" if lang == "en" else "name", top_card_id))
 		var mvp_label := _label("✦ MVP: %s ×%d" % [c_name, top_count], 9, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
 		vstack.add_child(mvp_label)
-		panel.custom_minimum_size = Vector2(0, 70)
+		panel.custom_minimum_size = Vector2(0, 92)
 
 	return panel
 

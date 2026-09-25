@@ -585,6 +585,71 @@ func test_phase11_victory_card_modal():
 	assert_null(game.overlay.find_child("VictoryCardModal", true, false), "VictoryCardModal dismissed on close")
 	game.free()
 
+func test_phase12_combo_and_weather_mechanics():
+	var test_combat := SpiritCombat.new(content)
+	test_combat.create(12345, content.encounters[0], ["strike", "strike", "defend"], 60, {}, [], {}, {"weather_affix": "thunder"}, [])
+	test_combat.state.phase = "player"
+	assert_eq(str(test_combat.state.get("weather_affix", "")), "thunder", "Weather affix set to thunder")
+	assert_eq(int(test_combat.state.get("turn_combo_count", 0)), 0, "Initial turn combo count is 0")
+
+	var played: bool = test_combat.play(0, 0)
+	if played:
+		assert_eq(int(test_combat.state.get("turn_combo_count", 0)), 1, "Turn combo count incremented after card play")
+	test_combat.end_turn()
+	assert_eq(int(test_combat.state.get("turn_combo_count", 0)), 0, "Turn combo count reset on turn end")
+
+func test_phase12_relic_resonances_and_bonuses():
+	var game := _create_game()
+	var res_ids: Array = []
+	for res in game.content.RELIC_RESONANCES:
+		res_ids.append(str(res.get("id", "")))
+	assert_true(res_ids.has("res_phoenix_fire"), "res_phoenix_fire exists")
+	assert_true(res_ids.has("res_glacial_mirror"), "res_glacial_mirror exists")
+	assert_true(res_ids.has("res_abyssal_drain"), "res_abyssal_drain exists")
+	assert_true(res_ids.has("res_bastion_unbreakable"), "res_bastion_unbreakable exists")
+
+	var hero_bonuses := {
+		"astral_roots": {"metal": 1, "wood": 2, "water": 1, "fire": 0, "earth": 1},
+		"familiar_stage": 3
+	}
+	var test_combat := SpiritCombat.new(content)
+	test_combat.create(12345, content.encounters[0], ["strike", "defend"], 60, {}, [], {}, {}, ["spiritArmor", "obsidianIdol"], hero_bonuses)
+	assert_gt(int(test_combat.state.player.max_health), 60, "Wood root boosted player max HP")
+	assert_gte(int(test_combat.state.player.shield), 10, "Familiar stage 3 granted starting shield")
+	assert_true(test_combat._has_resonance("res_bastion_unbreakable"), "res_bastion_unbreakable active")
+
+	test_combat.state.player.shield = 30
+	test_combat.state.enemies[0].stun = 1
+	test_combat.state.phase = "player"
+	test_combat.end_turn()
+	assert_eq(int(test_combat.state.player.shield), 30, "Bastion unbreakable preserved 100% shield")
+	game.free()
+
+func test_phase12_deck_presets_and_foil_system():
+	var game := _create_game()
+	assert_true(game.profile.has("deck_presets"), "Profile has deck presets")
+	assert_true(game.profile.has("foil_cards"), "Profile has foil cards list")
+	assert_true(game.profile.has("astral_roots"), "Profile has astral roots")
+
+	var test_card_id: String = "strike"
+	game.profile.foil_cards.append(test_card_id)
+	assert_true(game.profile.foil_cards.has(test_card_id), "Card marked as foil")
+	game.free()
+
+func test_phase12_black_market_event_choices():
+	var found_black_market: bool = false
+	for ev in SpiritContent.RANDOM_STORY_EVENTS:
+		if str(ev.get("id", "")) == "black_market":
+			found_black_market = true
+			var choices: Array = ev.get("choices", [])
+			var types: Array = []
+			for ch in choices: types.append(str(ch.get("type", "")))
+			assert_true(types.has("pawn_relic"), "Black market has pawn_relic choice")
+			assert_true(types.has("blood_pact"), "Black market has blood_pact choice")
+			break
+	assert_true(found_black_market, "Black market random story event exists")
+
+
 
 
 

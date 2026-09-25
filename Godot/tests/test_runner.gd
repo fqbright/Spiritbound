@@ -1788,7 +1788,7 @@ func run() -> void:
 	# ========================================================
 	# Phase 5: Dynamic Relic Synergies & Combo Resonance Tests
 	# ========================================================
-	check(SpiritContent.RELIC_RESONANCES.size() == 6, "6 ancient relic resonances are defined")
+	check(SpiritContent.RELIC_RESONANCES.size() == 10, "10 ancient relic resonances are defined")
 	for r in SpiritContent.RELIC_RESONANCES:
 		check(not str(r.get("id", "")).is_empty(), "relic resonance has valid id")
 		check(not str(r.get("zh", "")).is_empty() and not str(r.get("en", "")).is_empty(), "relic resonance %s has bilingual names" % r.id)

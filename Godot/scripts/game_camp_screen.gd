@@ -1305,6 +1305,21 @@ func _sanctuary_garden_section() -> Control:
 	head.add_child(g._label("✨ %s: %d" % [g.t("ui.card_dust"), dust_val], 10, g.GOLD))
 	vbox.add_child(head)
 
+	var fam_stg: int = clampi(int(g.profile.get("familiar_stage", 0)), 0, 3)
+	var fam_aff: int = int(g.profile.get("familiar_affinity", 0))
+	var stg_name := g.t("ui.familiar_stage_%d" % fam_stg)
+	var perk_desc := g.t("ui.familiar_stage_perk_%d" % fam_stg)
+
+	var stg_info := HBoxContainer.new()
+	stg_info.add_theme_constant_override("separation", 6)
+	stg_info.add_child(g._label("【%s】" % stg_name, 11, Color("ffd700")))
+	stg_info.add_child(g._label(perk_desc, 9, Color("93c5fd")))
+	if fam_stg < 3:
+		stg_info.add_child(g._label("契合: %d/100" % fam_aff, 9, Color("a7f3d0")))
+	else:
+		stg_info.add_child(g._label("★ 极境成道 ★", 9, Color("ffd700")))
+	vbox.add_child(stg_info)
+
 	var fam_row := HBoxContainer.new()
 	fam_row.add_theme_constant_override("separation", 8)
 	var fox_avatar := g._label("🦊 灵狐", 18, Color("fba542"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -1317,6 +1332,14 @@ func _sanctuary_garden_section() -> Control:
 			tw.tween_property(fox_avatar, "scale", Vector2(1.2, 1.2), 0.15)
 			tw.chain().tween_property(fox_avatar, "scale", Vector2.ONE, 0.15)
 		g.profile.card_dust = int(g.profile.get("card_dust", 0)) + 5
+		var aff: int = int(g.profile.get("familiar_affinity", 0)) + 10
+		var stg: int = int(g.profile.get("familiar_stage", 0))
+		if aff >= 100 and stg < 3:
+			stg += 1
+			aff = 0
+			g._toast("✦ 灵狐突破！升至【%s】！" % g.t("ui.familiar_stage_%d" % stg), Color("ffd700"))
+		g.profile.familiar_stage = stg
+		g.profile.familiar_affinity = aff
 		SpiritSave.write(g.profile)
 		g._toast(g.t("ui.sanctuary_pet_toast"), Color("fba542"))
 		show_camp()
@@ -1325,6 +1348,29 @@ func _sanctuary_garden_section() -> Control:
 	pet_btn.name = "PetFamiliarBtn"
 	pet_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	fam_row.add_child(pet_btn)
+
+	var on_feed := func():
+		var dust: int = int(g.profile.get("card_dust", 0))
+		if dust < 15:
+			g._toast("需 15 灵尘投喂灵狐", Color("ff8a8a"))
+			return
+		g.profile.card_dust = dust - 15
+		var aff: int = int(g.profile.get("familiar_affinity", 0)) + 25
+		var stg: int = int(g.profile.get("familiar_stage", 0))
+		if aff >= 100 and stg < 3:
+			stg += 1
+			aff = 0
+			g._toast("✦ 灵狐突破！升至【%s】！" % g.t("ui.familiar_stage_%d" % stg), Color("ffd700"))
+		g.profile.familiar_stage = stg
+		g.profile.familiar_affinity = aff
+		SpiritSave.write(g.profile)
+		g._toast(g.t("ui.familiar_feed_btn") + " (+25)", Color("ffd700"))
+		show_camp()
+
+	var feed_btn := g._button(g.t("ui.familiar_feed_btn"), on_feed, Color("3b2914"), Vector2(0, 32))
+	feed_btn.name = "FeedFamiliarBtn"
+	feed_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fam_row.add_child(feed_btn)
 
 	var on_harvest := func():
 		g.profile.card_dust = int(g.profile.get("card_dust", 0)) + 20
@@ -1340,10 +1386,73 @@ func _sanctuary_garden_section() -> Control:
 	vbox.add_child(fam_row)
 	return panel
 
+func _astral_roots_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "AstralRootsSection"
+	panel.custom_minimum_size = Vector2(0, 80)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f1922"), 12, Color("38bdf8")))
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	panel.add_child(vbox)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label("🌌 " + g.t("ui.astral_roots_title"), 13, Color("bae6fd")))
+	var sparks: int = int(g.profile.get("astral_sparks", 0))
+	head.add_child(g._label(g.tf("ui.astral_sparks_label", sparks), 10, g.GOLD))
+	vbox.add_child(head)
+
+	var roots_grid := GridContainer.new()
+	roots_grid.columns = 5
+	roots_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roots_grid.add_theme_constant_override("h_separation", 4)
+	vbox.add_child(roots_grid)
+
+	var root_keys := ["metal", "wood", "water", "fire", "earth"]
+	var root_cols := [Color("fbbf24"), Color("4ade80"), Color("38bdf8"), Color("f87171"), Color("eab308")]
+	for i in 5:
+		var r_k: String = root_keys[i]
+		var r_lvl: int = int(g.profile.get("astral_roots", {}).get(r_k, 0))
+		var r_col: Color = root_cols[i]
+		var root_card := PanelContainer.new()
+		root_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		root_card.add_theme_stylebox_override("panel", g._panel(Color("09131a"), 8, r_col if r_lvl > 0 else Color("1e313b")))
+		var rc_box := VBoxContainer.new()
+		rc_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		rc_box.add_theme_constant_override("separation", 2)
+		root_card.add_child(rc_box)
+		rc_box.add_child(g._label(g.t("ui.astral_root_%s" % r_k), 8, r_col, HORIZONTAL_ALIGNMENT_CENTER))
+		rc_box.add_child(g._label("Lv.%d" % r_lvl, 10, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER))
+		var on_attune := func():
+			var cur_sparks: int = int(g.profile.get("astral_sparks", 0))
+			if cur_sparks <= 0:
+				var d_cost := 40
+				if int(g.profile.get("card_dust", 0)) < d_cost:
+					g._toast("需 1 星魄或 40 灵尘点亮", Color("ff8a8a"))
+					return
+				g.profile.card_dust = int(g.profile.get("card_dust", 0)) - d_cost
+			else:
+				g.profile.astral_sparks = cur_sparks - 1
+			if not g.profile.get("astral_roots") is Dictionary:
+				g.profile.astral_roots = {"metal":0,"wood":0,"water":0,"fire":0,"earth":0}
+			g.profile.astral_roots[r_k] = int(g.profile.astral_roots.get(r_k, 0)) + 1
+			SpiritSave.write(g.profile)
+			g._toast("✦ " + g.t("ui.astral_root_%s" % r_k) + " Lv.%d ✦" % g.profile.astral_roots[r_k], r_col)
+			show_camp()
+		var att_btn := g._button("+", on_attune, Color("142730"), Vector2(0, 20))
+		att_btn.name = "AttuneBtn_%s" % r_k
+		att_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rc_box.add_child(att_btn)
+		roots_grid.add_child(root_card)
+
+	return panel
+
 func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
 	list.add_child(_prestige_titles_section())
 	list.add_child(_sanctuary_garden_section())
+	list.add_child(_astral_roots_section())
 	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
 
@@ -2175,6 +2284,7 @@ func _boss_rush_section() -> Control:
 	stats.add_theme_constant_override("separation", 12)
 	stats.add_child(g._label(g.tf("ui.boss_rush_floor_fmt", floor_num), 10, g.GOLD))
 	stats.add_child(g._label(g.tf("ui.boss_rush_record_fmt", record_num), 10, g.JADE))
+	stats.add_child(g._label(g.tf("ui.pagoda_record_fmt", int(g.profile.get("pagoda_highest_floor", 1))), 10, Color("38bdf8")))
 	left.add_child(stats)
 
 	var enter_btn := g._button(g.t("ui.boss_rush_enter"), begin_boss_rush_battle, Color("6b3410"), Vector2(160, 36))

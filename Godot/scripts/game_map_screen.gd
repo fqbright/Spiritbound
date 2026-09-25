@@ -399,6 +399,19 @@ func show_map() -> void:
 	g.map_canvas.mouse_filter = Control.MOUSE_FILTER_PASS
 	g.map_scroll.add_child(g.map_canvas)
 
+	# Dynamic Map Day/Night Cycle (Phase 12)
+	var cur_hour: int = Time.get_time_dict_from_system().hour
+	var time_modulate: Color = Color(1.0, 1.0, 1.0, 1.0)
+	if cur_hour >= 6 and cur_hour < 10:
+		time_modulate = Color(1.04, 0.98, 0.92, 1.0)
+	elif cur_hour >= 10 and cur_hour < 17:
+		time_modulate = Color(1.0, 1.0, 1.0, 1.0)
+	elif cur_hour >= 17 and cur_hour < 20:
+		time_modulate = Color(1.04, 0.88, 0.82, 1.0)
+	else:
+		time_modulate = Color(0.78, 0.84, 0.96, 1.0)
+	g.map_canvas.modulate = time_modulate
+
 	_add_map_chapter(active_chapter)
 	_add_routes(active_chapter)
 	for i in 5:

@@ -70,6 +70,9 @@ func begin_battle(index: int) -> void:
 	g.resolving = false
 	var seed := g._battle_seed()
 	g.active_modifier = _apply_difficulty(_modifier(seed, index), g.content.difficulty_modifier(int(g.profile.difficulty)))
+	if index % 3 == 1 or g.get_node_kind(index) == "elite":
+		var aff_types := ["solar", "frost", "thunder", "leyline"]
+		g.active_modifier["weather_affix"] = aff_types[index % aff_types.size()]
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var battle_deck: Array = g.profile.deck
@@ -307,6 +310,33 @@ func show_battle() -> void:
 		var streak_pill := g._label("🔥 " + g.tf("ui.win_streak_badge", streak), 11, Color("ffa94d"))
 		streak_pill.name = "BattleWinStreakBadge"
 		top.add_child(streak_pill)
+	var w_affix: String = str(g.combat.state.get("weather_affix", "")) if g.combat and g.combat.state else ""
+	if w_affix != "":
+		var w_name := ""
+		var w_col := Color("f97316")
+		match w_affix:
+			"solar": w_name = "🔥 炎阳" if g.lang != "en" else "🔥 Solar"; w_col = Color("f97316")
+			"frost": w_name = "❄ 寒霜" if g.lang != "en" else "❄ Frost"; w_col = Color("38bdf8")
+			"thunder": w_name = "⚡ 天罡" if g.lang != "en" else "⚡ Thunder"; w_col = Color("facc15")
+			"leyline": w_name = "🌿 灵潮" if g.lang != "en" else "🌿 Leyline"; w_col = Color("4ade80")
+		var w_badge := g._button(w_name, func():
+			var w_key := "ui.weather_" + w_affix
+			g._toast(g.t(w_key), w_col)
+		, Color("101d22"), Vector2(52, 26))
+		w_badge.name = "BattleWeatherBadge"
+		w_badge.add_theme_color_override("font_color", w_col)
+		top.add_child(w_badge)
+	var combo_cnt: int = int(g.combat.state.get("turn_combo_count", 0)) if g.combat and g.combat.state else 0
+	if combo_cnt >= 2:
+		var combo_badge := PanelContainer.new()
+		combo_badge.name = "ComboMeterBadge"
+		var c_style := g._panel(Color("261a0d"), 8, Color("f59e0b"))
+		c_style.content_margin_left = 6; c_style.content_margin_right = 6
+		c_style.content_margin_top = 2; c_style.content_margin_bottom = 2
+		combo_badge.add_theme_stylebox_override("panel", c_style)
+		var c_lbl := g._label(g.tf("ui.combo_meter", combo_cnt), 10, Color("fbbf24"), HORIZONTAL_ALIGNMENT_CENTER)
+		combo_badge.add_child(c_lbl)
+		top.add_child(combo_badge)
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(spacer)
 	top.add_child(g._label(g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD))
 	var speed_label: String = (str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x"
@@ -802,6 +832,10 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	intent_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Floating oriental runic seal: sleek translucent spirit pill with glowing border & soft shadow
 	var is_threat: bool = bool(intent_style.get("high_threat", false))
+	var raw_intent_dmg: int = int(intent.get("amount", 0)) if str(intent.get("kind", "")) == "attack" else 0
+	var player_total_guard: int = int(g.combat.state.player.get("health", 0)) + int(g.combat.state.player.get("shield", 0)) if g.combat and g.combat.state else 60
+	var is_lethal: bool = raw_intent_dmg >= player_total_guard and raw_intent_dmg > 0
+	if is_lethal: is_threat = true
 	var intent_box := StyleBoxFlat.new()
 	intent_box.bg_color = intent_style.bg
 	intent_box.border_color = Color("ff4d4d") if is_threat else intent_style.border
@@ -827,6 +861,29 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	icon.size = icon.custom_minimum_size
 	intent_row.add_child(icon)
 	intent_row.add_child(g._label(intent_style.amount_text, 13, intent_style.text_color, HORIZONTAL_ALIGNMENT_CENTER))
+	if is_lethal:
+		var lethal_tag := g._label(g.t("ui.lethal_warning"), 9, Color("ff3333"), HORIZONTAL_ALIGNMENT_CENTER)
+		lethal_tag.name = "LethalTag"
+		intent_row.add_child(lethal_tag)
+		var aura := Panel.new()
+		aura.name = "LethalThreatAura"
+		var a_size := spr_size.x * 1.15
+		aura.custom_minimum_size = Vector2(a_size, a_size)
+		aura.size = aura.custom_minimum_size
+		aura.position = Vector2(center_x - a_size * 0.5, 26.0 + spr_size.y * 0.5 - a_size * 0.5)
+		aura.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var a_style := StyleBoxFlat.new()
+		a_style.bg_color = Color(0.8, 0.05, 0.05, 0.12)
+		a_style.border_color = Color(1.0, 0.15, 0.15, 0.75)
+		a_style.set_border_width_all(2)
+		a_style.set_corner_radius_all(int(a_size * 0.5))
+		a_style.shadow_color = Color(1.0, 0.0, 0.0, 0.5)
+		a_style.shadow_size = 10
+		aura.add_theme_stylebox_override("panel", a_style)
+		unit.add_child(aura)
+		var a_tw := aura.create_tween().set_loops()
+		a_tw.tween_property(aura, "modulate:a", 0.4, 0.6).set_trans(Tween.TRANS_SINE)
+		a_tw.tween_property(aura, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)
 
 	var telegraph := intent_bg.create_tween().set_loops()
 	telegraph.tween_property(intent_bg, "position:y", base_intent_y - 3.0, 0.8 if is_threat else 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -1763,6 +1820,9 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
 	if up_lvl > 0:
 		border_col = border_col.lerp(g.GOLD, 0.55)
+	var is_foil: bool = g.profile.get("foil_cards", []).has(card.id)
+	if is_foil:
+		border_col = Color("ffd700")
 
 	var primary_enemy: Dictionary = {}
 	var living := _living_enemies()
@@ -1807,8 +1867,23 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var card_rarity: String = str(card.get("rarity", "Common"))
 	var is_capstone: bool = bool(card.get("is_capstone", false)) or card.id in ["samadhi_fire", "spirit_surge", "shield_slam", "bastion_form", "thousand_blades", "shadow_clone", "catalyst", "blood_pact"]
-	_apply_card_foil(art, card_rarity, up_lvl > 0, is_capstone)
+	_apply_card_foil(art, card_rarity, up_lvl > 0, is_capstone or is_foil)
 	card_clip.add_child(art)
+
+	if is_foil:
+		var foil_badge := Panel.new()
+		foil_badge.name = "FoilBadge"
+		foil_badge.custom_minimum_size = Vector2(36, 14)
+		foil_badge.size = foil_badge.custom_minimum_size
+		foil_badge.position = Vector2(116.0 - 40.0, 2.0)
+		var f_style := g._panel(Color("2d2206", 0.95), 4, Color("ffd700"))
+		f_style.border_width_left = 1; f_style.border_width_right = 1
+		f_style.border_width_top = 1; f_style.border_width_bottom = 1
+		foil_badge.add_theme_stylebox_override("panel", f_style)
+		var f_lbl := g._label(g.t("ui.foil_inscribed_tag"), 8, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+		f_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		foil_badge.add_child(f_lbl)
+		card_clip.add_child(foil_badge)
 
 	if is_capstone:
 		var cap_badge := Panel.new()
@@ -3383,6 +3458,45 @@ func _animate_player_hit(amount: int) -> void:
 	await float_tw.finished
 	popup.queue_free()
 
+func _spawn_elemental_hit_particles(target_pos: Vector2, element: String) -> void:
+	if g.overlay == null or not g.is_inside_tree() or g.get_tree() == null: return
+	var p := CPUParticles2D.new()
+	p.position = target_pos
+	p.emitting = true
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.lifetime = 0.4
+	p.amount = 16
+	p.direction = Vector2(0, -1)
+	p.spread = 180.0
+	p.initial_velocity_min = 60.0
+	p.initial_velocity_max = 130.0
+	p.scale_amount_min = 2.5
+	p.scale_amount_max = 5.0
+	match element.to_lower():
+		"fire":
+			p.color = Color(1.0, 0.4, 0.1, 0.95)
+			p.gravity = Vector2(0, -60)
+		"frost", "water":
+			p.color = Color(0.4, 0.85, 1.0, 0.95)
+			p.gravity = Vector2(0, 98)
+		"thunder", "gale":
+			p.color = Color(1.0, 0.9, 0.2, 0.95)
+			p.gravity = Vector2(0, 50)
+		"poison":
+			p.color = Color(0.3, 0.9, 0.35, 0.95)
+			p.gravity = Vector2(0, 30)
+		"stone":
+			p.color = Color(0.85, 0.72, 0.48, 0.95)
+			p.gravity = Vector2(0, 140)
+		_:
+			p.color = Color(0.95, 0.9, 0.75, 0.95)
+			p.gravity = Vector2(0, 80)
+	g.overlay.add_child(p)
+	var tw := g.get_tree().create_tween()
+	tw.tween_interval(0.45)
+	tw.tween_callback(p.queue_free)
+
 func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, font_size: int = 24, is_crit: bool = false) -> void:
 	if g.overlay == null: return
 	var box: Control = null
@@ -3394,6 +3508,10 @@ func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, fo
 	if box != null:
 		target_pos = box.global_position + Vector2(box.size.x / 2.0, 20.0)
 	_spawn_floating_text(target_pos, text, color, font_size, is_crit)
+	var last_c: Dictionary = g.content.card(g.last_played_card_id) if not g.last_played_card_id.is_empty() else {}
+	var el: String = str(last_c.get("element", ""))
+	if el != "":
+		_spawn_elemental_hit_particles(target_pos, el)
 
 func _spawn_player_floating_text(text: String, color: Color, font_size: int = 24) -> void:
 	if g.overlay == null: return
@@ -3523,6 +3641,26 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 			_spawn_enemy_floating_text(e_idx, txt, col, f_size, is_crit)
 			if dmg >= 25:
 				_shake_screen(mini(12.0, float(dmg) * 0.35), 0.25)
+			if g.combat and g.combat.state and e_idx < g.combat.state.enemies.size():
+				var en_dict: Dictionary = g.combat.state.enemies[e_idx]
+				var max_hp: int = int(en_dict.get("max_health", 1))
+				var cur_hp: int = int(en_dict.get("health", 0))
+				if cur_hp > 0 and cur_hp <= max_hp / 2 and not bool(en_dict.get("shatter_50_triggered", false)):
+					en_dict["shatter_50_triggered"] = true
+					_spawn_enemy_floating_text(e_idx, g.t("ui.armor_shattered"), Color("f97316"), 30, true)
+					_shake_screen(8.0, 0.2)
+					g.play_sfx("attack_heavy")
+					g._haptic("heavy")
+				elif cur_hp > 0 and cur_hp <= max_hp / 4 and not bool(en_dict.get("shatter_25_triggered", false)):
+					en_dict["shatter_25_triggered"] = true
+					_spawn_enemy_floating_text(e_idx, g.t("ui.armor_shattered"), Color("ef4444"), 34, true)
+					_shake_screen(12.0, 0.3)
+					g.play_sfx("attack_heavy")
+					g._haptic("heavy")
+	elif kind == "thunder_strike":
+		g.play_sfx("attack_heavy")
+		g._haptic("heavy")
+		g._toast("⚡ 天罡神雷贯通！" if g.lang != "en" else "⚡ Divine Thunder Strike!", Color("facc15"))
 	elif kind == "death":
 		var any_alive := false
 		if g.combat and g.combat.state.get("enemies"):

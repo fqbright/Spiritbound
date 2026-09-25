@@ -55,7 +55,10 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
 		"chapter":int(encounter.get("chapter", 1)),
 		"last_element":"",
-		"stats":{"damage_dealt":0,"cards_played":0,"shield_gained":0,"cards_tally":{}},
+		"weather_affix":str(modifier.get("weather_affix", "")),
+		"turn_combo_count":0,
+		"turn_attack_count":0,
+		"stats":{"damage_dealt":0,"direct_damage":0,"dot_damage":0,"cards_played":0,"shield_gained":0,"shield_blocked":0,"cards_tally":{},"turns_taken":0},
 		"cards_played_this_turn":0,
 		"player_blocked_this_turn":0,
 		"mirror_shield_active":false,
@@ -97,6 +100,31 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	if _has_resonance("res_chaos_titan"):
 		state.player.max_health += 15
 		state.player.health += 15
+	if _has_resonance("res_glacial_mirror"):
+		state.player.shield += 12
+	if _has_resonance("res_phoenix_fire"):
+		for enemy in state.enemies:
+			enemy.burn = int(enemy.get("burn", 0)) + 2
+	var fam_stg: int = int(hero_bonuses.get("familiar_stage", 0))
+	if fam_stg >= 3:
+		state.player.shield += 10
+	var roots: Dictionary = hero_bonuses.get("astral_roots", {})
+	var r_wood: int = int(roots.get("wood", 0))
+	if r_wood > 0:
+		state.player.max_health += r_wood * 5
+		state.player.health += r_wood * 5
+	var r_water: int = int(roots.get("water", 0))
+	if r_water > 0:
+		state.player.shield += r_water * 5
+	var r_metal: int = int(roots.get("metal", 0))
+	if r_metal > 0:
+		state["astral_metal_bonus"] = r_metal
+	var r_fire: int = int(roots.get("fire", 0))
+	if r_fire > 0:
+		state["astral_fire_burn"] = r_fire
+	var r_earth: int = int(roots.get("earth", 0))
+	if r_earth > 0:
+		state["astral_earth_reduction"] = r_earth
 	if _has_relic("chaosPrism"):
 		for enemy in state.enemies:
 			enemy.shield += 6
@@ -150,6 +178,8 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 			if el != "": unique_elems[el] = true
 		if unique_elems.size() >= 4:
 			draw_bonus += 1
+	if int(hero_bonuses.get("familiar_stage", 0)) >= 2:
+		draw_bonus += 1
 	_draw(5 + draw_bonus + (1 if _has_relic("cursedTome") else 0))
 	if _has_relic("mysticScroll") and state.hand.size() < 10:
 		for i in range(state.draw.size() - 1, -1, -1):
@@ -322,6 +352,7 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# Counted separately from the career tally above because Chapter 25's Counterspell reads it
 	# per-turn and it must reset every turn — the two have the same name but different lifetimes.
 	state.cards_played_this_turn = int(state.get("cards_played_this_turn", 0)) + 1
+	state.turn_combo_count = int(state.get("turn_combo_count", 0)) + 1
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += actual_cost; state.swift_used = true
@@ -367,7 +398,16 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var bonus := int(state.upgrades.get(card.id,0))
 	# Strength is the permanent counterpart to Focus's one-shot burst: it never resets, so
 	# a Power card that grants it pays off over the whole fight rather than a single hit.
-	if harmful: bonus += int(state.player.get("strength", 0))
+	if harmful:
+		bonus += int(state.player.get("strength", 0))
+		state.turn_attack_count = int(state.get("turn_attack_count", 0)) + 1
+		if str(state.get("weather_affix", "")) == "thunder" and state.turn_attack_count == 3:
+			var t_target := target_index if target_index >= 0 else _smart_target()
+			if t_target >= 0:
+				_damage_enemy(t_target, 8, true)
+				emit_signal("event", "thunder_strike", {"damage": 8})
+		if int(state.get("astral_metal_bonus", 0)) > 0:
+			bonus += int(state.astral_metal_bonus)
 	if harmful and int(state.player.get("burn", 0)) > 0 and _has_relic("cinderBand"): bonus += 3
 	if harmful and state.player.focus > 0: bonus += 3 * state.player.focus; state.player.focus = 0
 	if harmful and not state.first_attack:
@@ -519,13 +559,18 @@ func end_turn() -> void:
 		else: _execute_intent(enemy_index)
 		if enemy.burn > 0 and enemy.health > 0:
 			var burn_damage: int = enemy.burn + (1 if _has_relic("emberCore") else 0) + (1 if _has_resonance("res_star_flame") else 0)
+			if _has_resonance("res_phoenix_fire"):
+				burn_damage = int(round(burn_damage * 1.3))
 			_damage_enemy(enemy_index,burn_damage,false)
+			if state.has("stats"): state.stats.dot_damage = int(state.stats.get("dot_damage", 0)) + burn_damage
 			enemy.burn = maxi(0,enemy.burn - 1)
 		# Poison is Burn's non-decaying counterpart — Miasma Witch's whole identity is that it
 		# keeps ticking every turn until the target is healed or dies, not worn down by 1 each
 		# turn the way Burn is. Deliberately no "poison = maxi(0, poison - 1)" line here.
 		if int(enemy.get("poison", 0)) > 0 and enemy.health > 0:
-			_damage_enemy(enemy_index, int(enemy.poison), false)
+			var p_dmg: int = int(enemy.poison)
+			_damage_enemy(enemy_index, p_dmg, false)
+			if state.has("stats"): state.stats.dot_damage = int(state.stats.get("dot_damage", 0)) + p_dmg
 		if int(enemy.get("vulnerable",0)) > 0: enemy.vulnerable = maxi(0, int(enemy.vulnerable) - 1)
 		if int(enemy.get("weak",0)) > 0: enemy.weak = maxi(0, int(enemy.weak) - 1)
 		if state.phase != "player": return
@@ -556,6 +601,7 @@ func end_turn() -> void:
 	state.hand = kept_hand
 
 	state.turn += 1
+	if state.has("stats"): state.stats.turns_taken = int(state.stats.get("turns_taken", 0)) + 1
 	var energy_growth: int = int((state.turn - 1) / 2)
 	if _has_relic("titanBell"): energy_growth = 0
 	state.energy = 2 + energy_growth
@@ -569,8 +615,10 @@ func end_turn() -> void:
 		state.energy = maxi(1, state.energy - overload_due)
 		state.overload_pending = 0
 	var kept_shield: int = 0
-	if _has_resonance("res_sun_moon"):
+	if _has_resonance("res_sun_moon") or _has_resonance("res_bastion_unbreakable"):
 		kept_shield = state.player.shield
+	elif _has_resonance("res_glacial_mirror"):
+		kept_shield = int(state.player.shield * 0.6)
 	elif _has_relic("spiritArmor"):
 		kept_shield = mini(30, state.player.shield)
 	elif bool(state.get("bastion_form_active", false)):
@@ -581,6 +629,13 @@ func end_turn() -> void:
 	state.spirit_surge_active = false
 	state.shadow_clone_active = false
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
+	var weather: String = str(state.get("weather_affix", ""))
+	if weather == "solar":
+		state.player.burn = int(state.player.get("burn", 0)) + 1
+		for enemy in state.enemies:
+			if enemy.health > 0: enemy.burn = int(enemy.get("burn", 0)) + 1
+	elif weather == "frost":
+		state.player.shield = maxi(state.player.shield, 6)
 	if _has_relic("venomFlask"):
 		for vi in state.enemies.size():
 			var ven_e: Dictionary = state.enemies[vi]
@@ -608,7 +663,10 @@ func end_turn() -> void:
 	var energy_cap: int = int(state.get("modifier", {}).get("energy_cap", 0))
 	if energy_cap > 0: state.energy = mini(state.energy, energy_cap)
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""; state.swift_boots_used = false; state.echo_mirror_used = false; state.undo_state = {}
+	state.turn_combo_count = 0; state.turn_attack_count = 0
 	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
+	if weather == "leyline":
+		turn_draw += 1
 	if _has_relic("moonstone"):
 		if state.turn % 2 == 1: turn_draw += 1
 		else: state.player.shield += 6
@@ -706,6 +764,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					final_amt = 0
 				elif effect.status == "burn" and state.get("boons", []).has("boon_flame_affinity"): final_amt += 2
 				elif effect.status == "burn" and _has_relic("blazingBrazier") and rng.randf() < 0.5: final_amt += 2
+				if effect.status == "burn" and int(state.get("astral_fire_burn", 0)) > 0:
+					final_amt += int(state.astral_fire_burn)
 				if final_amt > 0:
 					if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
 					elif target_index >= 0:
@@ -728,12 +788,17 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	var absorbed := 0 if pierce else mini(enemy.shield,amount)
 	enemy.shield -= absorbed
 	if _has_relic("obsidianIdol") and old_shield > 0 and enemy.shield == 0 and not pierce:
-		enemy.health -= 8
-		emit_signal("event","shatter",{"enemy":index,"amount":8})
+		var sh_dmg := 16 if _has_resonance("res_bastion_unbreakable") else 8
+		enemy.health -= sh_dmg
+		emit_signal("event","shatter",{"enemy":index,"amount":sh_dmg})
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
+	if _has_resonance("res_abyssal_drain") and int(enemy.get("poison", 0)) > 0:
+		state.player.health = mini(state.player.max_health, state.player.health + 1)
 	emit_signal("event", "damage_dealt", {"enemy": index, "damage": dealt, "absorbed": absorbed, "pierce": pierce, "vulnerable": int(enemy.get("vulnerable", 0)) > 0})
-	if state.has("stats"): state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
+	if state.has("stats"):
+		state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
+		state.stats.direct_damage = int(state.stats.get("direct_damage", 0)) + (dealt + absorbed)
 	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
 		_trigger_great_boss_phase_2(enemy)
 	_check_mechanics_phases(index, enemy)
@@ -976,6 +1041,9 @@ func _summon_boss_add(owner_index: int, owner: Dictionary) -> void:
 # own pierce flag) — Chapter 30's revive attack is authored as unavoidable, so it can't be
 # absorbed or it would just be a normal swing.
 func _damage_player(amount: int, pierce := false) -> int:
+	var red: int = int(state.get("astral_earth_reduction", 0))
+	if red > 0:
+		amount = maxi(1, amount - red)
 	var absorbed := 0 if pierce else mini(state.player.shield, amount)
 	state.player.shield -= absorbed
 	# Tracks how much Shield actually ate this turn — the input to Chapter 45's enrage-on-block.
@@ -983,6 +1051,8 @@ func _damage_player(amount: int, pierce := false) -> int:
 	# swings, Burn, curses) counts, not just the one path someone remembered to instrument.
 	if state.has("player_blocked_this_turn"):
 		state.player_blocked_this_turn = int(state.player_blocked_this_turn) + absorbed
+	if state.has("stats"):
+		state.stats.shield_blocked = int(state.stats.get("shield_blocked", 0)) + absorbed
 	var dealt := mini(state.player.health, amount - absorbed)
 	state.player.health -= dealt
 	if state.player.health <= 0:

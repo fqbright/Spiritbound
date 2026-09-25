@@ -1222,6 +1222,33 @@ func show_deck() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
 	var page := g._create_page(6)
+	# Deck Loadout Presets (Phase 12)
+	var preset_row := HBoxContainer.new()
+	preset_row.name = "DeckPresetRow"
+	preset_row.add_theme_constant_override("separation", 6)
+	var active_slot: int = int(g.profile.get("active_deck_preset", 1))
+	for slot_idx: int in [1, 2, 3]:
+		var is_active: bool = (slot_idx == active_slot)
+		var btn_label: String = g.t("ui.deck_preset_%d" % slot_idx)
+		var target_slot: int = slot_idx
+		var on_slot_select := func():
+			if not g.profile.get("deck_presets") is Dictionary:
+				g.profile.deck_presets = {}
+			g.profile.deck_presets[str(g.profile.get("active_deck_preset", 1))] = g.profile.deck.duplicate()
+			g.profile.active_deck_preset = target_slot
+			if g.profile.deck_presets.has(str(target_slot)):
+				var loaded_deck: Array = g.profile.deck_presets[str(target_slot)]
+				if loaded_deck.size() >= 12:
+					g.profile.deck = loaded_deck.duplicate()
+			SpiritSave.write(g.profile)
+			g._toast("%s" % btn_label, g.GOLD)
+			show_deck()
+		var p_btn := g._button(btn_label, on_slot_select, g.EMBER if is_active else Color("1c282e"), Vector2(0, 30))
+		p_btn.name = "PresetBtn_%d" % slot_idx
+		p_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		preset_row.add_child(p_btn)
+	page.add_child(preset_row)
+
 	# Share & Import Action Row
 	var action_row := HBoxContainer.new()
 	action_row.name = "DeckActionRow"
@@ -1563,6 +1590,9 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	var border_color: Color = accent if in_deck > 0 else Color("24373d")
 	if up_lvl > 0:
 		border_color = border_color.lerp(g.GOLD, 0.55)
+	var is_foil: bool = g.profile.get("foil_cards", []).has(card.id)
+	if is_foil:
+		border_color = Color("ffd700")
 	var tile := Panel.new()
 	tile.custom_minimum_size = Vector2(176, 232)
 	tile.size = tile.custom_minimum_size
@@ -1576,7 +1606,7 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	g._apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0)
+	g._apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0 or is_foil)
 	tile.add_child(art)
 
 	# 2. Ornate frame around the entire card perimeter
@@ -1653,14 +1683,38 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	controls.add_theme_constant_override("separation", 6)
 	controls.alignment = BoxContainer.ALIGNMENT_CENTER
 	stack.add_child(controls)
-	var minus := g._button("−", func(): _deck_change(card.id, -1), Color("593b32"), Vector2(50, 30))
+	var minus := g._button("−", func(): _deck_change(card.id, -1), Color("593b32"), Vector2(44, 30))
 	minus.disabled = in_deck <= 0
 	controls.add_child(minus)
-	var plus := g._button("+", func(): _deck_change(card.id, 1), Color("245247"), Vector2(50, 30))
+	var plus := g._button("+", func(): _deck_change(card.id, 1), Color("245247"), Vector2(44, 30))
 	plus.disabled = in_deck >= owned or g.profile.deck.size() >= 25
 	controls.add_child(plus)
+	var on_foil_click := func():
+		_toggle_foil_reforge(card)
+	var foil_btn := g._button("✦" if is_foil else "镀", on_foil_click, Color("3d2c0b") if is_foil else Color("1e2a30"), Vector2(34, 30))
+	foil_btn.name = "FoilBtn_%s" % card.id
+	if is_foil:
+		foil_btn.add_theme_color_override("font_color", Color("ffd700"))
+	controls.add_child(foil_btn)
 
 	return tile
+
+func _toggle_foil_reforge(card: Dictionary) -> void:
+	if not g.profile.get("foil_cards") is Array:
+		g.profile.foil_cards = []
+	if g.profile.foil_cards.has(card.id):
+		g._toast(g.t("ui.foil_inscribed_tag"), Color("ffd700"))
+		return
+	var dust_cost := 50
+	var cur_dust: int = int(g.profile.get("card_dust", 0))
+	if cur_dust < dust_cost:
+		g._toast("灵尘不足 (需 50 灵尘)" if g.lang != "en" else "Not enough Dust (Needs 50)", Color("ff8a8a"))
+		return
+	g.profile.card_dust = cur_dust - dust_cost
+	g.profile.foil_cards.append(card.id)
+	SpiritSave.write(g.profile)
+	g._toast(g.t("ui.foil_inscribed_tag") + " ✦ " + g.content.text(card.nameKey, g.lang), Color("ffd700"))
+	show_deck()
 
 func _confirm_deck() -> void:
 	if g.profile.deck.size() != 25:
