@@ -254,6 +254,36 @@ func _add_battle_ambience(parent: Node, chapter: int, is_boss: bool, is_world_bo
 	motes.color_ramp = ramp
 	parent.add_child(motes)
 
+func _show_boss_intro_ceremony(encounter: Dictionary, b_tier: int) -> void:
+	if not g.is_inside_tree() or g.overlay == null: return
+	var b_name: String = str(encounter.get("name_en", encounter.name)) if g.lang == "en" else str(encounter.get("name", ""))
+	var banner_text: String = g.t("ui.boss_warning_banner") % b_name
+
+	var banner := Panel.new()
+	banner.name = "BossWarningBanner"
+	banner.custom_minimum_size = Vector2(366, 44)
+	banner.size = banner.custom_minimum_size
+	banner.position = Vector2((g.MAP_WIDTH - 366.0) / 2.0, 160.0)
+	var b_style := g._panel(Color("220c0e", 0.95), 8, Color("f87171"))
+	b_style.border_width_left = 2; b_style.border_width_right = 2
+	b_style.border_width_top = 2; b_style.border_width_bottom = 2
+	banner.add_theme_stylebox_override("panel", b_style)
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.modulate.a = 0.0
+
+	var lbl := g._label(banner_text, 14, Color("ffd246"), HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.add_child(lbl)
+	g.overlay.add_child(banner)
+
+	var tw := banner.create_tween()
+	tw.tween_property(banner, "modulate:a", 1.0, 0.35)
+	tw.tween_interval(1.2)
+	tw.tween_property(banner, "modulate:a", 0.0, 0.4)
+	tw.chain().tween_callback(banner.queue_free)
+
 func show_battle() -> void:
 	var encounter: Dictionary = g._current_encounter()
 	var stage_lvl: int = int(encounter.get("level", 1)) - 1
@@ -262,6 +292,9 @@ func show_battle() -> void:
 		_shake_screen(8.0, 0.35)
 	elif b_tier == 3:
 		_shake_screen(4.0, 0.2)
+	if b_tier >= 2 and g.combat != null and not bool(g.combat.state.get("boss_intro_played", false)):
+		g.combat.state["boss_intro_played"] = true
+		_show_boss_intro_ceremony(encounter, b_tier)
 	g._clear(); g._play_music(true, stage_lvl); g.enemy_boxes.clear()
 	_setup_battle_background(encounter, stage_lvl)
 	_update_danger_vignette()
@@ -1179,6 +1212,15 @@ func _add_hand(page: VBoxContainer) -> void:
 	pass_btn.name = "PassTurnBtn"
 	status.add_child(pass_btn)
 
+	if g.combat and g.combat.can_undo():
+		var undo_btn := g._button(g.t("ui.combat_undo"), func():
+			if g.combat and g.combat.undo_last_card():
+				g._toast(g.t("ui.combat_undo_toast"), g.GOLD)
+				show_battle()
+		, Color("2d2218"), Vector2(52, 44))
+		undo_btn.name = "CombatUndoBtn"
+		status.add_child(undo_btn)
+
 	var hand_zone := Control.new()
 	hand_zone.custom_minimum_size = Vector2(366.0, 186.0)
 	hand_zone.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1705,7 +1747,9 @@ func _has_combat_synergy(card: Dictionary, primary_enemy: Dictionary) -> bool:
 	return false
 
 func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
-	var card := g.content.card(instance.card_id)
+	var c_id: String = str(instance.get("card_id", ""))
+	var card := g.content.card(c_id)
+	if card.is_empty(): return null
 	var tile := HandCard.new()
 	tile.hand_index = index
 	tile.card_data = card
@@ -1802,6 +1846,28 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 		c_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		combo_badge.add_child(c_lbl)
 		card_clip.add_child(combo_badge)
+
+	var mastery_plays: int = int(g.profile.get("card_mastery", {}).get(card.id, 0)) if (g.profile.get("card_mastery") is Dictionary) else 0
+	if mastery_plays >= 20:
+		var m_badge := Panel.new()
+		m_badge.name = "MasteryBadge"
+		m_badge.custom_minimum_size = Vector2(56, 14)
+		m_badge.size = m_badge.custom_minimum_size
+		var y_pos: float = 2.0
+		if is_capstone and has_synergy: y_pos = 34.0
+		elif is_capstone or has_synergy: y_pos = 18.0
+		m_badge.position = Vector2((116.0 - 56.0) / 2.0, y_pos)
+		var m_style := g._panel(Color("23122c", 0.95), 4, Color("e879f9"))
+		m_style.border_width_left = 1; m_style.border_width_right = 1
+		m_style.border_width_top = 1; m_style.border_width_bottom = 1
+		m_badge.add_theme_stylebox_override("panel", m_style)
+		m_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var m_lbl := g._label(g.t("ui.card_mastery_badge"), 8, Color("f5d0fe"), HORIZONTAL_ALIGNMENT_CENTER)
+		m_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		m_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		m_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		m_badge.add_child(m_lbl)
+		card_clip.add_child(m_badge)
 
 	# 3. A solid text box from the middle down, like a normal trading card's rules box —
 	# a name/type bar over a dark, near-opaque description panel, not a floating translucent
@@ -2282,6 +2348,10 @@ func _attempt_play_card(hand_index: int, target: int) -> bool:
 	if not g.combat.play(hand_index, target):
 		g._toast(g.t("ui.target_invalid"))
 		return false
+	if not card_id.is_empty():
+		if g.profile.get("card_mastery") == null or not (g.profile.card_mastery is Dictionary):
+			g.profile["card_mastery"] = {}
+		g.profile.card_mastery[card_id] = int(g.profile.card_mastery.get(card_id, 0)) + 1
 	g.play_sfx("card_play")
 	g.selected_card = -1
 	g.resolving = true
@@ -3313,7 +3383,7 @@ func _animate_player_hit(amount: int) -> void:
 	await float_tw.finished
 	popup.queue_free()
 
-func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, font_size: int = 24) -> void:
+func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, font_size: int = 24, is_crit: bool = false) -> void:
 	if g.overlay == null: return
 	var box: Control = null
 	for candidate in g.enemy_boxes:
@@ -3323,14 +3393,71 @@ func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, fo
 	var target_pos := Vector2(195, 220)
 	if box != null:
 		target_pos = box.global_position + Vector2(box.size.x / 2.0, 20.0)
-	_spawn_floating_text(target_pos, text, color, font_size)
+	_spawn_floating_text(target_pos, text, color, font_size, is_crit)
 
 func _spawn_player_floating_text(text: String, color: Color, font_size: int = 24) -> void:
 	if g.overlay == null: return
 	var target_pos := Vector2(195, 480)
 	_spawn_floating_text(target_pos, text, color, font_size)
 
-func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: int = 24) -> void:
+func _trigger_finisher_hitstop() -> void:
+	_shake_screen(12.0, 0.35)
+	if not g.is_inside_tree() or g.get_tree() == null: return
+	var old_scale: float = Engine.time_scale
+	Engine.time_scale = 0.2
+	var tw := g.get_tree().create_tween()
+	tw.tween_interval(0.12 * 0.2)
+	tw.tween_callback(func(): Engine.time_scale = old_scale)
+
+func _show_epiphany_dialog() -> void:
+	if not g.is_inside_tree() or g.overlay == null or g.combat == null: return
+	var existing: Node = g.overlay.get_node_or_null("EpiphanyModal")
+	if existing != null: return
+
+	var modal := g._modal_dialog("EpiphanyModal", func():
+		var ex: Node = g.overlay.get_node_or_null("EpiphanyModal")
+		if ex: ex.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 0)
+	var pstyle := g._panel(Color("101d22"), 14, g.GOLD)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 16
+	pstyle.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	list.add_child(g._label(g.t("ui.epiphany_title"), 16, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	list.add_child(g._label(g.t("ui.epiphany_sub"), 10, Color("d0e8e4"), HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var options := [
+		{"id": "shield", "name": g.t("ui.epiphany_boon_shield"), "color": Color("5ec880")},
+		{"id": "energy", "name": g.t("ui.epiphany_boon_energy"), "color": Color("58b8ff")},
+		{"id": "drain", "name": g.t("ui.epiphany_boon_drain"), "color": Color("f0932b")}
+	]
+
+	for opt in options:
+		var btn: Button = g._button(opt.name, func():
+			if g.combat: g.combat.claim_epiphany(opt.id)
+			modal.queue_free()
+			g._toast(g.t("ui.epiphany_toast"), g.GOLD)
+			show_battle()
+		, opt.color, Vector2(0, 38))
+		btn.name = "EpiphanyOpt_" + opt.id
+		list.add_child(btn)
+
+func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: int = 24, is_crit: bool = false) -> void:
 	if g.overlay == null: return
 	var label := g._label(text, font_size, color, HORIZONTAL_ALIGNMENT_CENTER)
 	label.position = pos - Vector2(60, 18)
@@ -3343,9 +3470,13 @@ func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: i
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.overlay.add_child(label)
 
+	var target_scale: Vector2 = Vector2(1.5, 1.5) if is_crit else Vector2(1.2, 1.2)
+	var x_offset: float = randf_range(-24.0, 24.0) if is_crit else 0.0
 	var tw := label.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(label, "scale", Vector2(1.2, 1.2), g._battle_delay(0.14)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(label, "scale", target_scale, g._battle_delay(0.14)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if is_crit:
+		tw.tween_property(label, "position:x", label.position.x + x_offset, g._battle_delay(0.4))
 	tw.chain().tween_property(label, "scale", Vector2.ONE, g._battle_delay(0.08))
 	tw.chain().tween_interval(g._battle_delay(0.35))
 	tw.chain().tween_property(label, "position:y", label.position.y - 36.0, g._battle_delay(0.35)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -3380,15 +3511,29 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 			g.battle_telemetry.dmg_blocked = int(g.battle_telemetry.get("dmg_blocked", 0)) + abs_amt
 		if not g.last_played_card_id.is_empty():
 			g.battle_telemetry.card_impact[g.last_played_card_id] = int(g.battle_telemetry.card_impact.get(g.last_played_card_id, 0)) + dmg
-		if abs_amt > 0:
+		if dmg == 0 and abs_amt > 0:
+			_spawn_enemy_floating_text(e_idx, g.t("ui.combat_blocked"), Color("67e8f9"), 20)
+		elif abs_amt > 0:
 			_spawn_enemy_floating_text(e_idx, "🛡 −%d" % abs_amt, Color("67e8f9"), 20)
 		if dmg > 0:
+			var is_crit: bool = is_vuln or dmg >= 20
 			var txt: String = "💥 −%d" % dmg if is_vuln else "−%d" % dmg
 			var col: Color = Color("fbbf24") if is_vuln else Color("f87171")
-			var f_size: int = 28 if (is_vuln or dmg >= 20) else 24
-			_spawn_enemy_floating_text(e_idx, txt, col, f_size)
+			var f_size: int = 28 if is_crit else 24
+			_spawn_enemy_floating_text(e_idx, txt, col, f_size, is_crit)
 			if dmg >= 25:
 				_shake_screen(mini(12.0, float(dmg) * 0.35), 0.25)
+	elif kind == "death":
+		var any_alive := false
+		if g.combat and g.combat.state.get("enemies"):
+			for en in g.combat.state.enemies:
+				if int(en.get("health", 0)) > 0:
+					any_alive = true
+					break
+		if not any_alive:
+			_trigger_finisher_hitstop()
+	elif kind == "epiphany_ready":
+		_show_epiphany_dialog()
 	elif kind == "boss_phase":
 		var p_name: String = payload.get("name_en", "") if g.lang == "en" else payload.get("name", "")
 		var p_desc: String = payload.get("desc_en", "") if g.lang == "en" else payload.get("desc", "")

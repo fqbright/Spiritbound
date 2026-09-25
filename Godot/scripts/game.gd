@@ -2067,6 +2067,8 @@ func show_loadout() -> void: _shop_deck_screen.show_loadout()
 func show_reforge_modal(item_id: String) -> void: _shop_deck_screen.show_reforge_modal(item_id)
 func _export_deck_code() -> void: _shop_deck_screen._export_deck_code()
 func _show_import_deck_dialog() -> void: _shop_deck_screen._show_import_deck_dialog()
+func _show_deck_lens_modal() -> void: _shop_deck_screen._show_deck_lens_modal()
+func _show_victory_card_modal() -> void: _rewards_screen._show_victory_card_modal()
 func _show_locked_node_intel(index: int) -> void: _map_screen._show_locked_node_intel(index)
 var SHOP_STOCK_COUNT: int:
 	get: return _shop_deck_screen.SHOP_STOCK_COUNT

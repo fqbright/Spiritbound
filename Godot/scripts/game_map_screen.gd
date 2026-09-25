@@ -1263,6 +1263,33 @@ func _add_stage_pin(index: int) -> void:
 		fork_pill.position = Vector2(point.x - 62.0, badge_bottom_y - pin_size.y - 23.0)
 		g.map_canvas.add_child(fork_pill)
 
+	if not locked and (index % 3 == 1 or kind == "elite"):
+		var affixes := [
+			{"name": "🔥 炎阳", "name_en": "🔥 Solar", "col": Color("f97316")},
+			{"name": "❄ 寒霜", "name_en": "❄ Frost", "col": Color("38bdf8")},
+			{"name": "⚡ 天罡", "name_en": "⚡ Thunder", "col": Color("facc15")},
+			{"name": "🌿 灵潮", "name_en": "🌿 Leyline", "col": Color("4ade80")}
+		]
+		var aff: Dictionary = affixes[index % affixes.size()]
+		var aff_badge := Panel.new()
+		aff_badge.name = "AffixBadge_%d" % index
+		aff_badge.custom_minimum_size = Vector2(46, 14)
+		aff_badge.size = aff_badge.custom_minimum_size
+		var has_branches: bool = branch_options.size() == 2
+		var y_aff_pos: float = badge_bottom_y - pin_size.y - (38.0 if has_branches else 14.0)
+		aff_badge.position = Vector2(point.x - 23.0, y_aff_pos)
+		var aff_style := g._panel(Color("101d22", 0.92), 4, aff["col"])
+		aff_style.border_width_left = 1; aff_style.border_width_right = 1
+		aff_style.border_width_top = 1; aff_style.border_width_bottom = 1
+		aff_badge.add_theme_stylebox_override("panel", aff_style)
+		aff_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var a_lbl := g._label(aff["name_en"] if g.lang == "en" else aff["name"], 8, aff["col"], HORIZONTAL_ALIGNMENT_CENTER)
+		a_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		a_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		a_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		aff_badge.add_child(a_lbl)
+		g.map_canvas.add_child(aff_badge)
+
 	var caption := g._label(g.content.waypoint_name(index % 5, g.lang) if not locked else g.t("ui.locked"), 10, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	# An outline, not a drop shadow: these captions sit directly on map terrain, which ranges from
 	# near-black water to sunlit sand within a single 112px label, so there is no single ink that

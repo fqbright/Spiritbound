@@ -1234,6 +1234,10 @@ func show_deck() -> void:
 	import_btn.name = "DeckImportBtn"
 	import_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action_row.add_child(import_btn)
+	var lens_btn := g._button(g.t("ui.deck_lens_btn"), _show_deck_lens_modal, Color("3b274c"), Vector2(0, 32))
+	lens_btn.name = "BuildLensBtn"
+	lens_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_row.add_child(lens_btn)
 	page.add_child(action_row)
 
 	# Search & Filter Chips (F3)
@@ -1342,6 +1346,116 @@ func show_deck() -> void:
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	confirm.custom_minimum_size = Vector2(0, 48)
 	footer.add_child(confirm)
+
+func _show_deck_lens_modal() -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("DeckLensModal", func():
+		var ex: Node = g.overlay.get_node_or_null("DeckLensModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 0)
+	var pstyle := g._panel(Color("0f1520"), 14, Color("c084fc"))
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 14
+	pstyle.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.deck_lens_title"), 14, Color("e9d5ff")))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("2a1d3b"), Vector2(30, 30))
+	close_btn.name = "DeckLensCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	var total_cards: int = g.profile.deck.size()
+	var costs := {0: 0, 1: 0, 2: 0, 3: 0}
+	var archetypes := {"burn": 0, "shield": 0, "draw": 0, "poison": 0, "strike": 0}
+	var total_cost: int = 0
+
+	for c_id in g.profile.deck:
+		var c: Dictionary = g.content.card(str(c_id))
+		if c.is_empty(): continue
+		var cost: int = int(c.get("cost", 1))
+		total_cost += cost
+		if cost <= 0: costs[0] += 1
+		elif cost == 1: costs[1] += 1
+		elif cost == 2: costs[2] += 1
+		else: costs[3] += 1
+
+		var desc: String = str(c.get("desc", "")) + " " + str(c.get("desc_en", "")) + " " + str(c.get("name", ""))
+		if "灼烧" in desc or "Burn" in desc or "fire" in str(c_id) or "cinder" in str(c_id) or "flame" in str(c_id):
+			archetypes["burn"] += 1
+		if "护盾" in desc or "Shield" in desc or "shield" in str(c_id) or "bastion" in str(c_id) or "defend" in str(c_id):
+			archetypes["shield"] += 1
+		if "抽" in desc or "Draw" in desc or "energy" in desc or "能量" in desc or "draw" in str(c_id):
+			archetypes["draw"] += 1
+		if "中毒" in desc or "Poison" in desc or "decay" in desc or "catalyst" in str(c_id) or "venom" in str(c_id):
+			archetypes["poison"] += 1
+		if str(c.get("kind", "")) == "Attack":
+			archetypes["strike"] += 1
+
+	var avg_cost: float = float(total_cost) / float(maxi(1, total_cards))
+
+	var curve_box := VBoxContainer.new()
+	curve_box.add_child(g._label("⚡ 法力曲线 (Cost Curve): 均费 %.1f" % avg_cost if g.lang != "en" else "⚡ Energy Curve: Avg %.1f" % avg_cost, 11, g.GOLD))
+	var curve_row := HBoxContainer.new()
+	curve_row.add_theme_constant_override("separation", 8)
+	for cost_val in [0, 1, 2, 3]:
+		var cost_label: String = "%d费" % cost_val if cost_val < 3 else "3+费"
+		if g.lang == "en": cost_label = "%d Cost" % cost_val if cost_val < 3 else "3+ Cost"
+		var cnt: int = int(costs.get(cost_val, 0))
+		var col_box := VBoxContainer.new()
+		col_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col_box.add_child(g._label(str(cnt), 12, Color("38bdf8"), HORIZONTAL_ALIGNMENT_CENTER))
+		col_box.add_child(g._label(cost_label, 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		curve_row.add_child(col_box)
+	curve_box.add_child(curve_row)
+	list.add_child(curve_box)
+
+	var arch_box := VBoxContainer.new()
+	arch_box.add_child(g._label("🔮 流派倾向 (Archetypes):", 11, Color("e879f9")))
+	var arch_row := HBoxContainer.new()
+	arch_row.add_theme_constant_override("separation", 6)
+	var tags := [
+		["🔥 焚火", archetypes["burn"], Color("f97316")],
+		["🛡 守御", archetypes["shield"], Color("67e8f9")],
+		["🌀 流转", archetypes["draw"], Color("60a5fa")],
+		["☠ 剧毒", archetypes["poison"], Color("4ade80")]
+	]
+	for t_info in tags:
+		var tag_panel := PanelContainer.new()
+		var t_style := g._panel(Color("161b2e"), 6, t_info[2])
+		t_style.content_margin_left = 6; t_style.content_margin_right = 6
+		t_style.content_margin_top = 4; t_style.content_margin_bottom = 4
+		tag_panel.add_theme_stylebox_override("panel", t_style)
+		tag_panel.add_child(g._label("%s %d" % [t_info[0], t_info[1]], 10, t_info[2]))
+		arch_row.add_child(tag_panel)
+	arch_box.add_child(arch_row)
+	list.add_child(arch_box)
+
+	var advice := "套牌构成均衡，法力曲线顺畅！" if g.lang != "en" else "Balanced build with smooth energy curve!"
+	if avg_cost > 2.0:
+		advice = "均费偏高，建议在营地精简高费卡或增加过牌组件。" if g.lang != "en" else "High average cost! Consider removing heavy cards or drafting draw."
+	elif total_cards < 10:
+		advice = "牌库极度精简，核心循环启动迅速！" if g.lang != "en" else "Hyper-lean deck! Rapid capstone cycling enabled."
+	elif total_cards > 25:
+		advice = "牌库较厚，建议在休息处精简牌组以提高神牌摸率。" if g.lang != "en" else "Thick deck! Trim non-essentials at Rest Sites to draw core cards reliably."
+	list.add_child(g._label("💡 " + advice, 10, Color("fef08a"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
 func _export_deck_code() -> void:
 	var deck_cards: Array = g.profile.deck.duplicate()

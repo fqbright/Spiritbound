@@ -595,6 +595,10 @@ func show_reward_details() -> void:
 		log_btn.name = "ViewBattleLogBtn"
 		page.add_child(log_btn)
 
+	var vic_card_btn := g._button(g.t("ui.victory_card_btn"), _show_victory_card_modal, Color("3b2554"), Vector2(0, 36))
+	vic_card_btn.name = "VictoryCardBtn"
+	page.add_child(vic_card_btn)
+
 	if bool(g.pending_rewards.get("great_boss_kill", false)) or bool(g.pending_rewards.get("abyss_milestone", false)):
 		var recap_btn := g._button(g.t("ui.run_recap_view_btn"), show_run_recap, g.GOLD, Vector2(0, 36))
 		recap_btn.name = "ViewRunRecapBtn"
@@ -1193,8 +1197,93 @@ func show_battle_log() -> void:
 # E2: a composed, screenshot-friendly recap card for a Great Boss kill — pure client-side
 # rendering (no share-sheet API, no server), matching how this game already treats a
 # well-designed screen as "shareable": the player screenshots it themselves. Reuses
-# combat.state.stats exactly like _build_victory_recap_card() does for early stages, since a
-# Great Boss kill happens well past the early-game window that function is gated to.
+func _show_victory_card_modal() -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("VictoryCardModal", func():
+		var ex: Node = g.overlay.get_node_or_null("VictoryCardModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 0)
+	var pstyle := g._panel(Color("0f1722"), 14, g.GOLD)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 16
+	pstyle.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.victory_card_title"), 15, g.GOLD))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("221730"), Vector2(30, 30))
+	close_btn.name = "VictoryCardCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	vbox.add_child(head)
+
+	var encounter: Dictionary = g._current_encounter()
+	var enc_name: String = str(encounter.get("name_en", encounter.name)) if g.lang == "en" else str(encounter.get("name", ""))
+	var title_key: String = str(g.profile.get("prestige_title", "ui.title_master"))
+	var title_str: String = g.t(title_key)
+	var turns_val: int = int(g.battle_telemetry.get("turns", 1))
+	var dmg_val: int = int(g.battle_telemetry.get("dmg_dealt", 0))
+	var blk_val: int = int(g.battle_telemetry.get("dmg_blocked", 0))
+
+	var card_box := PanelContainer.new()
+	var cb_style := g._panel(Color("162433"), 10, Color("38bdf8"))
+	cb_style.content_margin_left = 12
+	cb_style.content_margin_right = 12
+	cb_style.content_margin_top = 10
+	cb_style.content_margin_bottom = 10
+	card_box.add_theme_stylebox_override("panel", cb_style)
+	var cb_vbox := VBoxContainer.new()
+	cb_vbox.add_theme_constant_override("separation", 6)
+	card_box.add_child(cb_vbox)
+
+	cb_vbox.add_child(g._label("👑 %s: %s" % [g.t("ui.title_label"), title_str], 12, Color("e9d5ff")))
+	cb_vbox.add_child(g._label("⚔️ %s" % enc_name, 13, Color("fef08a")))
+	cb_vbox.add_child(g._label("⏱️ %d %s | 💥 %d %s | 🛡️ %d %s" % [
+		turns_val, "回合" if g.lang != "en" else "Turns",
+		dmg_val, "伤害" if g.lang != "en" else "DMG",
+		blk_val, "抵御" if g.lang != "en" else "Shield"
+	], 11, Color("93c5fd")))
+
+	var impacts: Dictionary = g.battle_telemetry.get("card_impact", {})
+	var best_card_id := ""
+	var best_score := 0
+	for cid in impacts:
+		if int(impacts[cid]) > best_score:
+			best_score = int(impacts[cid])
+			best_card_id = cid
+	var mvp_card_name := "—"
+	if not best_card_id.is_empty():
+		var c_data := g.content.card(best_card_id)
+		mvp_card_name = str(c_data.get("name_en", c_data.get("name", ""))) if g.lang == "en" else str(c_data.get("name", ""))
+		cb_vbox.add_child(g._label("★ %s: %s (+%d)" % [g.t("ui.mvp_card"), mvp_card_name, best_score], 11, g.GOLD))
+
+	vbox.add_child(card_box)
+
+	var copy_btn := g._button("📋 " + g.t("ui.share"), func():
+		var share_text := "【Spiritbound 灵境决】道印战报\n称号：%s\n首领战：%s\n战绩：%d回合 | 输出%d | 护盾%d\nMVP神牌：%s" % [
+			title_str, enc_name, turns_val, dmg_val, blk_val, mvp_card_name
+		]
+		g._clipboard_set(share_text)
+		g._toast(g.t("ui.victory_card_copied"), g.GOLD)
+	, g.GOLD, Vector2(0, 36))
+	copy_btn.name = "VictoryCardCopyBtn"
+	vbox.add_child(copy_btn)
+
 func show_run_recap() -> void:
 	g._clear(); g._play_music(false)
 	var page := g._create_page(10)

@@ -1220,8 +1220,130 @@ func show_challenges() -> void:
 # of what used to be one long show_camp() scroll (account, compendium, hero mastery, daily
 # trial, abyss, difficulty, relics — 7 sections stacked vertically) once Milestone 4 pushed it
 # past the point of being scannable in one screen.
+func _prestige_titles_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "PrestigeTitlesSection"
+	var pstyle := g._panel(Color("13182b"), 12, Color("a855f7"))
+	pstyle.content_margin_left = 12
+	pstyle.content_margin_right = 12
+	pstyle.content_margin_top = 10
+	pstyle.content_margin_bottom = 10
+	panel.add_theme_stylebox_override("panel", pstyle)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
+
+	var cur_title_key: String = str(g.profile.get("prestige_title", "ui.title_master"))
+	var cur_title_str: String = g.t(cur_title_key)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.title_label"), 13, Color("d8b4fe")))
+	var cur_tag := PanelContainer.new()
+	var tag_style := g._panel(Color("271d3f"), 6, g.GOLD)
+	tag_style.content_margin_left = 6; tag_style.content_margin_right = 6
+	tag_style.content_margin_top = 2; tag_style.content_margin_bottom = 2
+	cur_tag.add_theme_stylebox_override("panel", tag_style)
+	cur_tag.add_child(g._label("👑 " + cur_title_str, 10, g.GOLD))
+	head.add_child(cur_tag)
+	vbox.add_child(head)
+
+	var title_grid := HBoxContainer.new()
+	title_grid.add_theme_constant_override("separation", 6)
+	var titles := [
+		{"key": "ui.title_master", "req": 0, "color": Color("a855f7")},
+		{"key": "ui.title_flame", "req": 10, "color": Color("f97316")},
+		{"key": "ui.title_frost", "req": 20, "color": Color("38bdf8")},
+		{"key": "ui.title_thunder", "req": 40, "color": Color("facc15")},
+		{"key": "ui.title_abyss", "req": 50, "color": Color("c084fc")}
+	]
+
+	var unl: int = int(g.profile.get("unlocked", 0))
+	for t_info in titles:
+		var is_unlocked: bool = unl >= int(t_info.req)
+		var is_active: bool = cur_title_key == t_info.key
+		var t_name: String = g.t(t_info.key)
+		var on_press := func():
+			if not is_unlocked:
+				g._toast(g.t("ui.locked"), g.EMBER)
+				return
+			g.profile["prestige_title"] = t_info.key
+			SpiritSave.write(g.profile)
+			g._toast(t_name, g.GOLD)
+			show_camp()
+		var btn: Button = g._button(
+			("✓ " + t_name) if is_active else (t_name if is_unlocked else "🔒 " + t_name),
+			on_press,
+			Color("3b2554") if is_active else (Color("1a1f33") if is_unlocked else Color("14161f")),
+			Vector2(0, 30)
+		)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.add_theme_font_size_override("font_size", 9)
+		if is_active:
+			btn.add_theme_color_override("font_color", g.GOLD)
+		title_grid.add_child(btn)
+	vbox.add_child(title_grid)
+	return panel
+
+func _sanctuary_garden_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "SanctuaryGardenSection"
+	var pstyle := g._panel(Color("0f201d"), 12, Color("10b981"))
+	pstyle.content_margin_left = 12
+	pstyle.content_margin_right = 12
+	pstyle.content_margin_top = 10
+	pstyle.content_margin_bottom = 10
+	panel.add_theme_stylebox_override("panel", pstyle)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label("🌿 " + g.t("ui.sanctuary_garden_title"), 13, Color("a7f3d0")))
+	var dust_val: int = int(g.profile.get("card_dust", 0))
+	head.add_child(g._label("✨ %s: %d" % [g.t("ui.card_dust"), dust_val], 10, g.GOLD))
+	vbox.add_child(head)
+
+	var fam_row := HBoxContainer.new()
+	fam_row.add_theme_constant_override("separation", 8)
+	var fox_avatar := g._label("🦊 灵狐", 18, Color("fba542"), HORIZONTAL_ALIGNMENT_CENTER)
+	fox_avatar.name = "FoxAvatar"
+	fam_row.add_child(fox_avatar)
+
+	var on_pet := func():
+		if g.is_inside_tree() and g.get_tree() != null:
+			var tw := fox_avatar.create_tween()
+			tw.tween_property(fox_avatar, "scale", Vector2(1.2, 1.2), 0.15)
+			tw.chain().tween_property(fox_avatar, "scale", Vector2.ONE, 0.15)
+		g.profile.card_dust = int(g.profile.get("card_dust", 0)) + 5
+		SpiritSave.write(g.profile)
+		g._toast(g.t("ui.sanctuary_pet_toast"), Color("fba542"))
+		show_camp()
+
+	var pet_btn := g._button(g.t("ui.sanctuary_pet_btn"), on_pet, Color("2d261e"), Vector2(0, 32))
+	pet_btn.name = "PetFamiliarBtn"
+	pet_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fam_row.add_child(pet_btn)
+
+	var on_harvest := func():
+		g.profile.card_dust = int(g.profile.get("card_dust", 0)) + 20
+		SpiritSave.write(g.profile)
+		g._toast(g.t("ui.sanctuary_harvest_toast"), g.JADE)
+		show_camp()
+
+	var harvest_btn := g._button(g.t("ui.sanctuary_harvest_btn"), on_harvest, Color("14382c"), Vector2(0, 32))
+	harvest_btn.name = "HarvestGardenBtn"
+	harvest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fam_row.add_child(harvest_btn)
+
+	vbox.add_child(fam_row)
+	return panel
+
 func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
+	list.add_child(_prestige_titles_section())
+	list.add_child(_sanctuary_garden_section())
 	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
 

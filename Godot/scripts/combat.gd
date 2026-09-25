@@ -265,6 +265,28 @@ func _execute_intent(enemy_index: int) -> void:
 			elif taken > 0 and int(state.inscr_bonuses.get("thorns", 0)) > 0:
 				_damage_enemy(enemy_index, int(state.inscr_bonuses.get("thorns", 0)), false)
 
+func can_undo() -> bool:
+	return state != null and state.has("undo_state") and not state.undo_state.is_empty() and state.phase == "player"
+
+func undo_last_card() -> bool:
+	if not can_undo(): return false
+	var old_undo: Dictionary = state.undo_state.duplicate(true)
+	state = old_undo
+	state.undo_state = {}
+	return true
+
+func claim_epiphany(boon_id: String) -> void:
+	if state == null: return
+	state.epiphany_claimed = true
+	match boon_id:
+		"shield":
+			state.player.shield += 15
+		"energy":
+			state.energy += 2
+		"drain":
+			state.player["lifesteal_active"] = true
+	emit_signal("event", "epiphany_claimed", {"boon": boon_id})
+
 func play(hand_index: int, target_index := -1) -> bool:
 	if state.phase != "player" or hand_index < 0 or hand_index >= state.hand.size(): return false
 	var instance: Dictionary = state.hand[hand_index]
@@ -289,6 +311,9 @@ func play(hand_index: int, target_index := -1) -> bool:
 		if target_index < 0 or target_index >= state.enemies.size() or state.enemies[target_index].health <= 0: return false
 	else: target_index = -1
 	var rune: String = state.runes.get(card.id, "")
+	var snap := state.duplicate(true)
+	snap.undo_state = {}
+	state.undo_state = snap
 	state.energy -= actual_cost
 	if state.has("stats"):
 		state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
@@ -463,6 +488,13 @@ func play(hand_index: int, target_index := -1) -> bool:
 		state.player.shield += 2
 		emit_signal("event", "spirit_surge_proc", {"draw": 1, "shield": 2})
 
+	if not bool(state.get("epiphany_triggered", false)):
+		var low_hp: bool = state.player.health > 0 and float(state.player.health) <= float(state.player.max_health) * 0.28
+		var same_el: bool = int(state.get("same_element_counter", 0)) >= 3
+		if low_hp or same_el:
+			state.epiphany_triggered = true
+			emit_signal("event", "epiphany_ready", {})
+
 	emit_signal("event","card",{"card":card.id,"rune":rune,"target":target_index,"damage":dealt})
 	return true
 
@@ -575,7 +607,7 @@ func end_turn() -> void:
 		state.energy += 2 + (2 if _has_resonance("res_sun_moon") else 0)
 	var energy_cap: int = int(state.get("modifier", {}).get("energy_cap", 0))
 	if energy_cap > 0: state.energy = mini(state.energy, energy_cap)
-	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""; state.swift_boots_used = false; state.echo_mirror_used = false
+	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""; state.swift_boots_used = false; state.echo_mirror_used = false; state.undo_state = {}
 	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
 	if _has_relic("moonstone"):
 		if state.turn % 2 == 1: turn_draw += 1
