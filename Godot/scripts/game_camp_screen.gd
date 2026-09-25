@@ -3652,6 +3652,19 @@ func _meridian_cultivation_section() -> Control:
 	title_box.add_child(g._label(g.t("ui.meridian_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	top_row.add_child(title_box)
 
+	var unlocked: bool = int(g.profile.unlocked) >= 15
+	if not unlocked:
+		var locked_btn := g._button("🔒 " + g.t("ui.locked"), func():
+			g._toast("🔒 " + g.t("ui.lock_meridians_req"), g.MUTED)
+		, Color("1c282a"), Vector2(100, 34))
+		locked_btn.name = "MeridianOpenBtn"
+		locked_btn.disabled = true
+		locked_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top_row.add_child(locked_btn)
+		vbox.add_child(top_row)
+		vbox.add_child(g._label("🔒 " + g.t("ui.lock_meridians_req"), 10, Color("ff9868"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		return panel
+
 	var open_btn := g._button(g.t("ui.meridian_summary_btn"), func(): show_meridian_modal(), Color("225046"), Vector2(100, 34))
 	open_btn.name = "MeridianOpenBtn"
 	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER

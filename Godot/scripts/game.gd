@@ -1867,9 +1867,71 @@ func _check_feature_unlocks() -> void:
 			_toast(t(str(entry.toast_key)), GOLD)
 			seen.append(id)
 			changed = true
+			if entry.has("title_key") and entry.has("desc_key"):
+				_show_feature_unlock_modal(entry)
 	if changed:
 		profile.feature_unlocks_seen = seen
 		SpiritSave.write(profile)
+
+func _show_feature_unlock_modal(entry: Dictionary) -> void:
+	if overlay == null: return
+	var modal_name := "FeatureUnlockModal_%s" % str(entry.id)
+	var existing: Node = overlay.get_node_or_null(modal_name)
+	if existing:
+		existing.queue_free()
+
+	var modal := _modal_dialog(modal_name, func():
+		var ex: Node = overlay.get_node_or_null(modal_name)
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(310, 0)
+	var panel_style := _panel(Color("09181d"), 18, GOLD)
+	panel_style.content_margin_left = 20
+	panel_style.content_margin_right = 20
+	panel_style.content_margin_top = 22
+	panel_style.content_margin_bottom = 20
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 12)
+	panel.add_child(list)
+
+	list.add_child(_label(t("ui.unlock_congrats"), 11, Color("78e9ff"), HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var title_text: String = t(str(entry.get("title_key", "ui.unlock_congrats")))
+	var title_lbl := _label(title_text, 17, GOLD, HORIZONTAL_ALIGNMENT_CENTER, true)
+	title_lbl.name = "UnlockModalTitle"
+	list.add_child(title_lbl)
+
+	var sep := ColorRect.new()
+	sep.custom_minimum_size = Vector2(0, 1)
+	sep.color = Color(GOLD.r, GOLD.g, GOLD.b, 0.35)
+	list.add_child(sep)
+
+	var desc_text: String = t(str(entry.get("desc_key", "")))
+	var desc_lbl := _label(desc_text, 12, TEXT, HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.custom_minimum_size.y = 52
+	list.add_child(desc_lbl)
+
+	var btn := _button(t("ui.unlock_modal_confirm"), func():
+		var ex: Node = overlay.get_node_or_null(modal_name)
+		if ex:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	, JADE, Vector2(180, 40))
+	btn.name = "UnlockConfirmBtn"
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	list.add_child(btn)
 
 # Thin delegators onto BattleScreen (scripts/game_battle_screen.gd) — see MapScreen's header
 # comment (game_map_screen.gd) for why composition rather than inheritance, and game.gd's own

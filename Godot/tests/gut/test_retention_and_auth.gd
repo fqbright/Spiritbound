@@ -196,3 +196,94 @@ func test_auth_does_not_silently_fake_login_when_unmocked():
 	assert_false(google_res["ok"], "Google sign-in without native singleton does NOT fake success")
 	assert_false(SpiritSave.is_cloud_linked(game.profile), "Profile remains unlinked")
 	game.free()
+
+# ------------------------------------------------------------------------------
+# Progressive Onboarding: 15-Stage Progressive Disclosure & Ceremony Modals
+# ------------------------------------------------------------------------------
+
+func test_progressive_feature_unlock_milestones():
+	var game := _create_game()
+	game.profile.feature_unlocks_seen = []
+	game.profile.unlocked = 0
+
+	# Stage 0: Nothing unlocked yet
+	game._check_feature_unlocks()
+	assert_eq(game.profile.feature_unlocks_seen.size(), 0, "No unlocks at stage 0")
+
+	# Stage 2: Shop unlocks
+	game.profile.unlocked = 2
+	game._check_feature_unlocks()
+	assert_true(game.profile.feature_unlocks_seen.has("shop"), "Shop unlocked at stage 2")
+	var shop_modal: Node = game.overlay.find_child("FeatureUnlockModal_shop", true, false)
+	assert_not_null(shop_modal, "FeatureUnlockModal_shop popup spawned on milestone crossing")
+	var confirm_btn: Button = shop_modal.find_child("UnlockConfirmBtn", true, false) as Button
+	assert_not_null(confirm_btn, "Confirm button exists in unlock modal")
+	confirm_btn.pressed.emit()
+	assert_null(game.overlay.find_child("FeatureUnlockModal_shop", true, false), "Modal dismissed on confirm button click")
+
+	# Stage 5: Camp unlocks
+	game.profile.unlocked = 5
+	game._check_feature_unlocks()
+	assert_true(game.profile.feature_unlocks_seen.has("ch1_features"), "Camp unlocked at stage 5 (Ch1 clear)")
+
+	# Stage 6: Trials & Quests unlock
+	game.profile.unlocked = 6
+	game._check_feature_unlocks()
+	assert_true(game.profile.feature_unlocks_seen.has("trial_and_quests"), "Trials & Quests unlocked at stage 6")
+
+	# Stage 8: Equipment unlocks
+	game.profile.unlocked = 8
+	game._check_feature_unlocks()
+	assert_true(game.profile.feature_unlocks_seen.has("equipment"), "Equipment unlocked at stage 8")
+
+	# Stage 15: Meridians unlock
+	game.profile.unlocked = 15
+	game._check_feature_unlocks()
+	assert_true(game.profile.feature_unlocks_seen.has("meridians_and_codex"), "Meridians unlocked at stage 15 (Ch3 clear)")
+	game.free()
+
+func test_map_dock_and_header_progressive_lock_states():
+	var game := _create_game()
+	game.profile.unlocked = 0
+	game.show_map()
+
+	var camp_btn: Node = game.root.find_child("CampButton", true, false)
+	assert_not_null(camp_btn, "CampButton exists at stage 0 for test compatibility")
+	var camp_icon := camp_btn.get_child(0) as TextureRect
+	assert_true(camp_icon.modulate.a < 0.9, "Camp icon is dimmed when locked at stage 0")
+
+	var quest_btn: Node = game.root.find_child("QuestButton", true, false)
+	assert_not_null(quest_btn, "QuestButton exists at stage 0")
+	var quest_icon := quest_btn.get_child(0) as TextureRect
+	assert_true(quest_icon.modulate.a < 0.9, "Quest icon is dimmed when locked at stage 0")
+
+	# Now test at unlocked = 15 (fully graduated onboarding)
+	game.profile.unlocked = 15
+	game.show_map()
+
+	var camp_btn_u: Node = game.root.find_child("CampButton", true, false)
+	var camp_icon_u := camp_btn_u.get_child(0) as TextureRect
+	assert_true(camp_icon_u.modulate.a >= 0.99, "Camp icon is fully bright when unlocked at stage 15")
+
+	var quest_btn_u: Node = game.root.find_child("QuestButton", true, false)
+	var quest_icon_u := quest_btn_u.get_child(0) as TextureRect
+	assert_true(quest_icon_u.modulate.a >= 0.99, "Quest icon is fully bright when unlocked at stage 15")
+	game.free()
+
+func test_camp_meridian_progressive_lock_states():
+	var game := _create_game()
+	game.profile.unlocked = 5
+	game.show_camp()
+
+	var meridian_btn_locked: Button = game.root.find_child("MeridianOpenBtn", true, false) as Button
+	assert_not_null(meridian_btn_locked, "MeridianOpenBtn exists at stage 5")
+	assert_true(meridian_btn_locked.disabled, "MeridianOpenBtn is disabled before stage 15")
+
+	# Progress to stage 15
+	game.profile.unlocked = 15
+	game.show_camp()
+
+	var meridian_btn_unlocked: Button = game.root.find_child("MeridianOpenBtn", true, false) as Button
+	assert_not_null(meridian_btn_unlocked, "MeridianOpenBtn exists at stage 15")
+	assert_false(meridian_btn_unlocked.disabled, "MeridianOpenBtn is active at stage 15")
+	game.free()

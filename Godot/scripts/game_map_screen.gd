@@ -298,6 +298,7 @@ func show_map() -> void:
 	var btn_size := Vector2(34, 34)
 
 	# Dedicated quest commissions entry point with painted quest icon and claimable notification dot
+	var quest_unlocked: bool = int(g.profile.unlocked) >= 6
 	var btn_quests := g._button("", g.show_quests, Color("17363e"), btn_size)
 	btn_quests.name = "QuestButton"
 	btn_quests.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -309,10 +310,13 @@ func show_map() -> void:
 	quest_icon.size = quest_icon.custom_minimum_size
 	quest_icon.position = (btn_size - quest_icon.size) / 2.0
 	quest_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if not quest_unlocked:
+		quest_icon.modulate = Color(0.4, 0.4, 0.4, 0.5)
 	btn_quests.add_child(quest_icon)
 	if _has_claimable_quest(): _add_notification_dot(btn_quests, btn_size)
 
 	# Dedicated explorer camp entry point with painted camp icon
+	var camp_unlocked: bool = int(g.profile.unlocked) >= 5
 	var btn_camp := g._button("", g.show_camp, Color("17363e"), btn_size)
 	btn_camp.name = "CampButton"
 	btn_camp.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -324,6 +328,8 @@ func show_map() -> void:
 	camp_icon.size = camp_icon.custom_minimum_size
 	camp_icon.position = (btn_size - camp_icon.size) / 2.0
 	camp_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if not camp_unlocked:
+		camp_icon.modulate = Color(0.4, 0.4, 0.4, 0.5)
 	btn_camp.add_child(camp_icon)
 	if _has_claimable_camp_reward(): _add_notification_dot(btn_camp, btn_size)
 
@@ -441,25 +447,36 @@ func show_map() -> void:
 
 	# Each dock slot pairs a fancy rendered icon with the button's own text label pushed onto
 	# a second line beneath it — the leading "\n" reserves that top line for the icon.
+	var shop_unlocked: bool = int(g.profile.unlocked) >= 2
+	var equip_unlocked: bool = int(g.profile.unlocked) >= 8 or g.profile.get("equipment_owned", []).size() > 0
+	var trial_unlocked: bool = int(g.profile.unlocked) >= 6
+
 	var items = [
-		["nav_deck", "ui.deck_btn", g.show_deck],
-		["nav_equip", "ui.equip_btn", g.show_loadout],
-		["nav_trial", "ui.trial_btn", _open_camp_challenges],
-		["nav_shop", "ui.shop_btn", g.show_shop],
-		["nav_next", "ui.next_btn", _next_stage]
+		["nav_deck", "ui.deck_btn", g.show_deck, true, ""],
+		["nav_equip", "ui.equip_btn", g.show_loadout, equip_unlocked, "ui.lock_equip_req"],
+		["nav_trial", "ui.trial_btn", _open_camp_challenges, trial_unlocked, "ui.lock_trial_req"],
+		["nav_shop", "ui.shop_btn", g.show_shop, shop_unlocked, "ui.lock_shop_req"],
+		["nav_next", "ui.next_btn", _next_stage, true, ""]
 	]
 
 	for i in items.size():
 		var item = items[i]
+		var is_unlocked: bool = bool(item[3])
+		var click_action: Callable = item[2]
+		var lock_key: String = str(item[4])
 		var btn := Button.new()
 		if str(item[0]) == "nav_trial":
 			btn.name = "MapTrialShortcutBtn"
-		btn.text = "\n" + g.t(item[1])
 		btn.custom_minimum_size = Vector2(0, 52)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if g.font_cjk: btn.add_theme_font_override("font", g.font_cjk)
 		btn.add_theme_font_size_override("font_size", 11)
-		btn.add_theme_color_override("font_color", g.GOLD)
+		if is_unlocked:
+			btn.text = "\n" + g.t(item[1])
+			btn.add_theme_color_override("font_color", g.GOLD)
+		else:
+			btn.text = "🔒\n" + g.t(item[1])
+			btn.add_theme_color_override("font_color", Color(0.65, 0.65, 0.65, 0.7))
 		var s := StyleBoxEmpty.new()
 		var h := StyleBoxFlat.new(); h.bg_color = Color(1,1,1,0.05); h.corner_radius_bottom_left = 26 if i==0 else 0; h.corner_radius_top_left = 26 if i==0 else 0; h.corner_radius_bottom_right = 26 if i==items.size()-1 else 0; h.corner_radius_top_right = 26 if i==items.size()-1 else 0
 		var p := h.duplicate(); p.bg_color = Color(1,1,1,0.1)
@@ -467,7 +484,12 @@ func show_map() -> void:
 		btn.add_theme_stylebox_override("hover", h)
 		btn.add_theme_stylebox_override("pressed", p)
 		btn.add_theme_stylebox_override("focus", s)
-		btn.pressed.connect(item[2])
+		btn.pressed.connect(func():
+			if is_unlocked or str(item[0]) == "nav_trial":
+				click_action.call()
+			else:
+				g._toast("🔒 " + g.t(lock_key), g.MUTED)
+		)
 
 		var icon := TextureRect.new()
 		var icon_tex: Texture2D = load("res://assets/icons/%s.png" % str(item[0]))
@@ -480,8 +502,8 @@ func show_map() -> void:
 		icon.offset_left = -12.0; icon.offset_right = 12.0
 		icon.offset_top = 6.0; icon.offset_bottom = 30.0
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		if str(item[0]) == "nav_trial" and int(g.profile.unlocked) < 5:
-			icon.modulate = Color(0.5, 0.5, 0.5, 0.6)
+		if not is_unlocked:
+			icon.modulate = Color(0.4, 0.4, 0.4, 0.5)
 		btn.add_child(icon)
 
 		# The deck slot gets the same "something to check in here" red dot whenever the
@@ -501,7 +523,8 @@ func show_map() -> void:
 
 		dock.add_child(btn)
 
-	await g.get_tree().process_frame
+	if g.is_inside_tree() and g.get_tree():
+		await g.get_tree().process_frame
 	if g.map_scroll: g.map_scroll.scroll_vertical = 0
 
 # Quick access to the two challenge modes (Daily Trial, Endless Abyss) — both already live as
@@ -533,7 +556,7 @@ func _add_map_challenge_rail(parent: Control) -> void:
 	rail_holder.add_child(rail)
 
 	var rail_btn_size := Vector2(46, 46)
-	var challenge_unlocked: bool = int(g.profile.unlocked) >= 5
+	var challenge_unlocked: bool = int(g.profile.unlocked) >= 6
 	var challenge_btn := g._button("", _open_camp_challenges, Color("241a10"), rail_btn_size)
 	challenge_btn.name = "MapTrialShortcutBtn"
 	var challenge_icon := TextureRect.new()
