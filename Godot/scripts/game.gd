@@ -89,7 +89,7 @@ var compendium_tab := "cards"
 var camp_tab := "character"
 var shop_tab := "curated"
 var battle_speed := 1.0
-const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0, 3.0]
+const BATTLE_SPEED_OPTIONS: Array[float] = [1.0, 1.5, 2.0, 3.0, 4.0]
 var auto_battle_active: bool = false
 var auto_battle_stats: Dictionary = {"stages_cleared": 0, "gold_earned": 0}
 # Kept deliberately conservative (vs. e.g. iOS Dynamic Type's much wider range) — every screen
@@ -464,9 +464,12 @@ func _ready() -> void:
 	# because nothing ever registered it with PurchaseService.
 	PurchaseService.bootstrap_provider()
 	profile = SpiritSave.load_profile(content)
+	if profile.get("fused_cards") is Dictionary:
+		for fc_id in profile.fused_cards:
+			content.register_custom_card(profile.fused_cards[fc_id])
 	_track_return_days()
 	lang = str(profile.get("language", "zh-Hans"))
-	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 2.0)
+	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 4.0)
 	muted = bool(profile.get("music_muted", false))
 	sfx_muted = bool(profile.get("sfx_muted", false))
 	_build_audio()
@@ -2007,6 +2010,14 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void: _battle_s
 func _leave_battle() -> void: _battle_screen._leave_battle()
 func _show_hold_preview(card: Dictionary) -> void: _battle_screen._show_hold_preview(card)
 func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void: _battle_screen._set_enemy_targeted(enemy_index, targeted)
+func _preview_energy_drain(cost: int) -> void:
+	if _battle_screen: _battle_screen._preview_energy_drain(cost)
+func _clear_energy_drain_preview() -> void:
+	if _battle_screen: _battle_screen._clear_energy_drain_preview()
+func _cast_hero_ultimate(target: int = 0) -> void:
+	if _battle_screen: _battle_screen._cast_hero_ultimate(target)
+func begin_training_dummy_battle() -> void:
+	if _camp_screen: _camp_screen.begin_training_dummy_battle()
 # Computed properties, not plain delegator functions, because ui_smoke.gd reads/advances
 # these as data (game.tutorial_step, game.TUTORIAL_STEPS) rather than calling a method.
 var tutorial_step: int:
@@ -2722,7 +2733,7 @@ func show_settings() -> void:
 	speed_box.add_child(_label(t("ui.settings_speed"), 12, TEXT))
 	var speed_row := HBoxContainer.new()
 	speed_row.add_theme_constant_override("separation", 8)
-	for sp in [1.0, 1.5, 2.0]:
+	for sp in [1.0, 1.5, 2.0, 3.0, 4.0]:
 		var is_active := is_equal_approx(battle_speed, sp)
 		var sp_btn := _button("%.1fx" % sp, func(): _change_battle_speed(sp), Color("d95d37") if is_active else Color("1c333a"), Vector2(0, 36))
 		sp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -1455,6 +1455,9 @@ func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_astral_roots_section())
 	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
+	list.add_child(_training_dummy_section())
+	list.add_child(_hero_skins_section())
+	list.add_child(_hexagram_divination_section())
 
 # "Modes you enter". Four bands, and every mode lives in exactly one of them — the list used to be
 # 13 ungrouped cards where, for example, the leaderboard entry point sat next to a boss gauntlet
@@ -1540,6 +1543,8 @@ func _challenge_companion_row(panels: Array) -> Control:
 # stays here as the one collection view that's about current loadout, not lifetime discovery.
 func _build_camp_collection(list: VBoxContainer) -> void:
 	list.add_child(_compendium_section())
+	list.add_child(_card_fusion_section())
+	list.add_child(_bestiary_section())
 	list.add_child(_relics_section())
 
 func _difficulty_tier_section() -> Control:
@@ -4202,6 +4207,442 @@ func show_meridian_modal() -> void:
 		tab_row.add_child(tab_b)
 
 	refresh_meridian_ui[0].call("ren")
+
+# -----------------------------------------------------------------------------
+# Phase 13: Advanced Systems (Dojo, Skins, Hexagrams, Card Fusion, Bestiary)
+# -----------------------------------------------------------------------------
+
+func begin_training_dummy_battle() -> void:
+	g.in_sandbox = true
+	g.current_stage = 0
+	var seed := g._battle_seed()
+	g.active_modifier = {"is_training_dummy": true}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	var dummy_enc := {"name": "演武木人", "name_en": "Training Dummy", "enemies": ["training_dummy"]}
+	g.combat.create(seed, dummy_enc, g.profile.deck, 999, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+func _training_dummy_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "TrainingDummySection"
+	panel.custom_minimum_size = Vector2(0, 90)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("161a0e"), 12, Color("eab308")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	vbox.add_child(g._label(g.t("ui.training_dummy_title"), 15, Color("fde047"), HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(g._label(g.t("ui.training_dummy_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var enter_btn := g._button(g.t("ui.training_dummy_enter"), begin_training_dummy_battle, Color("713f12"), Vector2(160, 34))
+	enter_btn.name = "TrainingDummyEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	vbox.add_child(enter_btn)
+	return panel
+
+func _hero_skins_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "HeroSkinsSection"
+	panel.custom_minimum_size = Vector2(0, 90)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f191f"), 12, Color("a855f7")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	vbox.add_child(g._label(g.t("ui.skin_selector_title"), 14, Color("c084fc"), HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(g._label(g.t("ui.skin_selector_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var hero_class: String = str(g.profile.get("hero_class", "fox_spirit"))
+	var skins: Array = g.content.HERO_SKINS.get(hero_class, ["default"])
+	var cur_skin: String = str(g.profile.get("hero_skins", {}).get(hero_class, "default"))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	for sk in skins:
+		var skin_id: String = str(sk)
+		var is_equipped: bool = (skin_id == cur_skin)
+		var s_name: String = skin_id
+		if skin_id == "default": s_name = "原生法相" if g.lang != "en" else "Default"
+		elif skin_id == "fox_crimson_nine": s_name = "赤焰九尾" if g.lang != "en" else "Crimson Nine-Tails"
+		elif skin_id == "fox_spirit_bride": s_name = "冥幽灵华" if g.lang != "en" else "Spirit Wraith"
+		elif skin_id == "sentinel_iron_warden": s_name = "玄铁重铠" if g.lang != "en" else "Iron Warden"
+		elif skin_id == "sentinel_celestial_guard": s_name = "天宫金卫" if g.lang != "en" else "Celestial Guard"
+
+		var skin_btn := g._button(("%s (已佩戴)" % s_name if g.lang != "en" else "%s (Active)" % s_name) if is_equipped else s_name, func():
+			if not (g.profile.get("hero_skins") is Dictionary): g.profile["hero_skins"] = {}
+			g.profile.hero_skins[hero_class] = skin_id
+			g.save_game()
+			g.play_sfx("equip")
+			g._toast(g.t("ui.skin_equipped_toast"), g.GOLD)
+			show_camp()
+		, Color("581c87") if is_equipped else Color("1e1b4b"), Vector2(100, 32))
+		skin_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(skin_btn)
+	vbox.add_child(row)
+	return panel
+
+func _hexagram_divination_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "HexagramDivinationSection"
+	panel.custom_minimum_size = Vector2(0, 90)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("16120b"), 12, Color("eab308")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var active_hex: String = str(g.profile.get("active_hexagram", ""))
+	var hex_title: String = g.t("ui.hexagram_title")
+	var h_info: Dictionary = g.content.hexagram(active_hex) if not active_hex.is_empty() else {}
+	if not h_info.is_empty():
+		var h_name: String = str(h_info.get("name_en" if g.lang == "en" else "name_zh", active_hex))
+		var h_desc: String = str(h_info.get("desc_en" if g.lang == "en" else "desc_zh", ""))
+		vbox.add_child(g._label("%s: %s %s" % [hex_title, h_info.get("symbol", "☯"), h_name], 14, Color("facc15"), HORIZONTAL_ALIGNMENT_LEFT))
+		vbox.add_child(g._label(h_desc, 9, Color("fef08a"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	else:
+		vbox.add_child(g._label(hex_title, 14, Color("facc15"), HORIZONTAL_ALIGNMENT_LEFT))
+		vbox.add_child(g._label(g.t("ui.hexagram_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var cast_btn := g._button(g.t("ui.cast_hexagram"), func():
+		var all_hex: Array = g.content.HEXAGRAMS
+		var p_info: Dictionary = all_hex[randi() % all_hex.size()]
+		var picked: String = str(p_info.get("id", "hex_qian"))
+		g.profile["active_hexagram"] = picked
+		g.save_game()
+		g.play_sfx("card_upgrade")
+		var p_name: String = str(p_info.get("name_en" if g.lang == "en" else "name_zh", picked))
+		var p_desc: String = str(p_info.get("desc_en" if g.lang == "en" else "desc_zh", ""))
+		g._toast("☯ %s: %s" % [p_name, p_desc], g.GOLD)
+		show_camp()
+	, Color("854d0e"), Vector2(160, 34))
+	cast_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	vbox.add_child(cast_btn)
+	return panel
+
+func _card_fusion_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "CardFusionSection"
+	panel.custom_minimum_size = Vector2(0, 70)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("101f1c"), 12, Color("06b6d4")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	pad.add_child(row)
+
+	var texts := VBoxContainer.new()
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	texts.add_theme_constant_override("separation", 2)
+	row.add_child(texts)
+
+	texts.add_child(g._label(g.t("ui.card_fusion_title"), 14, Color("67e8f9")))
+	var fused_cnt: int = g.profile.get("fused_cards", {}).size() if (g.profile.get("fused_cards") is Dictionary) else 0
+	texts.add_child(g._label(g.t("ui.card_fusion_sub") + (" (%d)" % fused_cnt), 9, g.MUTED))
+
+	var open_btn := g._button(g.t("ui.card_fusion_open"), show_card_fusion_modal, Color("0e7490"), Vector2(90, 36))
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(open_btn)
+	return panel
+
+func _bestiary_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "BestiarySection"
+	panel.custom_minimum_size = Vector2(0, 70)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("1b1510"), 12, Color("f97316")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	pad.add_child(row)
+
+	var texts := VBoxContainer.new()
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.alignment = BoxContainer.ALIGNMENT_CENTER
+	texts.add_theme_constant_override("separation", 2)
+	row.add_child(texts)
+
+	texts.add_child(g._label(g.t("ui.bestiary_title"), 14, Color("fb923c")))
+	var total_kills: int = 0
+	if g.profile.get("bestiary_kills") is Dictionary:
+		for k in g.profile.bestiary_kills: total_kills += int(g.profile.bestiary_kills[k])
+	texts.add_child(g._label(g.t("ui.bestiary_sub") + (" (%d)" % total_kills), 9, g.MUTED))
+
+	var open_btn := g._button(g.t("ui.bestiary_open"), show_bestiary_modal, Color("9a3412"), Vector2(90, 36))
+	open_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(open_btn)
+	return panel
+
+func show_card_fusion_modal() -> void:
+	var existing: Node = g.overlay.get_node_or_null("CardFusionModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := g._modal_dialog("CardFusionModal", func():
+		var ex: Node = g.overlay.get_node_or_null("CardFusionModal")
+		if ex != null:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 440)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0c1a1f"), 16, Color("06b6d4")))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	pad.add_child(vbox)
+	panel.add_child(pad)
+
+	# Header
+	var hdr := HBoxContainer.new()
+	var title_lbl := g._label(g.t("ui.card_fusion_title"), 16, Color("67e8f9"))
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr.add_child(title_lbl)
+	var close_btn := g._button("✕", func():
+		var ex: Node = g.overlay.get_node_or_null("CardFusionModal")
+		if ex != null: ex.queue_free()
+	, Color("17363e"), Vector2(30, 30))
+	hdr.add_child(close_btn)
+	vbox.add_child(hdr)
+
+	vbox.add_child(g._label(g.t("ui.card_fusion_sub"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var deck: Array = g.profile.get("deck", []).duplicate()
+	if deck.size() < 2:
+		vbox.add_child(g._label("牌组卡牌不足（需至少2张）" if g.lang != "en" else "Need at least 2 cards in deck to fuse.", 12, Color("ef4444"), HORIZONTAL_ALIGNMENT_CENTER))
+		return
+
+	var pick_state: Dictionary = {"c1": -1, "c2": -1}
+	var preview_lbl := g._label(g.t("ui.card_fusion_preview"), 11, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER)
+	var fuse_action_btn: Button
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.custom_minimum_size = Vector2(310, 240)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+
+	var card_list := VBoxContainer.new()
+	card_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card_list.add_theme_constant_override("separation", 6)
+	scroll.add_child(card_list)
+
+	for i in range(deck.size()):
+		var idx: int = i
+		var cid: String = str(deck[idx])
+		var c_data: Dictionary = g.content.card(cid)
+		if c_data.is_empty(): continue
+		var c_name: String = str(c_data.get("name_en" if g.lang == "en" else "name", cid))
+		var c_cost: int = int(c_data.get("cost", 1))
+		var card_btn := g._button("%s (Cost %d)" % [c_name, c_cost], Callable(), Color("132d36"), Vector2(0, 32))
+		card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card_btn.pressed.connect(func():
+			if pick_state.c1 == idx:
+				pick_state.c1 = -1
+			elif pick_state.c2 == idx:
+				pick_state.c2 = -1
+			elif pick_state.c1 == -1:
+				pick_state.c1 = idx
+			elif pick_state.c2 == -1:
+				pick_state.c2 = idx
+			else:
+				pick_state.c1 = idx
+
+			# Update preview
+			if pick_state.c1 >= 0 and pick_state.c2 >= 0 and pick_state.c1 != pick_state.c2:
+				var c1_data: Dictionary = g.content.card(str(deck[pick_state.c1]))
+				var c2_data: Dictionary = g.content.card(str(deck[pick_state.c2]))
+				var fused_name: String = "%s·%s" % [c1_data.get("name", ""), c2_data.get("name", "")]
+				preview_lbl.text = "✦ %s ✦\nCost: %d | DMG: %d | Shield: %d" % [
+					fused_name,
+					mini(int(c1_data.get("cost", 1)), int(c2_data.get("cost", 1))),
+					int(c1_data.get("damage", 0)) + int(c2_data.get("damage", 0)),
+					int(c1_data.get("shield", 0)) + int(c2_data.get("shield", 0))
+				]
+				if fuse_action_btn: fuse_action_btn.disabled = false
+			else:
+				preview_lbl.text = g.t("ui.card_fusion_preview")
+				if fuse_action_btn: fuse_action_btn.disabled = true
+		)
+		card_list.add_child(card_btn)
+
+	vbox.add_child(preview_lbl)
+
+	fuse_action_btn = g._button(g.t("ui.card_fusion_synthesize"), func():
+		if pick_state.c1 >= 0 and pick_state.c2 >= 0 and pick_state.c1 != pick_state.c2:
+			var idx1: int = pick_state.c1
+			var idx2: int = pick_state.c2
+			var c1_id: String = str(deck[idx1])
+			var c2_id: String = str(deck[idx2])
+			var c1_data: Dictionary = g.content.card(c1_id)
+			var c2_data: Dictionary = g.content.card(c2_id)
+
+			var fused_id: String = "fused_%s_%s" % [c1_id, c2_id]
+			var fused_card := {
+				"id": fused_id,
+				"name": "%s·%s" % [c1_data.get("name", ""), c2_data.get("name", "")],
+				"name_en": "%s / %s" % [c1_data.get("name_en", c1_id), c2_data.get("name_en", c2_id)],
+				"cost": mini(int(c1_data.get("cost", 1)), int(c2_data.get("cost", 1))),
+				"kind": c1_data.get("kind", "attack"),
+				"element": "%s_%s" % [c1_data.get("element", "fire"), c2_data.get("element", "metal")],
+				"damage": int(c1_data.get("damage", 0)) + int(c2_data.get("damage", 0)),
+				"shield": int(c1_data.get("shield", 0)) + int(c2_data.get("shield", 0)),
+				"draw": maxi(int(c1_data.get("draw", 0)), int(c2_data.get("draw", 0))),
+				"rarity": "rare",
+				"desc": "%s；%s" % [c1_data.get("desc", ""), c2_data.get("desc", "")],
+				"desc_en": "%s; %s" % [c1_data.get("desc_en", ""), c2_data.get("desc_en", "")]
+			}
+
+			if not (g.profile.get("fused_cards") is Dictionary): g.profile["fused_cards"] = {}
+			g.profile.fused_cards[fused_id] = fused_card
+			g.content.register_custom_card(fused_card)
+
+			# Remove the two consumed cards and add the fused one
+			var remove_indices := [mini(idx1, idx2), maxi(idx1, idx2)]
+			g.profile.deck.remove_at(remove_indices[1])
+			g.profile.deck.remove_at(remove_indices[0])
+			g.profile.deck.append(fused_id)
+			g.save_game()
+
+			g.play_sfx("card_upgrade")
+			g._toast("✦ %s ✦ %s" % [fused_card.name, g.t("ui.card_fusion_success")], g.GOLD)
+			var ex: Node = g.overlay.get_node_or_null("CardFusionModal")
+			if ex != null: ex.queue_free()
+			show_camp()
+	, Color("0891b2"), Vector2(160, 36))
+	fuse_action_btn.disabled = true
+	vbox.add_child(fuse_action_btn)
+
+func show_bestiary_modal() -> void:
+	var existing: Node = g.overlay.get_node_or_null("BestiaryModal")
+	if existing != null:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := g._modal_dialog("BestiaryModal", func():
+		var ex: Node = g.overlay.get_node_or_null("BestiaryModal")
+		if ex != null:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 460)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("16120e"), 16, Color("f97316")))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	pad.add_child(vbox)
+	panel.add_child(pad)
+
+	# Header
+	var hdr := HBoxContainer.new()
+	var title_lbl := g._label(g.t("ui.bestiary_title"), 16, Color("fb923c"))
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr.add_child(title_lbl)
+	var close_btn := g._button("✕", func():
+		var ex: Node = g.overlay.get_node_or_null("BestiaryModal")
+		if ex != null: ex.queue_free()
+	, Color("2d1c16"), Vector2(30, 30))
+	hdr.add_child(close_btn)
+	vbox.add_child(hdr)
+
+	vbox.add_child(g._label(g.t("ui.bestiary_sub"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 6)
+	scroll.add_child(list)
+
+	var kills_dict: Dictionary = g.profile.get("bestiary_kills", {})
+	var enemies: Array = g.content.MONSTER_ROSTER
+
+	# Show first 50 monsters
+	for i in range(mini(enemies.size(), 50)):
+		var en: Dictionary = enemies[i]
+		var en_id: String = str(en.get("id", ""))
+		var en_name: String = str(en.get("name_en" if g.lang == "en" else "name", en_id))
+		var kills: int = int(kills_dict.get(en_id, 0))
+
+		var item_panel := PanelContainer.new()
+		item_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		item_panel.add_theme_stylebox_override("panel", g._panel(Color("221813"), 8, Color("452416")))
+		var m_pad := MarginContainer.new()
+		for s in ["left", "right", "top", "bottom"]: m_pad.add_theme_constant_override("margin_%s" % s, 8)
+		item_panel.add_child(m_pad)
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		m_pad.add_child(row)
+
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation", 2)
+		row.add_child(info)
+
+		info.add_child(g._label(en_name, 12, Color("fed7aa")))
+		var tier_str: String = "Tier %d" % int(en.get("tier", 1))
+		var mastery_str: String = "降妖: %d次" % kills if g.lang != "en" else "Slain: %d" % kills
+		var bonus_str: String = " (+5% DMG)" if kills >= 5 else ""
+		info.add_child(g._label("%s | %s%s" % [tier_str, mastery_str, bonus_str], 9, Color("fb923c") if kills >= 5 else g.MUTED))
+
+		list.add_child(item_panel)
 
 
 

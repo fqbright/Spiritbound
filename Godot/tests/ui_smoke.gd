@@ -38,6 +38,7 @@ func _run() -> void:
 	root.add_child(game)
 	await process_frame
 	game.profile = SpiritSave.defaults(game.content)
+	game.battle_speed = 1.0
 	game.lang = "zh-Hans"
 	await process_frame
 
@@ -1870,7 +1871,7 @@ func _run() -> void:
 	game.show_battle()
 	var speed_btn: Button = game.root.find_child("SpeedToggle", true, false) as Button
 	check(speed_btn != null, "SpeedToggle button exists in battle HUD")
-	# Simulate clicking speed toggle to cycle 1.0 -> 1.5 -> 2.0 -> 3.0 -> 1.0
+	# Simulate clicking speed toggle to cycle 1.0 -> 1.5 -> 2.0 -> 3.0 -> 4.0 -> 1.0
 	game._cycle_speed()
 	check(game.battle_speed == 1.5, "after first click speed is 1.5")
 	game._cycle_speed()
@@ -1878,7 +1879,9 @@ func _run() -> void:
 	game._cycle_speed()
 	check(game.battle_speed == 3.0, "after third click speed is 3.0")
 	game._cycle_speed()
-	check(game.battle_speed == 1.0, "after fourth click speed wraps to 1.0")
+	check(game.battle_speed == 4.0, "after fourth click speed is 4.0")
+	game._cycle_speed()
+	check(game.battle_speed == 1.0, "after fifth click speed wraps to 1.0")
 	check(float(game.profile.get("battle_speed", 0.0)) == 1.0, "battle_speed persists to profile")
 
 	section("== manual pass turn button ==")
@@ -4360,6 +4363,12 @@ func _run() -> void:
 		check(game.battle_speed == 3.0, "speed changed to 3.0x")
 		check(game.auto_battle_active == true, "auto battle remains active after changing to 3.0x")
 		check(speed_btn2.text == "3x", "speed toggle button text updated to 3x in-place")
+		# Change speed to 4.0x during auto-play
+		game._cycle_speed()
+		await process_frame
+		check(game.battle_speed == 4.0, "speed changed to 4.0x")
+		check(game.auto_battle_active == true, "auto battle remains active after changing to 4.0x")
+		check(speed_btn2.text == "4x", "speed toggle button text updated to 4x in-place")
 		# Change speed to 1.0x during auto-play
 		game._cycle_speed()
 		await process_frame

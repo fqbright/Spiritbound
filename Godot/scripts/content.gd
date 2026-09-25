@@ -919,7 +919,14 @@ func _init() -> void:
 	cards = raw.cards
 	_build_encounters()
 
+var custom_cards: Dictionary = {}
+
+func register_custom_card(card_data: Dictionary) -> void:
+	if card_data.has("id"):
+		custom_cards[str(card_data.id)] = card_data
+
 func card(id: String) -> Dictionary:
+	if custom_cards.has(id): return custom_cards[id]
 	for value in cards:
 		if value.id == id: return value
 	return {}
@@ -1953,6 +1960,39 @@ const RANDOM_STORY_EVENTS: Array[Dictionary] = [
 			{"label_zh": "典当法宝（出让 1 件法宝，换取 80 金币）", "label_en": "Pawn Relic (Sacrifice 1 Relic for 80 Gold)", "type": "pawn_relic", "gold_amount": 80},
 			{"label_zh": "太古血契（献祭 15 生命上限，获得 1 张稀有卡牌）", "label_en": "Blood Pact (-15 Max HP, Gain Rare Card)", "type": "blood_pact", "hp_cost": 15},
 			{"label_zh": "明哲保身离去", "label_en": "Decline & Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "immortal_laojun", "icon": "🔥", "color": "f59e0b",
+		"title_zh": "太上老君兜率残炉", "title_en": "Laojun's Crucible",
+		"desc_zh": "云雾缭绕的山崖中矗立着半座八卦紫金残炉，三昧神火仍自虚空中隐隐吞吐。炉畔刻有仙界篆文：'百炼归元，脱胎换骨。'",
+		"desc_en": "A remnant of the mythical Eight-Trigrams Crucible rests in the mist, flickering with eternal celestial flame.",
+		"choices": [
+			{"label_zh": "炼丹淬道（花费 40 金币，强化牌组中 2 张卡牌）", "label_en": "Crucible Smelt (40 Gold: Upgrade 2 Cards)", "type": "upgrade_two", "gold_cost": 40},
+			{"label_zh": "吞服九转仙丹（恢复 30 生命并获得 10 护盾）", "label_en": "Consume Elixir (+30 HP, +10 Shield)", "type": "laojun_heal", "heal_amount": 30},
+			{"label_zh": "躬身敬拜离去", "label_en": "Brave Departure", "type": "leave"}
+		]
+	},
+	{
+		"id": "immortal_mengpo", "icon": "🍵", "color": "a855f7",
+		"title_zh": "忘川孟婆石亭", "title_en": "Meng Po's Pavilion",
+		"desc_zh": "黄泉彼岸花开处，一位老妪在石亭中轻摇陶勺：'来往皆为修道客，前尘何必苦执着。饮下此汤，杂念俱消。'",
+		"desc_en": "Beside crimson equinox flowers, an elder stirs her caldron: 'Drink to forget worldly sorrow and sever mortal shackles.'",
+		"choices": [
+			{"label_zh": "痛饮忘川汤（净化移除牌组中 1 张杂牌）", "label_en": "Drink Oblivion (Purge 1 Card)", "type": "purge"},
+			{"label_zh": "收取幽冥仙露（获得 40 灵尘）", "label_en": "Collect Dew (Gain 40 Dust)", "type": "gain_dust", "dust_amount": 40},
+			{"label_zh": "心如磐石不饮离去", "label_en": "Refuse & Leave", "type": "leave"}
+		]
+	},
+	{
+		"id": "immortal_wukong", "icon": "🐒", "color": "ef4444",
+		"title_zh": "大圣齐天遗迹石台", "title_en": "Monkey King's Stone Dais",
+		"desc_zh": "五行崩摧之处，赫然屹立着一尊斜插大地的铁棒虚影。石台金光灿烂，隐隐回荡着破九天、碎凌霄的桀骜战意。",
+		"desc_en": "A towering phantom of a gold-banded staff pierces the sky, resonating with untamed celestial defiance.",
+		"choices": [
+			{"label_zh": "领悟大圣神通（获得 1 张天阶核心卡牌）", "label_en": "Attune Defiance (Gain Capstone Card)", "type": "gain_capstone"},
+			{"label_zh": "拾取石畔仙桃（恢复 20 生命，获得 30 金币）", "label_en": "Gather Peaches (+20 HP, +30 Gold)", "type": "gain_peaches"},
+			{"label_zh": "昂首阔步离去", "label_en": "Salute & Leave", "type": "leave"}
 		]
 	}
 ]
@@ -3592,6 +3632,30 @@ const UI_TEXT = {
 	"ui.recap_dot_dmg": {"zh-Hans":"引爆: %d", "en":"DoT: %d"},
 	"ui.recap_blocked": {"zh-Hans":"格挡: %d", "en":"Blocked: %d"},
 	"ui.recap_rank": {"zh-Hans":"修道评级: %s", "en":"Dao Rank: %s"},
+	"ui.ultimate_ready": {"zh-Hans":"本命神通·已圆满！", "en":"Ultimate Ready!"},
+	"ui.ultimate_btn": {"zh-Hans":"✦ 神通 ✦", "en":"✦ ULTIMATE ✦"},
+	"ui.speed_4x": {"zh-Hans":"4x 极速", "en":"4x Speed"},
+	"ui.auto_battle_on": {"zh-Hans":"托管演武: 开启", "en":"Auto: ON"},
+	"ui.auto_battle_off": {"zh-Hans":"托管演武: 关闭", "en":"Auto: OFF"},
+	"ui.training_dummy_title": {"zh-Hans":"演武机关木人桩", "en":"Training Dummy Dojo"},
+	"ui.training_dummy_sub": {"zh-Hans":"无消耗无限切磋 · 测试卡组爆发与极限DPS", "en":"Infinite test combat · Measure DPS and combos"},
+	"ui.training_dummy_btn": {"zh-Hans":"木人试炼", "en":"Sparring"},
+	"ui.card_fusion_title": {"zh-Hans":"阴阳造化炉", "en":"Fusion Crucible"},
+	"ui.card_fusion_sub": {"zh-Hans":"两相交汇熔炼双生仙符", "en":"Fuse two cards into a dual-aspect spell"},
+	"ui.card_fusion_btn": {"zh-Hans":"造化熔炉", "en":"Crucible"},
+	"ui.card_fusion_combine": {"zh-Hans":"两仪熔炼 (耗50灵尘)", "en":"Synthesize (50 Dust)"},
+	"ui.bestiary_title": {"zh-Hans":"山海万妖宝鉴", "en":"Monster Bestiary"},
+	"ui.bestiary_sub": {"zh-Hans":"参悟妖魔弱点 · 解锁百兽克制印记", "en":"Inspect demon lore and slayer masteries"},
+	"ui.bestiary_btn": {"zh-Hans":"万妖宝鉴", "en":"Bestiary"},
+	"ui.bestiary_slain_fmt": {"zh-Hans":"已斩杀: %d 尊", "en":"Slain: %d"},
+	"ui.bestiary_mastery_bonus": {"zh-Hans":"斩妖加成: 对该妖兽伤害 +%d%%", "en":"Slayer Mastery: +%d%% DMG"},
+	"ui.skins_title": {"zh-Hans":"幻化法相华服", "en":"Hero Attire & Skins"},
+	"ui.skins_btn": {"zh-Hans":"换装", "en":"Attire"},
+	"ui.hexagram_title": {"zh-Hans":"周易开坛演卦", "en":"Celestial Hexagrams"},
+	"ui.hexagram_draw_btn": {"zh-Hans":"开坛演卦 (获全域律则)", "en":"Cast Hexagram (Run-wide Law)"},
+	"ui.hexagram_active_prefix": {"zh-Hans":"当前天道律则: ", "en":"Active Hexagram Law: "},
+	"ui.energy_insufficient": {"zh-Hans":"法力不足！", "en":"Not Enough Qi!"},
+	"ui.boss_weakpoint_broken": {"zh-Hans":"妖核崩碎！陷入瘫痪！", "en":"CORE SHATTERED! Stunned!"},
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
@@ -3694,3 +3758,133 @@ func rune_name(rune: Dictionary, language := "zh-Hans") -> String:
 func rune_detail(rune: Dictionary, language := "zh-Hans") -> String:
 	if language == "en": return rune.get("detail_en", rune.get("detail", ""))
 	return rune.get("detail", "")
+
+const HERO_ULTIMATES = {
+	"fox_spirit": {
+		"id": "ult_fox_spirit",
+		"name_zh": "九尾天狐劫",
+		"name_en": "Nine-Tailed Calamity",
+		"desc_zh": "汇聚周天灵气，对全体敌方造成 28 点穿透神圣伤害，附加 3 层灼烧并迷魂眩晕 1 回合。",
+		"desc_en": "Unleash celestial fox fire: deal 28 piercing true damage to all enemies, inflict 3 Burn and 1 turn Stun.",
+		"damage": 28,
+		"burn": 3,
+		"stun": 1,
+		"shield": 0,
+		"color": "e11d48"
+	},
+	"ironclad_sentinel": {
+		"id": "ult_ironclad_sentinel",
+		"name_zh": "万钧神盾击",
+		"name_en": "Titan Slam",
+		"desc_zh": "坚如磐石，立即获得 25 点重甲护盾，并对目标造成当前总护盾值 200% 的灭顶重击。",
+		"desc_en": "Gain 25 Bastion Shield, then slam target for 200% of your total current Shield value.",
+		"damage_shield_mult": 2.0,
+		"shield": 25,
+		"burn": 0,
+		"stun": 0,
+		"color": "f59e0b"
+	}
+}
+
+const HEXAGRAMS = [
+	{
+		"id": "hex_qian", "symbol": "☰", "name_zh": "乾为天", "name_en": "The Creative",
+		"desc_zh": "天行健，君子以自强不息。首回合打出的首张手牌法力消耗 -1。",
+		"desc_en": "Heaven in motion. First card played in Turn 1 costs -1 Energy."
+	},
+	{
+		"id": "hex_kun", "symbol": "☷", "name_zh": "坤为地", "name_en": "The Receptive",
+		"desc_zh": "地势坤，君子以厚德载物。每回合结束保留最多 8 点护盾不消散。",
+		"desc_en": "Earth receptivity. Retain up to 8 Shield between turns."
+	},
+	{
+		"id": "hex_kan", "symbol": "☵", "name_zh": "坎为水", "name_en": "The Abysmal Water",
+		"desc_zh": "水流不滞。每回合首次打出水或冰属性卡牌时，额外抽 1 张牌。",
+		"desc_en": "Living water. Draw 1 extra card when first playing a Frost card each turn."
+	},
+	{
+		"id": "hex_li", "symbol": "☲", "name_zh": "离为火", "name_en": "The Clinging Fire",
+		"desc_zh": "日月丽天。敌方受到的所有灼烧引爆伤害额外提升 35%。",
+		"desc_en": "Luminous flame. All Burn tick and trigger damage increased by 35%."
+	},
+	{
+		"id": "hex_zhen", "symbol": "☳", "name_zh": "震为雷", "name_en": "The Arousing Thunder",
+		"desc_zh": "震惊百里。前两回合我方所有直接攻击伤害 +3。",
+		"desc_en": "Shock of thunder. All direct attack damage increased by +3 in Turns 1 & 2."
+	},
+	{
+		"id": "hex_dui", "symbol": "☱", "name_zh": "兑为泽", "name_en": "The Joyous Lake",
+		"desc_zh": "丽泽抚物。战役通关结算获得的金币与灵尘提升 20%。",
+		"desc_en": "Joyous harvest. Gold and Spirit Dust battle spoils increased by 20%."
+	},
+	{
+		"id": "hex_xun", "symbol": "☴", "name_zh": "巽为风", "name_en": "The Gentle Wind",
+		"desc_zh": "随风巽顺。每场战斗起始手牌额外多抽 1 张。",
+		"desc_en": "Gentle breeze. Start every battle with +1 extra card in opening hand."
+	},
+	{
+		"id": "hex_gen", "symbol": "☶", "name_zh": "艮为山", "name_en": "Keeping Still Mountain",
+		"desc_zh": "安如泰山。主角受到的直接生命伤害永久减免 2 点（最低为 1）。",
+		"desc_en": "Still as a mountain. Reduce incoming unblocked HP damage by 2 (min 1)."
+	}
+]
+
+func hexagram(id: String) -> Dictionary:
+	for h in HEXAGRAMS:
+		if h.id == id: return h
+	return {}
+
+const MUTATION_AFFIXES = {
+	"mut_thorns": {
+		"id": "mut_thorns", "badge": "反震", "badge_en": "Thorns", "color": "f97316",
+		"desc_zh": "受到直接攻击时，反弹 2 点真实伤害给攻击者。",
+		"desc_en": "Reflects 2 true damage back to attacker on direct hit."
+	},
+	"mut_resurrection": {
+		"id": "mut_resurrection", "badge": "涅槃", "badge_en": "Revive", "color": "e11d48",
+		"desc_zh": "首次生命值降至0时，吸收天地死气以 30% 生命值复活一次。",
+		"desc_en": "First time reaching 0 HP, resurrects once with 30% Max HP."
+	},
+	"mut_vampiric": {
+		"id": "mut_vampiric", "badge": "嗜血", "badge_en": "Vampiric", "color": "dc2626",
+		"desc_zh": "直接命中主角生命时，吸取造成伤害的 50% 恢复自身生命。",
+		"desc_en": "Heals for 50% of unblocked damage dealt to player HP."
+	},
+	"mut_swift": {
+		"id": "mut_swift", "badge": "疾袭", "badge_en": "Haste", "color": "38bdf8",
+		"desc_zh": "开局获得迅捷冲势，首回合意图伤害提升 4 点。",
+		"desc_en": "Surges at combat start: +4 damage to all Turn 1 attacks."
+	}
+}
+
+const CARD_AFFIXES = {
+	"affix_swift": {
+		"id": "affix_swift", "prefix_zh": "迅捷·", "prefix_en": "Swift ",
+		"desc_zh": "首回合打出消耗 0 点能量", "desc_en": "Costs 0 Energy on Turn 1"
+	},
+	"affix_echo": {
+		"id": "affix_echo", "prefix_zh": "回响·", "prefix_en": "Echoing ",
+		"desc_zh": "打出后将一张消耗为0的虚妄幻影牌洗入抽牌堆", "desc_en": "Add 0-cost ephemeral copy to draw pile on play"
+	},
+	"affix_leech": {
+		"id": "affix_leech", "prefix_zh": "嗜血·", "prefix_en": "Bloodthirsty ",
+		"desc_zh": "若击杀敌方目标，恢复 4 点生命值", "desc_en": "Heal 4 HP if this card slays a target"
+	},
+	"affix_guard": {
+		"id": "affix_guard", "prefix_zh": "御灵·", "prefix_en": "Warded ",
+		"desc_zh": "打出时额外获得 4 点坚木护盾", "desc_en": "Gain 4 bonus Shield when played"
+	}
+}
+
+const HERO_SKINS = {
+	"fox_spirit": [
+		{"id": "default", "name_zh": "初入仙途", "name_en": "Spirit Novice", "color": "e2e8f0"},
+		{"id": "moon_shadow", "name_zh": "广寒月影", "name_en": "Moonlit Shadow", "color": "38bdf8"},
+		{"id": "nether_flame", "name_zh": "九幽赤炎", "name_en": "Nether Flame", "color": "f43f5e"}
+	],
+	"ironclad_sentinel": [
+		{"id": "default", "name_zh": "镇山石甲", "name_en": "Mountain Aegis", "color": "e2e8f0"},
+		{"id": "golden_radiance", "name_zh": "玄金战铠", "name_en": "Golden Splendor", "color": "fbbf24"},
+		{"id": "asura_reaper", "name_zh": "黑曜魔相", "name_en": "Obsidian Asura", "color": "a855f7"}
+	]
+}

@@ -1062,6 +1062,47 @@ func show_event(index: int, kind: String) -> void:
 						_mark_stage_event_claimed(index)
 						SpiritSave.write(g.profile)
 						g.begin_battle(index)
+					"upgrade_two":
+						var g_cost: int = int(choice.get("gold_cost", 40))
+						if int(g.profile.get("gold", 0)) < g_cost:
+							g._toast(g.t("ui.shop_need_gold"), g.EMBER)
+							return
+						g.profile.gold = int(g.profile.get("gold", 0)) - g_cost
+						g.show_deck_upgrade(func(): show_event(index, "event"), func():
+							_mark_stage_event_claimed(index)
+							g.begin_battle(index)
+						)
+					"laojun_heal":
+						var heal_val: int = int(choice.get("heal_amount", 30))
+						g.profile.health = mini(60, int(g.profile.get("health", 60)) + heal_val)
+						g._toast("吞服九转仙丹！恢复 %d 生命！" % heal_val if g.lang == "zh-Hans" else "Consumed Elixir! Healed %d HP!" % heal_val, g.JADE)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"gain_dust":
+						var d_amt: int = int(choice.get("dust_amount", 40))
+						g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + d_amt
+						g._toast("获得 %d 灵尘！" % d_amt if g.lang == "zh-Hans" else "Gained %d Spirit Dust!" % d_amt, g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"gain_capstone":
+						var capstones: Array = ["samadhi_fire", "spirit_surge", "shield_slam", "bastion_form", "thousand_blades", "shadow_clone", "catalyst", "blood_pact"]
+						var picked_cap: String = capstones[randi() % capstones.size()]
+						g.profile.deck.append(picked_cap)
+						var c_info: Dictionary = g.content.card(picked_cap)
+						var c_title: String = str(c_info.get("zh", picked_cap) if g.lang == "zh-Hans" else c_info.get("en", picked_cap))
+						g._toast("领悟天阶大圣神技：%s！" % c_title if g.lang == "zh-Hans" else "Attuned Capstone Spell: %s!" % c_title, g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
+					"gain_peaches":
+						g.profile.health = mini(60, int(g.profile.get("health", 60)) + 20)
+						g.profile.gold = int(g.profile.get("gold", 0)) + 30
+						g._toast("食仙桃，得造化！+20 HP, +30 金币！" if g.lang == "zh-Hans" else "Celestial Peaches! +20 HP, +30 Gold!", g.GOLD)
+						_mark_stage_event_claimed(index)
+						SpiritSave.write(g.profile)
+						g.begin_battle(index)
 					_:
 						_mark_stage_event_claimed(index)
 						SpiritSave.write(g.profile)

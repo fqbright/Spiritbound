@@ -113,8 +113,10 @@ func _on_drag(local_pos: Vector2) -> void:
 	if is_dragging:
 		if current_tween: current_tween.kill()
 		global_position = cur_global - Vector2(custom_minimum_size.x / 2.0, custom_minimum_size.y / 2.0)
-		rotation = 0.0
+		rotation = clampf(delta.x * 0.002, -0.18, 0.18)
 		scale = Vector2(1.12, 1.12)
+		if game and game.has_method("_preview_energy_drain"):
+			game._preview_energy_drain(int(card_data.get("cost", 0)))
 		target_enemy_idx = -1
 		# A card that acts on you cannot be aimed at an enemy, so it never hovers one.
 		if game and game._card_target_mode(card_data) == "enemy":
@@ -139,6 +141,8 @@ func _on_touch_up() -> void:
 	is_held = false
 	preview_index = -1
 	if game:
+		if game.has_method("_clear_energy_drain_preview"):
+			game._clear_energy_drain_preview()
 		game._clear_damage_preview()
 		game._clear_valid_targets()
 		game._show_cancel_zone(false)

@@ -1252,9 +1252,24 @@ func _add_hand(page: VBoxContainer) -> void:
 	orb_stack.add_theme_constant_override("separation", -3)
 	orb_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	orb.add_child(orb_stack)
-	orb_stack.add_child(g._label(str(int(g.combat.state.energy)), 20, Color("cdf1ff"), HORIZONTAL_ALIGNMENT_CENTER))
+	var energy_lbl := g._label(str(int(g.combat.state.energy)), 20, Color("cdf1ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	energy_lbl.name = "EnergyValueLabel"
+	orb_stack.add_child(energy_lbl)
 	orb_stack.add_child(g._label(g.t("ui.energy_label"), 8, Color("8fd9f2"), HORIZONTAL_ALIGNMENT_CENTER))
 	status.add_child(orb)
+
+	# Phase 13: Hero Ultimate Qi Meter Button
+	var qi_val: int = int(g.combat.state.get("qi_gauge", 0)) if g.combat else 0
+	var can_ult: bool = g.combat.can_cast_ultimate() if g.combat else false
+	var ult_btn := g._button(g.t("ui.cast_ultimate") if can_ult else "⚡%d%%" % qi_val, func():
+		if g.combat and g.combat.can_cast_ultimate():
+			_cast_hero_ultimate(0)
+	, Color("8c4f10") if can_ult else Color("16242c"), Vector2(60, 44))
+	ult_btn.name = "UltimateQiMeter"
+	ult_btn.tooltip_text = g.t("ui.ultimate_ready") if can_ult else g.t("ui.ultimate_tooltip")
+	if can_ult:
+		ult_btn.add_theme_color_override("font_color", Color("fff5a0"))
+	status.add_child(ult_btn)
 
 	var discard_chip := _pile_chip(g.combat.state.discard.size(), g.t("ui.discard_pile"), Color("a8b2b5"), func(): show_pile_inspector("ui.pile_discard_title", g.combat.state.discard))
 	discard_chip.name = "DiscardPileChip"
@@ -2359,8 +2374,108 @@ func _pile_card_tile(card: Dictionary) -> Control:
 	desc.custom_minimum_size.y = 48
 	desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stack.add_child(desc)
-
 	return tile
+
+func _preview_energy_drain(cost: int) -> void:
+	if not is_instance_valid(g) or g.combat == null:
+		return
+	var root: Control = g.get_node_or_null("BattleRoot")
+	if not root:
+		return
+	var lbl: Label = root.find_child("EnergyValueLabel", true, false) as Label
+	if not lbl:
+		return
+	var cur: int = int(g.combat.state.get("energy", 0))
+	var remaining: int = cur - cost
+	if remaining < 0:
+		lbl.text = "%d" % remaining
+		lbl.modulate = Color("ff6363")
+	else:
+		lbl.text = "%d->%d" % [cur, remaining]
+		lbl.modulate = Color("ffd24d")
+
+func _clear_energy_drain_preview() -> void:
+	if not is_instance_valid(g) or g.combat == null:
+		return
+	var root: Control = g.get_node_or_null("BattleRoot")
+	if not root:
+		return
+	var lbl: Label = root.find_child("EnergyValueLabel", true, false) as Label
+	if not lbl:
+		return
+	lbl.text = str(int(g.combat.state.get("energy", 0)))
+	lbl.modulate = Color.WHITE
+
+func _spawn_radial_shockwave(center_pos: Vector2, wave_color: Color = Color("ffd700")) -> void:
+	if g.overlay == null: return
+	var wave := Control.new()
+	wave.position = center_pos
+	wave.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wave.z_index = 400
+	var current_radius: Array[float] = [10.0]
+	var current_alpha: Array[float] = [1.0]
+	wave.draw.connect(func():
+		var col := wave_color
+		col.a = current_alpha[0]
+		wave.draw_arc(Vector2.ZERO, current_radius[0], 0.0, TAU, 48, col, 6.0, true)
+	)
+	g.overlay.add_child(wave)
+	var tw := wave.create_tween().set_parallel(true)
+	tw.tween_method(func(r: float):
+		current_radius[0] = r
+		wave.queue_redraw()
+	, 10.0, 360.0, g._battle_delay(0.4)).set_trans(Tween.TRANS_CIRC).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(a: float):
+		current_alpha[0] = a
+		wave.queue_redraw()
+	, 1.0, 0.0, g._battle_delay(0.4)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(wave.queue_free)
+	_shake_screen(6.0, 0.2)
+
+func _spawn_ultimate_cinematic(hero_class: String, ult_name: String) -> void:
+	if g.overlay == null: return
+	var cinem := Panel.new()
+	cinem.name = "UltimateCinematic"
+	cinem.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cinem.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cinem.z_index = 500
+	var cinem_style := StyleBoxFlat.new()
+	cinem_style.bg_color = Color(0.0, 0.0, 0.0, 0.65)
+	cinem.add_theme_stylebox_override("panel", cinem_style)
+
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 8)
+	cinem.add_child(vbox)
+
+	var title_lbl := g._label(g.t("ui.ultimate_ready") if g.lang == "en" else "✦ 绝技觉醒 ✦", 20, Color("facc15"), HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(title_lbl)
+	var ult_lbl := g._label(ult_name, 32, Color("fff1b8"), HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(ult_lbl)
+
+	g.overlay.add_child(cinem)
+	_shake_screen(12.0, 0.4)
+	_spawn_radial_shockwave(Vector2(640, 360), Color("facc15"))
+	g.play_sfx("boss_phase2")
+	g._haptic("heavy")
+
+	var tw := cinem.create_tween()
+	cinem.modulate.a = 0.0
+	tw.tween_property(cinem, "modulate:a", 1.0, g._battle_delay(0.2))
+	tw.tween_interval(g._battle_delay(0.5))
+	tw.tween_property(cinem, "modulate:a", 0.0, g._battle_delay(0.25))
+	tw.tween_callback(cinem.queue_free)
+
+func _cast_hero_ultimate(target_index: int = 0) -> void:
+	if g.combat == null or not g.combat.can_cast_ultimate():
+		return
+	var hero_class: String = str(g.combat.state.get("hero_class", "fox_spirit"))
+	var ult_info: Dictionary = g.content.HERO_ULTIMATES.get(hero_class, {})
+	var ult_name: String = str(ult_info.get("name_en" if g.lang == "en" else "name", "Ultimate"))
+	_spawn_ultimate_cinematic(hero_class, ult_name)
+	g.combat.cast_ultimate(target_index)
+	show_battle()
 
 func _shake_screen(intensity: float, duration := 0.24) -> void:
 	if g.root == null: return
@@ -2442,6 +2557,12 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	var session: int = g.battle_session
 	_dismiss_first_card_drag_hint()
 	g.last_played_card_id = str(card.get("id", ""))
+
+	# Shockwave on high-cost / capstone cards (Phase 13)
+	if int(card.get("cost", 0)) >= 3 or str(card.get("rarity", "")) in ["rare", "capstone", "legendary"]:
+		var p_node: Node2D = g.get_tree().root.find_child("PlayerSprite", true, false) as Node2D
+		var p_pos: Vector2 = p_node.global_position if p_node and is_instance_valid(p_node) else Vector2(200, 360)
+		_spawn_radial_shockwave(p_pos, Color("f59e0b") if card.get("rarity") in ["capstone", "legendary"] else Color("38bdf8"))
 
 	# 0. The just-played card flies off to the discard pile — fire-and-forget, so it plays
 	# out alongside everything below rather than delaying it.
@@ -2949,6 +3070,11 @@ func _maybe_step_auto_battle() -> void:
 	auto_stepping = false
 	if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
 		return
+	if g.combat.can_cast_ultimate():
+		_cast_hero_ultimate(0)
+		await g.get_tree().create_timer(g._battle_delay(0.20)).timeout
+		if not g.auto_battle_active or g.combat == null or g.combat.state.phase != "player" or g.resolving:
+			return
 	var decision: Dictionary = g.combat.ai_best_play()
 	var hand_idx: int = int(decision.get("hand_index", -1))
 	var target_idx: int = int(decision.get("target_index", -1))
@@ -3612,6 +3738,12 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	elif kind == "player_burn": g._toast("♨ −%d" % payload.amount, Color("ff9868"))
 	elif kind == "thorns": g._toast(g.tf("ui.thorns_toast", payload.amount), Color("ff8a8a"))
 	elif kind == "revive": g._toast(g.tf("ui.revive_toast", payload.amount),Color("9bffd3"))
+	elif kind == "ultimate_cast": g._toast("✦ %s ✦" % payload.get("name", "Ultimate"), Color("ffd700"))
+	elif kind == "boss_weakpoint_broken":
+		_shake_screen(14.0, 0.4)
+		g.play_sfx("attack_heavy")
+		_spawn_enemy_floating_text(int(payload.get("enemy", 0)), g.t("ui.boss_weakpoint_broken"), Color("ef4444"), 32, true)
+		g._toast(g.t("ui.boss_weakpoint_broken"), Color("f97316"))
 	elif kind == "equipment":
 		var item := g.content.equipment(payload.id); if not item.is_empty(): g._toast("%s %s" % [item.icon, g._equip_name(item)],g.GOLD)
 	elif kind == "card":

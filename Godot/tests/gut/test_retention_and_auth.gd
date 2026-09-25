@@ -154,7 +154,7 @@ func test_leaderboard_deck_inspector_opens_modal():
 
 func test_battle_speed_cycling_1x_2x_3x():
 	var game := _create_game()
-	assert_eq(SpiritGame.BATTLE_SPEED_OPTIONS, [1.0, 1.5, 2.0, 3.0], "BATTLE_SPEED_OPTIONS includes 1.0, 1.5, 2.0, 3.0")
+	assert_eq(SpiritGame.BATTLE_SPEED_OPTIONS, [1.0, 1.5, 2.0, 3.0, 4.0], "BATTLE_SPEED_OPTIONS includes 1.0, 1.5, 2.0, 3.0, 4.0")
 	
 	game.battle_speed = 1.0
 	game._cycle_speed()
@@ -165,9 +165,12 @@ func test_battle_speed_cycling_1x_2x_3x():
 	
 	game._cycle_speed()
 	assert_eq(game.battle_speed, 3.0, "2.0x cycles to 3.0x")
+
+	game._cycle_speed()
+	assert_eq(game.battle_speed, 4.0, "3.0x cycles to 4.0x")
 	
 	game._cycle_speed()
-	assert_eq(game.battle_speed, 1.0, "3.0x cycles back to 1.0x")
+	assert_eq(game.battle_speed, 1.0, "4.0x cycles back to 1.0x")
 	game.free()
 
 # ------------------------------------------------------------------------------
@@ -648,6 +651,86 @@ func test_phase12_black_market_event_choices():
 			assert_true(types.has("blood_pact"), "Black market has blood_pact choice")
 			break
 	assert_true(found_black_market, "Black market random story event exists")
+
+# ------------------------------------------------------------------------------
+# Phase 13: Advanced Systems (Ultimates, Affixes, Hexagrams, Mutations, Dummy)
+# ------------------------------------------------------------------------------
+
+func test_phase13_hero_ultimates_and_qi_gauge():
+	var test_combat := SpiritCombat.new(content)
+	test_combat.create(42, content.encounters[0], ["strike", "defend"], 60, {}, [], {}, {}, [], {}, {}, {}, {})
+	test_combat.state.hero_class = "fox_spirit"
+	test_combat.state.qi_gauge = 0
+
+	assert_false(test_combat.can_cast_ultimate(), "Cannot cast ultimate at 0 Qi")
+	test_combat.state.qi_gauge = 100
+	assert_true(test_combat.can_cast_ultimate(), "Can cast ultimate at 100 Qi")
+
+	var initial_hp: int = int(test_combat.state.enemies[0].health)
+	var cast_success: bool = test_combat.cast_ultimate(0)
+	assert_true(cast_success, "Ultimate cast succeeded")
+	assert_eq(int(test_combat.state.qi_gauge), 0, "Qi gauge reset to 0 after cast")
+	assert_lt(int(test_combat.state.enemies[0].health), initial_hp, "Ultimate dealt damage to enemy")
+
+func test_phase13_card_affixes():
+	var test_combat := SpiritCombat.new(content)
+	test_combat.create(42, content.encounters[0], ["strike", "defend"], 60, {}, [], {}, {}, [], {}, {}, {}, {})
+	test_combat.state.card_affixes = {"strike": "affix_guard"}
+	test_combat.state.hand = [{"card_id": "strike", "cost": 1}]
+	test_combat.state.energy = 3
+	test_combat.state.player.shield = 0
+
+	var played := test_combat.play(0, 0)
+	assert_true(played, "Played strike with affix_guard")
+	assert_gte(int(test_combat.state.player.shield), 4, "affix_guard granted shield")
+
+func test_phase13_hexagram_mechanics():
+	# Test Hex Qian (First card on Turn 1 costs -1 Energy)
+	var test_combat := SpiritCombat.new(content)
+	test_combat.create(42, content.encounters[0], ["strike"], 60, {}, [], {}, {"active_hexagram": "hex_qian"}, [], {}, {}, {}, {})
+	assert_eq(test_combat.state.active_hexagram, "hex_qian", "Hex Qian active")
+	assert_true(bool(test_combat.state.hex_qian_ready), "Hex Qian ready on turn 1")
+
+	# Test Hex Kun (Retain up to 8 shield between turns)
+	var test_combat_kun := SpiritCombat.new(content)
+	test_combat_kun.create(42, content.encounters[0], ["strike"], 60, {}, [], {}, {"active_hexagram": "hex_kun"}, [], {}, {}, {}, {})
+	test_combat_kun.state.player.shield = 15
+	test_combat_kun.state.phase = "player"
+	test_combat_kun.end_turn()
+	assert_eq(int(test_combat_kun.state.player.shield), 8, "Hex Kun retained 8 shield")
+
+func test_phase13_mutations_and_dummy():
+	# Test Boss Mutation: mut_thorns
+	var test_combat := SpiritCombat.new(content)
+	test_combat.create(42, content.encounters[0], ["strike"], 60, {}, [], {}, {}, [], {}, {}, {}, {})
+	test_combat.state.enemies[0]["mutation"] = "mut_thorns"
+	test_combat.state.player.health = 50
+	test_combat.state.player.shield = 0
+	test_combat.state.hand = [{"card_id": "strike", "cost": 1}]
+	test_combat.play(0, 0)
+	assert_eq(int(test_combat.state.player.health), 48, "mut_thorns reflected 2 damage")
+
+	# Test Training Dummy
+	var test_dummy := SpiritCombat.new(content)
+	test_dummy.create(42, content.encounters[0], ["strike"], 60, {}, [], {}, {"is_training_dummy": true}, [], {}, {}, {}, {})
+	assert_eq(int(test_dummy.state.enemies[0].health), 99999, "Training Dummy has 99999 HP")
+
+func test_phase13_wandering_immortals_and_save_schema():
+	var found_immortals := 0
+	for ev in SpiritContent.RANDOM_STORY_EVENTS:
+		var eid: String = str(ev.get("id", ""))
+		if eid in ["immortal_laojun", "immortal_mengpo", "immortal_wukong"]:
+			found_immortals += 1
+	assert_eq(found_immortals, 3, "All 3 Wandering Immortal events defined")
+
+	var game := _create_game()
+	assert_true(game.profile.has("card_affixes"), "Profile has card_affixes")
+	assert_true(game.profile.has("fused_cards"), "Profile has fused_cards")
+	assert_true(game.profile.has("active_hexagram"), "Profile has active_hexagram")
+	assert_true(game.profile.has("bestiary_kills"), "Profile has bestiary_kills")
+	assert_true(game.profile.has("hero_skins"), "Profile has hero_skins")
+	game.free()
+
 
 
 

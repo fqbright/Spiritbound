@@ -62,10 +62,28 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"cards_played_this_turn":0,
 		"player_blocked_this_turn":0,
 		"mirror_shield_active":false,
-		# Consumed flag is per-turn (reset in end_turn) so Mirror Shield negates exactly the
-		# first card of each player turn, not every card that turn.
 		"mirror_shield_consumed":false,
+		"hero_class":str(hero_bonuses.get("hero_class", modifier.get("hero_class", "fox_spirit"))),
+		"qi_gauge":0,
+		"card_affixes":hero_bonuses.get("card_affixes", {}).duplicate() if hero_bonuses.get("card_affixes") is Dictionary else {},
+		"active_hexagram":str(modifier.get("active_hexagram", hero_bonuses.get("active_hexagram", ""))),
+		"hex_qian_ready":true,
+		"hex_kan_triggered_this_turn":false,
+		"is_training_dummy":bool(modifier.get("is_training_dummy", false)),
+		"current_playing_affix":"",
 	}
+	if state.is_training_dummy:
+		enemies.clear()
+		enemies.append(_enemy("training_dummy", "机关木人桩", "Training Dummy", "m_s001", 99999, 0, {}))
+	var is_elite_or_boss: bool = str(encounter.get("kind", "")) in ["elite", "boss"] or state.is_great_boss or bool(encounter.get("is_boss", false))
+	if is_elite_or_boss and not state.is_training_dummy and not enemies.is_empty():
+		var mut_keys := ["mut_thorns", "mut_resurrection", "mut_vampiric", "mut_swift"]
+		var picked_mut: String = mut_keys[abs(seed) % mut_keys.size()]
+		enemies[0]["mutation"] = picked_mut
+		if picked_mut == "mut_swift":
+			enemies[0]["damage"] = int(enemies[0].get("damage", 0)) + 4
+	if str(state.get("active_hexagram", "")) == "hex_xun":
+		_draw(1)
 	if not enemies.is_empty():
 		enemies[0]["is_great_boss"] = state.is_great_boss
 		enemies[0]["phase"] = 1
@@ -268,6 +286,9 @@ func _execute_intent(enemy_index: int) -> void:
 				if mc_shield > 0: state.player.shield += mc_shield
 				emit_signal("event","equipment",{"id":"mistCloak"})
 			var taken := _damage_player(amount)
+			if taken > 0 and str(enemy.get("mutation", "")) == "mut_vampiric":
+				var v_heal: int = maxi(1, int(round(taken * 0.5)))
+				enemy.health = mini(enemy.max_health, enemy.health + v_heal)
 			enemy.attacks += 1
 			if taken > 0 and bool(state.get("modifier", {}).get("inflict_debuffs", false)):
 				if rng.randf() < 0.25:
@@ -317,6 +338,29 @@ func claim_epiphany(boon_id: String) -> void:
 			state.player["lifesteal_active"] = true
 	emit_signal("event", "epiphany_claimed", {"boon": boon_id})
 
+func can_cast_ultimate() -> bool:
+	return state != null and int(state.get("qi_gauge", 0)) >= 100 and state.phase == "player"
+
+func cast_ultimate(target_index: int = 0) -> bool:
+	if not can_cast_ultimate(): return false
+	state.qi_gauge = 0
+	var h_class: String = str(state.get("hero_class", "fox_spirit"))
+	if h_class == "fox_spirit":
+		for ei in state.enemies.size():
+			var en: Dictionary = state.enemies[ei]
+			if int(en.get("health", 0)) > 0:
+				_damage_enemy(ei, 28, false)
+				en["burn"] = int(en.get("burn", 0)) + 3
+				en["stun"] = int(en.get("stun", 0)) + 1
+		emit_signal("event", "ultimate_cast", {"hero": "fox_spirit", "name": "九尾天狐劫", "name_en": "Nine-Tailed Calamity"})
+	else:
+		state.player.shield = int(state.player.shield) + 25
+		if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 25
+		var slam_dmg: int = int(state.player.shield * 2)
+		_damage_enemy(target_index, slam_dmg, true)
+		emit_signal("event", "ultimate_cast", {"hero": "ironclad_sentinel", "name": "万钧神盾击", "name_en": "Titan Slam", "damage": slam_dmg})
+	return true
+
 func play(hand_index: int, target_index := -1) -> bool:
 	if state.phase != "player" or hand_index < 0 or hand_index >= state.hand.size(): return false
 	var instance: Dictionary = state.hand[hand_index]
@@ -325,6 +369,12 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var actual_cost: int = int(card.cost)
 	if state.get("card_branches", {}).get(card.id, "") == "flow":
 		actual_cost = maxi(0, actual_cost - 1)
+	var card_affix: String = str(state.get("card_affixes", {}).get(card.id, ""))
+	if card_affix == "affix_swift" and state.turn == 1:
+		actual_cost = 0
+	if str(state.get("active_hexagram", "")) == "hex_qian" and bool(state.get("hex_qian_ready", false)) and state.turn == 1:
+		actual_cost = maxi(0, actual_cost - 1)
+		state.hex_qian_ready = false
 	if actual_cost > state.energy: return false
 	# Mirror Shield (Chapter 50, phase 2): the first card played each turn is negated outright.
 	# The card stays in hand and nothing is spent, so the tax is tempo rather than card
@@ -345,6 +395,17 @@ func play(hand_index: int, target_index := -1) -> bool:
 	snap.undo_state = {}
 	state.undo_state = snap
 	state.energy -= actual_cost
+	state.qi_gauge = mini(100, int(state.get("qi_gauge", 0)) + 10)
+	state.current_playing_affix = card_affix
+	if card_affix == "affix_guard":
+		state.player.shield += 4
+	if card_affix == "affix_echo":
+		state.draw.append({"uid": randi(), "card_id": card.id})
+	if str(state.get("active_hexagram", "")) == "hex_kan" and not bool(state.get("hex_kan_triggered_this_turn", false)):
+		var c_elem: String = str(card.get("element", ""))
+		if c_elem in ["Frost", "Water", "ice"]:
+			state.hex_kan_triggered_this_turn = true
+			_draw(1)
 	if state.has("stats"):
 		state.stats.cards_played = int(state.stats.get("cards_played", 0)) + 1
 		if not state.stats.has("cards_tally"): state.stats.cards_tally = {}
@@ -561,6 +622,8 @@ func end_turn() -> void:
 			var burn_damage: int = enemy.burn + (1 if _has_relic("emberCore") else 0) + (1 if _has_resonance("res_star_flame") else 0)
 			if _has_resonance("res_phoenix_fire"):
 				burn_damage = int(round(burn_damage * 1.3))
+			if str(state.get("active_hexagram", "")) == "hex_li":
+				burn_damage = int(round(burn_damage * 1.35))
 			_damage_enemy(enemy_index,burn_damage,false)
 			if state.has("stats"): state.stats.dot_damage = int(state.stats.get("dot_damage", 0)) + burn_damage
 			enemy.burn = maxi(0,enemy.burn - 1)
@@ -601,6 +664,7 @@ func end_turn() -> void:
 	state.hand = kept_hand
 
 	state.turn += 1
+	state.hex_kan_triggered_this_turn = false
 	if state.has("stats"): state.stats.turns_taken = int(state.stats.get("turns_taken", 0)) + 1
 	var energy_growth: int = int((state.turn - 1) / 2)
 	if _has_relic("titanBell"): energy_growth = 0
@@ -625,6 +689,8 @@ func end_turn() -> void:
 		kept_shield = mini(35, state.player.shield)
 	elif _has_relic("mirrorScale"):
 		kept_shield = int(state.player.shield / 2)
+	elif str(state.get("active_hexagram", "")) == "hex_kun":
+		kept_shield = mini(8, state.player.shield)
 	state.player.shield = kept_shield
 	state.spirit_surge_active = false
 	state.shadow_clone_active = false
@@ -778,6 +844,8 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if index < 0 or index >= state.enemies.size(): return 0
 	var enemy: Dictionary = state.enemies[index]
 	if enemy.health <= 0: return 0
+	if str(state.get("active_hexagram", "")) == "hex_zhen" and state.turn <= 2 and not pierce:
+		amount += 3
 	enemy.hits += 1
 	if enemy.mechanics.get("dodge_every",0) > 0 and enemy.hits % enemy.mechanics.dodge_every == 0: emit_signal("event","dodge",{"enemy":index}); return 0
 	if int(enemy.mechanics.get("frost_armor", 0)) > 0:
@@ -802,12 +870,22 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
 		_trigger_great_boss_phase_2(enemy)
 	_check_mechanics_phases(index, enemy)
-	# Thorns was carried as encounter data since the 50-stage version but never actually
-	# consulted anywhere — every "thorns" enemy fought identically to one with no mechanic.
-	if dealt > 0 and int(enemy.mechanics.get("thorns", 0)) > 0:
-		_damage_player(int(enemy.mechanics.thorns))
-		emit_signal("event","thorns",{"enemy":index,"amount":int(enemy.mechanics.thorns)})
+	if enemy.health > 0 and enemy.health <= enemy.max_health * 0.25 and not bool(enemy.get("weakpoint_shattered", false)) and (bool(state.is_great_boss) or bool(enemy.get("is_boss", false))):
+		enemy["weakpoint_shattered"] = true
+		enemy["stun"] = int(enemy.get("stun", 0)) + 1
+	var has_thorns_mut: bool = (str(enemy.get("mutation", "")) == "mut_thorns" or (enemy.get("affixes") is Array and enemy.affixes.has("mut_thorns")))
+	if dealt > 0 and (int(enemy.mechanics.get("thorns", 0)) > 0 or has_thorns_mut):
+		var t_amt: int = 2 if has_thorns_mut else int(enemy.mechanics.thorns)
+		_damage_player(t_amt)
+		emit_signal("event","thorns",{"enemy":index,"amount":t_amt})
 	if enemy.health <= 0:
+		if str(enemy.get("mutation", "")) == "mut_resurrection" and not bool(enemy.get("mutation_revived", false)):
+			enemy["mutation_revived"] = true
+			enemy.health = maxi(1, int(enemy.max_health * 0.3))
+			emit_signal("event","revive",{"enemy":index,"amount":enemy.health})
+			return dealt
+		if str(state.get("current_playing_affix", "")) == "affix_leech":
+			state.player.health = mini(state.player.max_health, state.player.health + 4)
 		# Authored Undying (Chapter 30): unconditional, unlike the player-facing revive_chance
 		# roll below — the whole point of the mechanic is that the player *knows* it will come
 		# back, so a dice roll here would make the fight's most memorable beat a coin flip.
@@ -1044,6 +1122,8 @@ func _damage_player(amount: int, pierce := false) -> int:
 	var red: int = int(state.get("astral_earth_reduction", 0))
 	if red > 0:
 		amount = maxi(1, amount - red)
+	if str(state.get("active_hexagram", "")) == "hex_gen" and amount > 2:
+		amount = maxi(1, amount - 2)
 	var absorbed := 0 if pierce else mini(state.player.shield, amount)
 	state.player.shield -= absorbed
 	# Tracks how much Shield actually ate this turn — the input to Chapter 45's enrage-on-block.
@@ -1067,6 +1147,7 @@ func _damage_player(amount: int, pierce := false) -> int:
 			emit_signal("event","relic",{"id":"phoenixFeather"})
 		else: state.phase = "lost"
 	if dealt > 0:
+		state.qi_gauge = mini(100, int(state.get("qi_gauge", 0)) + 5)
 		if _has_relic("dragonScale"):
 			_draw(1)
 		if _has_relic("ironThorns"):
