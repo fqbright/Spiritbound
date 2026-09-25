@@ -2287,7 +2287,8 @@ func run() -> void:
 	# Copy lives in content.gd like every other string (AGENTS.md rule 2), and both languages must
 	# resolve — a notification is the one surface a translator cannot see the app to check.
 	for push_key in ["push.daily.title", "push.daily.body", "push.weekly.title", "push.weekly.body",
-			"push.login.title", "push.login.body", "push.return.title", "push.return.body"]:
+			"push.login.title", "push.login.body", "push.return.title", "push.return.body",
+			"push.stamina.title", "push.stamina.body", "push.harvest.title", "push.harvest.body"]:
 		var entry: Dictionary = SpiritContent.UI_TEXT.get(push_key, {})
 		check(not str(entry.get("zh-Hans", "")).is_empty() and not str(entry.get("en", "")).is_empty(),
 			"notification string '%s' exists in both languages" % push_key)

@@ -21,6 +21,8 @@ var _camp_screen: CampScreen
 var enemy_boxes: Array[Control] = []
 var hand_zone: Control
 var _last_hand_size := 0
+var battle_telemetry: Dictionary = {"turns": 1, "dmg_dealt": 0, "dmg_blocked": 0, "card_impact": {}}
+var last_played_card_id := ""
 var selected_rune := ""
 var muted := false
 var lang := "zh-Hans"
@@ -1433,6 +1435,7 @@ func _play_music(battle := false, stage_level: int = 0) -> void:
 	if muted: return
 	if battle:
 		if map_music != null: map_music.stop()
+		if battle_music_streams.is_empty(): return
 		var stream_idx: int = clampi(stage_level, 0, battle_music_streams.size() - 1)
 		if battle_music_streams.size() > stream_idx and battle_music_streams[stream_idx] != null:
 			var target_stream: AudioStream = battle_music_streams[stream_idx]
@@ -3765,10 +3768,16 @@ func _show_replay_mode_prompt(_index: int) -> void:
 	head.add_child(close_btn)
 	list.add_child(head)
 
-	list.add_child(_label(t("ui.stage_purified_desc"), 9.5, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
-
 	var nav_box := VBoxContainer.new()
 	nav_box.add_theme_constant_override("separation", 8)
+
+	var captured_idx: int = _index
+	var sweep_btn := _button("⚡ %s (%s)" % [t("ui.quick_sweep"), t("ui.sweep_cost")], func():
+		_sweep_stage(captured_idx)
+	, EMBER, Vector2(0, 38))
+	sweep_btn.name = "PurifiedSweepBtn"
+	nav_box.add_child(sweep_btn)
+
 	var cult_btn := _button(t("ui.stage_purified_goto_cultivate"), func():
 		var ex: Node = overlay.get_node_or_null("ReplayModal")
 		if ex:
@@ -3799,6 +3808,94 @@ func _show_replay_mode_prompt(_index: int) -> void:
 	phantom_btn.name = "PurifiedPhantomBtn"
 	nav_box.add_child(phantom_btn)
 	list.add_child(nav_box)
+
+func _sweep_stage(stage_idx: int) -> void:
+	var ex: Node = overlay.get_node_or_null("ReplayModal")
+	if ex:
+		if ex.get_parent(): ex.get_parent().remove_child(ex)
+		ex.queue_free()
+
+	if not can_spend_stamina(5):
+		_toast(t("ui.stamina_insufficient"))
+		show_stamina_modal()
+		return
+	spend_stamina(5)
+
+	var encounter: Dictionary = content.encounters[stage_idx] if stage_idx < content.encounters.size() else {}
+	var base_gold: int = int(encounter.get("reward", 30))
+	var mult: float = 1.0
+	if profile.get("relics", []).has("gamblerCoin"): mult *= 1.3
+	var gold_gain: int = int(round(float(base_gold) * mult))
+	profile.gold += gold_gain
+	var dust_gain: int = 2 + (stage_idx / 10)
+	profile.spirit_dust = int(profile.get("spirit_dust", 0)) + dust_gain
+	_advance_quest("win_battles", 1)
+	_advance_quest("earn_gold", gold_gain)
+	_advance_quest("open_chest", 1)
+	profile.career_stats.victories = int(profile.career_stats.get("victories", 0)) + 1
+	profile.career_stats.total_battles = int(profile.career_stats.get("total_battles", 0)) + 1
+	_grant_mastery_xp(12)
+	_add_season_xp(35)
+	SpiritSave.write(profile)
+
+	_haptic("heavy")
+	play_sfx("chest_open")
+	play_sfx("coin")
+	_show_sweep_result_modal(stage_idx, gold_gain, dust_gain)
+
+func _show_sweep_result_modal(stage_idx: int, gold: int, dust: int) -> void:
+	if overlay == null: return
+	var existing: Node = overlay.get_node_or_null("SweepResultModal")
+	if existing:
+		if existing.get_parent(): existing.get_parent().remove_child(existing)
+		existing.queue_free()
+
+	var modal := _modal_dialog("SweepResultModal", func():
+		var m_ex: Node = overlay.get_node_or_null("SweepResultModal")
+		if m_ex:
+			if m_ex.get_parent(): m_ex.get_parent().remove_child(m_ex)
+			m_ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(300, 0)
+	var panel_style := _panel(Color("0d1e24"), 14, GOLD)
+	panel_style.content_margin_left = 18; panel_style.content_margin_right = 18
+	panel_style.content_margin_top = 16; panel_style.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 12)
+	panel.add_child(list)
+
+	list.add_child(_label(tf("ui.sweep_stage_title", stage_idx + 1), 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var rew_row := HBoxContainer.new()
+	rew_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	rew_row.add_theme_constant_override("separation", 16)
+	rew_row.add_child(_label("+%d 🪙" % gold, 14, GOLD))
+	rew_row.add_child(_label("+%d 🔮" % dust, 14, Color("c084fc")))
+	rew_row.add_child(_label("+12 🌟", 14, JADE))
+	list.add_child(rew_row)
+
+	var ok_btn := _button(t("ui.confirm"), func():
+		var m_ex: Node = overlay.get_node_or_null("SweepResultModal")
+		if m_ex:
+			if m_ex.get_parent(): m_ex.get_parent().remove_child(m_ex)
+			m_ex.queue_free()
+	, EMBER, Vector2(160, 36))
+	ok_btn.name = "SweepConfirmBtn"
+	ok_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	list.add_child(ok_btn)
+
+	_spawn_currency_flight(Vector2(195, 420), Vector2(120, 35), 8, GOLD)
 
 func _build_victory_recap_card(stats: Dictionary) -> Control:
 	var panel := Panel.new()

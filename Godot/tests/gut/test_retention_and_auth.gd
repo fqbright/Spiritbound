@@ -287,3 +287,62 @@ func test_camp_meridian_progressive_lock_states():
 	assert_not_null(meridian_btn_unlocked, "MeridianOpenBtn exists at stage 15")
 	assert_false(meridian_btn_unlocked.disabled, "MeridianOpenBtn is active at stage 15")
 	game.free()
+
+func test_status_chip_clickable_opens_info_popup():
+	var game := _create_game()
+	game.begin_battle(0)
+	var chip_btn: Button = game._battle_screen._status_chip_clickable("poison", "◆", 5, Color("a75bd6")) as Button
+	assert_not_null(chip_btn, "Status chip is wrapped in a clickable Button")
+	chip_btn.emit_signal("pressed")
+	var popup: Node = game.overlay.find_child("InfoPopup", true, false)
+	assert_not_null(popup, "Clicking status chip opens InfoPopup")
+	game.free()
+
+func test_stage_quick_sweep_deducts_stamina_and_awards_rewards():
+	var game := _create_game()
+	game.profile.unlocked = 5
+	game.profile.stamina.current = 100
+	var gold_before: int = int(game.profile.gold)
+	var dust_before: int = int(game.profile.spirit_dust)
+
+	game._sweep_stage(1)
+
+	assert_eq(int(game.profile.stamina.current), 95, "Sweeping a stage costs exactly 5 stamina")
+	assert_true(int(game.profile.gold) > gold_before, "Sweeping awards gold")
+	assert_true(int(game.profile.spirit_dust) >= dust_before, "Sweeping awards spirit dust")
+	var modal: Node = game.overlay.find_child("SweepResultModal", true, false)
+	assert_not_null(modal, "Sweep result modal is displayed with rewards")
+	game.free()
+
+func test_stamina_and_harvest_local_notifications():
+	var profile: Dictionary = SpiritSave.defaults(SpiritContent.new())
+	profile.unlocked = 5
+	profile.stamina = {"current": 60, "max": 100, "last_regen_time": 1000}
+	profile.idle_harvest = {"last_claim_time": 2000, "last_fast_claim_day": -1}
+	var now := 3000
+
+	var reminders: Array = SpiritNotify.due_reminders(profile, now)
+	var has_stamina := false
+	var has_harvest := false
+	for r in reminders:
+		if str(r.get("id")) == SpiritNotify.ID_STAMINA: has_stamina = true
+		if str(r.get("id")) == SpiritNotify.ID_HARVEST: has_harvest = true
+
+	assert_true(has_stamina, "SpiritNotify schedules ID_STAMINA when stamina < max")
+	assert_true(has_harvest, "SpiritNotify schedules ID_HARVEST when idle harvest is active")
+
+func test_achievement_claim_and_claim_all_grants_spirit_jade():
+	var game := _create_game()
+	game.profile.achievements_unlocked = {"win10": true, "win50": true}
+	game.profile.achievements_claimed = {}
+	game.profile.spirit_jade = 10
+
+	game._camp_screen._claim_single_achievement("win10", 10)
+	assert_eq(int(game.profile.spirit_jade), 20, "Claiming win10 awards 10 jade")
+	assert_true(bool(game.profile.achievements_claimed.get("win10", false)), "win10 marked claimed")
+
+	game._camp_screen._claim_all_achievements()
+	assert_true(bool(game.profile.achievements_claimed.get("win50", false)), "win50 claimed by claim all")
+	assert_true(int(game.profile.spirit_jade) >= 45, "Spirit jade includes all claimed achievements")
+	game.free()
+

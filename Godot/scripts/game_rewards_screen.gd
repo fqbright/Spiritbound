@@ -15,6 +15,44 @@ func show_reward() -> void:
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 	page.add_child(g._label(g.t("ui.battle_won"), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 
+	# Battle Telemetry Summary Row
+	if g.battle_telemetry and (int(g.battle_telemetry.get("dmg_dealt", 0)) > 0 or int(g.battle_telemetry.get("turns", 1)) > 0):
+		var tel_box := PanelContainer.new()
+		tel_box.name = "BattleTelemetryBox"
+		tel_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var t_style := g._panel(Color("0f2026", 0.94), 10, Color("1f404d"))
+		t_style.content_margin_left = 14; t_style.content_margin_right = 14
+		t_style.content_margin_top = 6; t_style.content_margin_bottom = 6
+		tel_box.add_theme_stylebox_override("panel", t_style)
+
+		var tel_vbox := VBoxContainer.new()
+		tel_vbox.add_theme_constant_override("separation", 3)
+		tel_box.add_child(tel_vbox)
+
+		var tel_row := HBoxContainer.new()
+		tel_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		tel_row.add_theme_constant_override("separation", 14)
+		tel_row.add_child(g._label(g.tf("ui.telemetry_turns", int(g.battle_telemetry.get("turns", 1))), 11, g.MUTED))
+		tel_row.add_child(g._label(g.tf("ui.telemetry_damage", int(g.battle_telemetry.get("dmg_dealt", 0))), 11, Color("fca5a5")))
+		tel_row.add_child(g._label(g.tf("ui.telemetry_shield", int(g.battle_telemetry.get("dmg_blocked", 0))), 11, Color("93c5fd")))
+		tel_vbox.add_child(tel_row)
+
+		# Best MVP Card
+		var impacts: Dictionary = g.battle_telemetry.get("card_impact", {})
+		var best_card_id := ""
+		var best_score := 0
+		for cid in impacts:
+			if int(impacts[cid]) > best_score:
+				best_score = int(impacts[cid])
+				best_card_id = cid
+		if not best_card_id.is_empty():
+			var c_data := g.content.card(best_card_id)
+			var c_name: String = str(c_data.get("name_en", c_data.get("name", ""))) if g.lang == "en" else str(c_data.get("name", ""))
+			var mvp_lbl := g._label("★ %s: %s (+%d)" % [g.t("ui.mvp_card"), c_name, best_score], 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+			tel_vbox.add_child(mvp_lbl)
+
+		page.add_child(tel_box)
+
 	var chest := TextureRect.new()
 	var atlas := AtlasTexture.new()
 	atlas.atlas = g._texture("chest-atlas-v1.png")

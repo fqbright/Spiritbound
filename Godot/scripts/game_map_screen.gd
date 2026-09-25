@@ -219,6 +219,11 @@ func _has_claimable_camp_reward() -> bool:
 	var claimed: Array = g.profile.get("compendium_milestones_claimed", [])
 	for target in [50, 80, 100]:
 		if pct >= target and not claimed.has(target): return true
+	var ach_unlocked: Dictionary = g.profile.get("achievements_unlocked", {})
+	var ach_claimed: Dictionary = g.profile.get("achievements_claimed", {})
+	for ach_id in ach_unlocked:
+		if bool(ach_unlocked[ach_id]) and not bool(ach_claimed.get(ach_id, false)):
+			return true
 	return false
 
 # Drives the deck dock button's red dot — true whenever a card sits in the collection with

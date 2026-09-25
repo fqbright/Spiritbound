@@ -343,16 +343,74 @@ func _build_compendium_chronicle(list: VBoxContainer) -> void:
 		var title: String = "%d · %s" % [chapter + 1, g.content.chapter_name(chapter, g.lang)]
 		list.add_child(_compendium_row(badge, title, g.content.chapter_lore(chapter, g.lang), discovered, g.JADE, g.t("ui.chronicle_locked")))
 
+func _ach_reward_jade(tier: String) -> int:
+	match tier:
+		"bronze": return 10
+		"silver": return 25
+		"gold": return 50
+		"platinum": return 100
+		_: return 10
+
+func _claim_single_achievement(id: String, reward_jade: int) -> void:
+	if not g.profile.get("achievements_claimed") is Dictionary: g.profile.achievements_claimed = {}
+	if bool(g.profile.achievements_claimed.get(id, false)): return
+	g.profile.achievements_claimed[id] = true
+	g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + reward_jade
+	SpiritSave.write(g.profile)
+	g.play_sfx("coin")
+	g._haptic("tap")
+	g._toast(g.tf("ui.achievement_claimed_toast", reward_jade), g.GOLD)
+	g.compendium_tab = "achievements"
+	show_compendium()
+
+func _claim_all_achievements() -> void:
+	if not g.profile.get("achievements_claimed") is Dictionary: g.profile.achievements_claimed = {}
+	var total_jade := 0
+	for ach in SpiritContent.ACHIEVEMENTS:
+		var a_id: String = str(ach.id)
+		if bool(g.profile.achievements_unlocked.get(a_id, false)) and not bool(g.profile.achievements_claimed.get(a_id, false)):
+			g.profile.achievements_claimed[a_id] = true
+			total_jade += _ach_reward_jade(str(ach.get("tier", "bronze")))
+	if total_jade > 0:
+		g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + total_jade
+		SpiritSave.write(g.profile)
+		g.play_sfx("coin")
+		g._haptic("heavy")
+		g._toast(g.tf("ui.achievement_claimed_toast", total_jade), g.GOLD)
+	g.compendium_tab = "achievements"
+	show_compendium()
+
 func _build_compendium_achievements(list: VBoxContainer) -> void:
 	if not g.profile.get("achievements_unlocked") is Dictionary: g.profile.achievements_unlocked = {}
+	if not g.profile.get("achievements_claimed") is Dictionary: g.profile.achievements_claimed = {}
 	var unlocked_n := 0
+	var unclaimed_count := 0
+	var total_unclaimed_jade := 0
 	for ach in SpiritContent.ACHIEVEMENTS:
-		if bool(g.profile.achievements_unlocked.get(str(ach.id), false)): unlocked_n += 1
-	list.add_child(g._label(g.tf("ui.compendium_progress", [unlocked_n, SpiritContent.ACHIEVEMENTS.size()]), 11, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		var a_id: String = str(ach.id)
+		if bool(g.profile.achievements_unlocked.get(a_id, false)):
+			unlocked_n += 1
+			if not bool(g.profile.achievements_claimed.get(a_id, false)):
+				unclaimed_count += 1
+				total_unclaimed_jade += _ach_reward_jade(str(ach.get("tier", "bronze")))
+
+	var top_row := HBoxContainer.new()
+	top_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	top_row.add_theme_constant_override("separation", 12)
+	top_row.add_child(g._label(g.tf("ui.compendium_progress", [unlocked_n, SpiritContent.ACHIEVEMENTS.size()]), 11, g.MUTED))
+	if unclaimed_count > 0:
+		var claim_all_btn := g._button("%s (+%d 💎)" % [g.t("ui.claim_all_achievements"), total_unclaimed_jade], func():
+			_claim_all_achievements()
+		, g.GOLD, Vector2(140, 26))
+		claim_all_btn.name = "ClaimAllAchievementsBtn"
+		top_row.add_child(claim_all_btn)
+	list.add_child(top_row)
 
 	for ach in SpiritContent.ACHIEVEMENTS:
 		var id: String = str(ach.id)
 		var unlocked: bool = bool(g.profile.achievements_unlocked.get(id, false))
+		var claimed: bool = bool(g.profile.achievements_claimed.get(id, false))
+		var reward_jade: int = _ach_reward_jade(str(ach.get("tier", "bronze")))
 		var progress: int = mini(int(ach.target), g._achievement_progress(ach))
 		var accent: Color = g.GOLD if unlocked else Color("2a3d42")
 
@@ -393,11 +451,22 @@ func _build_compendium_achievements(list: VBoxContainer) -> void:
 		title_row.add_theme_constant_override("separation", 8)
 		texts.add_child(title_row)
 		title_row.add_child(g._label(g.content.ui(ach.nameKey, g.lang), 13, g.TEXT if unlocked else g.MUTED))
+		var spacer := Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		title_row.add_child(spacer)
 		if unlocked:
-			var spacer := Control.new()
-			spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			title_row.add_child(spacer)
-			title_row.add_child(g._label("✦", 13, g.GOLD))
+			if not claimed:
+				var captured_id: String = id
+				var captured_jade: int = reward_jade
+				var claim_btn := g._button("%s +%d💎" % [g.t("ui.claim_achievement"), captured_jade], func():
+					_claim_single_achievement(captured_id, captured_jade)
+				, g.GOLD, Vector2(85, 24))
+				claim_btn.name = "ClaimAchBtn_%s" % captured_id
+				title_row.add_child(claim_btn)
+			else:
+				title_row.add_child(g._label("✓ %s" % (g.t("ui.claimed") if g.content.UI_TEXT.has("ui.claimed") else "已领取"), 11, g.JADE))
+		else:
+			title_row.add_child(g._label("+%d 💎" % reward_jade, 11, g.MUTED))
 
 		texts.add_child(g._label(g.content.ui(ach.descKey, g.lang), 10, g.JADE if unlocked else g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 		if not unlocked:

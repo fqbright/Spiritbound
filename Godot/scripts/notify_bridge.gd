@@ -23,6 +23,8 @@ const ID_DAILY := "spiritbound.daily"
 const ID_WEEKLY := "spiritbound.weekly"
 const ID_LOGIN := "spiritbound.login"
 const ID_RETURN := "spiritbound.return"
+const ID_STAMINA := "spiritbound.stamina"
+const ID_HARVEST := "spiritbound.harvest"
 
 const DAY_SECONDS := 86400
 const WEEK_SECONDS := 604800
@@ -114,6 +116,27 @@ static func due_reminders(profile: Dictionary, now_unix: int) -> Array:
 	# player who genuinely stopped — rescheduling on every close (see SpiritNotify.reschedule)
 	# means an active player's copy keeps being pushed back and never arrives.
 	out.append(_entry(ID_RETURN, "push.return.title", "push.return.body", now_unix + RETURN_DELAY))
+
+	# Stamina full recovery reminder: only when stamina is depleted (< max) and recovering
+	var stamina_dict: Dictionary = profile.get("stamina", {})
+	var cur_stam: int = int(stamina_dict.get("current", 100))
+	var max_stam: int = int(stamina_dict.get("max", 100))
+	if cur_stam < max_stam:
+		var last_regen: int = int(stamina_dict.get("last_regen_time", now_unix))
+		var elapsed: int = maxi(0, now_unix - last_regen)
+		var needed: int = max_stam - cur_stam
+		var seconds_left: int = maxi(60, needed * 100 - elapsed)
+		out.append(_entry(ID_STAMINA, "push.stamina.title", "push.stamina.body", now_unix + seconds_left))
+
+	# Idle harvest reminder: only when player has active harvest history
+	var harvest_dict: Dictionary = profile.get("idle_harvest", {})
+	var last_claim: int = int(harvest_dict.get("last_claim_time", 0))
+	if last_claim > 0:
+		var harvest_elapsed: int = maxi(0, now_unix - last_claim)
+		if harvest_elapsed < 28800:
+			var harvest_left: int = 28800 - harvest_elapsed
+			out.append(_entry(ID_HARVEST, "push.harvest.title", "push.harvest.body", now_unix + harvest_left))
+
 	return out
 
 static func _entry(id: String, title_key: String, body_key: String, fire_unix: int) -> Dictionary:

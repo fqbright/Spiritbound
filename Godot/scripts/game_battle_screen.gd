@@ -53,6 +53,8 @@ func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
 func begin_battle(index: int) -> void:
 	g.resolving = false
 	auto_stepping = false
+	g.battle_telemetry = {"turns": 1, "dmg_dealt": 0, "dmg_blocked": 0, "card_impact": {}}
+	g.last_played_card_id = ""
 
 	# Keep the map's browsed chapter in sync with whatever stage is actually being fought, so
 	# a map shown before this call (the header hides during battle, but the state persists)
@@ -433,8 +435,8 @@ func _get_card_foil_shader() -> Shader:
 		g._card_foil_shader = load("res://assets/shaders/card_foil.gdshader")
 	return g._card_foil_shader
 
-func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool) -> void:
-	if rarity == "Rare" or upgraded:
+func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capstone := false) -> void:
+	if rarity == "Rare" or upgraded or is_capstone:
 		var s := _get_card_foil_shader()
 		if s:
 			var mat := ShaderMaterial.new()
@@ -820,14 +822,14 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	badges.size = Vector2(u_width, 18.0)
 	badges.alignment = BoxContainer.ALIGNMENT_CENTER
 	badges.add_theme_constant_override("separation", 5)
-	badges.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badges.mouse_filter = Control.MOUSE_FILTER_PASS
 	unit.add_child(badges)
-	if int(enemy.shield) > 0: badges.add_child(g._status_chip("⬢", int(enemy.shield), Color("9fd8ff")))
-	if int(enemy.burn) > 0: badges.add_child(g._status_chip("▲", int(enemy.burn), Color("ff9868")))
-	if int(enemy.get("poison", 0)) > 0: badges.add_child(g._status_chip("◆", int(enemy.poison), Color("a75bd6")))
-	if int(enemy.stun) > 0: badges.add_child(g._status_chip("✸", int(enemy.stun), Color("ffe08a")))
-	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(g._status_chip("▼", int(enemy.vulnerable), Color("ff6b6b")))
-	if int(enemy.get("weak", 0)) > 0: badges.add_child(g._status_chip("●", int(enemy.weak), Color("b8c4c8")))
+	if int(enemy.shield) > 0: badges.add_child(_status_chip_clickable("shield", "⬢", int(enemy.shield), Color("9fd8ff")))
+	if int(enemy.burn) > 0: badges.add_child(_status_chip_clickable("burn", "▲", int(enemy.burn), Color("ff9868")))
+	if int(enemy.get("poison", 0)) > 0: badges.add_child(_status_chip_clickable("poison", "◆", int(enemy.poison), Color("a75bd6")))
+	if int(enemy.stun) > 0: badges.add_child(_status_chip_clickable("stun", "✸", int(enemy.stun), Color("ffe08a")))
+	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip_clickable("vulnerable", "▼", int(enemy.vulnerable), Color("ff6b6b")))
+	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip_clickable("weak", "●", int(enemy.weak), Color("b8c4c8")))
 
 	unit.custom_minimum_size = Vector2(u_width, content_y + 58.0)
 	unit.size = unit.custom_minimum_size
@@ -1013,19 +1015,19 @@ func _build_player_stage() -> Control:
 	var all_items: Array = []
 	# 1. Active combat statuses (Shield, Focus, Strength, Burn, Poison, Vulnerable, Weak)
 	if int(g.combat.state.player.shield) > 0:
-		all_items.append(g._status_chip("⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 20.0))
+		all_items.append(_status_chip_clickable("shield", "⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 20.0))
 	if int(g.combat.state.player.focus) > 0:
-		all_items.append(g._status_chip("◉", int(g.combat.state.player.focus), Color("ffe08a"), 20.0))
+		all_items.append(_status_chip_clickable("focus", "◉", int(g.combat.state.player.focus), Color("ffe08a"), 20.0))
 	if int(g.combat.state.player.get("strength", 0)) > 0:
-		all_items.append(g._status_chip("★", int(g.combat.state.player.strength), Color("ffd700"), 20.0))
+		all_items.append(_status_chip_clickable("strength", "★", int(g.combat.state.player.strength), Color("ffd700"), 20.0))
 	if int(g.combat.state.player.burn) > 0:
-		all_items.append(g._status_chip("▲", int(g.combat.state.player.burn), Color("ff9868"), 20.0))
+		all_items.append(_status_chip_clickable("burn", "▲", int(g.combat.state.player.burn), Color("ff9868"), 20.0))
 	if int(g.combat.state.player.get("poison", 0)) > 0:
-		all_items.append(g._status_chip("◆", int(g.combat.state.player.poison), Color("a75bd6"), 20.0))
+		all_items.append(_status_chip_clickable("poison", "◆", int(g.combat.state.player.poison), Color("a75bd6"), 20.0))
 	if int(g.combat.state.player.get("vulnerable", 0)) > 0:
-		all_items.append(g._status_chip("▼", int(g.combat.state.player.vulnerable), Color("ff6b6b"), 20.0))
+		all_items.append(_status_chip_clickable("vulnerable", "▼", int(g.combat.state.player.vulnerable), Color("ff6b6b"), 20.0))
 	if int(g.combat.state.player.get("weak", 0)) > 0:
-		all_items.append(g._status_chip("●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
+		all_items.append(_status_chip_clickable("weak", "●", int(g.combat.state.player.weak), Color("b8c4c8"), 20.0))
 
 	# 2. Stage Modifier, Equipment & Relic Badges
 	# Checked by "has a name," not just "isn't empty": begin_abyss_battle() unconditionally
@@ -1238,6 +1240,14 @@ func _modal_backdrop(node_name: String, on_dismiss: Callable) -> Button:
 	if on_dismiss.is_valid(): backdrop.pressed.connect(on_dismiss)
 	g.overlay.add_child(backdrop)
 	return backdrop
+
+func _status_chip_clickable(status_key: String, glyph: String, amount: int, color: Color, height := 19.0) -> Control:
+	var chip := g._status_chip(glyph, amount, color, height)
+	var title: String = g.t("status.%s.name" % status_key)
+	var desc: String = g.t("status.%s.desc" % status_key)
+	return _tap_wrap(chip, func():
+		_show_info_popup(g._icon_badge(glyph, color, 60, 26), "%s × %d" % [title, amount], desc, color)
+	)
 
 # Wraps a non-interactive badge/icon Control (built with MOUSE_FILTER_IGNORE) in an
 # invisible button so a whole row of small icons can each be tapped for detail, without
@@ -1664,8 +1674,27 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var card_rarity: String = str(card.get("rarity", "Common"))
-	_apply_card_foil(art, card_rarity, up_lvl > 0)
+	var is_capstone: bool = bool(card.get("is_capstone", false)) or card.id in ["samadhi_fire", "spirit_surge", "shield_slam", "bastion_form", "thousand_blades", "shadow_clone", "catalyst", "blood_pact"]
+	_apply_card_foil(art, card_rarity, up_lvl > 0, is_capstone)
 	card_clip.add_child(art)
+
+	if is_capstone:
+		var cap_badge := Panel.new()
+		cap_badge.name = "CapstoneBadge"
+		cap_badge.custom_minimum_size = Vector2(52, 14)
+		cap_badge.size = cap_badge.custom_minimum_size
+		cap_badge.position = Vector2((116.0 - 52.0) / 2.0, 2.0)
+		var b_style := g._panel(Color("261a06", 0.95), 4, g.GOLD)
+		b_style.border_width_left = 1; b_style.border_width_right = 1
+		b_style.border_width_top = 1; b_style.border_width_bottom = 1
+		cap_badge.add_theme_stylebox_override("panel", b_style)
+		cap_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var b_lbl := g._label("✦ CORE ✦" if g.lang == "en" else "✦ 核心 ✦", 8, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+		b_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		b_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		b_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cap_badge.add_child(b_lbl)
+		card_clip.add_child(cap_badge)
 
 	# 3. A solid text box from the middle down, like a normal trading card's rules box —
 	# a name/type bar over a dark, near-opaque description panel, not a floating translucent
@@ -1792,7 +1821,14 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 # among just the newly-drawn ones (0-based), so a 2-card turn draw deals them one after another
 # instead of both popping in at once.
 func _animate_card_draw_in(tile: HandCard, stagger_index: int) -> void:
-	g.play_sfx("card_draw", 0.08, -3.0)
+	var is_cap := false
+	if tile.card_data:
+		is_cap = bool(tile.card_data.get("is_capstone", false)) or tile.card_data.id in ["samadhi_fire", "spirit_surge", "shield_slam", "bastion_form", "thousand_blades", "shadow_clone", "catalyst", "blood_pact"]
+	if is_cap:
+		g.play_sfx("card_draw", 0.02, 2.5)
+		g._haptic("tap")
+	else:
+		g.play_sfx("card_draw", 0.08, -3.0)
 	var final_pos: Vector2 = tile.position
 	var final_rot: float = tile.rotation
 	tile.position = final_pos + Vector2(-26.0, -92.0)
@@ -2153,6 +2189,7 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	# game.gd for what this prevents.
 	var session: int = g.battle_session
 	_dismiss_first_card_drag_hint()
+	g.last_played_card_id = str(card.get("id", ""))
 
 	# 0. The just-played card flies off to the discard pile — fire-and-forget, so it plays
 	# out alongside everything below rather than delaying it.
@@ -2166,6 +2203,8 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	var player_shield_after: int = int(g.combat.state.player.shield)
 	var shield_gained: int = player_shield_after - player_shield_before
 	if shield_gained > 0:
+		if not g.last_played_card_id.is_empty():
+			g.battle_telemetry.card_impact[g.last_played_card_id] = int(g.battle_telemetry.card_impact.get(g.last_played_card_id, 0)) + shield_gained
 		await _animate_player_shield_gain(shield_gained)
 
 	# 2. Heal Animation (Jade Celestial Lotus)
@@ -2864,11 +2903,16 @@ func _enemy_turn() -> void:
 		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
 
 	var before_health: int = g.combat.state.player.health
+	var before_shield: int = int(g.combat.state.player.shield)
 	g.combat.end_turn()
-	if g.combat.state.player.health < before_health:
+	var after_health: int = g.combat.state.player.health
+	var after_shield: int = int(g.combat.state.player.shield)
+	if before_shield > 0 and after_shield == 0 and after_health < before_health:
+		await _animate_shield_break()
+	if after_health < before_health:
 		g._haptic("heavy")
-		await _animate_player_hit(before_health - g.combat.state.player.health)
-		if g.combat.state.player.health <= 25 and g.combat.state.player.health > 0:
+		await _animate_player_hit(before_health - after_health)
+		if after_health <= 25 and after_health > 0:
 			g._maybe_show_tutorial("combat_survival")
 
 	# Give a brief pause after all enemy actions and damage resolve before player can act
@@ -3026,6 +3070,28 @@ func _animate_enemy_action(box: Control, kind: String, enemy_state: Dictionary) 
 	sprite.rotation_degrees = 0.0
 	sprite.modulate = rest_tint
 
+func _animate_shield_break() -> void:
+	g.play_sfx("resonance_sunder", 0.05, 2.0)
+	g._haptic("heavy")
+	_shake_screen(10.0, g._battle_delay(0.30))
+	if g.overlay == null: return
+	var lbl := g._label(g.t("ui.shield_break"), 22, Color("38bdf8"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	lbl.name = "ShieldBreakLabel"
+	lbl.position = Vector2(80, 480)
+	lbl.custom_minimum_size = Vector2(230, 32)
+	lbl.z_index = 450
+	g.overlay.add_child(lbl)
+	var tw := lbl.create_tween()
+	tw.tween_property(lbl, "position:y", 455.0, g._battle_delay(0.18)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(lbl, "modulate:a", 1.0, 0.05)
+	tw.tween_property(lbl, "modulate:a", 0.0, g._battle_delay(0.28))
+	tw.tween_callback(func():
+		if is_instance_valid(lbl):
+			if lbl.get_parent(): lbl.get_parent().remove_child(lbl)
+			lbl.queue_free()
+	)
+	await g.get_tree().create_timer(g._battle_delay(0.15)).timeout
+
 func _animate_player_hit(amount: int) -> void:
 	g.play_sfx("attack_heavy", 0.08, 1.0)
 	var popup := g._label("−%d" % amount, 42, Color("ff5242"), HORIZONTAL_ALIGNMENT_CENTER)
@@ -3124,7 +3190,9 @@ func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: i
 
 func _combat_event(kind: String, payload: Dictionary) -> void:
 	if g.battle_log: g.battle_log.record(kind, payload, int(g.combat.state.get("turn", 0)) if g.combat else 0)
-	if kind == "intent":
+	if kind == "turn":
+		g.battle_telemetry.turns = maxi(int(g.battle_telemetry.get("turns", 1)), int(payload.get("turn", 1)))
+	elif kind == "intent":
 		var style := _intent_style({"kind": payload.kind, "amount": payload.amount})
 		var tip: String = {"defend": "ui.intent_tip_defend", "empower": "ui.intent_tip_empower", "curse": "ui.intent_tip_curse"}.get(str(payload.kind), "")
 		if not tip.is_empty(): g._toast("%s %s" % [g.t(tip), style.text], style.border)
@@ -3143,6 +3211,11 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		var dmg: int = int(payload.get("damage", 0))
 		var abs_amt: int = int(payload.get("absorbed", 0))
 		var is_vuln: bool = bool(payload.get("vulnerable", false))
+		g.battle_telemetry.dmg_dealt = int(g.battle_telemetry.get("dmg_dealt", 0)) + dmg
+		if abs_amt > 0:
+			g.battle_telemetry.dmg_blocked = int(g.battle_telemetry.get("dmg_blocked", 0)) + abs_amt
+		if not g.last_played_card_id.is_empty():
+			g.battle_telemetry.card_impact[g.last_played_card_id] = int(g.battle_telemetry.card_impact.get(g.last_played_card_id, 0)) + dmg
 		if abs_amt > 0:
 			_spawn_enemy_floating_text(e_idx, "🛡 −%d" % abs_amt, Color("67e8f9"), 20)
 		if dmg > 0:
