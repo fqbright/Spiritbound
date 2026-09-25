@@ -418,4 +418,95 @@ func test_haptics_and_volume_settings_toggles():
 	assert_true(game.muted, "Music volume 0.0 mutes music")
 	game.free()
 
+func test_skip_card_reward_dust_compensation():
+	var game := _create_game()
+	game.profile.dust = 10
+	game.show_rewards(0, "normal")
+	var skip_btn: Button = game.root.find_child("RewardSkipBtn", true, false) as Button
+	assert_not_null(skip_btn, "RewardSkipBtn exists on battle victory reward screen")
+	skip_btn.pressed.emit()
+	assert_eq(int(game.profile.dust), 25, "Skipping card rewards awards +15 Spirit Dust compensation")
+	game.free()
+
+func test_combat_elemental_synergy_and_combo_badge():
+	var game := _create_game()
+	game.begin_battle(0)
+	game.combat.state.phase = "player"
+
+	# 1. Elemental counter synergy
+	var fire_card := {"id": "cinderSlash", "element": "fire", "effects": [{"operation": "damage", "amount": 6, "target": "opponent"}]}
+	var wood_enemy := {"element": "wood", "burn": 0, "poison": 0, "shield": 0, "vulnerable": 0}
+	assert_true(game._battle_screen._has_combat_synergy(fire_card, wood_enemy), "Fire counters Wood enemy")
+
+	var water_card := {"id": "mistVeil", "element": "water", "effects": []}
+	var fire_enemy := {"element": "fire", "burn": 0, "poison": 0, "shield": 0, "vulnerable": 0}
+	assert_true(game._battle_screen._has_combat_synergy(water_card, fire_enemy), "Water counters Fire enemy")
+
+	# 2. Status synergy: burning enemy + fire card or samadhi burst
+	var burning_enemy := {"element": "earth", "burn": 4, "poison": 0, "shield": 0, "vulnerable": 0}
+	assert_true(game._battle_screen._has_combat_synergy(fire_card, burning_enemy), "Fire/Burn cards synergize with burning enemy")
+
+	# 3. Last element resonance
+	game.combat.state.last_element = "fire"
+	var gale_card := {"id": "galeStrike", "element": "gale", "effects": []}
+	assert_true(game._battle_screen._has_combat_synergy(gale_card, {}), "Gale resonates with last played Fire element")
+
+	# 4. HandCard tile mounts ComboBadge when synergy is present
+	game.combat.state.enemies[0].element = "wood"
+	var card_tile = game._battle_screen._card_view({"card_id": "cinderSlash"}, 0, 1)
+	assert_not_null(card_tile, "Hand card tile constructed")
+	var combo_badge: Node = card_tile.find_child("ComboBadge", true, false)
+	assert_not_null(combo_badge, "ComboBadge mounted on card tile with synergy")
+	card_tile.free()
+	game.free()
+
+func test_deck_code_export_and_import_roundtrip():
+	var game := _create_game()
+	game.profile.deck = ["strike", "strike", "ward", "ward", "foxfire"]
+	# Pad to 25 cards
+	while game.profile.deck.size() < 25:
+		game.profile.deck.append("strike")
+
+	var original_deck: Array = game.profile.deck.duplicate()
+	game._export_deck_code()
+	var exported_code: String = game._clipboard_get().strip_edges()
+	assert_true(exported_code.begins_with("SPB1:"), "Exported deck code begins with SPB1: prefix")
+
+	# Modify deck to something different
+	game.profile.deck = ["ward", "ward"]
+	while game.profile.deck.size() < 25:
+		game.profile.deck.append("ward")
+
+	# Import original code back
+	game._show_import_deck_dialog()
+	var modal: Node = game.overlay.find_child("DeckImportModal", true, false)
+	assert_not_null(modal, "DeckImportModal mounted on overlay")
+	var code_input: LineEdit = modal.find_child("DeckCodeInput", true, false) as LineEdit
+	assert_not_null(code_input, "DeckCodeInput exists")
+	code_input.text = exported_code
+	var confirm_btn: Button = modal.find_child("DeckImportConfirmBtn", true, false) as Button
+	assert_not_null(confirm_btn, "DeckImportConfirmBtn exists")
+	confirm_btn.pressed.emit()
+
+	assert_eq(game.profile.deck, original_deck, "Imported deck matches original exported deck")
+	game.free()
+
+func test_map_node_locked_intel_modal():
+	var game := _create_game()
+	game.profile.unlocked = 0
+	# Stage 3 is locked at unlocked = 0
+	game._travel_to(3)
+
+	var modal: Node = game.overlay.find_child("MapNodeIntelModal", true, false)
+	assert_not_null(modal, "MapNodeIntelModal displayed when tapping locked map node")
+	var close_btn: Button = modal.find_child("MapIntelCloseBtn", true, false) as Button
+	assert_not_null(close_btn, "MapIntelCloseBtn exists in intel modal")
+	var ok_btn: Button = modal.find_child("MapIntelOkBtn", true, false) as Button
+	assert_not_null(ok_btn, "MapIntelOkBtn exists in intel modal")
+
+	ok_btn.pressed.emit()
+	assert_null(game.overlay.find_child("MapNodeIntelModal", true, false), "Modal freed on OK button press")
+	game.free()
+
+
 

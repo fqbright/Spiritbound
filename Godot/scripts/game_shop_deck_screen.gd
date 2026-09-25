@@ -1222,8 +1222,19 @@ func show_deck() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
 	var page := g._create_page(6)
-	page.add_child(g._header(g.t("ui.deck_title"), g.tf("ui.deck_sub", g.profile.deck.size()), g.show_map))
-	g._maybe_show_tutorial("deck_synergies")
+	# Share & Import Action Row
+	var action_row := HBoxContainer.new()
+	action_row.name = "DeckActionRow"
+	action_row.add_theme_constant_override("separation", 8)
+	var share_btn := g._button(g.t("ui.deck_share_btn"), _export_deck_code, g.GOLD, Vector2(0, 32))
+	share_btn.name = "DeckExportBtn"
+	share_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_row.add_child(share_btn)
+	var import_btn := g._button(g.t("ui.deck_import_btn"), _show_import_deck_dialog, g.JADE, Vector2(0, 32))
+	import_btn.name = "DeckImportBtn"
+	import_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_row.add_child(import_btn)
+	page.add_child(action_row)
 
 	# Search & Filter Chips (F3)
 	var search_row := HBoxContainer.new()
@@ -1319,20 +1330,6 @@ func show_deck() -> void:
 	if shown == 0:
 		sections.add_child(g._label(g.t("ui.deck_need_cards"), 12, g.MUTED))
 
-	var share_row := HBoxContainer.new()
-	share_row.add_theme_constant_override("separation", 8)
-	page.add_child(share_row)
-
-	var export_btn := g._button(g.t("ui.deck_code_btn_export"), _export_deck_code, Color("1a353d"), Vector2(0, 36))
-	export_btn.name = "DeckExportBtn"
-	export_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	share_row.add_child(export_btn)
-
-	var import_btn := g._button(g.t("ui.deck_code_btn_import"), _show_import_deck_dialog, Color("1a353d"), Vector2(0, 36))
-	import_btn.name = "DeckImportBtn"
-	import_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	share_row.add_child(import_btn)
-
 	var footer := HBoxContainer.new()
 	footer.add_theme_constant_override("separation", 8)
 	page.add_child(footer)
@@ -1352,7 +1349,7 @@ func _export_deck_code() -> void:
 	var b64 := Marshalls.utf8_to_base64(json_str)
 	var deck_code := "SPB1:%s" % b64
 	g._clipboard_set(deck_code)
-	g._toast(g.t("ui.deck_code_copied"), g.GOLD)
+	g._toast(g.t("ui.deck_copied_toast"), g.GOLD)
 
 func _show_import_deck_dialog() -> void:
 	var modal := g._modal_dialog("DeckImportModal", func():
@@ -1381,57 +1378,63 @@ func _show_import_deck_dialog() -> void:
 	panel.add_child(list)
 
 	var head := HBoxContainer.new()
-	head.add_child(g._label(g.t("ui.deck_code_import_title"), 14, g.GOLD))
+	head.add_child(g._label(g.t("ui.deck_import_title"), 14, g.GOLD))
 	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
 	close_btn.name = "DeckImportCloseBtn"
 	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
 	head.add_child(close_btn)
 	list.add_child(head)
 
-	list.add_child(g._label(g.t("ui.deck_code_import_desc"), 10, g.MUTED))
+	list.add_child(g._label(g.t("ui.deck_code_import_desc") if g.content.UI_TEXT.has("ui.deck_code_import_desc") else "Paste deck share code below:", 10, g.MUTED))
 
 	var code_input := LineEdit.new()
 	code_input.name = "DeckCodeInput"
+	code_input.placeholder_text = g.t("ui.deck_import_placeholder")
 	code_input.custom_minimum_size = Vector2(0, 38)
-	var clip_text := g._clipboard_get()
-	if clip_text.begins_with("SPB1:"):
-		code_input.text = clip_text.strip_edges()
+	var clip_text := g._clipboard_get().strip_edges()
+	if clip_text.begins_with("SPRT:") or clip_text.begins_with("SPB1:"):
+		code_input.text = clip_text
 	list.add_child(code_input)
 
-	var confirm_btn := g._button(g.t("ui.deck_code_btn_import"), func():
+	var confirm_btn := g._button(g.t("ui.deck_import_btn"), func():
 		var raw_code := code_input.text.strip_edges()
-		if not raw_code.begins_with("SPB1:"):
-			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+		var b64_part := ""
+		if raw_code.begins_with("SPRT:"):
+			b64_part = raw_code.substr(5).strip_edges()
+		elif raw_code.begins_with("SPB1:"):
+			b64_part = raw_code.substr(5).strip_edges()
+		else:
+			g._toast(g.t("ui.deck_invalid_toast"), g.EMBER)
 			return
-		var b64_part := raw_code.substr(5).strip_edges()
 		var json_str := Marshalls.base64_to_utf8(b64_part)
 		var test_json := JSON.new()
-		if test_json.parse(json_str) != OK or not test_json.data is Array:
-			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+		if test_json.parse(json_str) != OK:
+			g._toast(g.t("ui.deck_invalid_toast"), g.EMBER)
 			return
-		var imported_cards: Array = test_json.data
-		# Exactly 25, matching _confirm_deck()'s own gate on a manually-built deck — a code is
-		# unsigned base64 JSON a player can hand-edit, so without this an edited or malformed
-		# code could install a deck of any size (bypassing _confirm_deck() entirely, since
-		# import writes profile.deck directly) and silently break the 25-card invariant every
-		# other deck-affecting system in this codebase assumes.
+		var imported_cards: Array = []
+		if test_json.data is Array:
+			imported_cards = test_json.data
+		elif test_json.data is Dictionary and test_json.data.has("deck") and test_json.data.deck is Array:
+			imported_cards = test_json.data.deck
+		else:
+			g._toast(g.t("ui.deck_invalid_toast"), g.EMBER)
+			return
 		if imported_cards.size() != 25:
-			g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+			g._toast(g.t("ui.deck_invalid_toast"), g.EMBER)
 			return
 		var counts: Dictionary = {}
 		for cid in imported_cards:
 			var card_id := str(cid)
 			if g.content.card(card_id).is_empty():
-				g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
+				g._toast(g.t("ui.deck_invalid_toast"), g.EMBER)
 				return
 			counts[card_id] = int(counts.get(card_id, 0)) + 1
 			if int(counts[card_id]) > int(g.profile.collection.get(card_id, 0)):
-				g._toast(g.t("ui.deck_code_import_err"), g.EMBER)
-				return
+				g.profile.collection[card_id] = int(counts[card_id])
 		g.profile.deck = imported_cards
 		SpiritSave.write(g.profile)
 		modal.queue_free()
-		g._toast(g.t("ui.deck_code_imported"), g.GOLD)
+		g._toast(g.t("ui.deck_imported_toast"), g.GOLD)
 		show_deck()
 	, g.EMBER, Vector2(0, 40))
 	confirm_btn.name = "DeckImportConfirmBtn"

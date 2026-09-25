@@ -734,17 +734,18 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 
 	var weakened: bool = int(enemy.get("weak", 0)) > 0
 	var idle := sprite.create_tween().set_loops()
-	# Organic breathing: Y bobbing + thoracic squash & stretch
+	# Organic breathing: Y bobbing + thoracic squash & stretch with per-enemy phase shift
+	var breath_dur: float = 1.1 + float(index) * 0.15
 	if weakened:
-		idle.tween_property(sprite, "position:y", sprite.position.y - 2.0, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.99, scale_factor * 1.015), 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		idle.tween_property(sprite, "position:y", sprite.position.y + 1.0, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.01, scale_factor * 0.985), 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y - 2.0, breath_dur * 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.99, scale_factor * 1.015), breath_dur * 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 1.0, breath_dur * 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.01, scale_factor * 0.985), breath_dur * 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	else:
-		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, breath_dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), breath_dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, breath_dur + 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), breath_dur + 0.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_apply_status_fx(unit, sprite, sprite.position, spr_size.x / 2.0, enemy)
 
 	# Intent banner: just the drawn icon (already distinct per intent kind — shield for
@@ -986,8 +987,10 @@ func _build_player_stage() -> Control:
 		stage.add_child(sprite)
 
 		var idle := sprite.create_tween().set_loops()
-		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.0).set_trans(Tween.TRANS_SINE)
-		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE)
+		idle.tween_property(sprite, "position:y", sprite.position.y - 4.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 	_apply_status_fx(stage, sprite, sprite.position, spr_size.x / 2.0, g.combat.state.player)
 
@@ -1645,6 +1648,62 @@ func _has_playable_card() -> bool:
 		if not card.is_empty() and int(card.cost) <= int(g.combat.state.energy): return true
 	return false
 
+func _has_combat_synergy(card: Dictionary, primary_enemy: Dictionary) -> bool:
+	if card.is_empty(): return false
+	var c_elem: String = str(card.get("element", "")).to_lower()
+	var c_spec: String = str(card.get("special", ""))
+	var c_id: String = str(card.get("id", ""))
+
+	# 1. State-based Elemental Resonance with last played element
+	if g.combat != null and g.combat.state != null:
+		var prev_elem: String = str(g.combat.state.get("last_element", "")).to_lower()
+		if not prev_elem.is_empty() and not c_elem.is_empty():
+			if (prev_elem == "fire" and c_elem in ["spirit", "gale"]) or (prev_elem in ["spirit", "gale"] and c_elem == "fire"):
+				return true
+			if (prev_elem == "water" and c_elem in ["stone", "poison"]) or (prev_elem in ["stone", "poison"] and c_elem == "water"):
+				return true
+			if (prev_elem == "stone" and c_elem in ["spirit", "stone"]) or (prev_elem in ["spirit"] and c_elem == "stone"):
+				return true
+
+	# 2. Synergy against primary living enemy
+	if not primary_enemy.is_empty():
+		var e_elem: String = ""
+		if primary_enemy.has("element") and not str(primary_enemy.element).is_empty():
+			e_elem = str(primary_enemy.element).to_lower()
+		elif g.combat != null and g.combat.state != null and g.combat.state.has("encounter"):
+			e_elem = str(g.combat.state.encounter.get("element", "")).to_lower()
+
+		# Elemental counters
+		if not e_elem.is_empty() and not c_elem.is_empty():
+			if e_elem == "fire" and c_elem in ["water", "ice"]: return true
+			if e_elem in ["wood", "earth"] and c_elem in ["fire", "poison"]: return true
+			if e_elem == "water" and c_elem in ["thunder", "gale", "wind"]: return true
+			if e_elem in ["thunder", "gale", "wind"] and c_elem in ["stone", "earth"]: return true
+			if e_elem == "void" and c_elem in ["spirit", "light"]: return true
+
+		# Status interactions
+		var e_burn: int = int(primary_enemy.get("burn", 0))
+		var e_poison: int = int(primary_enemy.get("poison", 0))
+		var e_shield: int = int(primary_enemy.get("shield", 0))
+		var e_vuln: int = int(primary_enemy.get("vulnerable", 0))
+
+		if e_burn > 0 and (c_elem == "fire" or c_spec == "samadhi_burst" or c_id in ["foxfire", "wildSpark", "samadhi_fire"]):
+			return true
+		if e_poison > 0 and (c_elem == "poison" or c_spec == "catalyst_poison" or c_id in ["catalyst", "venomFang", "decayWave"]):
+			return true
+		if e_vuln > 0 and _card_is_attack(card):
+			return true
+		if e_shield >= 6 and (c_spec in ["pierce", "shield_slam"] or c_id in ["stoneBreaker", "shield_slam"]):
+			return true
+
+	# 3. Player status synergy (e.g. Shield Slam with high shield)
+	if g.combat != null and g.combat.state != null and g.combat.state.has("player"):
+		var p_shield: int = int(g.combat.state.player.get("shield", 0))
+		if p_shield >= 10 and (c_spec in ["shield_slam", "shield_rebound"] or c_id in ["shield_slam", "stoneRebound", "bastion_form"]):
+			return true
+
+	return false
+
 func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var card := g.content.card(instance.card_id)
 	var tile := HandCard.new()
@@ -1660,6 +1719,14 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
 	if up_lvl > 0:
 		border_col = border_col.lerp(g.GOLD, 0.55)
+
+	var primary_enemy: Dictionary = {}
+	var living := _living_enemies()
+	if not living.is_empty() and g.combat != null and g.combat.state != null:
+		primary_enemy = g.combat.state.enemies[living[0]]
+	var has_synergy: bool = _has_combat_synergy(card, primary_enemy)
+	if has_synergy:
+		border_col = border_col.lerp(Color("5ffbe2"), 0.6)
 
 	var can_afford: bool = true
 	if g.combat != null and g.combat.state != null:
@@ -1716,6 +1783,25 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 		b_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cap_badge.add_child(b_lbl)
 		card_clip.add_child(cap_badge)
+
+	if has_synergy:
+		var combo_badge := Panel.new()
+		combo_badge.name = "ComboBadge"
+		combo_badge.custom_minimum_size = Vector2(50, 14)
+		combo_badge.size = combo_badge.custom_minimum_size
+		var y_pos: float = 18.0 if is_capstone else 2.0
+		combo_badge.position = Vector2((116.0 - 50.0) / 2.0, y_pos)
+		var combo_style := g._panel(Color("082422", 0.95), 4, Color("5ffbe2"))
+		combo_style.border_width_left = 1; combo_style.border_width_right = 1
+		combo_style.border_width_top = 1; combo_style.border_width_bottom = 1
+		combo_badge.add_theme_stylebox_override("panel", combo_style)
+		combo_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var c_lbl := g._label(g.t("ui.card_combo_badge"), 8, Color("5ffbe2"), HORIZONTAL_ALIGNMENT_CENTER)
+		c_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		c_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		c_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		combo_badge.add_child(c_lbl)
+		card_clip.add_child(combo_badge)
 
 	# 3. A solid text box from the middle down, like a normal trading card's rules box —
 	# a name/type bar over a dark, near-opaque description panel, not a floating translucent

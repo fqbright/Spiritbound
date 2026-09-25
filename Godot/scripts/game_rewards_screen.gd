@@ -671,7 +671,14 @@ func show_reward_details() -> void:
 	var reward_options := _get_reward_card_options()
 	for card in reward_options:
 		list.add_child(_reward_card_row(card))
-	var skip_btn := g._button(g.t("ui.reward_skip"), _finish_reward, Color("2d2218"), Vector2(0, 36))
+	var dust_gain := 15
+	var skip_btn := g._button(g.tf("ui.reward_skip_dust", dust_gain), func():
+		g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + dust_gain
+		SpiritSave.write(g.profile)
+		g._toast(g.tf("ui.reward_skip_dust_toast", dust_gain), g.GOLD)
+		_finish_reward()
+	, Color("2d2218"), Vector2(0, 36))
+	skip_btn.name = "RewardSkipBtn"
 	skip_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	list.add_child(skip_btn)
 	if g.auto_battle_active:

@@ -1276,6 +1276,96 @@ func _add_stage_pin(index: int) -> void:
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.map_canvas.add_child(caption)
 
+func _show_locked_node_intel(index: int) -> void:
+	var modal := g._modal_dialog("MapNodeIntelModal", func():
+		var ex: Node = g.overlay.get_node_or_null("MapNodeIntelModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 0)
+	var pstyle := g._panel(Color("0c1a1f"), 14, g.GOLD)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 14
+	pstyle.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.map_intel_preview"), 14, g.GOLD))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
+	close_btn.name = "MapIntelCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	var stage_num := "%d-%d" % [index / 5 + 1, index % 5 + 1]
+	var stage_title := "%s (%s)" % [g.content.stage_name(index, g.lang), stage_num]
+	list.add_child(g._label(stage_title, 12, Color("e3edf2"), HORIZONTAL_ALIGNMENT_CENTER))
+
+	var encounter: Dictionary = g.content.encounters[index] if index < g.content.encounters.size() else {}
+	if not encounter.is_empty():
+		var enemy_name: String = str(encounter.get("name_en", encounter.name)) if g.lang == "en" else str(encounter.get("name", ""))
+		var enemy_el: String = str(encounter.get("element", "wood"))
+		var enemy_tier: int = int(encounter.get("tier", 1))
+
+		var tier_name := "妖兽" if g.lang != "en" else "Monster"
+		match enemy_tier:
+			2: tier_name = "精英" if g.lang != "en" else "Elite"
+			3: tier_name = "首领" if g.lang != "en" else "Boss"
+			4: tier_name = "大境天灾" if g.lang != "en" else "World Calamity"
+
+		var info_box := PanelContainer.new()
+		var ib_style := g._panel(Color("071216"), 8, Color("20444c"))
+		ib_style.content_margin_left = 10
+		ib_style.content_margin_right = 10
+		ib_style.content_margin_top = 8
+		ib_style.content_margin_bottom = 8
+		info_box.add_theme_stylebox_override("panel", ib_style)
+		var ib_vbox := VBoxContainer.new()
+		ib_vbox.add_theme_constant_override("separation", 4)
+		info_box.add_child(ib_vbox)
+
+		var el_name: String = g.t("element.%s" % enemy_el) if g.content.UI_TEXT.has("element.%s" % enemy_el) else enemy_el.capitalize()
+		var enemy_line := "%s · %s [%s]" % [enemy_name, tier_name, el_name]
+		ib_vbox.add_child(g._label(enemy_line, 11, g.EMBER, HORIZONTAL_ALIGNMENT_CENTER))
+
+		var weakness: String = "water"
+		match enemy_el:
+			"fire": weakness = "water"
+			"wood": weakness = "fire"
+			"earth": weakness = "wood"
+			"water": weakness = "thunder"
+			"void": weakness = "spirit"
+			"thunder", "gale", "wind": weakness = "stone"
+
+		var rec_el_name: String = g.t("element.%s" % weakness) if g.content.UI_TEXT.has("element.%s" % weakness) else weakness.capitalize()
+		var rec_line := "%s: %s" % [g.t("ui.map_intel_recommended"), rec_el_name]
+		ib_vbox.add_child(g._label(rec_line, 10, Color("5ffbe2"), HORIZONTAL_ALIGNMENT_CENTER))
+
+		var exp_reward := int(encounter.get("reward", 30))
+		var rew_line := "预计收益: ~%d 金币 · 灵尘与卡牌机缘" % exp_reward if g.lang != "en" else "Rewards: ~%d Gold · Spirit Dust & Cards" % exp_reward
+		ib_vbox.add_child(g._label(rew_line, 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		list.add_child(info_box)
+
+	var locked_hint := g._label(g.t("ui.map_intel_locked"), 9, Color("e09252"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	list.add_child(locked_hint)
+
+	var ok_btn := g._button(g.t("ui.confirm") if g.content.UI_TEXT.has("ui.confirm") else "OK", func(): modal.queue_free(), Color("1b3d45"), Vector2(0, 36))
+	ok_btn.name = "MapIntelOkBtn"
+	list.add_child(ok_btn)
+
 const TOTAL_TRAVEL_SECONDS := 2.0
 const TRAVEL_SECONDS_PER_STAGE := 2.0
 
@@ -1283,7 +1373,9 @@ const TRAVEL_SECONDS_PER_STAGE := 2.0
 # Total travel time is fixed to 2.0 seconds regardless of distance — so traveling across many
 # stages covers intermediate waypoints quickly, and a single stage hop is slower and deliberate.
 func _travel_to(index: int) -> void:
-	if index > int(g.profile.unlocked): return
+	if index > int(g.profile.unlocked):
+		_show_locked_node_intel(index)
+		return
 	var start_index: int = int(g.profile.position)
 	# The swipe gesture lets the player browse a chapter that has nothing to do with where
 	# they actually stand — tapping the next-stage dock button (or a pin) while browsing one
