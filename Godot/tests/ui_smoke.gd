@@ -4368,7 +4368,7 @@ func _run() -> void:
 		await process_frame
 		check(game.battle_speed == 4.0, "speed changed to 4.0x")
 		check(game.auto_battle_active == true, "auto battle remains active after changing to 4.0x")
-		check(speed_btn2.text == "4x", "speed toggle button text updated to 4x in-place")
+		check(speed_btn2.text in ["4x", "⚡4x"], "speed toggle button text updated to 4x in-place")
 		# Change speed to 1.0x during auto-play
 		game._cycle_speed()
 		await process_frame

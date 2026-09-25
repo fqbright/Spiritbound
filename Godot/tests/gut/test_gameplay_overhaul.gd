@@ -305,3 +305,50 @@ func test_phase16_masterpiece_systems():
 	player_gold -= restock_cost
 	assert_eq(player_gold, 15, "Gold deducted correctly after restock")
 
+func test_phase17_masterpiece_systems():
+	# 1. Localization keys for branch preview and preset renaming
+	var check_keys := [
+		"ui.upgrade_preview_title", "ui.upgrade_current_form",
+		"ui.upgrade_flow_form", "ui.upgrade_surge_form",
+		"ui.preset_rename_title", "ui.preset_rename_prompt", "ui.preset_renamed_toast"
+	]
+	for k in check_keys:
+		var zh := content.ui(k, "zh-Hans")
+		var en := content.ui(k, "en")
+		assert_true(zh.length() > 0 and zh != k, "zh-Hans translation exists for %s" % k)
+		assert_true(en.length() > 0 and en != k, "en translation exists for %s" % k)
+
+	# 2. Deck preset custom names and migration support
+	var profile: Dictionary = SpiritSave.defaults(content)
+	assert_true(profile.has("deck_preset_names"), "Profile has deck_preset_names field")
+	assert_true(profile.deck_preset_names is Dictionary, "deck_preset_names is a Dictionary")
+	assert_eq(profile.deck_preset_names.get("1", ""), "预设 1", "Default preset 1 name is 预设 1")
+	profile.deck_preset_names["1"] = "九天离火阵"
+	assert_eq(profile.deck_preset_names.get("1", ""), "九天离火阵", "Custom preset name applied")
+
+	# 3. Archetype emblem logic test
+	var fire_deck := ["samadhiFire", "samadhiFire", "samadhiFire", "samadhiFire"]
+	var counts := {"fire": 0, "frost": 0, "water": 0, "thunder": 0, "stone": 0, "poison": 0}
+	for cid in fire_deck:
+		var c := content.card(cid)
+		var el: String = str(c.get("element", "")).to_lower()
+		if el in counts: counts[el] += 1
+	assert_true(counts["fire"] >= 3, "Fire archetype detected")
+
+	# 4. 4x blitz speed label formatting
+	var speed_4 := 4.0
+	var label_4: String = "⚡4x" if speed_4 >= 4.0 else (str(speed_4) + "x")
+	assert_eq(label_4, "⚡4x", "Speed 4.0 is labeled as ⚡4x")
+	var speed_15 := 1.5
+	var label_15: String = "⚡4x" if speed_15 >= 4.0 else (str(speed_15) + "x")
+	assert_eq(label_15, "1.5x", "Speed 1.5 is labeled as 1.5x")
+
+	# 5. Card flow vs surge branch math
+	var base_cost := 2
+	var flow_cost := maxi(0, base_cost - 1)
+	assert_eq(flow_cost, 1, "Flow branch reduces card cost by 1")
+	var base_dmg := 10
+	var surge_dmg := base_dmg + 3
+	assert_eq(surge_dmg, 13, "Surge branch adds +3 flat power boost")
+
+

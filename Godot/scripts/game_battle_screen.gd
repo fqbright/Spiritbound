@@ -358,7 +358,7 @@ func show_battle() -> void:
 		top.add_child(combo_badge)
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(spacer)
 	top.add_child(g._label(g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD))
-	var speed_label: String = (str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x"
+	var speed_label: String = "⚡4x" if g.battle_speed >= 4.0 else ((str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x")
 	var speed_btn := g._button(speed_label, g._cycle_speed, Color("1a3a42"), Vector2(44, 28))
 	speed_btn.name = "SpeedToggle"
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1350,11 +1350,33 @@ func _add_hand(page: VBoxContainer) -> void:
 	# Energy is the only thing that gates a play now — there is no play-count limit, so this
 	# orb (not a row of used-up pips) is the one number that actually matters each turn.
 	var orb := Panel.new()
+	orb.name = "EnergyOrb"
 	orb.custom_minimum_size = Vector2(52, 52)
+	orb.pivot_offset = Vector2(26, 26)
 	orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var orb_style := g._panel(Color("0d3a4a"), 26, Color("6fd8ff"))
 	orb_style.border_width_left = 2; orb_style.border_width_right = 2; orb_style.border_width_top = 2; orb_style.border_width_bottom = 2
 	orb.add_theme_stylebox_override("panel", orb_style)
+	if g.combat and g.combat.state and g.combat.state.phase == "player" and not g.resolving and g.is_inside_tree():
+		var cur_turn: int = int(g.combat.state.get("turn", 1))
+		if int(g.get_meta("last_energy_pulse_turn", -1)) != cur_turn:
+			g.set_meta("last_energy_pulse_turn", cur_turn)
+			orb.scale = Vector2(1.25, 1.25)
+			var orb_tw := orb.create_tween()
+			orb_tw.tween_property(orb, "scale", Vector2(1.0, 1.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			var ripple := Panel.new()
+			ripple.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			ripple.custom_minimum_size = Vector2(52, 52)
+			ripple.pivot_offset = Vector2(26, 26)
+			var rip_style := g._panel(Color(0.2, 0.7, 1.0, 0.4), 26, Color("6fd8ff", 0.7))
+			rip_style.border_width_left = 2; rip_style.border_width_right = 2; rip_style.border_width_top = 2; rip_style.border_width_bottom = 2
+			ripple.add_theme_stylebox_override("panel", rip_style)
+			orb.add_child(ripple)
+			var rip_tw := ripple.create_tween()
+			rip_tw.set_parallel(true)
+			rip_tw.tween_property(ripple, "scale", Vector2(1.45, 1.45), 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			rip_tw.tween_property(ripple, "modulate:a", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			rip_tw.chain().tween_callback(ripple.queue_free)
 	var orb_stack := VBoxContainer.new()
 	orb_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	orb_stack.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -3884,6 +3906,100 @@ func _spawn_enemy_floating_text(enemy_index: int, text: String, color: Color, fo
 	if el != "":
 		_spawn_elemental_hit_particles(target_pos, el)
 
+func _spawn_elemental_slash_arc(enemy_index: int, element: String) -> void:
+	if g.overlay == null or not is_instance_valid(g.overlay) or not g.is_inside_tree(): return
+	var box: Control = null
+	for candidate in g.enemy_boxes:
+		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index", -1)) == enemy_index:
+			box = candidate
+			break
+	var center := Vector2(195, 220)
+	if box != null:
+		center = box.global_position + Vector2(box.size.x / 2.0, box.size.y / 2.0)
+	var slash_color: Color
+	match element.to_lower():
+		"fire": slash_color = Color("f97316")
+		"frost", "water": slash_color = Color("38bdf8")
+		"thunder", "gale": slash_color = Color("facc15")
+		"poison": slash_color = Color("4ade80")
+		"stone": slash_color = Color("f59e0b")
+		_: slash_color = Color("ffffff")
+
+	var arc := Line2D.new()
+	arc.width = 4.0
+	arc.default_color = slash_color
+	arc.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	arc.end_cap_mode = Line2D.LINE_CAP_ROUND
+	var angle: float = randf_range(-0.4, 0.4) + (-0.6 if randf() < 0.5 else 0.6)
+	var dir := Vector2(cos(angle), sin(angle))
+	var p1 := center - dir * 42.0
+	var p2 := center + dir * 42.0
+	arc.add_point(p1)
+	arc.add_point(p2)
+	g.overlay.add_child(arc)
+
+	var tw := g.get_tree().create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(arc, "width", 0.5, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(arc, "modulate:a", 0.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_callback(arc.queue_free)
+
+func _spawn_enemy_dissolve_fx(enemy_index: int) -> void:
+	if g.overlay == null or not is_instance_valid(g.overlay) or not g.is_inside_tree(): return
+	var box: Control = null
+	for candidate in g.enemy_boxes:
+		if candidate and is_instance_valid(candidate) and int(candidate.get_meta("enemy_index", -1)) == enemy_index:
+			box = candidate
+			break
+	var center := Vector2(195, 220)
+	if box != null:
+		center = box.global_position + Vector2(box.size.x / 2.0, box.size.y / 2.0)
+		var tw_box := g.get_tree().create_tween()
+		tw_box.set_parallel(true)
+		tw_box.tween_property(box, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw_box.tween_property(box, "scale", Vector2(0.85, 0.85), 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+
+	var p := CPUParticles2D.new()
+	p.position = center
+	p.emitting = true
+	p.one_shot = true
+	p.explosiveness = 0.25
+	p.lifetime = 0.65
+	p.amount = 24
+	p.direction = Vector2(0, -1)
+	p.spread = 60.0
+	p.initial_velocity_min = 40.0
+	p.initial_velocity_max = 90.0
+	p.gravity = Vector2(0, -50)
+	p.scale_amount_min = 2.0
+	p.scale_amount_max = 4.5
+	p.color = Color("6ee7b7", 0.95)
+	g.overlay.add_child(p)
+
+	var p_gold := CPUParticles2D.new()
+	p_gold.position = center
+	p_gold.emitting = true
+	p_gold.one_shot = true
+	p_gold.explosiveness = 0.4
+	p_gold.lifetime = 0.55
+	p_gold.amount = 16
+	p_gold.direction = Vector2(0, -1)
+	p_gold.spread = 120.0
+	p_gold.initial_velocity_min = 30.0
+	p_gold.initial_velocity_max = 70.0
+	p_gold.gravity = Vector2(0, -35)
+	p_gold.scale_amount_min = 1.5
+	p_gold.scale_amount_max = 3.5
+	p_gold.color = Color("fbbf24", 0.9)
+	g.overlay.add_child(p_gold)
+
+	var tw := g.get_tree().create_tween()
+	tw.tween_interval(0.7)
+	tw.tween_callback(func():
+		if is_instance_valid(p): p.queue_free()
+		if is_instance_valid(p_gold): p_gold.queue_free()
+	)
+
 func _spawn_player_floating_text(text: String, color: Color, font_size: int = 24) -> void:
 	if g.overlay == null: return
 	var target_pos := Vector2(195, 480)
@@ -4042,6 +4158,9 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		elif abs_amt > 0:
 			_spawn_enemy_floating_text(e_idx, "🛡 −%d" % abs_amt, Color("67e8f9"), 20)
 		if dmg > 0:
+			var last_c: Dictionary = g.content.card(g.last_played_card_id) if not g.last_played_card_id.is_empty() else {}
+			var el: String = str(last_c.get("element", ""))
+			_spawn_elemental_slash_arc(e_idx, el)
 			var combo_hits: int = int(g.combat.state.get("turn_combo_count", 0)) if g.combat and g.combat.state else 0
 			if combo_hits >= 2:
 				_spawn_combo_counter(e_idx, combo_hits)
@@ -4057,6 +4176,8 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 				var en_dict: Dictionary = g.combat.state.enemies[e_idx]
 				var max_hp: int = int(en_dict.get("max_health", 1))
 				var cur_hp: int = int(en_dict.get("health", 0))
+				if bool(en_dict.get("boss", false)) and cur_hp <= max_hp / 2:
+					g._set_boss_phase_music(true)
 				if cur_hp > 0 and cur_hp <= max_hp / 2 and not bool(en_dict.get("shatter_50_triggered", false)):
 					en_dict["shatter_50_triggered"] = true
 					_spawn_enemy_floating_text(e_idx, g.t("ui.armor_shattered"), Color("f97316"), 30, true)
@@ -4074,6 +4195,8 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		g._haptic("heavy")
 		g._toast("⚡ 天罡神雷贯通！" if g.lang != "en" else "⚡ Divine Thunder Strike!", Color("facc15"))
 	elif kind == "death":
+		var e_idx: int = int(payload.get("enemy", 0))
+		_spawn_enemy_dissolve_fx(e_idx)
 		var any_alive := false
 		if g.combat and g.combat.state.get("enemies"):
 			for en in g.combat.state.enemies:
@@ -4085,6 +4208,7 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	elif kind == "epiphany_ready":
 		_show_epiphany_dialog()
 	elif kind == "boss_phase":
+		g._set_boss_phase_music(true)
 		var p_name: String = payload.get("name_en", "") if g.lang == "en" else payload.get("name", "")
 		var p_desc: String = payload.get("desc_en", "") if g.lang == "en" else payload.get("desc", "")
 		g.play_sfx("boss_phase2")
@@ -4107,6 +4231,7 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		g._toast("✦ 镜盾抵消 (NEGATED) ✦", Color("c084fc"))
 		_spawn_player_floating_text("NEGATED", Color("c084fc"))
 	elif kind == "boss_phase_change":
+		g._set_boss_phase_music(true)
 		var p_num: int = int(payload.get("phase", 2))
 		_shake_screen(8.0, 0.4)
 		g.play_sfx("boss_phase2")

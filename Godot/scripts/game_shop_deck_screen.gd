@@ -86,6 +86,92 @@ func show_deck_purge(return_callback: Callable, cost := 0, on_done := Callable()
 
 		list.add_child(row)
 
+func _show_card_upgrade_diff_modal(card: Dictionary, up_lvl: int) -> void:
+	if card.is_empty(): return
+	var modal := g._modal_dialog("CardUpgradeDiffModal", func():
+		var ex: Node = g.overlay.get_node_or_null("CardUpgradeDiffModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 0)
+	var pstyle := g._panel(Color("0c1a1f"), 14, g.GOLD)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 14
+	pstyle.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	var card_name: String = g.content.text(card.nameKey, g.lang)
+	head.add_child(g._label("%s · %s" % [card_name, g.t("ui.upgrade_preview_title")], 14, g.GOLD))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
+	close_btn.name = "UpgradeDiffCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	var base_cost: int = int(card.get("cost", 1))
+	var base_dmg: int = int(card.get("damage", 0))
+	var base_shld: int = int(card.get("shield", 0))
+
+	# 1. Current form
+	var cur_box := PanelContainer.new()
+	cur_box.add_theme_stylebox_override("panel", g._panel(Color("16242c"), 8, Color("475569")))
+	var cur_v := VBoxContainer.new()
+	cur_v.add_theme_constant_override("separation", 4)
+	cur_box.add_child(cur_v)
+	var cur_title := g._label("【%s】%s" % [g.t("ui.upgrade_current_form"), " +%d" % up_lvl if up_lvl > 0 else " (+0)"], 12, g.TEXT)
+	cur_v.add_child(cur_title)
+	var cur_desc: String = g.content.text(card.descKey, g.lang) if card.has("descKey") else ""
+	var cur_stat := "灵气: %d" % base_cost
+	if base_dmg > 0: cur_stat += " | 伤害: %d" % (base_dmg + up_lvl * 2)
+	if base_shld > 0: cur_stat += " | 护盾: %d" % (base_shld + up_lvl * 2)
+	cur_v.add_child(g._label(cur_stat, 11, g.MUTED))
+	if not cur_desc.is_empty():
+		cur_v.add_child(g._label(cur_desc, 10, Color("94a3b8"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	list.add_child(cur_box)
+
+	# 2. Flow branch form
+	var flow_box := PanelContainer.new()
+	flow_box.add_theme_stylebox_override("panel", g._panel(Color("0f2922"), 8, g.JADE))
+	var flow_v := VBoxContainer.new()
+	flow_v.add_theme_constant_override("separation", 4)
+	flow_box.add_child(flow_v)
+	flow_v.add_child(g._label("【%s】+%d" % [g.t("ui.upgrade_flow_form"), up_lvl + 1], 12, g.JADE))
+	var flow_cost: int = maxi(0, base_cost - 1)
+	var flow_stat := "灵气: %d (降费 -1)" % flow_cost
+	if base_dmg > 0: flow_stat += " | 伤害: %d" % (base_dmg + (up_lvl + 1) * 2)
+	if base_shld > 0: flow_stat += " | 护盾: %d" % (base_shld + (up_lvl + 1) * 2)
+	flow_v.add_child(g._label(flow_stat, 11, Color("6ee7b7")))
+	flow_v.add_child(g._label("顺流分支特性: 灵气消耗减少 1 点，出牌节奏极为灵活流畅。", 10, Color("a7f3d0"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	list.add_child(flow_box)
+
+	# 3. Surge branch form
+	var surge_box := PanelContainer.new()
+	surge_box.add_theme_stylebox_override("panel", g._panel(Color("2d1c14"), 8, g.EMBER))
+	var surge_v := VBoxContainer.new()
+	surge_v.add_theme_constant_override("separation", 4)
+	surge_box.add_child(surge_v)
+	surge_v.add_child(g._label("【%s】+%d" % [g.t("ui.upgrade_surge_form"), up_lvl + 1], 12, g.EMBER))
+	var surge_stat := "灵气: %d" % base_cost
+	if base_dmg > 0: surge_stat += " | 伤害: %d (+3 狂涌加成)" % (base_dmg + (up_lvl + 1) * 2 + 3)
+	if base_shld > 0: surge_stat += " | 护盾: %d (+3 狂涌加成)" % (base_shld + (up_lvl + 1) * 2 + 3)
+	surge_v.add_child(g._label(surge_stat, 11, Color("fdba74")))
+	surge_v.add_child(g._label("狂涌分支特性: 攻击伤害与防御效果获得狂涌增幅 (+3 点基础威能加成)。", 10, Color("fed7aa"), HORIZONTAL_ALIGNMENT_LEFT, true))
+	list.add_child(surge_box)
+
 func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = return_callback
@@ -141,6 +227,11 @@ func show_deck_upgrade(return_callback: Callable, on_done := Callable()) -> void
 		texts.add_child(name_lbl)
 		var kind_lbl := g._label("%s · %s" % [g.t("kind.%s" % card.get("kind", "Skill")), g.t("rarity.%s" % card.get("rarity", "Common"))], 10, g.GOLD)
 		texts.add_child(kind_lbl)
+
+		var info_btn := g._button("ℹ️", func(): _show_card_upgrade_diff_modal(card, up_lvl), Color("17363e"), Vector2(34, 38))
+		info_btn.name = "UpgradeDiffBtn_%s" % card_id
+		info_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.add_child(info_btn)
 
 		if not maxed:
 			var next_lvl := up_lvl + 1
@@ -1240,18 +1331,101 @@ func _build_deck_analytics_box() -> PanelContainer:
 	hbox.add_child(type_vbox)
 	return box
 
+func _calc_preset_archetype(p_deck: Array) -> String:
+	var counts := {"fire": 0, "frost": 0, "water": 0, "thunder": 0, "gale": 0, "stone": 0, "poison": 0}
+	for cid in p_deck:
+		var c := g.content.card(cid)
+		var el: String = str(c.get("element", "")).to_lower()
+		if el in counts:
+			counts[el] += 1
+	var top_el := ""
+	var top_cnt := 0
+	for el in counts:
+		if counts[el] > top_cnt:
+			top_cnt = counts[el]
+			top_el = el
+	if top_cnt >= 3:
+		match top_el:
+			"fire": return "🔥"
+			"frost", "water": return "❄️"
+			"thunder", "gale": return "⚡"
+			"stone": return "🪨"
+			"poison": return "☠️"
+	return "⚔️"
+
+func _rename_preset_modal(slot_idx: int) -> void:
+	var modal := g._modal_dialog("PresetRenameModal", func():
+		var ex: Node = g.overlay.get_node_or_null("PresetRenameModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 0)
+	var pstyle := g._panel(Color("0c1a1f"), 14, g.GOLD)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 14
+	pstyle.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.preset_rename_title"), 14, g.GOLD))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
+	close_btn.name = "PresetRenameCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	list.add_child(g._label(g.t("ui.preset_rename_prompt"), 11, g.TEXT))
+
+	var input := LineEdit.new()
+	input.name = "PresetNameInput"
+	var cur_name: String = str(g.profile.get("deck_preset_names", {}).get(str(slot_idx), g.t("ui.deck_preset_%d" % slot_idx)))
+	input.text = cur_name
+	input.custom_minimum_size = Vector2(0, 36)
+	list.add_child(input)
+
+	var save_btn := g._button(g.t("ui.confirm"), func():
+		var new_name: String = input.text.strip_edges()
+		if new_name.is_empty():
+			new_name = g.t("ui.deck_preset_%d" % slot_idx)
+		if not g.profile.get("deck_preset_names") is Dictionary:
+			g.profile.deck_preset_names = {"1": "预设 1", "2": "预设 2", "3": "预设 3"}
+		g.profile.deck_preset_names[str(slot_idx)] = new_name
+		SpiritSave.write(g.profile)
+		modal.queue_free()
+		g._toast(g.tf("ui.preset_renamed_toast", new_name), g.GOLD)
+		show_deck()
+	, g.GOLD, Vector2(0, 36))
+	save_btn.name = "PresetRenameConfirmBtn"
+	list.add_child(save_btn)
+
 func show_deck() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
 	var page := g._create_page(6)
-	# Deck Loadout Presets (Phase 12)
+	# Deck Loadout Presets (Phase 12 & 17)
 	var preset_row := HBoxContainer.new()
 	preset_row.name = "DeckPresetRow"
 	preset_row.add_theme_constant_override("separation", 6)
 	var active_slot: int = int(g.profile.get("active_deck_preset", 1))
 	for slot_idx: int in [1, 2, 3]:
 		var is_active: bool = (slot_idx == active_slot)
-		var btn_label: String = g.t("ui.deck_preset_%d" % slot_idx)
+		var preset_name: String = str(g.profile.get("deck_preset_names", {}).get(str(slot_idx), g.t("ui.deck_preset_%d" % slot_idx)))
+		var p_deck: Array = g.profile.deck if is_active else g.profile.get("deck_presets", {}).get(str(slot_idx), [])
+		var arch_badge: String = _calc_preset_archetype(p_deck)
+		var btn_label: String = "%s %s" % [arch_badge, preset_name]
 		var target_slot: int = slot_idx
 		var on_slot_select := func():
 			if not g.profile.get("deck_presets") is Dictionary:
@@ -1269,6 +1443,10 @@ func show_deck() -> void:
 		p_btn.name = "PresetBtn_%d" % slot_idx
 		p_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		preset_row.add_child(p_btn)
+	var rename_btn := g._button("✏️", func(): _rename_preset_modal(active_slot), Color("17363e"), Vector2(34, 30))
+	rename_btn.name = "PresetRenameBtn"
+	rename_btn.tooltip_text = g.t("ui.preset_rename_title")
+	preset_row.add_child(rename_btn)
 	page.add_child(preset_row)
 
 	# Share & Import Action Row

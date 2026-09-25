@@ -663,7 +663,7 @@ func _cycle_speed() -> void:
 	battle_speed = BATTLE_SPEED_OPTIONS[idx]
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
-	var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+	var speed_label: String = "⚡4x" if battle_speed >= 4.0 else ((str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x")
 	var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button if root != null and is_instance_valid(root) else null
 	if speed_btn != null and is_instance_valid(speed_btn):
 		speed_btn.text = speed_label
@@ -1161,10 +1161,14 @@ func _clear() -> void:
 func _input(event: InputEvent) -> void:
 	if _handle_targeting(event): return
 
-	# Desktop & Tablet Ergonomic Keyboard Shortcuts (Phase 16)
+	# Desktop & Tablet Ergonomic Keyboard Shortcuts (Phase 16 & 17)
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key: int = event.keycode
-		if key == KEY_ESCAPE:
+		if key == KEY_TAB:
+			_cycle_speed()
+			get_viewport().set_input_as_handled()
+			return
+		elif key == KEY_ESCAPE:
 			if overlay and overlay.get_child_count() > 0:
 				var top_modal := overlay.get_child(overlay.get_child_count() - 1)
 				if top_modal and is_instance_valid(top_modal):
@@ -1486,6 +1490,7 @@ func _play_music(battle := false, stage_level: int = 0) -> void:
 	if map_music != null: map_music.volume_db = target_db
 	if battle_music != null: battle_music.volume_db = target_db
 	if battle:
+		if battle_music != null: battle_music.pitch_scale = 1.0
 		if map_music != null: map_music.stop()
 		if battle_music_streams.is_empty(): return
 		var stream_idx: int = clampi(stage_level, 0, battle_music_streams.size() - 1)
@@ -1497,8 +1502,14 @@ func _play_music(battle := false, stage_level: int = 0) -> void:
 		else:
 			if battle_music != null and not battle_music.playing: battle_music.play()
 	else:
-		if battle_music != null: battle_music.stop()
+		if battle_music != null:
+			battle_music.pitch_scale = 1.0
+			battle_music.stop()
 		if map_music != null and not map_music.playing: map_music.play()
+
+func _set_boss_phase_music(boosted: bool) -> void:
+	if battle_music != null and is_instance_valid(battle_music):
+		battle_music.pitch_scale = 1.06 if boosted else 1.0
 
 func _panel(color: Color, radius := 12, border := Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new(); style.bg_color = color
@@ -3276,7 +3287,7 @@ func _change_battle_speed(new_speed: float) -> void:
 	if root != null and is_instance_valid(root):
 		var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button
 		if speed_btn != null and is_instance_valid(speed_btn):
-			var speed_label: String = (str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x"
+			var speed_label: String = "⚡4x" if battle_speed >= 4.0 else ((str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x")
 			speed_btn.text = speed_label
 	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
 		_battle_screen._maybe_step_auto_battle()
