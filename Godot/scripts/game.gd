@@ -875,10 +875,21 @@ func show_title_screen() -> void:
 	start_btn.name = "TitleStartBtn"
 	page.add_child(start_btn)
 
+	# One-Click Device Cloud Sync Button (if not yet linked to cloud)
+	if not is_linked:
+		var device_btn := _button(t("ui.auth_btn_device"), func():
+			SpiritAuth.sign_in_with_device(self, func(ok, _p):
+				if ok:
+					show_title_screen()
+			)
+		, JADE, Vector2(0, 42))
+		device_btn.name = "TitleDeviceAuthBtn"
+		page.add_child(device_btn)
+
 	# Account Switch / Login Button
 	var auth_btn := _button(t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title"), func():
 		show_auth_modal(func(): show_map())
-	, JADE, Vector2(0, 40))
+	, Color("1a4049") if not is_linked else JADE, Vector2(0, 40))
 	auth_btn.name = "TitleAuthBtn"
 	page.add_child(auth_btn)
 
@@ -3048,7 +3059,7 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 	modal.add_child(center)
 
 	var panel := PanelContainer.new()
-	var vp_w: int = int(get_viewport_rect().size.x)
+	var vp_w: int = int(get_viewport_rect().size.x) if is_inside_tree() else 390
 	panel.custom_minimum_size = Vector2(mini(340, vp_w - 24), 0)
 	var panel_style := _panel(Color("0c1a1e"), 14, GOLD)
 	panel_style.content_margin_left = 18
@@ -3175,6 +3186,20 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 					hint_lbl.text = res_code
 			)
 	)
+
+	# One-click device sign in button
+	var device_auth_btn := _button(t("ui.auth_btn_device"), func():
+		hint_lbl.text = t("ui.auth_syncing")
+		SpiritAuth.sign_in_with_device(self, func(ok, res_code):
+			if ok:
+				_close_auth_modal()
+				if on_success.is_valid(): on_success.call()
+			else:
+				hint_lbl.text = res_code
+		)
+	, JADE, Vector2(0, 42))
+	device_auth_btn.name = "AuthDeviceBtn"
+	vbox.add_child(device_auth_btn)
 
 	# Quick OAuth divider
 	vbox.add_child(_label(t("ui.auth_or_continue"), 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))

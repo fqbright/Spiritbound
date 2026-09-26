@@ -225,6 +225,54 @@ static func refresh_session(node: Node = null) -> Dictionary:
 			return {"ok": true, "session": sess, "error": ""}
 	return {"ok": false, "error": str(res.get("error", "Session refresh failed"))}
 
+static func get_device_credentials() -> Dictionary:
+	var dev_uuid := OS.get_unique_id().strip_edges()
+	if dev_uuid.is_empty():
+		var sess := load_session()
+		if sess.has("device_seed") and not str(sess["device_seed"]).is_empty():
+			dev_uuid = str(sess["device_seed"])
+		else:
+			dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
+			sess["device_seed"] = dev_uuid
+			save_session(sess)
+	var safe_id := dev_uuid.sha256_text().substr(0, 20)
+	var email := "device_%s@guest.spiritbound.game" % safe_id
+	var password := "DevPass_%s_SpBound" % safe_id
+	return {
+		"email": email,
+		"password": password,
+		"device_id": dev_uuid,
+		"display_name": "驭灵仙友_%s" % safe_id.substr(0, 6)
+	}
+
+static func sign_in_with_device(node: Node = null) -> Dictionary:
+	var creds := get_device_credentials()
+	var res := await sign_in(creds.email, creds.password, node)
+	if res.get("ok", false):
+		return res
+	var up_res := await sign_up(creds.email, creds.password, creds.display_name, node)
+	return up_res
+
+static func sign_in_anonymously(node: Node = null) -> Dictionary:
+	var dev_uuid := OS.get_unique_id().strip_edges()
+	if dev_uuid.is_empty():
+		dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
+	var url := SUPABASE_URL + "/auth/v1/signup"
+	var body := {
+		"data": {
+			"anonymous": true,
+			"device_id": dev_uuid
+		}
+	}
+	var res = await _http_request(url, HTTPClient.METHOD_POST, PackedStringArray(), body, node)
+	if res.get("ok", false):
+		var d: Dictionary = res.get("data", {})
+		if d.has("access_token"):
+			var sess := _extract_session(d, "device")
+			save_session(sess)
+			return {"ok": true, "session": sess, "error": ""}
+	return {"ok": false, "session": {}, "error": str(res.get("error", "Anonymous login failed"))}
+
 static func reset_password(email: String, node: Node = null) -> Dictionary:
 	var url := SUPABASE_URL + "/auth/v1/recover"
 	var body := {
@@ -295,7 +343,7 @@ static func upload_player_save(save_dict: Dictionary, node: Node = null) -> Dict
 	var body := {
 		"user_id": uid,
 		"save_data": save_dict,
-		"updated_at": Time.get_datetime_string_from_system(true, true)
+		"updated_at": int(Time.get_unix_time_from_system())
 	}
 	var res = await _http_request(url, HTTPClient.METHOD_POST, headers, body, node)
 

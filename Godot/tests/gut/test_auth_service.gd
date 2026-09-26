@@ -380,3 +380,27 @@ func test_auth_localization_keys_exist_in_all_languages():
 		assert_false(en_text.is_empty(), "Localization key '%s' has non-empty en text" % key)
 		assert_false(zh_text == key, "Localization key '%s' is translated in zh-Hans" % key)
 		assert_false(en_text == key, "Localization key '%s' is translated in en" % key)
+
+func test_device_credentials_generation():
+	var creds := SupabaseClient.get_device_credentials()
+	assert_true(creds.has("email"), "Device credentials has email")
+	assert_true(creds.has("password"), "Device credentials has password")
+	assert_true(creds.has("device_id"), "Device credentials has device_id")
+	assert_true(creds.has("display_name"), "Device credentials has display_name")
+	assert_true(str(creds["email"]).begins_with("device_"), "Device email begins with device_")
+	assert_true(str(creds["email"]).ends_with("@guest.spiritbound.game"), "Device email ends with guest.spiritbound.game")
+	assert_true(str(creds["password"]).length() >= 12, "Device password has sufficient length")
+
+func test_auth_modal_has_device_login_button():
+	var game := _create_test_game()
+	game.overlay = Control.new()
+	game.add_child(game.overlay)
+	game.show_auth_modal()
+	
+	var auth_modal: Node = game.overlay.get_node_or_null("AuthModal")
+	assert_not_null(auth_modal, "AuthModal opened")
+	var dev_btn: Button = auth_modal.find_child("AuthDeviceBtn", true, false) as Button
+	assert_not_null(dev_btn, "AuthDeviceBtn exists in AuthModal")
+	
+	game.overlay.queue_free()
+	game.free()

@@ -18,6 +18,7 @@ static func sign_in_with_supabase(game: SpiritGame, email: String, password: Str
 		var uid := SupabaseClient.get_user_id()
 		var uemail := SupabaseClient.get_email()
 		var uname := SupabaseClient.get_display_name()
+		if uname.is_empty(): uname = email.split("@")[0]
 		SpiritSave.link_account(game.profile, "supabase", uid, uemail, uname)
 		
 		# Cloud save two-way sync
@@ -27,6 +28,8 @@ static func sign_in_with_supabase(game: SpiritGame, email: String, password: Str
 			for k in remote:
 				game.profile[k] = remote[k]
 			SpiritSave.write(game.profile)
+		else:
+			await SupabaseClient.upload_player_save(game.profile, game)
 		
 		game._toast(game.t("ui.auth_login_success"), game.JADE)
 		if on_done.is_valid():
@@ -36,13 +39,7 @@ static func sign_in_with_supabase(game: SpiritGame, email: String, password: Str
 		var err_lower := err.to_lower()
 		var user_friendly := ""
 		if err_lower.contains("email not confirmed"):
-			var clean_email := email.strip_edges()
-			var uid := "email_" + clean_email.replace("@", "_").replace(".", "_")
-			SpiritSave.link_account(game.profile, "email", uid, clean_email, clean_email.split("@")[0])
-			game._toast(game.t("ui.auth_login_success"), game.JADE)
-			if on_done.is_valid():
-				on_done.call(true, "email")
-			return
+			user_friendly = game.t("ui.auth_email_not_confirmed")
 		elif err_lower.contains("invalid login") or err_lower.contains("invalid_grant"):
 			user_friendly = game.t("ui.auth_wrong_credentials")
 		elif err_lower.contains("rate limit"):
@@ -60,11 +57,9 @@ static func sign_up_with_supabase(game: SpiritGame, email: String, password: Str
 		var clean_name := display_name.strip_edges()
 		if clean_name.is_empty(): clean_name = clean_email.split("@")[0]
 		if res.get("need_confirm", false):
-			var uid := "email_" + clean_email.replace("@", "_").replace(".", "_")
-			SpiritSave.link_account(game.profile, "email", uid, clean_email, clean_name)
-			game._toast(game.t("ui.auth_login_success"), game.JADE)
+			game._toast(game.t("ui.auth_signup_check_email"), game.GOLD)
 			if on_done.is_valid():
-				on_done.call(true, "email")
+				on_done.call(false, "need_confirm")
 		else:
 			var uid := SupabaseClient.get_user_id()
 			var uemail := SupabaseClient.get_email()
@@ -86,6 +81,35 @@ static func sign_up_with_supabase(game: SpiritGame, email: String, password: Str
 		game._toast(user_friendly, game.MUTED)
 		if on_done.is_valid():
 			on_done.call(false, user_friendly)
+
+static func sign_in_with_device(game: SpiritGame, on_done: Callable = Callable()) -> void:
+	game._toast(game.t("ui.auth_syncing"), game.MUTED)
+	var res = await SupabaseClient.sign_in_with_device(game)
+	if res.get("ok", false):
+		var uid := SupabaseClient.get_user_id()
+		var uemail := SupabaseClient.get_email()
+		var uname := SupabaseClient.get_display_name()
+		if uname.is_empty(): uname = "设备账号"
+		SpiritSave.link_account(game.profile, "device", uid, uemail, uname)
+		
+		# Cloud save two-way sync
+		var sync_res = await SupabaseClient.sync_save_two_way(game.profile, game)
+		if sync_res.get("ok", false) and sync_res.get("action") == "downloaded":
+			var remote: Dictionary = sync_res.get("profile", {})
+			for k in remote:
+				game.profile[k] = remote[k]
+			SpiritSave.write(game.profile)
+		else:
+			await SupabaseClient.upload_player_save(game.profile, game)
+		
+		game._toast(game.t("ui.auth_login_success"), game.JADE)
+		if on_done.is_valid():
+			on_done.call(true, "device")
+	else:
+		var err: String = str(res.get("error", "Device login failed"))
+		game._toast(err, game.MUTED)
+		if on_done.is_valid():
+			on_done.call(false, err)
 
 static func reset_password(game: SpiritGame, email: String, on_done: Callable = Callable()) -> void:
 	var res = await SupabaseClient.reset_password(email, game)
@@ -127,6 +151,40 @@ static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable())
 
 		var email: String = "%s@privaterelay.appleid.com" % current_name.to_lower().replace(" ", "_")
 		SpiritSave.link_account(game.profile, "apple", user_id, email, current_name)
+		game._toast(game.t("ui.auth_link_success"), game.JADE)
+		if on_done.is_valid():
+			on_done.call(true, "apple")
+		return
+
+	if OS.get_name() == "iOS":
+		# On iOS physical device / TestFlight: seamlessly authenticate with Supabase using Apple vendor device ID
+		game._toast(game.t("ui.auth_syncing"), game.MUTED)
+		var dev_uuid := OS.get_unique_id().strip_edges()
+		if dev_uuid.is_empty():
+			dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
+		var safe_id := dev_uuid.sha256_text().substr(0, 20)
+		var apple_email := "apple_%s@guest.spiritbound.game" % safe_id
+		var apple_pass := "ApplePass_%s_SpBound" % safe_id
+		var current_name: String = str(game.profile.get("account", {}).get("name", "")).strip_edges()
+		if current_name.is_empty(): current_name = "Apple 探险家"
+
+		var s_res := await SupabaseClient.sign_in(apple_email, apple_pass, game)
+		if not s_res.get("ok", false):
+			s_res = await SupabaseClient.sign_up(apple_email, apple_pass, current_name, game)
+
+		var uid: String = SupabaseClient.get_user_id()
+		if uid.is_empty(): uid = "apple_" + safe_id
+		SpiritSave.link_account(game.profile, "apple", uid, "%s@privaterelay.appleid.com" % safe_id.substr(0, 8), current_name)
+
+		var sync_res = await SupabaseClient.sync_save_two_way(game.profile, game)
+		if sync_res.get("ok", false) and sync_res.get("action") == "downloaded":
+			var remote: Dictionary = sync_res.get("profile", {})
+			for k in remote:
+				game.profile[k] = remote[k]
+			SpiritSave.write(game.profile)
+		else:
+			await SupabaseClient.upload_player_save(game.profile, game)
+
 		game._toast(game.t("ui.auth_link_success"), game.JADE)
 		if on_done.is_valid():
 			on_done.call(true, "apple")
