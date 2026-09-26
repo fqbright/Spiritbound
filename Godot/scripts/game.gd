@@ -79,6 +79,7 @@ var pre_battle_health := 60
 var in_abyss := false
 var pending_boon_draft := false
 var in_daily_trial := false
+var in_daily_challenge := false
 var in_weekly_challenge := false
 var in_draft_battle := false
 var in_boss_rush := false
@@ -2165,6 +2166,7 @@ func show_camp() -> void:
 	_camp_screen.show_camp()
 func show_challenges() -> void: _camp_screen.show_challenges()
 func begin_daily_trial() -> void: _camp_screen.begin_daily_trial()
+func begin_daily_challenge() -> void: _camp_screen.begin_daily_challenge()
 func begin_weekly_challenge() -> void: _camp_screen.begin_weekly_challenge()
 func begin_boss_rush_battle() -> void: _camp_screen.begin_boss_rush_battle()
 # Pre-existing gap, not introduced by Phase 10: begin_abyss_battle() had no delegator at all,
@@ -3020,6 +3022,91 @@ func show_settings() -> void:
 
 	list.add_child(account_box)
 
+	# 6. Legal & Store Compliance Section
+	var legal_box := VBoxContainer.new()
+	legal_box.add_theme_constant_override("separation", 6)
+	legal_box.add_child(_label(t("ui.legal_links"), 12, GOLD))
+
+	var restore_btn := _button(t("ui.restore_purchases"), func():
+		PurchaseService.restore_purchases_flow(self)
+	, Color("1f3d35"), Vector2(0, 36))
+	restore_btn.name = "RestorePurchasesBtn"
+	restore_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legal_box.add_child(restore_btn)
+
+	var legal_row := HBoxContainer.new()
+	legal_row.add_theme_constant_override("separation", 8)
+
+	var priv_btn := _button(t("ui.privacy_policy_title"), func():
+		show_legal_modal(t("ui.privacy_policy_title"), t("ui.privacy_policy_content"))
+	, Color("1c2430"), Vector2(0, 32))
+	priv_btn.name = "PrivacyPolicyBtn"
+	priv_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legal_row.add_child(priv_btn)
+
+	var tos_btn := _button(t("ui.terms_of_service_title"), func():
+		show_legal_modal(t("ui.terms_of_service_title"), t("ui.terms_of_service_content"))
+	, Color("1c2430"), Vector2(0, 32))
+	tos_btn.name = "TermsOfServiceBtn"
+	tos_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legal_row.add_child(tos_btn)
+
+	legal_box.add_child(legal_row)
+	list.add_child(legal_box)
+
+func show_legal_modal(title_text: String, content_text: String) -> void:
+	var existing: Node = overlay.get_node_or_null("LegalModal")
+	if existing:
+		existing.queue_free()
+
+	var modal := _modal_dialog("LegalModal", func():
+		var ex: Node = overlay.get_node_or_null("LegalModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	var vp_w: int = 390
+	if is_inside_tree() and get_viewport_rect().size.x > 0:
+		vp_w = int(get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(340, vp_w - 32), 0)
+	var panel_style := _panel(Color("0e1d22"), 14, GOLD)
+	panel_style.content_margin_left = 16
+	panel_style.content_margin_right = 16
+	panel_style.content_margin_top = 16
+	panel_style.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	var vp_h: int = 800
+	if is_inside_tree() and get_viewport_rect().size.y > 0:
+		vp_h = int(get_viewport_rect().size.y)
+	scroll.custom_minimum_size = Vector2(mini(308, vp_w - 64), mini(480, vp_h - 100))
+	panel.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 12)
+	scroll.add_child(list)
+
+	var head := HBoxContainer.new()
+	head.add_child(_label(title_text, 15, GOLD))
+	var close_btn := _button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
+	close_btn.name = "LegalModalCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	var body := _label(content_text, 11, TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+	list.add_child(body)
+
 func play_intro_cutscene(on_done: Callable = Callable()) -> IntroCutscene:
 	var old_intro: Node = get_node_or_null("IntroCutscene")
 	if old_intro != null:
@@ -3283,6 +3370,24 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 		, Color("351818"), Vector2(0, 32))
 		signout_btn.name = "AuthSignOutBtn"
 		vbox.add_child(signout_btn)
+
+	var legal_row := HBoxContainer.new()
+	legal_row.add_theme_constant_override("separation", 8)
+	var priv_btn := _button(t("ui.privacy_policy_title"), func():
+		show_legal_modal(t("ui.privacy_policy_title"), t("ui.privacy_policy_content"))
+	, Color("142226"), Vector2(0, 28))
+	priv_btn.name = "AuthPrivacyBtn"
+	priv_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legal_row.add_child(priv_btn)
+
+	var tos_btn := _button(t("ui.terms_of_service_title"), func():
+		show_legal_modal(t("ui.terms_of_service_title"), t("ui.terms_of_service_content"))
+	, Color("142226"), Vector2(0, 28))
+	tos_btn.name = "AuthTermsBtn"
+	tos_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legal_row.add_child(tos_btn)
+
+	vbox.add_child(legal_row)
 
 func _close_auth_modal() -> void:
 	if overlay == null: return

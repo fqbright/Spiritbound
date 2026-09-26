@@ -3694,6 +3694,37 @@ const UI_TEXT = {
 	"ui.hexagram_active_prefix": {"zh-Hans":"当前天道律则: ", "en":"Active Hexagram Law: "},
 	"ui.energy_insufficient": {"zh-Hans":"法力不足！", "en":"Not Enough Qi!"},
 	"ui.boss_weakpoint_broken": {"zh-Hans":"妖核崩碎！陷入瘫痪！", "en":"CORE SHATTERED! Stunned!"},
+	"ui.privacy_policy_title": {"zh-Hans":"隐私保护指引", "en":"Privacy Policy"},
+	"ui.privacy_policy_content": {"zh-Hans":"《灵界之契：修仙卡牌》尊重并保护用户隐私。\n\n1. 数据收集与使用：我们仅在您注册或绑定云存档时收集必要的账户标识（如邮箱或匿名设备代码），用于跨设备同步游戏存档及天梯排行。本游戏绝不收集您的真实姓名、地理位置或通讯录。\n\n2. 数据安全与存储：所有网络传输均通过 HTTPS/TLS 256 位加密通道，云存档由 Supabase 企业级安全云承载。\n\n3. 账号注销权：您可以随时在游戏【设置】中点击【注销账号】，我们将永久销毁您在云端存储的全部游戏数据与排行记录。\n\n4. 联系我们：若有任何隐私疑问，请致信 support@spiritbound.game。", "en":"Spiritbound respects your privacy.\n\n1. Data Collection: We only collect necessary identifiers (such as email or anonymous device ID) to sync game saves and leaderboard progress. We never collect real names, location, or contacts.\n\n2. Security: All network traffic is encrypted via HTTPS/TLS 256-bit. Saves are stored in enterprise-grade Supabase cloud.\n\n3. Account Deletion: You can delete your account and all cloud data at any time via Settings -> Delete Account.\n\n4. Contact: Reach us at support@spiritbound.game."},
+	"ui.terms_of_service_title": {"zh-Hans":"用户服务协议", "en":"Terms of Service"},
+	"ui.terms_of_service_content": {"zh-Hans":"欢迎踏入《灵界之契：修仙卡牌》！\n\n1. 服务许可：玩家享有个人非商业用途的游戏使用许可。禁止利用外挂、脚本篡改游戏数值或破坏游戏平衡。\n\n2. 虚拟物品与内购：游戏内获得的灵石、卡牌、灵宝及通行证仅限在游戏内体验，不可反向兑换法定货币。\n\n3. 免责声明：因网络波动或不可抗力导致的服务中断，我们将尽最大努力抢修恢复，但不承担由此引起的间接损失。\n\n4. 协议修改：本协议若有更新，将通过游戏内公告或弹窗通知。", "en":"Welcome to Spiritbound!\n\n1. License: Players are granted a personal non-commercial license to play. Exploits and hacks are strictly prohibited.\n\n2. Virtual Items: In-game currency, cards, relics, and passes have no real-world cash value and cannot be exchanged.\n\n3. Disclaimers: We strive for continuous service but are not liable for external network outages.\n\n4. Updates: Terms may be updated periodically via in-game notices."},
+	"ui.restore_purchases": {"zh-Hans":"恢复购买", "en":"Restore Purchases"},
+	"ui.restore_purchases_success": {"zh-Hans":"购买权益已成功恢复！", "en":"Purchases restored successfully!"},
+	"ui.restore_purchases_empty": {"zh-Hans":"未查询到可恢复的购买记录。", "en":"No active purchases found to restore."},
+	"ui.legal_links": {"zh-Hans":"《隐私保护指引》与《用户服务协议》", "en":"Privacy Policy & Terms of Service"},
+	"ui.ascension_title": {"zh-Hans":"九天雷劫 · 飞升试炼", "en":"Celestial Tribulations"},
+	"ui.ascension_level_fmt": {"zh-Hans":"雷劫阶位: %d 阶", "en":"Tribulation: Tier %d"},
+	"ui.ascension_desc_fmt": {"zh-Hans":"当前天道压制: %s", "en":"Active Heavenly Tribulation: %s"},
+	"ui.ascension_t0": {"zh-Hans":"【凡尘】普通修仙之路，无天道惩戒", "en":"[Mortal] Normal journey without celestial afflictions"},
+	"ui.ascension_t1": {"zh-Hans":"【一阶】精英敌人开局附带坚木护盾", "en":"[Tier 1] Elites start with Wood Shield"},
+	"ui.ascension_t5": {"zh-Hans":"【五阶】泉眼休整生命恢复削减 30%", "en":"[Tier 5] Spring heal reduced by 30%"},
+	"ui.ascension_t10": {"zh-Hans":"【十阶】全体妖魔攻击伤害提升 15%", "en":"[Tier 10] Enemy DMG increased by 15%"},
+	"ui.ascension_t15": {"zh-Hans":"【十五阶】首领生命上限提升 25%", "en":"[Tier 15] Boss Max HP increased by 25%"},
+	"ui.ascension_t20": {"zh-Hans":"【二十阶】极道天劫反噬：回合结束受 3 点真实伤害", "en":"[Tier 20] Heavenly Backlash: Take 3 DMG on turn end"},
+	"ui.ascension_unlocked": {"zh-Hans":"雷劫突破！已解锁【%d阶】飞升试炼！", "en":"Tribulation Cleared! Tier %d unlocked!"},
+	"ui.ascension_highest": {"zh-Hans":"最高通关阶位", "en":"Highest Tier Cleared"},
+	"ui.daily_challenge_title": {"zh-Hans":"每日天道秘境", "en":"Daily Heavenly Realm"},
+	"ui.daily_challenge_sub": {"zh-Hans":"全服统一随机种子 · 争夺每日天榜榜首", "en":"Global Daily Seed · Compete for Rank 1"},
+	"ui.daily_challenge_btn": {"zh-Hans":"每日秘境", "en":"Daily Realm"},
+	"ui.daily_challenge_completed": {"zh-Hans":"今日秘境已挑战达成！得分: %d", "en":"Today's Realm completed! Score: %d"},
+	"ui.daily_challenge_start": {"zh-Hans":"开启今日挑战", "en":"Enter Today's Challenge"},
+	"ui.arena_title": {"zh-Hans":"太虚心魔演武场", "en":"Phantom Arena"},
+	"ui.arena_sub": {"zh-Hans":"凝练身外化身 · 挑战宗门顶尖心魔幻相", "en":"Forge phantom guardian · Challenge top disciples"},
+	"ui.arena_btn": {"zh-Hans":"心魔演武", "en":"Arena"},
+	"ui.arena_upload_guard": {"zh-Hans":"凝结当前化身幻影", "en":"Imprint Phantom Guard"},
+	"ui.arena_guard_updated": {"zh-Hans":"化身幻影凝练成功！已登上演武战台。", "en":"Phantom Guard imprinted successfully!"},
+	"ui.arena_challenge_btn": {"zh-Hans":"切磋心魔幻象", "en":"Duel Phantom"},
+	"ui.arena_victory": {"zh-Hans":"击溃心魔！道心通明，斩获演武功勋！", "en":"Phantom Defeated! Earned Arena Merit!"}
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
@@ -3926,3 +3957,22 @@ const HERO_SKINS = {
 		{"id": "asura_reaper", "name_zh": "黑曜魔相", "name_en": "Obsidian Asura", "color": "a855f7"}
 	]
 }
+
+static func get_daily_challenge_info(date_str: String = "") -> Dictionary:
+	if date_str.is_empty():
+		var dt := Time.get_date_dict_from_system(true)
+		date_str = "%04d-%02d-%02d" % [int(dt.get("year", 2026)), int(dt.get("month", 1)), int(dt.get("day", 1))]
+	var seed_hash: int = hash(date_str)
+	var heroes := ["fox_spirit", "ironclad_sentinel"]
+	var hero: String = heroes[abs(seed_hash) % heroes.size()]
+	var weathers := ["solar", "frost", "thunder", "leyline"]
+	var weather: String = weathers[abs(seed_hash / 7) % weathers.size()]
+	var starting_relics := ["emberCore", "windChime", "tideCharm", "spiritArmor"]
+	var relic: String = starting_relics[abs(seed_hash / 13) % starting_relics.size()]
+	return {
+		"date": date_str,
+		"seed": seed_hash,
+		"hero": hero,
+		"weather": weather,
+		"relic": relic
+	}

@@ -73,6 +73,7 @@ func begin_battle(index: int) -> void:
 	if index % 3 == 1 or g.get_node_kind(index) == "elite":
 		var aff_types := ["solar", "frost", "thunder", "leyline"]
 		g.active_modifier["weather_affix"] = aff_types[index % aff_types.size()]
+	g.active_modifier["ascension_level"] = int(g.profile.get("ascension_level", 0))
 	g.combat = SpiritCombat.new(g.content)
 	var equipped: Array = g.profile.equipment_slots.values()
 	var battle_deck: Array = g.profile.deck
@@ -4169,9 +4170,10 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 			var col: Color = Color("fbbf24") if is_vuln else Color("f87171")
 			var f_size: int = 28 if is_crit else 24
 			_spawn_enemy_floating_text(e_idx, txt, col, f_size, is_crit)
-			if dmg >= 25:
-				_shake_screen(mini(12.0, float(dmg) * 0.35), 0.25)
-				_camera_punch(1.03, 0.15)
+			if dmg >= 25 or bool(payload.get("lethal", false)):
+				_shake_screen(mini(14.0, float(dmg) * 0.35 + 4.0), 0.25)
+				_camera_punch(1.04, 0.15)
+				_trigger_finisher_hitstop()
 			if g.combat and g.combat.state and e_idx < g.combat.state.enemies.size():
 				var en_dict: Dictionary = g.combat.state.enemies[e_idx]
 				var max_hp: int = int(en_dict.get("max_health", 1))

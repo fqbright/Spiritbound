@@ -1947,6 +1947,25 @@ func _phantom_arena_section() -> Control:
 		btn_row.add_child(claim_btn)
 
 	left.add_child(btn_row)
+
+	var imprint_btn := g._button(g.t("ui.arena_upload_guard"), func():
+		var guard: Dictionary = {
+			"name": str(g.profile.get("player_name", "无名修士")),
+			"hero": str(g.profile.get("active_hero", "fox_spirit")),
+			"deck": g.profile.get("deck", []).duplicate(true),
+			"equipment": g.profile.get("equipment_slots", {}).duplicate(true),
+			"power": int(g.profile.get("unlocked", 1)) * 10 + g.profile.get("deck", []).size() * 5,
+			"updated_at": int(Time.get_unix_time_from_system()),
+		}
+		g.profile.phantom_guard = guard
+		SpiritSave.write(g.profile)
+		SupabaseClient.queue_sync_action(g.profile, "imprint_guard", guard)
+		g._toast(g.t("ui.arena_guard_updated"), g.JADE)
+	, Color("2d1a45"), Vector2(160, 32))
+	imprint_btn.name = "PhantomGuardImprintBtn"
+	imprint_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left.add_child(imprint_btn)
+
 	return panel
 
 # Phase 9 — World Events: unlike every other side mode's `enter → win/lose → gold` shape, which
@@ -2793,6 +2812,9 @@ func begin_daily_trial() -> void:
 	g.selected_card = -1
 	g.show_battle()
 	g._maybe_end_turn()
+
+func begin_daily_challenge() -> void:
+	begin_daily_trial()
 
 func begin_weekly_challenge() -> void:
 	g._ensure_weekly_challenge_current()

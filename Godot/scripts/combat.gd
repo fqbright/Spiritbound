@@ -17,6 +17,11 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	# Only the Daily Trial's "double damage" tag ever sets this — a straight multiplier applied
 	# after the flat bonus above, to the boss and its adds alike.
 	var damage_mult: float = modifier.get("damage_mult", 1.0)
+	var asc_level: int = int(modifier.get("ascension_level", 0))
+	if asc_level >= 10:
+		damage_mult *= 1.15
+	if asc_level >= 15 and (bool(encounter.get("is_boss", false)) or bool(encounter.get("is_great_boss", false)) or str(encounter.get("kind", "")) in ["boss", "greatboss"]):
+		health_scale *= 1.25
 	var boss_art: String = str(encounter.get("art_key", encounter.get("art", "m_s001")))
 	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), boss_art, int(round(encounter.health * health_scale)), int(round((encounter.damage + damage_bonus) * damage_mult)), encounter.mechanics)]
 	var add_art: String = str(encounter.get("add_art_key", encounter.get("art_key", boss_art)))
@@ -71,11 +76,12 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"hex_kan_triggered_this_turn":false,
 		"is_training_dummy":bool(modifier.get("is_training_dummy", false)),
 		"current_playing_affix":"",
+		"ascension_level": asc_level,
 	}
 	if state.is_training_dummy:
 		enemies.clear()
 		enemies.append(_enemy("training_dummy", "机关木人桩", "Training Dummy", "m_s001", 99999, 0, {}))
-	var is_elite_or_boss: bool = str(encounter.get("kind", "")) in ["elite", "boss"] or state.is_great_boss or bool(encounter.get("is_boss", false))
+	var is_elite_or_boss: bool = str(encounter.get("kind", "")) in ["elite", "boss"] or state.is_great_boss or bool(encounter.get("is_boss", false)) or bool(encounter.get("is_elite", false))
 	if is_elite_or_boss and not state.is_training_dummy and not enemies.is_empty():
 		var mut_keys := ["mut_thorns", "mut_resurrection", "mut_vampiric", "mut_swift"]
 		var picked_mut: String = mut_keys[abs(seed) % mut_keys.size()]
@@ -97,6 +103,8 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	for enemy in state.enemies:
 		var s_shield: int = int(enemy.mechanics.get("starting_shield", 0))
 		if s_shield > 0: enemy.shield = s_shield
+		if asc_level >= 1 and is_elite_or_boss:
+			enemy.shield = int(enemy.get("shield", 0)) + 10
 	if equipment.has("jadePlate"):
 		var jp_shield: int = [8, 14, 20, 28][clampi(_equip_tier("jadePlate"), 0, 3)]
 		state.player.shield += jp_shield
@@ -656,6 +664,9 @@ func end_turn() -> void:
 		if str(instance.card_id) == "decay_blight":
 			_damage_player(3)
 			if state.phase != "player": return
+	if int(state.get("ascension_level", 0)) >= 20 and state.player.health > 0:
+		_damage_player(3)
+		if state.phase != "player": return
 	state.empty_hand_at_end = state.hand.is_empty()
 	var kept_hand: Array = []
 	for instance in state.hand:
@@ -863,7 +874,15 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	enemy.health -= dealt
 	if _has_resonance("res_abyssal_drain") and int(enemy.get("poison", 0)) > 0:
 		state.player.health = mini(state.player.max_health, state.player.health + 1)
-	emit_signal("event", "damage_dealt", {"enemy": index, "damage": dealt, "absorbed": absorbed, "pierce": pierce, "vulnerable": int(enemy.get("vulnerable", 0)) > 0})
+	emit_signal("event", "damage_dealt", {
+		"enemy": index,
+		"damage": dealt,
+		"absorbed": absorbed,
+		"pierce": pierce,
+		"vulnerable": int(enemy.get("vulnerable", 0)) > 0,
+		"lethal": enemy.health <= 0,
+		"heavy": dealt >= 25 or amount >= 25
+	})
 	if state.has("stats"):
 		state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
 		state.stats.direct_damage = int(state.stats.get("direct_damage", 0)) + (dealt + absorbed)

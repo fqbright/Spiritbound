@@ -547,6 +547,11 @@ func _grant_stage_rewards() -> void:
 		g._toast(g.t("ui.daily_first_win_title") + " " + g.t("ui.daily_first_win_desc"), g.GOLD)
 
 	if g.content.is_boss_kind(kind):
+		var cur_asc: int = int(g.profile.get("ascension_level", 0))
+		var max_asc: int = int(g.profile.get("highest_ascension", 0))
+		if cur_asc == max_asc and max_asc < 20:
+			g.profile.highest_ascension = max_asc + 1
+			g._toast(g.tf("ui.ascension_unlocked", max_asc + 1), Color("ffd700"))
 		var boss_jade: int = 20 if kind == "greatboss" else 10
 		g.profile.spirit_jade = int(g.profile.get("spirit_jade", 0)) + boss_jade
 		var order := ["emberBlade","jadePlate","soulPendant","moonStaff","thornArmor","tideCharm","stoneSpear","mistCloak","fortuneSeal","stormBow","phoenixMail","focusCharm"]
@@ -1223,12 +1228,15 @@ func _auto_handle_stage_event(index: int, kind: String) -> void:
 		g._toast(g.t("ui.event_blood_pact") + " +50", g.GOLD)
 		g.begin_battle(index)
 	elif kind == "rest":
-		g.profile.gold += 35
-		g._advance_quest("earn_gold", 35)
+		var heal_val: int = 35
+		if int(g.profile.get("ascension_level", 0)) >= 5:
+			heal_val = int(round(heal_val * 0.7))
+		g.profile.gold += heal_val
+		g._advance_quest("earn_gold", heal_val)
 		_mark_stage_event_claimed(index)
 		SpiritSave.write(g.profile)
 		g._haptic("tap")
-		g._toast(g.t("ui.rest_heal_choice") + " +35", g.GOLD)
+		g._toast(g.t("ui.rest_heal_choice") + " +" + str(heal_val), g.GOLD)
 		g.begin_battle(index)
 	elif kind == "bonus":
 		g.profile.gold += 60

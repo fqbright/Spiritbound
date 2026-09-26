@@ -850,6 +850,12 @@ func _add_map_chapter(chapter: int) -> void:
 	plaque_name.add_theme_constant_override("shadow_offset_y", 1)
 	plaque_stack.add_child(plaque_name)
 
+	var cur_asc: int = int(g.profile.get("ascension_level", 0))
+	var asc_btn := g._button("⚡ T%d" % cur_asc, _show_ascension_modal, Color("3b1848") if cur_asc > 0 else Color("1b2028"), Vector2(60, 24))
+	asc_btn.name = "MapAscensionBtn"
+	asc_btn.position = Vector2(g.MAP_WIDTH / 2.0 - 30.0, 134.0 if g.current_map_chapter == int(g.profile.position) / 5 else 164.0)
+	band.add_child(asc_btn)
+
 	if g.current_map_chapter != int(g.profile.position) / 5:
 		var back_curr_btn := g._button(g.t("ui.map_back_to_current"), func():
 			g.current_map_chapter = int(g.profile.position) / 5
@@ -1315,6 +1321,104 @@ func _add_stage_pin(index: int) -> void:
 	caption.position = Vector2(point.x - 56.0, point.y + 6.0)
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.map_canvas.add_child(caption)
+
+func _show_ascension_modal() -> void:
+	var modal := g._modal_dialog("AscensionModal", func():
+		var ex: Node = g.overlay.get_node_or_null("AscensionModal")
+		if ex: ex.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 0)
+	var pstyle := g._panel(Color("160c1f"), 14, Color("c084fc"))
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 16
+	pstyle.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 12)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.ascension_title"), 16, Color("e9d5ff")))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("2e1065"), Vector2(30, 30))
+	close_btn.name = "AscensionCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	var highest: int = int(g.profile.get("highest_ascension", 0))
+	var current: int = int(g.profile.get("ascension_level", 0))
+
+	var highest_lbl := g._label(g.t("ui.ascension_highest") + ": " + str(highest), 12, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	list.add_child(highest_lbl)
+
+	var level_row := HBoxContainer.new()
+	level_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	level_row.add_theme_constant_override("separation", 16)
+	list.add_child(level_row)
+
+	var cur_val := [current]
+	var level_lbl := g._label(g.tf("ui.ascension_level_fmt", cur_val[0]), 18, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER)
+	level_lbl.custom_minimum_size = Vector2(100, 0)
+
+	var desc_lbl := g._label("", 12, Color("e2e8f0"), HORIZONTAL_ALIGNMENT_CENTER)
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_lbl.custom_minimum_size = Vector2(290, 48)
+
+	var update_view := func():
+		level_lbl.text = g.tf("ui.ascension_level_fmt", cur_val[0])
+		var tier_desc := ""
+		if cur_val[0] == 0:
+			tier_desc = g.t("ui.ascension_t0")
+		else:
+			var parts: Array[String] = []
+			if cur_val[0] >= 1: parts.append(g.t("ui.ascension_t1"))
+			if cur_val[0] >= 5: parts.append(g.t("ui.ascension_t5"))
+			if cur_val[0] >= 10: parts.append(g.t("ui.ascension_t10"))
+			if cur_val[0] >= 15: parts.append(g.t("ui.ascension_t15"))
+			if cur_val[0] >= 20: parts.append(g.t("ui.ascension_t20"))
+			tier_desc = "\n".join(parts)
+		desc_lbl.text = tier_desc
+
+	var dec_btn := g._button("◀", func():
+		if cur_val[0] > 0:
+			cur_val[0] -= 1
+			update_view.call()
+	, Color("3b1848"), Vector2(36, 32))
+	dec_btn.name = "AscensionDecBtn"
+	level_row.add_child(dec_btn)
+
+	level_row.add_child(level_lbl)
+
+	var inc_btn := g._button("▶", func():
+		if cur_val[0] < highest:
+			cur_val[0] += 1
+			update_view.call()
+	, Color("3b1848"), Vector2(36, 32))
+	inc_btn.name = "AscensionIncBtn"
+	level_row.add_child(inc_btn)
+
+	list.add_child(desc_lbl)
+	update_view.call()
+
+	var save_btn := g._button(g.t("ui.dialog_confirm"), func():
+		g.profile["ascension_level"] = cur_val[0]
+		SpiritSave.write(g.profile)
+		modal.queue_free()
+		show_map()
+	, Color("581c87"), Vector2(160, 36))
+	save_btn.name = "AscensionConfirmBtn"
+	save_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	list.add_child(save_btn)
 
 func _show_locked_node_intel(index: int) -> void:
 	var modal := g._modal_dialog("MapNodeIntelModal", func():

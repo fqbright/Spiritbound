@@ -254,3 +254,19 @@ static func verify_receipt(product_id: String, receipt: String, transaction_id: 
 	if _verify_override.is_valid():
 		return _verify_override.call(product_id, receipt, transaction_id)
 	return await SupabaseClient.verify_purchase(product_id, receipt, transaction_id, node)
+
+# User-facing Restore Purchases flow called from Settings / Store UI
+static func restore_purchases_flow(game: Object, on_done: Callable = Callable()) -> void:
+	if game != null and game.has_method("_toast"):
+		game.call("_toast", game.call("t", "ui.auth_syncing"), Color("888888"))
+	var prof: Dictionary = game.get("profile") if (game != null and "profile" in game) else {}
+	var res: Dictionary = await restore(prof, game as Node)
+	if bool(res.get("ok", false)) and bool(res.get("premium", false)):
+		SpiritSave.write(prof)
+		if game != null and game.has_method("_toast"):
+			game.call("_toast", game.call("t", "ui.restore_purchases_success"), Color("f6c445"))
+		if on_done.is_valid(): on_done.call(true)
+	else:
+		if game != null and game.has_method("_toast"):
+			game.call("_toast", game.call("t", "ui.restore_purchases_empty"), Color("888888"))
+		if on_done.is_valid(): on_done.call(false)

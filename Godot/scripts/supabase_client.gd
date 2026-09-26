@@ -651,3 +651,61 @@ static func _get_fallback_leaderboard(category: String) -> Array:
 				"category": category
 			})
 	return list
+
+# ------------------------------------------------------------------------------
+# Offline Sync Queue (弱网自愈重试队列)
+# ------------------------------------------------------------------------------
+
+static func queue_sync_action(profile: Dictionary, action: String, payload: Dictionary) -> void:
+	if not profile.has("pending_sync_queue") or not (profile.pending_sync_queue is Array):
+		profile["pending_sync_queue"] = []
+	var item := {
+		"action": action,
+		"payload": payload.duplicate(true),
+		"timestamp": int(Time.get_unix_time_from_system())
+	}
+	profile.pending_sync_queue.append(item)
+	SpiritSave.write(profile)
+
+static func flush_sync_queue(profile: Dictionary, node: Node = null) -> Dictionary:
+	if not profile.has("pending_sync_queue") or not (profile.pending_sync_queue is Array):
+		return {"ok": true, "processed": 0}
+	if profile.pending_sync_queue.is_empty():
+		return {"ok": true, "processed": 0}
+	if not is_authenticated():
+		return {"ok": false, "error": "Not authenticated", "processed": 0}
+
+	var queue: Array = profile.pending_sync_queue.duplicate(true)
+	var processed_count: int = 0
+	var remaining: Array = []
+
+	for item in queue:
+		var act: String = str(item.get("action", ""))
+		var pl: Dictionary = item.get("payload", {})
+		var success := false
+		if act == "save":
+			var res = await upload_player_save(pl, node)
+			success = bool(res.get("ok", false))
+		elif act == "score":
+			var cat: String = str(pl.get("category", "abyss"))
+			var score: int = int(pl.get("score", 0))
+			var p_name: String = str(pl.get("name", "修士"))
+			var c_id: String = str(pl.get("hero", "fox"))
+			var extra: Dictionary = pl.get("extra", {})
+			var res = await submit_score(cat, score, p_name, c_id, extra, node)
+			success = bool(res.get("ok", false))
+		elif act == "imprint_guard":
+			var res = await post_client_event("imprint_guard", "phantom_guard", pl, node)
+			success = bool(res.get("ok", false))
+		else:
+			success = true
+
+		if success:
+			processed_count += 1
+		else:
+			remaining.append(item)
+
+	profile["pending_sync_queue"] = remaining
+	SpiritSave.write(profile)
+	return {"ok": true, "processed": processed_count, "remaining": remaining.size()}
+
