@@ -323,47 +323,24 @@ func show_battle() -> void:
 	_update_danger_vignette()
 	var page := g._create_page(4)
 
-	var top := HBoxContainer.new(); top.custom_minimum_size.y = 44
-	top.add_child(g._label("%d-%d  %s" % [encounter.chapter,encounter.level,g._current_stage_label()], 13, g.JADE))
-	var streak: int = int(g.profile.get("win_streak", 0))
-	if streak >= 2:
-		var streak_pill := g._label("🔥 " + g.tf("ui.win_streak_badge", streak), 11, Color("ffa94d"))
-		streak_pill.name = "BattleWinStreakBadge"
-		top.add_child(streak_pill)
-	var w_affix: String = str(g.combat.state.get("weather_affix", "")) if g.combat and g.combat.state else ""
-	if w_affix != "":
-		var w_name := ""
-		var w_col := Color("f97316")
-		match w_affix:
-			"solar": w_name = "🔥 炎阳" if g.lang != "en" else "🔥 Solar"; w_col = Color("f97316")
-			"frost": w_name = "❄ 寒霜" if g.lang != "en" else "❄ Frost"; w_col = Color("38bdf8")
-			"thunder": w_name = "⚡ 天罡" if g.lang != "en" else "⚡ Thunder"; w_col = Color("facc15")
-			"leyline": w_name = "🌿 灵潮" if g.lang != "en" else "🌿 Leyline"; w_col = Color("4ade80")
-		var w_badge := g._button(w_name, func():
-			var w_key := "ui.weather_" + w_affix
-			g._toast(g.t(w_key), w_col)
-		, Color("101d22"), Vector2(52, 26))
-		w_badge.name = "BattleWeatherBadge"
-		w_badge.add_theme_color_override("font_color", w_col)
-		top.add_child(w_badge)
-	var combo_cnt: int = int(g.combat.state.get("turn_combo_count", 0)) if g.combat and g.combat.state else 0
-	if combo_cnt >= 2:
-		var combo_badge := PanelContainer.new()
-		combo_badge.name = "ComboMeterBadge"
-		var c_style := g._panel(Color("261a0d"), 8, Color("f59e0b"))
-		c_style.content_margin_left = 6; c_style.content_margin_right = 6
-		c_style.content_margin_top = 2; c_style.content_margin_bottom = 2
-		combo_badge.add_theme_stylebox_override("panel", c_style)
-		var c_lbl := g._label(g.tf("ui.combo_meter", combo_cnt), 10, Color("fbbf24"), HORIZONTAL_ALIGNMENT_CENTER)
-		combo_badge.add_child(c_lbl)
-		top.add_child(combo_badge)
-	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL; top.add_child(spacer)
-	top.add_child(g._label(g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD))
+	var top := HBoxContainer.new(); top.custom_minimum_size.y = 32
+	top.add_theme_constant_override("separation", 6)
+	var stage_lbl := g._label("%d-%d  %s" % [encounter.chapter, encounter.level, g._current_stage_label()], 12, g.JADE)
+	stage_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stage_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	stage_lbl.clip_text = true
+	top.add_child(stage_lbl)
+
+	var turn_lbl := g._label(g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD)
+	turn_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(turn_lbl)
+
 	var speed_label: String = "⚡4x" if g.battle_speed >= 4.0 else ((str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x")
-	var speed_btn := g._button(speed_label, g._cycle_speed, Color("1a3a42"), Vector2(44, 28))
+	var speed_btn := g._button(speed_label, g._cycle_speed, Color("1a3a42"), Vector2(38, 28))
 	speed_btn.name = "SpeedToggle"
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(speed_btn)
+
 	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
 	var auto_btn: Button
 	var on_toggle_auto = func():
@@ -376,13 +353,53 @@ func show_battle() -> void:
 			auto_btn.add_theme_stylebox_override("pressed", g._panel(btn_color.darkened(0.12), 10, g.EMBER))
 		if g.auto_battle_active and not g.resolving and g.combat != null and g.combat.state.phase == "player":
 			_maybe_step_auto_battle()
-	auto_btn = g._button(auto_label, on_toggle_auto, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(56, 28))
+	auto_btn = g._button(auto_label, on_toggle_auto, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(52, 28))
 	auto_btn.name = "AutoBattleToggle"
 	auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(auto_btn)
-	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(36,34))
+
+	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(32, 28))
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	top.add_child(leave_btn); page.add_child(top)
+	top.add_child(leave_btn)
+	page.add_child(top)
+
+	var top_sub := HBoxContainer.new()
+	top_sub.custom_minimum_size.y = 22
+	top_sub.add_theme_constant_override("separation", 6)
+	var streak: int = int(g.profile.get("win_streak", 0))
+	if streak >= 2:
+		var streak_pill := g._label("🔥 " + g.tf("ui.win_streak_badge", streak), 11, Color("ffa94d"))
+		streak_pill.name = "BattleWinStreakBadge"
+		top_sub.add_child(streak_pill)
+	var w_affix: String = str(g.combat.state.get("weather_affix", "")) if g.combat and g.combat.state else ""
+	if w_affix != "":
+		var w_name := ""
+		var w_col := Color("f97316")
+		match w_affix:
+			"solar": w_name = "🔥 炎阳" if g.lang != "en" else "🔥 Solar"; w_col = Color("f97316")
+			"frost": w_name = "❄ 寒霜" if g.lang != "en" else "❄ Frost"; w_col = Color("38bdf8")
+			"thunder": w_name = "⚡ 天罡" if g.lang != "en" else "⚡ Thunder"; w_col = Color("facc15")
+			"leyline": w_name = "🌿 灵潮" if g.lang != "en" else "🌿 Leyline"; w_col = Color("4ade80")
+		var w_badge := g._button(w_name, func():
+			var w_key := "ui.weather_" + w_affix
+			g._toast(g.t(w_key), w_col)
+		, Color("101d22"), Vector2(52, 22))
+		w_badge.name = "BattleWeatherBadge"
+		w_badge.add_theme_color_override("font_color", w_col)
+		top_sub.add_child(w_badge)
+	var combo_cnt: int = int(g.combat.state.get("turn_combo_count", 0)) if g.combat and g.combat.state else 0
+	if combo_cnt >= 2:
+		var combo_badge := PanelContainer.new()
+		combo_badge.name = "ComboMeterBadge"
+		var c_style := g._panel(Color("261a0d"), 8, Color("f59e0b"))
+		c_style.content_margin_left = 6; c_style.content_margin_right = 6
+		c_style.content_margin_top = 2; c_style.content_margin_bottom = 2
+		combo_badge.add_theme_stylebox_override("panel", c_style)
+		var c_lbl := g._label(g.tf("ui.combo_meter", combo_cnt), 10, Color("fbbf24"), HORIZONTAL_ALIGNMENT_CENTER)
+		combo_badge.add_child(c_lbl)
+		top_sub.add_child(combo_badge)
+	if top_sub.get_child_count() > 0:
+		page.add_child(top_sub)
 	if g.combat != null and g.combat.state.turn == 1 and not g.combat.state.get("relic_resonances", []).is_empty() and not bool(g.combat.state.get("resonance_toast_shown", false)):
 		g.combat.state["resonance_toast_shown"] = true
 		var first_res_id: String = str(g.combat.state.relic_resonances[0])
@@ -996,23 +1013,26 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	hp_bar.position = Vector2(6.0, content_y + 18.0)
 	unit.add_child(hp_bar)
 
-	var badges := HBoxContainer.new()
+	var badges := HFlowContainer.new()
+	badges.name = "EnemyBadges"
 	badges.position = Vector2(0.0, content_y + 36.0)
-	badges.size = Vector2(u_width, 18.0)
-	badges.alignment = BoxContainer.ALIGNMENT_CENTER
-	badges.add_theme_constant_override("separation", 5)
+	badges.custom_minimum_size = Vector2(u_width, 18.0)
+	badges.size = badges.custom_minimum_size
+	badges.alignment = FlowContainer.ALIGNMENT_CENTER
+	badges.add_theme_constant_override("h_separation", 3)
+	badges.add_theme_constant_override("v_separation", 2)
 	badges.mouse_filter = Control.MOUSE_FILTER_PASS
 	unit.add_child(badges)
-	if int(enemy.shield) > 0: badges.add_child(_status_chip_clickable("shield", "⬢", int(enemy.shield), Color("9fd8ff")))
-	if int(enemy.burn) > 0: badges.add_child(_status_chip_clickable("burn", "▲", int(enemy.burn), Color("ff9868")))
-	if int(enemy.get("poison", 0)) > 0: badges.add_child(_status_chip_clickable("poison", "◆", int(enemy.poison), Color("a75bd6")))
-	if int(enemy.stun) > 0: badges.add_child(_status_chip_clickable("stun", "✸", int(enemy.stun), Color("ffe08a")))
-	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip_clickable("vulnerable", "▼", int(enemy.vulnerable), Color("ff6b6b")))
-	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip_clickable("weak", "●", int(enemy.weak), Color("b8c4c8")))
+	if int(enemy.shield) > 0: badges.add_child(_status_chip_clickable("shield", "⬢", int(enemy.shield), Color("9fd8ff"), 16.0, 30.0))
+	if int(enemy.burn) > 0: badges.add_child(_status_chip_clickable("burn", "▲", int(enemy.burn), Color("ff9868"), 16.0, 30.0))
+	if int(enemy.get("poison", 0)) > 0: badges.add_child(_status_chip_clickable("poison", "◆", int(enemy.poison), Color("a75bd6"), 16.0, 30.0))
+	if int(enemy.stun) > 0: badges.add_child(_status_chip_clickable("stun", "✸", int(enemy.stun), Color("ffe08a"), 16.0, 30.0))
+	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip_clickable("vulnerable", "▼", int(enemy.vulnerable), Color("ff6b6b"), 16.0, 30.0))
+	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip_clickable("weak", "●", int(enemy.weak), Color("b8c4c8"), 16.0, 30.0))
 
-	unit.custom_minimum_size = Vector2(u_width, content_y + 58.0)
+	unit.custom_minimum_size = Vector2(u_width, content_y + 72.0)
 	unit.size = unit.custom_minimum_size
-	glow.custom_minimum_size = Vector2(u_width - 4.0, content_y + 54.0 - 16.0)
+	glow.custom_minimum_size = Vector2(u_width - 4.0, content_y + 68.0 - 16.0)
 	glow.size = glow.custom_minimum_size
 
 	return unit
@@ -1202,13 +1222,13 @@ func _build_player_stage() -> Control:
 		d_tw.tween_property(danger_badge, "modulate:a", 0.55, 0.4).set_trans(Tween.TRANS_SINE)
 		d_tw.tween_property(danger_badge, "modulate:a", 1.0, 0.4).set_trans(Tween.TRANS_SINE)
 
-	# Player side panel for Equipment, Relics & Combat Statuses (arranged vertically in columns of up to 4 items each)
+	# Player side panel for Equipment, Relics & Combat Statuses (arranged vertically in at most 4 columns)
 	var side_panel := HBoxContainer.new()
 	side_panel.name = "PlayerSidePanel"
-	side_panel.position = Vector2(184.0, 14.0)
-	side_panel.custom_minimum_size = Vector2(176.0, 116.0)
+	side_panel.position = Vector2(184.0, 10.0)
+	side_panel.custom_minimum_size = Vector2(176.0, 122.0)
 	side_panel.size = side_panel.custom_minimum_size
-	side_panel.add_theme_constant_override("separation", 6)
+	side_panel.add_theme_constant_override("separation", 4)
 	side_panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	stage.add_child(side_panel)
 
@@ -1271,22 +1291,23 @@ func _build_player_stage() -> Control:
 		var res_badge := g._relic_resonance_badge(res, res_color, 26)
 		all_items.append(_tap_wrap(res_badge, func(): _show_info_popup(g._relic_resonance_badge(res, res_color, 60), res_name, res_det, res_color)))
 
-	# Lay out items vertically in columns of up to 4 items each
+	# Lay out items vertically in columns of up to 4 columns max
+	var items_per_col: int = maxi(4, int(ceil(float(all_items.size()) / 4.0)))
 	var cur_col: VBoxContainer = null
 	for idx in all_items.size():
-		if idx % 4 == 0:
+		if idx % items_per_col == 0:
 			cur_col = VBoxContainer.new()
 			cur_col.alignment = BoxContainer.ALIGNMENT_BEGIN
-			cur_col.add_theme_constant_override("separation", 5)
+			cur_col.add_theme_constant_override("separation", 4)
 			cur_col.mouse_filter = Control.MOUSE_FILTER_PASS
 			side_panel.add_child(cur_col)
 		cur_col.add_child(all_items[idx])
 
 	return stage
 
-func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callable = Callable()) -> Panel:
+func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callable = Callable(), chip_size := Vector2(40.0, 42.0)) -> Panel:
 	var chip := Panel.new()
-	chip.custom_minimum_size = Vector2(52.0, 46.0)
+	chip.custom_minimum_size = chip_size
 	chip.size = chip.custom_minimum_size
 	chip.mouse_filter = Control.MOUSE_FILTER_PASS if on_tap.is_valid() else Control.MOUSE_FILTER_IGNORE
 	chip.add_theme_stylebox_override("panel", g._panel(Color("0c1a1f"), 10, Color("1f404d")))
@@ -1296,14 +1317,14 @@ func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callab
 	else:
 		if count >= 20:
 			var layer2 := Panel.new()
-			layer2.size = Vector2(48.0, 42.0)
+			layer2.size = chip_size - Vector2(4.0, 4.0)
 			layer2.position = Vector2(2.0, -4.0)
 			layer2.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			layer2.add_theme_stylebox_override("panel", g._panel(Color("081216", 0.6), 8, Color("16313b", 0.7)))
 			chip.add_child(layer2)
 		if count >= 10:
 			var layer1 := Panel.new()
-			layer1.size = Vector2(50.0, 44.0)
+			layer1.size = chip_size - Vector2(2.0, 2.0)
 			layer1.position = Vector2(1.0, -2.0)
 			layer1.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			layer1.add_theme_stylebox_override("panel", g._panel(Color("091519", 0.75), 9, Color("1a3844", 0.85)))
@@ -1315,7 +1336,7 @@ func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callab
 	stack.add_theme_constant_override("separation", -2)
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chip.add_child(stack)
-	stack.add_child(g._label(str(count), 17, number_color, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(str(count), 15, number_color, HORIZONTAL_ALIGNMENT_CENTER))
 	stack.add_child(g._label(caption, 8, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	if on_tap.is_valid():
@@ -1339,9 +1360,9 @@ func _add_hand(page: VBoxContainer) -> void:
 
 	# Resource row sits on its own line; previously these floated over the fanned cards.
 	var status := HBoxContainer.new()
-	status.custom_minimum_size.y = 48
+	status.custom_minimum_size.y = 46
 	status.alignment = BoxContainer.ALIGNMENT_CENTER
-	status.add_theme_constant_override("separation", 10)
+	status.add_theme_constant_override("separation", 4)
 	page.add_child(status)
 
 	var draw_chip := _pile_chip(g.combat.state.draw.size(), g.t("ui.draw_pile"), Color("f3e8cf"), func(): show_pile_inspector("ui.pile_draw_title", g.combat.state.draw))
@@ -1352,30 +1373,30 @@ func _add_hand(page: VBoxContainer) -> void:
 	# orb (not a row of used-up pips) is the one number that actually matters each turn.
 	var orb := Panel.new()
 	orb.name = "EnergyOrb"
-	orb.custom_minimum_size = Vector2(52, 52)
-	orb.pivot_offset = Vector2(26, 26)
+	orb.custom_minimum_size = Vector2(46, 46)
+	orb.pivot_offset = Vector2(23, 23)
 	orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var orb_style := g._panel(Color("0d3a4a"), 26, Color("6fd8ff"))
+	var orb_style := g._panel(Color("0d3a4a"), 23, Color("6fd8ff"))
 	orb_style.border_width_left = 2; orb_style.border_width_right = 2; orb_style.border_width_top = 2; orb_style.border_width_bottom = 2
 	orb.add_theme_stylebox_override("panel", orb_style)
 	if g.combat and g.combat.state and g.combat.state.phase == "player" and not g.resolving and g.is_inside_tree():
 		var cur_turn: int = int(g.combat.state.get("turn", 1))
 		if int(g.get_meta("last_energy_pulse_turn", -1)) != cur_turn:
 			g.set_meta("last_energy_pulse_turn", cur_turn)
-			orb.scale = Vector2(1.25, 1.25)
+			orb.scale = Vector2(1.2, 1.2)
 			var orb_tw := orb.create_tween()
 			orb_tw.tween_property(orb, "scale", Vector2(1.0, 1.0), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			var ripple := Panel.new()
 			ripple.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			ripple.custom_minimum_size = Vector2(52, 52)
-			ripple.pivot_offset = Vector2(26, 26)
-			var rip_style := g._panel(Color(0.2, 0.7, 1.0, 0.4), 26, Color("6fd8ff", 0.7))
+			ripple.custom_minimum_size = Vector2(46, 46)
+			ripple.pivot_offset = Vector2(23, 23)
+			var rip_style := g._panel(Color(0.2, 0.7, 1.0, 0.4), 23, Color("6fd8ff", 0.7))
 			rip_style.border_width_left = 2; rip_style.border_width_right = 2; rip_style.border_width_top = 2; rip_style.border_width_bottom = 2
 			ripple.add_theme_stylebox_override("panel", rip_style)
 			orb.add_child(ripple)
 			var rip_tw := ripple.create_tween()
 			rip_tw.set_parallel(true)
-			rip_tw.tween_property(ripple, "scale", Vector2(1.45, 1.45), 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			rip_tw.tween_property(ripple, "scale", Vector2(1.4, 1.4), 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			rip_tw.tween_property(ripple, "modulate:a", 0.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			rip_tw.chain().tween_callback(ripple.queue_free)
 	var orb_stack := VBoxContainer.new()
@@ -1384,7 +1405,7 @@ func _add_hand(page: VBoxContainer) -> void:
 	orb_stack.add_theme_constant_override("separation", -3)
 	orb_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	orb.add_child(orb_stack)
-	var energy_lbl := g._label(str(int(g.combat.state.energy)), 20, Color("cdf1ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	var energy_lbl := g._label(str(int(g.combat.state.energy)), 18, Color("cdf1ff"), HORIZONTAL_ALIGNMENT_CENTER)
 	energy_lbl.name = "EnergyValueLabel"
 	orb_stack.add_child(energy_lbl)
 	orb_stack.add_child(g._label(g.t("ui.energy_label"), 8, Color("8fd9f2"), HORIZONTAL_ALIGNMENT_CENTER))
@@ -1396,7 +1417,7 @@ func _add_hand(page: VBoxContainer) -> void:
 	var ult_btn := g._button(g.t("ui.cast_ultimate") if can_ult else "⚡%d%%" % qi_val, func():
 		if g.combat and g.combat.can_cast_ultimate():
 			_cast_hero_ultimate(0)
-	, Color("8c4f10") if can_ult else Color("16242c"), Vector2(60, 44))
+	, Color("8c4f10") if can_ult else Color("16242c"), Vector2(46, 42))
 	ult_btn.name = "UltimateQiMeter"
 	ult_btn.tooltip_text = g.t("ui.ultimate_ready") if can_ult else g.t("ui.ultimate_tooltip")
 	if can_ult:
@@ -1412,7 +1433,7 @@ func _add_hand(page: VBoxContainer) -> void:
 		exhaust_chip.name = "ExhaustPileChip"
 		status.add_child(exhaust_chip)
 
-	var pass_btn := g._button(g.t("ui.pass_turn"), g._pass_turn, Color("1c2a30"), Vector2(48, 44))
+	var pass_btn := g._button(g.t("ui.pass_turn"), g._pass_turn, Color("1c2a30"), Vector2(44, 42))
 	pass_btn.name = "PassTurnBtn"
 	var total_enemy_incoming: int = g.combat.total_incoming_damage() if g.combat else 0
 	var player_shield: int = int(g.combat.state.player.shield) if (g.combat and g.combat.state and g.combat.state.player) else 0
@@ -1448,7 +1469,7 @@ func _add_hand(page: VBoxContainer) -> void:
 			if g.combat and g.combat.undo_last_card():
 				g._toast(g.t("ui.combat_undo_toast"), g.GOLD)
 				show_battle()
-		, Color("2d2218"), Vector2(52, 44))
+		, Color("2d2218"), Vector2(44, 42))
 		undo_btn.name = "CombatUndoBtn"
 		status.add_child(undo_btn)
 
@@ -1538,8 +1559,8 @@ func _modal_backdrop(node_name: String, on_dismiss: Callable) -> Button:
 	g.overlay.add_child(backdrop)
 	return backdrop
 
-func _status_chip_clickable(status_key: String, glyph: String, amount: int, color: Color, height := 19.0) -> Control:
-	var chip := g._status_chip(glyph, amount, color, height)
+func _status_chip_clickable(status_key: String, glyph: String, amount: int, color: Color, height := 19.0, width := 38.0) -> Control:
+	var chip := g._status_chip(glyph, amount, color, height, width)
 	var title: String = g.t("status.%s.name" % status_key)
 	var desc: String = g.t("status.%s.desc" % status_key)
 	var formula_txt := ""
@@ -1551,9 +1572,9 @@ func _status_chip_clickable(status_key: String, glyph: String, amount: int, colo
 		"poison":
 			formula_txt = "\n\n📊 " + ("受到攻击时额外触发 %d 点伤害并递减 1 层" % amount if g.lang != "en" else "Deals %d extra damage when hit, decays by 1" % amount)
 		"vulnerable":
-			formula_txt = "\n\n📊 " + ("受到所有攻击伤害提升 +50%%（持续 %d 回合）" % amount if g.lang != "en" else "Takes +50% attack damage (lasts %d turns)" % amount)
+			formula_txt = "\n\n📊 " + ("受到所有攻击伤害提升 +50%%（持续 %d 回合）" % amount if g.lang != "en" else "Takes +50%% attack damage (lasts %d turns)" % amount)
 		"weak":
-			formula_txt = "\n\n📊 " + ("造成的攻击伤害降低 -25%%（持续 %d 回合）" % amount if g.lang != "en" else "Deals -25% attack damage (lasts %d turns)" % amount)
+			formula_txt = "\n\n📊 " + ("造成的攻击伤害降低 -25%%（持续 %d 回合）" % amount if g.lang != "en" else "Deals -25%% attack damage (lasts %d turns)" % amount)
 		"focus":
 			formula_txt = "\n\n📊 " + ("每次造成伤害附加 +%d 点基础攻击提升" % (amount * 3) if g.lang != "en" else "+%d bonus attack damage per hit" % (amount * 3))
 		"strength":

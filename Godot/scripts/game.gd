@@ -1305,9 +1305,9 @@ func _stat_bar(bar_width: float, bar_height: float, value: int, max_value: int, 
 
 # Status readout as a coloured chip rather than loose text, so shield/burn/focus are
 # distinguishable at a glance during a turn instead of needing to be read.
-func _status_chip(glyph: String, amount: int, color: Color, height := 19.0) -> Panel:
+func _status_chip(glyph: String, amount: int, color: Color, height := 19.0, width := 38.0) -> Panel:
 	var chip := Panel.new()
-	chip.custom_minimum_size = Vector2(38.0, height)
+	chip.custom_minimum_size = Vector2(width, height)
 	chip.size = chip.custom_minimum_size
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := _panel(Color(color.r * 0.32, color.g * 0.32, color.b * 0.32, 0.94), int(height / 2.0), color)
