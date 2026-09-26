@@ -3723,8 +3723,31 @@ const UI_TEXT = {
 	"ui.arena_btn": {"zh-Hans":"心魔演武", "en":"Arena"},
 	"ui.arena_upload_guard": {"zh-Hans":"凝结当前化身幻影", "en":"Imprint Phantom Guard"},
 	"ui.arena_guard_updated": {"zh-Hans":"化身幻影凝练成功！已登上演武战台。", "en":"Phantom Guard imprinted successfully!"},
-	"ui.arena_challenge_btn": {"zh-Hans":"切磋心魔幻象", "en":"Duel Phantom"},
-	"ui.arena_victory": {"zh-Hans":"击溃心魔！道心通明，斩获演武功勋！", "en":"Phantom Defeated! Earned Arena Merit!"}
+	"ui.arena_victory": {"zh-Hans":"击溃心魔！道心通明，斩获演武功勋！", "en":"Phantom Defeated! Earned Arena Merit!"},
+	"ui.run_recap_seed": {"zh-Hans":"天道种码: %d", "en":"Heavenly Seed: %d"},
+	"ui.run_recap_copy_seed": {"zh-Hans":"复制天道配置码", "en":"Copy Run Build Code"},
+	"ui.run_recap_seed_copied": {"zh-Hans":"已复制至剪贴板！可分享给同道道友。", "en":"Copied to clipboard! Share with fellow cultivators."},
+	"ui.run_recap_max_damage": {"zh-Hans":"单回合最高爆发: %d", "en":"Max Single-Turn Damage: %d"},
+	"ui.run_recap_archetype": {"zh-Hans":"主修流派: %s", "en":"Primary Archetype: %s"},
+	"ui.cloud_conflict_title": {"zh-Hans":"云端存档冲突", "en":"Cloud Save Divergence"},
+	"ui.cloud_conflict_desc": {"zh-Hans":"检测到多端游玩产生分歧，请选择想要保留的修仙造化:", "en":"Save progress differs across devices. Choose your destiny:"},
+	"ui.cloud_conflict_local": {"zh-Hans":"保留本地进度", "en":"Keep Local"},
+	"ui.cloud_conflict_cloud": {"zh-Hans":"拉取云端进度", "en":"Pull Cloud"},
+	"ui.cloud_conflict_merge": {"zh-Hans":"天道合一 (智能合并)", "en":"Merge Highest (Smart)"},
+	"ui.filter_element_all": {"zh-Hans":"全五行", "en":"All Elements"},
+	"ui.filter_element_wood": {"zh-Hans":"木系", "en":"Wood"},
+	"ui.filter_element_fire": {"zh-Hans":"火系", "en":"Fire"},
+	"ui.filter_element_water": {"zh-Hans":"水系", "en":"Water"},
+	"ui.filter_element_metal": {"zh-Hans":"金系", "en":"Metal"},
+	"ui.filter_element_earth": {"zh-Hans":"土系", "en":"Earth"},
+	"ui.filter_cost_all": {"zh-Hans":"全灵力", "en":"All Costs"},
+	"ui.archetype_burn": {"zh-Hans":"三昧真火流", "en":"Infernal Burn Archetype"},
+	"ui.archetype_poison": {"zh-Hans":"万蛊噬魂流", "en":"Abyssal Poison Archetype"},
+	"ui.archetype_shield": {"zh-Hans":"金石磐石流", "en":"Bastion Shield Archetype"},
+	"ui.archetype_combo": {"zh-Hans":"千刃连击流", "en":"Tempest Combo Archetype"},
+	"ui.archetype_balanced": {"zh-Hans":"万法归一灵修", "en":"Harmonious Qi Archetype"},
+	"ui.settings_fast_combat": {"zh-Hans":"极速对决", "en":"Ultra Fast Combat"},
+	"ui.settings_fast_combat_desc": {"zh-Hans":"精简抽牌与结算动画，毫秒级极速流转", "en":"Streamline draw & resolution delays for blitz-paced combat"}
 }
 
 func ui(key: String, language := "zh-Hans") -> String:

@@ -1323,13 +1323,62 @@ func _build_deck_analytics_box() -> PanelContainer:
 	for e in elem_counts:
 		if int(elem_counts[e]) > dom_max:
 			dom_max = int(elem_counts[e])
-			dom_elem = e
+	var arch_info := _evaluate_deck_archetype(g.profile.deck)
+	var arch_tag := g._label("★ %s: %s %s" % [g.t("ui.run_recap_archetype").replace(": %s", ""), arch_info.icon, arch_info.name], 10, Color("fef08a"))
+	type_vbox.add_child(arch_tag)
+
 	if not dom_elem.is_empty():
 		var elem_tag := g._label("✦ %s: %s (%d)" % [g.t("ui.deck_dominant_element"), g.t("element." + dom_elem), dom_max], 10, g.JADE)
 		type_vbox.add_child(elem_tag)
 
 	hbox.add_child(type_vbox)
 	return box
+
+func _evaluate_deck_archetype(p_deck: Array) -> Dictionary:
+	var counts := {"fire": 0, "poison": 0, "stone": 0, "thunder": 0, "water": 0}
+	for cid in p_deck:
+		var c := g.content.card(cid)
+		var el: String = str(c.get("element", "")).to_lower()
+		if el in counts:
+			counts[el] += 1
+		else:
+			for eff in c.get("effects", []):
+				if typeof(eff) == TYPE_DICTIONARY:
+					var st: String = str(eff.get("status", "")).to_lower()
+					var op: String = str(eff.get("operation", "")).to_lower()
+					if st == "burn":
+						counts["fire"] += 1
+						break
+					elif st == "poison":
+						counts["poison"] += 1
+						break
+					elif op == "shield":
+						counts["stone"] += 1
+						break
+
+	var top_el := ""
+	var top_cnt := 0
+	for el in counts:
+		if counts[el] > top_cnt:
+			top_cnt = counts[el]
+			top_el = el
+
+	var result := {"name": g.t("ui.archetype_balanced"), "icon": "☯", "element": top_el, "count": top_cnt}
+	if top_cnt >= 3:
+		match top_el:
+			"fire":
+				result.name = g.t("ui.archetype_burn")
+				result.icon = "🔥"
+			"poison":
+				result.name = g.t("ui.archetype_poison")
+				result.icon = "☠️"
+			"stone":
+				result.name = g.t("ui.archetype_shield")
+				result.icon = "🛡️"
+			"thunder":
+				result.name = g.t("ui.archetype_combo")
+				result.icon = "⚡"
+	return result
 
 func _calc_preset_archetype(p_deck: Array) -> String:
 	var counts := {"fire": 0, "frost": 0, "water": 0, "thunder": 0, "gale": 0, "stone": 0, "poison": 0}

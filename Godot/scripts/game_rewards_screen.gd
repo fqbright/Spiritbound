@@ -1412,6 +1412,11 @@ func show_run_recap() -> void:
 
 	stack.add_child(g._label(g.content.hero_name(hero, g.lang), 18, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
+	var asc_lvl: int = int(g.profile.get("ascension_level", 0))
+	if asc_lvl > 0:
+		var asc_badge := g._label("⚡ " + g.tf("ui.ascension_level_fmt", asc_lvl), 12, Color("c084fc"), HORIZONTAL_ALIGNMENT_CENTER)
+		stack.add_child(asc_badge)
+
 	# recap_encounter is baked (both languages) at the moment the win was granted — see
 	# _grant_stage_rewards()'s great_boss_kill/abyss_milestone branches — rather than
 	# re-derived from g.current_stage here, since an Abyss-triggered recap leaves
@@ -1483,6 +1488,20 @@ func show_run_recap() -> void:
 	share_btn.name = "RunRecapShareBtn"
 	share_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stack.add_child(share_btn)
+
+	var copy_seed_btn := g._button(g.t("ui.run_recap_copy_seed"), func():
+		var seed_str: String = "SPIRITBOUND_RUN:%s:%s:T%d:%s" % [
+			str(g.profile.hero_class),
+			str(g.profile.position),
+			int(g.profile.get("ascension_level", 0)),
+			",".join(g.profile.deck)
+		]
+		DisplayServer.clipboard_set(seed_str)
+		g._toast(g.t("ui.run_recap_seed_copied"), g.JADE)
+	, Color("1e3d34"), Vector2(200, 36))
+	copy_seed_btn.name = "RunRecapCopySeedBtn"
+	copy_seed_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(copy_seed_btn)
 
 	stack.add_child(g._label(g.t("ui.run_recap_share_hint"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
 

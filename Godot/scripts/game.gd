@@ -638,7 +638,8 @@ func _claim_login_reward(tier_index: int) -> void:
 # or weekly quest, or a login reward tier, is complete and waiting on its reward, same as the
 # claim buttons inside.
 func _battle_delay(seconds: float) -> float:
-	return seconds / battle_speed
+	var mult: float = 2.0 if bool(profile.get("fast_combat", false)) else 1.0
+	return seconds / (battle_speed * mult)
 
 func trigger_haptic(kind: String) -> void:
 	_haptic(kind)
@@ -1207,6 +1208,43 @@ func _input(event: InputEvent) -> void:
 				var card_idx: int = key - KEY_1
 				if card_idx < combat.state.hand.size():
 					_battle_screen._tap_card(card_idx)
+					get_viewport().set_input_as_handled()
+					return
+
+	# Gamepad Controller Support (Xbox / PlayStation / Backbone / MFi)
+	if event is InputEventJoypadButton and event.pressed:
+		var btn: int = event.button_index
+		if combat != null and combat.state != null and combat.state.phase == "player" and not resolving:
+			if btn == JOY_BUTTON_DPAD_LEFT:
+				var new_c := maxi(0, selected_card - 1)
+				_battle_screen._tap_card(new_c)
+				get_viewport().set_input_as_handled()
+				return
+			elif btn == JOY_BUTTON_DPAD_RIGHT:
+				var max_c: int = combat.state.hand.size() - 1
+				var new_c := mini(max_c, selected_card + 1)
+				_battle_screen._tap_card(new_c)
+				get_viewport().set_input_as_handled()
+				return
+			elif btn == JOY_BUTTON_A:
+				if selected_card >= 0 and selected_card < combat.state.hand.size():
+					_battle_screen._play_card(selected_card, 0)
+					get_viewport().set_input_as_handled()
+					return
+			elif btn == JOY_BUTTON_Y or btn == JOY_BUTTON_START:
+				_pass_turn()
+				get_viewport().set_input_as_handled()
+				return
+			elif btn == JOY_BUTTON_X:
+				if combat.can_cast_ultimate():
+					_battle_screen._cast_hero_ultimate(0)
+					get_viewport().set_input_as_handled()
+					return
+		elif btn == JOY_BUTTON_B:
+			if overlay and overlay.get_child_count() > 0:
+				var top_modal := overlay.get_child(overlay.get_child_count() - 1)
+				if top_modal and is_instance_valid(top_modal):
+					top_modal.queue_free()
 					get_viewport().set_input_as_handled()
 					return
 
@@ -2860,6 +2898,22 @@ func show_settings() -> void:
 	motion_box.add_child(motion_btn)
 	list.add_child(motion_box)
 
+	# 4a. Ultra Fast Combat Mode
+	var fast_combat_box := VBoxContainer.new()
+	fast_combat_box.add_theme_constant_override("separation", 4)
+	fast_combat_box.add_child(_label(t("ui.settings_fast_combat"), 12, TEXT))
+	fast_combat_box.add_child(_label(t("ui.settings_fast_combat_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var fast_combat_active: bool = bool(profile.get("fast_combat", false))
+	var fast_combat_btn := _button(t("ui.settings_on") if fast_combat_active else t("ui.settings_off"), func():
+		profile["fast_combat"] = not bool(profile.get("fast_combat", false))
+		SpiritSave.write(profile)
+		_close_settings()
+		show_settings()
+	, Color("818cf8") if fast_combat_active else Color("1c333a"), Vector2(0, 36))
+	fast_combat_btn.name = "FastCombatToggleBtn"
+	fast_combat_box.add_child(fast_combat_btn)
+	list.add_child(fast_combat_box)
+
 	# 4b. Text Size Option (accessibility)
 	var text_size_box := VBoxContainer.new()
 	text_size_box.add_theme_constant_override("separation", 6)
@@ -3106,6 +3160,104 @@ func show_legal_modal(title_text: String, content_text: String) -> void:
 
 	var body := _label(content_text, 11, TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
 	list.add_child(body)
+
+func play_card_flick_sfx() -> void:
+	play_sfx("card_play", 0.12, -2.0)
+
+func show_cloud_conflict_modal(local_p: Dictionary, cloud_p: Dictionary, on_resolved: Callable = Callable()) -> void:
+	var existing: Node = overlay.get_node_or_null("CloudConflictModal")
+	if existing: existing.queue_free()
+
+	var modal := _modal_dialog("CloudConflictModal", func():
+		var ex: Node = overlay.get_node_or_null("CloudConflictModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	var vp_w: int = 390
+	if is_inside_tree() and get_viewport_rect().size.x > 0:
+		vp_w = int(get_viewport_rect().size.x)
+	panel.custom_minimum_size = Vector2(mini(340, vp_w - 32), 0)
+	var panel_style := _panel(Color("0e1d22"), 14, GOLD)
+	panel_style.content_margin_left = 16
+	panel_style.content_margin_right = 16
+	panel_style.content_margin_top = 16
+	panel_style.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", panel_style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	list.add_child(_label(t("ui.cloud_conflict_title"), 16, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	list.add_child(_label(t("ui.cloud_conflict_desc"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER, true))
+
+	var compare_row := HBoxContainer.new()
+	compare_row.add_theme_constant_override("separation", 10)
+	compare_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	# Local card
+	var local_card := VBoxContainer.new()
+	local_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	local_card.add_child(_label(t("ui.cloud_conflict_local"), 12, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	local_card.add_child(_label("关卡: %d" % int(local_p.get("unlocked", 0)), 10, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	local_card.add_child(_label("雷劫: T%d" % int(local_p.get("highest_ascension", 0)), 10, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER))
+	local_card.add_child(_label("灵石: %d" % int(local_p.get("spirit_jade", 0)), 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	compare_row.add_child(local_card)
+
+	# Cloud card
+	var cloud_card := VBoxContainer.new()
+	cloud_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cloud_card.add_child(_label(t("ui.cloud_conflict_cloud"), 12, Color("38bdf8"), HORIZONTAL_ALIGNMENT_CENTER))
+	cloud_card.add_child(_label("关卡: %d" % int(cloud_p.get("unlocked", 0)), 10, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	cloud_card.add_child(_label("雷劫: T%d" % int(cloud_p.get("highest_ascension", 0)), 10, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER))
+	cloud_card.add_child(_label("灵石: %d" % int(cloud_p.get("spirit_jade", 0)), 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	compare_row.add_child(cloud_card)
+
+	list.add_child(compare_row)
+
+	# Buttons
+	var merge_btn := _button(t("ui.cloud_conflict_merge"), func():
+		var res := SpiritSave.merge_profiles(local_p, cloud_p)
+		profile = res
+		SpiritSave.write(profile)
+		modal.queue_free()
+		_toast(t("ui.cloud_conflict_merge"), JADE)
+		if on_resolved.is_valid(): on_resolved.call(profile)
+	, Color("3730a3"), Vector2(0, 38))
+	merge_btn.name = "ConflictMergeBtn"
+	list.add_child(merge_btn)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+	var keep_local_btn := _button(t("ui.cloud_conflict_local"), func():
+		profile = local_p
+		SpiritSave.write(profile)
+		modal.queue_free()
+		if on_resolved.is_valid(): on_resolved.call(profile)
+	, Color("1e3d34"), Vector2(0, 34))
+	keep_local_btn.name = "ConflictKeepLocalBtn"
+	keep_local_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_row.add_child(keep_local_btn)
+
+	var keep_cloud_btn := _button(t("ui.cloud_conflict_cloud"), func():
+		profile = cloud_p
+		SpiritSave.write(profile)
+		modal.queue_free()
+		if on_resolved.is_valid(): on_resolved.call(profile)
+	, Color("17363e"), Vector2(0, 34))
+	keep_cloud_btn.name = "ConflictKeepCloudBtn"
+	keep_cloud_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_row.add_child(keep_cloud_btn)
+
+	list.add_child(btn_row)
 
 func play_intro_cutscene(on_done: Callable = Callable()) -> IntroCutscene:
 	var old_intro: Node = get_node_or_null("IntroCutscene")
