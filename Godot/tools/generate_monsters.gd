@@ -3,22 +3,13 @@ extends SceneTree
 # Generates 250 distinct monster portraits for all 250 stages (50 chapters x 5 stages).
 # Features:
 # 1. 100% SOLID creature bodies (no transparency/see-through body pixels in combat).
-# 2. 100% transparent backgrounds with clean anti-aliasing edges (no rectangle frames).
+# 2. 100% transparent backgrounds with clean anti-aliasing edges (no circular frames or borders).
 # 3. STRICT SEPARATION: Zero hero art used for enemies (no fox, sentinel, shadow stalker, or witch).
 # 4. Each small stage has a 100% unique monster portrait (m_s001.png .. m_s250.png).
 # 5. Generates legacy aliases (m_r1_01.png .. m_r5_25.png) for full backward compatibility.
+# 6. Clean organic character silhouettes without circular tokens, rings, or seals.
 
 const OUTPUT_DIR := "res://assets/characters/monsters/"
-
-# VFX textures for runic overlays and halos
-const SRC_VFX := [
-	"res://assets/vfx/spirit_barrier_ring.png",
-	"res://assets/vfx/spirit_curse_seal.png",
-	"res://assets/vfx/spirit_buff_pillar.png",
-	"res://assets/vfx/spirit_shield_crest.png",
-	"res://assets/vfx/spirit_slash_arc.png",
-	"res://assets/vfx/spirit_heal_lotus.png"
-]
 
 const ELEMENT_PALETTES := {
 	"wood": Color(0.35, 0.88, 0.48, 1.0),
@@ -47,36 +38,6 @@ func _solidify_image(img: Image) -> Image:
 				img.set_pixel(x, y, Color(0, 0, 0, 0))
 	return img
 
-func _clean_silhouette_alpha(src: Image) -> Image:
-	var img := Image.new()
-	img.copy_from(src)
-	img.convert(Image.FORMAT_RGBA8)
-	var w := img.get_width()
-	var h := img.get_height()
-	
-	# Sample corner colors to determine background
-	var bg_col := img.get_pixel(0, 0)
-	var center := Vector2(float(w) * 0.5, float(h) * 0.5)
-	var max_r := float(w) * 0.47
-	
-	for y in range(h):
-		var dy := float(y) - center.y
-		for x in range(w):
-			var dx := float(x) - center.x
-			var dist := sqrt(dx * dx + dy * dy)
-			if dist > max_r:
-				img.set_pixel(x, y, Color(0, 0, 0, 0))
-				continue
-			var p := img.get_pixel(x, y)
-			var color_dist := sqrt(pow(p.r - bg_col.r, 2) + pow(p.g - bg_col.g, 2) + pow(p.b - bg_col.b, 2))
-			var lum := p.get_luminance()
-			if color_dist < 0.14 or lum < 0.05:
-				img.set_pixel(x, y, Color(0, 0, 0, 0))
-			else:
-				# Creature pixel: strictly 100% SOLID
-				img.set_pixel(x, y, Color(p.r, p.g, p.b, 1.0))
-	return img
-
 func _get_atlas_region(atlas: Image, cell_x: int, cell_y: int) -> Image:
 	var cw := atlas.get_width() / 3
 	var ch := atlas.get_height() / 3
@@ -94,7 +55,7 @@ func _flip_image_horizontal(src: Image) -> Image:
 	return out
 
 func _init() -> void:
-	print("--- Starting Spiritbound 250 Solid Monster Portrait Generator ---")
+	print("--- Starting Spiritbound 250 Organic Monster Portrait Generator ---")
 	var dir := DirAccess.open("res://")
 	if not dir.dir_exists(OUTPUT_DIR):
 		dir.make_dir_recursive(OUTPUT_DIR)
@@ -118,43 +79,7 @@ func _init() -> void:
 		base_creatures.append(_get_atlas_region(atlas, 2, 2)) # forgeSpark
 		print("Loaded 7 pure monster cutouts from character-atlas-v3.png")
 	
-	# 2. Pure monster assets from Expo/assets/
-	var expo_bosses := [
-		"res://../Expo/assets/bosses/embercliff-guardian-v1.png",
-		"res://../Expo/assets/bosses/heart-of-mountain-v1.png",
-		"res://../Expo/assets/bosses/lanternstone-keeper-v1.png",
-		"res://../Expo/assets/bosses/runebound-colossus-v1.png"
-	]
-	for p in expo_bosses:
-		var gp := ProjectSettings.globalize_path(p)
-		if FileAccess.file_exists(gp):
-			var img := Image.load_from_file(gp)
-			base_creatures.append(_clean_silhouette_alpha(img))
-	
-	var expo_enemies := [
-		"res://../Expo/assets/enemies/ash-raven-v1.png",
-		"res://../Expo/assets/enemies/ash-raven-v2.png",
-		"res://../Expo/assets/enemies/forge-spark-v1.png",
-		"res://../Expo/assets/enemies/forge-spark-v2.png",
-		"res://../Expo/assets/enemies/marsh-wisp-v1.png",
-		"res://../Expo/assets/enemies/rune-shard-v1.png",
-		"res://../Expo/assets/enemies/rune-shard-v2.png"
-	]
-	for p in expo_enemies:
-		var gp := ProjectSettings.globalize_path(p)
-		if FileAccess.file_exists(gp):
-			var img := Image.load_from_file(gp)
-			base_creatures.append(_clean_silhouette_alpha(img))
-	
-	var loaded_vfx := []
-	for p in SRC_VFX:
-		var gp := ProjectSettings.globalize_path(p)
-		if FileAccess.file_exists(gp):
-			var img := Image.load_from_file(gp)
-			img.convert(Image.FORMAT_RGBA8)
-			loaded_vfx.append(img)
-	
-	print("Total loaded pure monster base archetypes: %d, VFX overlays: %d" % [base_creatures.size(), loaded_vfx.size()])
+	print("Total loaded pure monster base archetypes: %d" % base_creatures.size())
 	
 	# Generate 250 stage portraits (m_s001.png .. m_s250.png)
 	var generated_count := 0
@@ -172,7 +97,7 @@ func _init() -> void:
 			tier = 4 if stage_num in [50, 100, 150, 200, 250] else 3
 		
 		var element := _get_stage_element(realm, chapter, level)
-		var mon_img := _create_monster_portrait(stage_num, chapter, level, tier, realm, element, base_creatures, loaded_vfx)
+		var mon_img := _create_monster_portrait(stage_num, chapter, level, tier, realm, element, base_creatures)
 		
 		# Save primary stage file: m_s001.png .. m_s250.png
 		var primary_file := ProjectSettings.globalize_path(OUTPUT_DIR + ("m_s%03d.png" % stage_num))
@@ -191,7 +116,7 @@ func _init() -> void:
 		if generated_count % 50 == 0:
 			print("Generated %d/250 unique monster portraits..." % generated_count)
 	
-	print("Successfully generated all %d monster portraits with 100%% solid bodies in %s" % [generated_count, OUTPUT_DIR])
+	print("Successfully generated all %d monster portraits with 100%% solid bodies (no circles) in %s" % [generated_count, OUTPUT_DIR])
 	quit()
 
 func _get_stage_element(realm: int, chapter: int, level: int) -> String:
@@ -220,7 +145,7 @@ func _get_stage_element(realm: int, chapter: int, level: int) -> String:
 func stage_is_genesis(chapter: int, level: int) -> bool:
 	return (chapter + level) % 2 == 0
 
-func _create_monster_portrait(stage_num: int, chapter: int, level: int, tier: int, realm: int, element: String, bases: Array, vfx_list: Array) -> Image:
+func _create_monster_portrait(stage_num: int, chapter: int, level: int, tier: int, realm: int, element: String, bases: Array) -> Image:
 	var canvas_size := 512
 	var img := Image.create(canvas_size, canvas_size, false, Image.FORMAT_RGBA8)
 	var elem_col: Color = ELEMENT_PALETTES.get(element, Color(0.6, 0.7, 0.8))
@@ -250,13 +175,7 @@ func _create_monster_portrait(stage_num: int, chapter: int, level: int, tier: in
 	# 3. Apply elemental color grading and hue shifting
 	_apply_elemental_grading(creature, elem_col, tier, stage_num)
 	
-	# 4. Optional background runic halo for Tier 2, 3, 4 (strictly centered behind creature)
-	if tier >= 2 and vfx_list.size() > 0:
-		var vfx_idx := (stage_num + realm) % vfx_list.size()
-		var vfx_bg: Image = vfx_list[vfx_idx]
-		_composite_vfx_background(img, vfx_bg, elem_col, tier)
-	
-	# 5. Composite solid creature onto transparent canvas
+	# 4. Composite solid creature onto transparent canvas (strictly organic silhouette, no circular backdrops)
 	var offset_x := (canvas_size - creature_size) / 2
 	var offset_y := (canvas_size - creature_size) / 2
 	# Small vertical grounding offset
@@ -265,12 +184,7 @@ func _create_monster_portrait(stage_num: int, chapter: int, level: int, tier: in
 	
 	img.blend_rect(creature, Rect2i(0, 0, creature_size, creature_size), Vector2i(offset_x, offset_y))
 	
-	# 6. Composite foreground runic accents for Bosses (Tier 3 & 4)
-	if tier >= 3 and vfx_list.size() > 1:
-		var seal_vfx: Image = vfx_list[1] # curse seal or barrier ring
-		_composite_crest_accent(img, seal_vfx, elem_col, tier)
-	
-	# 7. CRITICAL SOLIDITY PASS:
+	# 5. CRITICAL SOLIDITY PASS:
 	# Clamps every creature body pixel to 100% solid opacity (alpha = 1.0).
 	# Ensures zero transparency on the monster in combat while keeping transparent background.
 	_enforce_body_solidity(img)
@@ -303,49 +217,6 @@ func _apply_elemental_grading(img: Image, tint: Color, tier: int, stage_seed: in
 			
 			# Creature pixels are set to solid alpha
 			img.set_pixel(x, y, Color(clampf(tinted_r, 0.0, 1.0), clampf(tinted_g, 0.0, 1.0), clampf(tinted_b, 0.0, 1.0), p.a))
-
-func _composite_vfx_background(canvas: Image, vfx_src: Image, tint: Color, tier: int) -> void:
-	var v := Image.new()
-	v.copy_from(vfx_src)
-	var sz := int(canvas.get_width() * (0.80 if tier == 2 else (0.88 if tier == 3 else 0.94)))
-	v.resize(sz, sz, Image.INTERPOLATE_LANCZOS)
-	
-	var vw := v.get_width()
-	var vh := v.get_height()
-	var vfx_alpha := 0.40 if tier == 2 else (0.55 if tier == 3 else 0.70)
-	
-	for y in range(vh):
-		for x in range(vw):
-			var p := v.get_pixel(x, y)
-			if p.a > 0.02:
-				var c := tint * (p.get_luminance() * 1.2)
-				c.a = p.a * vfx_alpha
-				v.set_pixel(x, y, c)
-	
-	var pos_x := (canvas.get_width() - sz) / 2
-	var pos_y := (canvas.get_height() - sz) / 2
-	canvas.blend_rect(v, Rect2i(0, 0, sz, sz), Vector2i(pos_x, pos_y))
-
-func _composite_crest_accent(canvas: Image, crest_src: Image, tint: Color, tier: int) -> void:
-	var c := Image.new()
-	c.copy_from(crest_src)
-	var sz := int(canvas.get_width() * 0.42)
-	c.resize(sz, sz, Image.INTERPOLATE_LANCZOS)
-	
-	var cw := c.get_width()
-	var ch := c.get_height()
-	var accent_col := Color(1.0, 0.92, 0.65, 1.0) if tier == 4 else tint
-	for y in range(ch):
-		for x in range(cw):
-			var p := c.get_pixel(x, y)
-			if p.a > 0.02:
-				var col := accent_col * p.get_luminance()
-				col.a = p.a * 0.50
-				c.set_pixel(x, y, col)
-	
-	var pos_x := (canvas.get_width() - sz) / 2
-	var pos_y := canvas.get_height() - sz - 10
-	canvas.blend_rect(c, Rect2i(0, 0, sz, sz), Vector2i(pos_x, pos_y))
 
 func _enforce_body_solidity(img: Image) -> void:
 	var w := img.get_width()

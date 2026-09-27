@@ -795,45 +795,8 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	sprite.position = Vector2(center_x, 26.0 + spr_size.y / 2.0)
 	_install_hit_flash(sprite)
 
-	# Tier visual hierarchy: Aura formations and floating boss crests
-	if tier == 2:
-		var elite_halo := Panel.new()
-		elite_halo.name = "EliteAuraRing"
-		var halo_size := spr_size.x * 0.96
-		elite_halo.custom_minimum_size = Vector2(halo_size, halo_size)
-		elite_halo.size = elite_halo.custom_minimum_size
-		elite_halo.position = Vector2(center_x - halo_size * 0.5, 26.0 + spr_size.y * 0.5 - halo_size * 0.5)
-		elite_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var halo_style := StyleBoxFlat.new()
-		halo_style.bg_color = Color(0.9, 0.65, 0.2, 0.08)
-		halo_style.border_color = Color(1.0, 0.75, 0.25, 0.55)
-		halo_style.set_border_width_all(2)
-		halo_style.set_corner_radius_all(int(halo_size * 0.5))
-		halo_style.shadow_color = Color(1.0, 0.7, 0.1, 0.35)
-		halo_style.shadow_size = 6
-		elite_halo.add_theme_stylebox_override("panel", halo_style)
-		unit.add_child(elite_halo)
-		var h_tween := elite_halo.create_tween().set_loops()
-		h_tween.tween_property(elite_halo, "modulate:a", 0.45, 1.2).set_trans(Tween.TRANS_SINE)
-		h_tween.tween_property(elite_halo, "modulate:a", 1.0, 1.2).set_trans(Tween.TRANS_SINE)
-	elif tier == 3:
-		var boss_halo := Panel.new()
-		boss_halo.name = "BossAuraRing"
-		var b_size := spr_size.x * 1.15
-		boss_halo.custom_minimum_size = Vector2(b_size, b_size)
-		boss_halo.size = boss_halo.custom_minimum_size
-		boss_halo.position = Vector2(center_x - b_size * 0.5, 26.0 + spr_size.y * 0.5 - b_size * 0.5)
-		boss_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var b_style := StyleBoxFlat.new()
-		b_style.bg_color = Color(1.0, 0.8, 0.2, 0.12)
-		b_style.border_color = Color(1.0, 0.84, 0.3, 0.75)
-		b_style.set_border_width_all(2)
-		b_style.set_corner_radius_all(int(b_size * 0.5))
-		b_style.shadow_color = Color(1.0, 0.65, 0.1, 0.5)
-		b_style.shadow_size = 10
-		boss_halo.add_theme_stylebox_override("panel", b_style)
-		unit.add_child(boss_halo)
-
+	# Tier visual hierarchy: Floating boss crests
+	if tier == 3:
 		var crown := Label.new()
 		crown.name = "BossCrownHalo"
 		crown.text = "👑"
@@ -847,23 +810,6 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 		c_tween.tween_property(crown, "position:y", 6.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		c_tween.tween_property(crown, "position:y", 10.0, 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	elif tier == 4:
-		var g_halo := Panel.new()
-		g_halo.name = "GreatBossCelestialFormation"
-		var g_size := spr_size.x * 1.3
-		g_halo.custom_minimum_size = Vector2(g_size, g_size)
-		g_halo.size = g_halo.custom_minimum_size
-		g_halo.position = Vector2(center_x - g_size * 0.5, 26.0 + spr_size.y * 0.5 - g_size * 0.5)
-		g_halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var g_style := StyleBoxFlat.new()
-		g_style.bg_color = Color(1.0, 0.3, 0.2, 0.15)
-		g_style.border_color = Color(1.0, 0.9, 0.5, 0.9)
-		g_style.set_border_width_all(3)
-		g_style.set_corner_radius_all(int(g_size * 0.5))
-		g_style.shadow_color = Color(1.0, 0.2, 0.4, 0.65)
-		g_style.shadow_size = 14
-		g_halo.add_theme_stylebox_override("panel", g_style)
-		unit.add_child(g_halo)
-
 		var crown := Label.new()
 		crown.name = "BossCrownHalo"
 		crown.text = "✦ 👑 ✦"
@@ -954,25 +900,6 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 		var lethal_tag := g._label(g.t("ui.lethal_warning"), 9, Color("ff3333"), HORIZONTAL_ALIGNMENT_CENTER)
 		lethal_tag.name = "LethalTag"
 		intent_row.add_child(lethal_tag)
-		var aura := Panel.new()
-		aura.name = "LethalThreatAura"
-		var a_size := spr_size.x * 1.15
-		aura.custom_minimum_size = Vector2(a_size, a_size)
-		aura.size = aura.custom_minimum_size
-		aura.position = Vector2(center_x - a_size * 0.5, 26.0 + spr_size.y * 0.5 - a_size * 0.5)
-		aura.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var a_style := StyleBoxFlat.new()
-		a_style.bg_color = Color(0.8, 0.05, 0.05, 0.12)
-		a_style.border_color = Color(1.0, 0.15, 0.15, 0.75)
-		a_style.set_border_width_all(2)
-		a_style.set_corner_radius_all(int(a_size * 0.5))
-		a_style.shadow_color = Color(1.0, 0.0, 0.0, 0.5)
-		a_style.shadow_size = 10
-		aura.add_theme_stylebox_override("panel", a_style)
-		unit.add_child(aura)
-		var a_tw := aura.create_tween().set_loops()
-		a_tw.tween_property(aura, "modulate:a", 0.4, 0.6).set_trans(Tween.TRANS_SINE)
-		a_tw.tween_property(aura, "modulate:a", 1.0, 0.6).set_trans(Tween.TRANS_SINE)
 
 	var telegraph := intent_bg.create_tween().set_loops()
 	telegraph.tween_property(intent_bg, "position:y", base_intent_y - 3.0, 0.8 if is_threat else 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)

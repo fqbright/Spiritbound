@@ -24,6 +24,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		health_scale *= 1.25
 	var boss_art: String = str(encounter.get("art_key", encounter.get("art", "m_s001")))
 	var enemies: Array = [_enemy("boss", encounter.name, str(encounter.get("name_en", encounter.name)), boss_art, int(round(encounter.health * health_scale)), int(round((encounter.damage + damage_bonus) * damage_mult)), encounter.mechanics)]
+	enemies[0]["tier"] = int(encounter.get("tier", 1))
 	var add_art: String = str(encounter.get("add_art_key", encounter.get("art_key", boss_art)))
 	var add_name: String = str(encounter.get("add_name", "灵迹随从"))
 	var add_name_en: String = str(encounter.get("add_name_en", "Spirit Minion"))
