@@ -87,6 +87,155 @@ EOF
     fi
 fi
 
+# Patch dummy.swift with native Sign in with Apple & OAuth URL interceptor
+DUMMY_SWIFT="$BUILD_DIR/Spiritbound/dummy.swift"
+if [ -f "$DUMMY_SWIFT" ]; then
+    if ! grep -q "AppleAuthBridge" "$DUMMY_SWIFT"; then
+        cat << 'EOF' >> "$DUMMY_SWIFT"
+
+import Foundation
+import UIKit
+import AuthenticationServices
+
+@available(iOS 13.0, *)
+@objc public class AppleAuthBridge: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    @objc public static let shared = AppleAuthBridge()
+
+    @objc public func startSignIn() {
+        DispatchQueue.main.async {
+            let appleIDProvider = ASAuthorizationAppleIDProvider()
+            let request = appleIDProvider.createRequest()
+            request.requestedScopes = [.fullName, .email]
+
+            let authorizationController = ASAuthorizationController(authorizationRequests: [request])
+            authorizationController.delegate = self
+            authorizationController.presentationContextProvider = self
+            authorizationController.performRequests()
+        }
+    }
+
+    public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            return window
+        }
+        if let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }) {
+            return window
+        }
+        return UIWindow()
+    }
+
+    public func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
+            let userId = appleIDCredential.user
+            let idTokenData = appleIDCredential.identityToken
+            let idTokenString = idTokenData != nil ? String(data: idTokenData!, encoding: .utf8) ?? "" : ""
+            let email = appleIDCredential.email ?? ""
+            let givenName = appleIDCredential.fullName?.givenName ?? ""
+            let familyName = appleIDCredential.fullName?.familyName ?? ""
+            let displayName = [givenName, familyName].filter { !$0.isEmpty }.joined(separator: " ")
+
+            let dict: [String: Any] = [
+                "status": "success",
+                "user_id": userId,
+                "id_token": idTokenString,
+                "identity_token": idTokenString,
+                "email": email,
+                "display_name": displayName
+            ]
+            saveResult(dict, filename: "auth_apple_result.json")
+        }
+    }
+
+    public func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        let dict: [String: Any] = [
+            "status": "error",
+            "error": error.localizedDescription
+        ]
+        saveResult(dict, filename: "auth_apple_result.json")
+    }
+
+    private func saveResult(_ dict: [String: Any], filename: String) {
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let fileURL = docs.appendingPathComponent(filename)
+            if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
+                try? data.write(to: fileURL)
+            }
+        }
+    }
+}
+
+@objc public class AppURLInterceptor: NSObject {
+    @objc public static func setup() {
+        NotificationCenter.default.addObserver(forName: UIApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
+            guard let appDelegate = UIApplication.shared.delegate else { return }
+            let delegateClass: AnyClass = type(of: appDelegate)
+            let originalSelector = #selector(UIApplicationDelegate.application(_:open:options:))
+            let swizzledSelector = #selector(appDelegateSwizzled_application(_:open:options:))
+
+            if let swizzledMethod = class_getInstanceMethod(AppURLInterceptor.self, swizzledSelector) {
+                if let originalMethod = class_getInstanceMethod(delegateClass, originalSelector) {
+                    method_exchangeImplementations(originalMethod, swizzledMethod)
+                } else {
+                    class_addMethod(delegateClass, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod))
+                }
+            }
+        }
+    }
+
+    @objc func appDelegateSwizzled_application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        let urlStr = url.absoluteString
+        if url.scheme == "spiritbound-internal" && url.host == "apple-signin" {
+            if #available(iOS 13.0, *) {
+                AppleAuthBridge.shared.startSignIn()
+            }
+            return true
+        }
+        if url.scheme == "spiritbound" {
+            if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let fileURL = docs.appendingPathComponent("oauth_callback_result.json")
+                let dict: [String: Any] = ["url": urlStr]
+                if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
+                    try? data.write(to: fileURL)
+                }
+            }
+            return true
+        }
+        return true
+    }
+}
+
+let _appUrlInterceptorInit: Void = {
+    AppURLInterceptor.setup()
+}()
+EOF
+        echo "   ✓ Patched dummy.swift with native Sign in with Apple & URL interceptor"
+    fi
+fi
+
+# Patch Spiritbound.entitlements with Sign in with Apple capability
+ENTITLEMENTS="$BUILD_DIR/Spiritbound/Spiritbound.entitlements"
+if [ -f "$ENTITLEMENTS" ]; then
+    if ! grep -q "com.apple.developer.applesignin" "$ENTITLEMENTS"; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin array" "$ENTITLEMENTS" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :com.apple.developer.applesignin:0 string Default" "$ENTITLEMENTS" 2>/dev/null || true
+        echo "   ✓ Added com.apple.developer.applesignin to Spiritbound.entitlements"
+    fi
+fi
+
+PLIST="$BUILD_DIR/Spiritbound/Spiritbound-Info.plist"
+if [ -f "$PLIST" ]; then
+    if ! grep -q "spiritbound" "$PLIST"; then
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string spiritbound" "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:1 string spiritbound-internal" "$PLIST" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string com.jiacong.spiritbound" "$PLIST" 2>/dev/null || true
+        echo "   ✓ Added URL Schemes (spiritbound, spiritbound-internal) to Spiritbound-Info.plist"
+    fi
+fi
+
 if [ -f "$PBXPROJ" ]; then
     echo "🔒 [2/4] Verifying Xcode Automatic Signing & Team ID..."
     python3 - <<PYEOF

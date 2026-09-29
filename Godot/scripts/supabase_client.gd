@@ -204,7 +204,64 @@ static func sign_in_with_id_token(provider: String, id_token: String, nonce: Str
 			var sess := _extract_session(d, provider)
 			save_session(sess)
 			return {"ok": true, "session": sess, "error": ""}
-	return {"ok": false, "session": {}, "error": str(res.get("error", "Third-party login failed"))}
+	var err_str: String = str(res.get("error", "Third-party login failed"))
+	var err_lower := err_str.to_lower()
+	if err_lower.contains("not enabled") or err_lower.contains("unsupported provider"):
+		err_str = "Supabase 后台未开启 %s 登录提供商 (Provider not enabled)" % provider
+	return {"ok": false, "session": {}, "error": err_str}
+
+static func get_oauth_authorize_url(provider: String, redirect_to: String = "spiritbound://auth-callback") -> String:
+	return SUPABASE_URL + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + redirect_to.uri_encode()
+
+static func fetch_user(token: String, node: Node = null) -> Dictionary:
+	var url := SUPABASE_URL + "/auth/v1/user"
+	var headers := PackedStringArray(["Authorization: Bearer " + token])
+	var res = await _http_request(url, HTTPClient.METHOD_GET, headers, null, node)
+	if res.get("ok", false) and res.get("data") is Dictionary:
+		return {"ok": true, "user": res.get("data"), "error": ""}
+	return {"ok": false, "user": {}, "error": str(res.get("error", "Failed to fetch user"))}
+
+static func parse_oauth_callback_url(url: String, provider: String = "google", node: Node = null) -> Dictionary:
+	if not url.contains("access_token="):
+		return {"ok": false, "session": {}, "error": "No access_token found in URL"}
+
+	var frag := ""
+	if url.contains("#"):
+		frag = url.split("#", true, 1)[1]
+	elif url.contains("?"):
+		frag = url.split("?", true, 1)[1]
+	else:
+		frag = url
+
+	var params: Dictionary = {}
+	for part in frag.split("&"):
+		var kv = part.split("=", true, 1)
+		if kv.size() == 2:
+			params[kv[0]] = kv[1].uri_decode()
+
+	var access_token := str(params.get("access_token", ""))
+	if access_token.is_empty():
+		return {"ok": false, "session": {}, "error": "Empty access_token"}
+
+	var refresh_token := str(params.get("refresh_token", ""))
+	var expires_in := int(params.get("expires_in", 3600))
+
+	# Fetch full user details from Supabase using the access token
+	var u_res := await fetch_user(access_token, node)
+	var user_data: Dictionary = u_res.get("user", {})
+
+	var sess := {
+		"access_token": access_token,
+		"refresh_token": refresh_token,
+		"expires_in": expires_in,
+		"expires_at": int(Time.get_unix_time_from_system()) + expires_in,
+		"provider": provider,
+		"user": user_data,
+		"user_id": str(user_data.get("id", "")),
+		"email": str(user_data.get("email", ""))
+	}
+	save_session(sess)
+	return {"ok": true, "session": sess, "error": ""}
 
 static func refresh_session(node: Node = null) -> Dictionary:
 	var r_token := get_refresh_token()

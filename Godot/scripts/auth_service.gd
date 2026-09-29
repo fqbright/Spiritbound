@@ -10,7 +10,7 @@ static func is_apple_available() -> bool:
 	return OS.get_name() == "iOS" or Engine.has_singleton("AppleSignIn") or OS.has_feature("editor") or OS.has_feature("standalone")
 
 static func is_google_available() -> bool:
-	return Engine.has_singleton("GoogleSignIn") or OS.has_feature("editor") or OS.has_feature("standalone")
+	return true
 
 static func sign_in_with_supabase(game: SpiritGame, email: String, password: String, on_done: Callable = Callable()) -> void:
 	var res = await SupabaseClient.sign_in(email, password, game)
@@ -125,14 +125,6 @@ static func reset_password(game: SpiritGame, email: String, on_done: Callable = 
 static var simulate_mode: bool = false
 
 static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable()) -> void:
-	if Engine.has_singleton("AppleSignIn"):
-		var apple_plugin = Engine.get_singleton("AppleSignIn")
-		if apple_plugin.has_signal("login_completed"):
-			if not apple_plugin.is_connected("login_completed", Callable(SpiritAuth, "_on_native_apple_login")):
-				apple_plugin.connect("login_completed", Callable(SpiritAuth, "_on_native_apple_login").bind(game, on_done))
-			apple_plugin.call("start_login")
-			return
-
 	if simulate_mode:
 		# Test sandbox emulation only
 		var account: Dictionary = game.profile.get("account", {})
@@ -156,42 +148,54 @@ static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable())
 			on_done.call(true, "apple")
 		return
 
-	if OS.get_name() == "iOS":
-		# On iOS physical device / TestFlight: seamlessly authenticate with Supabase using Apple vendor device ID
-		game._toast(game.t("ui.auth_syncing"), game.MUTED)
-		var dev_uuid := OS.get_unique_id().strip_edges()
-		if dev_uuid.is_empty():
-			dev_uuid = "%08x%08x" % [int(Time.get_unix_time_from_system()), randi()]
-		var safe_id := dev_uuid.sha256_text().substr(0, 20)
-		var apple_email := "apple_%s@guest.spiritbound.game" % safe_id
-		var apple_pass := "ApplePass_%s_SpBound" % safe_id
-		var current_name: String = str(game.profile.get("account", {}).get("name", "")).strip_edges()
-		if current_name.is_empty(): current_name = "Apple 探险家"
+	if Engine.has_singleton("AppleSignIn"):
+		var apple_plugin = Engine.get_singleton("AppleSignIn")
+		var sig_name := "signin_completed" if apple_plugin.has_signal("signin_completed") else "login_completed"
+		if apple_plugin.has_signal(sig_name):
+			if not apple_plugin.is_connected(sig_name, Callable(SpiritAuth, "_on_native_apple_login")):
+				apple_plugin.connect(sig_name, Callable(SpiritAuth, "_on_native_apple_login").bind(game, on_done))
+			if apple_plugin.has_method("initiate_signin"):
+				apple_plugin.call("initiate_signin")
+			elif apple_plugin.has_method("start_login"):
+				apple_plugin.call("start_login")
+			return
 
-		var s_res := await SupabaseClient.sign_in(apple_email, apple_pass, game)
-		if not s_res.get("ok", false):
-			s_res = await SupabaseClient.sign_up(apple_email, apple_pass, current_name, game)
-
-		var uid: String = SupabaseClient.get_user_id()
-		if uid.is_empty(): uid = "apple_" + safe_id
-		SpiritSave.link_account(game.profile, "apple", uid, "%s@privaterelay.appleid.com" % safe_id.substr(0, 8), current_name)
-
-		var sync_res = await SupabaseClient.sync_save_two_way(game.profile, game)
-		if sync_res.get("ok", false) and sync_res.get("action") == "downloaded":
-			var remote: Dictionary = sync_res.get("profile", {})
-			for k in remote:
-				game.profile[k] = remote[k]
-			SpiritSave.write(game.profile)
-		else:
-			await SupabaseClient.upload_player_save(game.profile, game)
-
-		game._toast(game.t("ui.auth_link_success"), game.JADE)
+	if DisplayServer.get_name() == "headless":
+		game._toast(game.t("ui.auth_apple_unavailable"), game.MUTED)
 		if on_done.is_valid():
-			on_done.call(true, "apple")
+			on_done.call(false, "apple_unavailable")
 		return
 
-	# Real device / production without native plugin configured:
-	# Do not bypass or fake verification. Notify player clearly.
+	if OS.get_name() == "iOS":
+		# Clear any stale result
+		if FileAccess.file_exists("user://auth_apple_result.json"):
+			DirAccess.remove_absolute("user://auth_apple_result.json")
+
+		# Trigger native iOS ASAuthorizationController via internal scheme
+		game._toast(game.t("ui.auth_syncing"), game.MUTED)
+		OS.shell_open("spiritbound-internal://apple-signin")
+
+		# Poll for auth_apple_result.json written by Swift ASAuthorizationController
+		var waited := 0.0
+		while waited < 45.0:
+			if FileAccess.file_exists("user://auth_apple_result.json"):
+				var file := FileAccess.open("user://auth_apple_result.json", FileAccess.READ)
+				var text := file.get_as_text() if file != null else ""
+				file = null
+				DirAccess.remove_absolute("user://auth_apple_result.json")
+				var parsed = JSON.parse_string(text)
+				if parsed is Dictionary:
+					_on_native_apple_login(parsed, game, on_done)
+					return
+			await game.get_tree().create_timer(0.2).timeout
+			waited += 0.2
+
+		game._toast("Sign-in cancelled", game.MUTED)
+		if on_done.is_valid():
+			on_done.call(false, "apple_cancelled")
+		return
+
+	# Desktop / Editor fallback without simulate mode
 	game._toast(game.t("ui.auth_apple_unavailable"), game.MUTED)
 	if on_done.is_valid():
 		on_done.call(false, "apple_unavailable")
@@ -203,8 +207,26 @@ static func _on_native_apple_login(result: Dictionary, game: SpiritGame, on_done
 		var display_name: String = str(result.get("display_name", ""))
 		var id_token: String = str(result.get("id_token", result.get("identity_token", "")))
 		if not id_token.is_empty():
-			await SupabaseClient.sign_in_with_id_token("apple", id_token, "", game)
+			var s_res = await SupabaseClient.sign_in_with_id_token("apple", id_token, "", game)
+			if not s_res.get("ok", false):
+				var err_msg: String = str(s_res.get("error", "Apple verification failed"))
+				game._toast(err_msg, game.MUTED)
+				if on_done.is_valid(): on_done.call(false, err_msg)
+				return
+			user_id = SupabaseClient.get_user_id()
+			var supa_email := SupabaseClient.get_email()
+			if not supa_email.is_empty(): email = supa_email
 		SpiritSave.link_account(game.profile, "apple", user_id, email, display_name)
+
+		var sync_res = await SupabaseClient.sync_save_two_way(game.profile, game)
+		if sync_res.get("ok", false) and sync_res.get("action") == "downloaded":
+			var remote: Dictionary = sync_res.get("profile", {})
+			for k in remote:
+				game.profile[k] = remote[k]
+			SpiritSave.write(game.profile)
+		else:
+			await SupabaseClient.upload_player_save(game.profile, game)
+
 		game._toast(game.t("ui.auth_link_success"), game.JADE)
 		if on_done.is_valid(): on_done.call(true, "apple")
 	else:
@@ -213,14 +235,6 @@ static func _on_native_apple_login(result: Dictionary, game: SpiritGame, on_done
 		if on_done.is_valid(): on_done.call(false, "apple")
 
 static func sign_in_with_google(game: SpiritGame, on_done: Callable = Callable()) -> void:
-	if Engine.has_singleton("GoogleSignIn"):
-		var google_plugin = Engine.get_singleton("GoogleSignIn")
-		if google_plugin.has_signal("login_completed"):
-			if not google_plugin.is_connected("login_completed", Callable(SpiritAuth, "_on_native_google_login")):
-				google_plugin.connect("login_completed", Callable(SpiritAuth, "_on_native_google_login").bind(game, on_done))
-			google_plugin.call("start_login")
-			return
-
 	if simulate_mode:
 		# Test sandbox emulation only
 		var account: Dictionary = game.profile.get("account", {})
@@ -244,11 +258,69 @@ static func sign_in_with_google(game: SpiritGame, on_done: Callable = Callable()
 			on_done.call(true, "google")
 		return
 
-	# Real device / production without native plugin configured:
-	# Do not bypass or fake verification. Notify player clearly.
-	game._toast(game.t("ui.auth_google_unavailable"), game.MUTED)
+	if Engine.has_singleton("GoogleSignIn"):
+		var google_plugin = Engine.get_singleton("GoogleSignIn")
+		if google_plugin.has_signal("login_completed"):
+			if not google_plugin.is_connected("login_completed", Callable(SpiritAuth, "_on_native_google_login")):
+				google_plugin.connect("login_completed", Callable(SpiritAuth, "_on_native_google_login").bind(game, on_done))
+			google_plugin.call("start_login")
+			return
+
+	if DisplayServer.get_name() == "headless":
+		game._toast(game.t("ui.auth_google_unavailable"), game.MUTED)
+		if on_done.is_valid():
+			on_done.call(false, "google_unavailable")
+		return
+
+	# OAuth 2.0 Web Authorization flow with deep link redirect
+	if FileAccess.file_exists("user://oauth_callback_result.json"):
+		DirAccess.remove_absolute("user://oauth_callback_result.json")
+
+	var auth_url := SupabaseClient.get_oauth_authorize_url("google", "spiritbound://auth-callback")
+	game._toast(game.t("ui.auth_syncing"), game.MUTED)
+	OS.shell_open(auth_url)
+
+	# Poll for oauth_callback_result.json written upon Safari redirect back to app
+	var waited := 0.0
+	while waited < 90.0:
+		if FileAccess.file_exists("user://oauth_callback_result.json"):
+			var file := FileAccess.open("user://oauth_callback_result.json", FileAccess.READ)
+			var text := file.get_as_text() if file != null else ""
+			file = null
+			DirAccess.remove_absolute("user://oauth_callback_result.json")
+			var parsed = JSON.parse_string(text)
+			if parsed is Dictionary and parsed.has("url"):
+				var cb_url: String = str(parsed["url"])
+				var parse_res = await SupabaseClient.parse_oauth_callback_url(cb_url, "google", game)
+				if parse_res.get("ok", false):
+					var uid := SupabaseClient.get_user_id()
+					var uemail := SupabaseClient.get_email()
+					var uname := SupabaseClient.get_display_name()
+					SpiritSave.link_account(game.profile, "google", uid, uemail, uname)
+
+					var sync_res = await SupabaseClient.sync_save_two_way(game.profile, game)
+					if sync_res.get("ok", false) and sync_res.get("action") == "downloaded":
+						var remote: Dictionary = sync_res.get("profile", {})
+						for k in remote:
+							game.profile[k] = remote[k]
+						SpiritSave.write(game.profile)
+					else:
+						await SupabaseClient.upload_player_save(game.profile, game)
+
+					game._toast(game.t("ui.auth_link_success"), game.JADE)
+					if on_done.is_valid(): on_done.call(true, "google")
+					return
+				else:
+					var err_msg: String = str(parse_res.get("error", "Google auth parsing failed"))
+					game._toast(err_msg, game.MUTED)
+					if on_done.is_valid(): on_done.call(false, err_msg)
+					return
+		await game.get_tree().create_timer(0.3).timeout
+		waited += 0.3
+
+	game._toast("Google sign-in cancelled or timed out", game.MUTED)
 	if on_done.is_valid():
-		on_done.call(false, "google_unavailable")
+		on_done.call(false, "google_cancelled")
 
 static func _on_native_google_login(result: Dictionary, game: SpiritGame, on_done: Callable) -> void:
 	if result.get("status") == "success":
@@ -257,8 +329,26 @@ static func _on_native_google_login(result: Dictionary, game: SpiritGame, on_don
 		var display_name: String = str(result.get("display_name", ""))
 		var id_token: String = str(result.get("id_token", ""))
 		if not id_token.is_empty():
-			await SupabaseClient.sign_in_with_id_token("google", id_token, "", game)
+			var s_res = await SupabaseClient.sign_in_with_id_token("google", id_token, "", game)
+			if not s_res.get("ok", false):
+				var err_msg: String = str(s_res.get("error", "Google verification failed"))
+				game._toast(err_msg, game.MUTED)
+				if on_done.is_valid(): on_done.call(false, err_msg)
+				return
+			user_id = SupabaseClient.get_user_id()
+			var supa_email := SupabaseClient.get_email()
+			if not supa_email.is_empty(): email = supa_email
 		SpiritSave.link_account(game.profile, "google", user_id, email, display_name)
+
+		var sync_res = await SupabaseClient.sync_save_two_way(game.profile, game)
+		if sync_res.get("ok", false) and sync_res.get("action") == "downloaded":
+			var remote: Dictionary = sync_res.get("profile", {})
+			for k in remote:
+				game.profile[k] = remote[k]
+			SpiritSave.write(game.profile)
+		else:
+			await SupabaseClient.upload_player_save(game.profile, game)
+
 		game._toast(game.t("ui.auth_link_success"), game.JADE)
 		if on_done.is_valid(): on_done.call(true, "google")
 	else:

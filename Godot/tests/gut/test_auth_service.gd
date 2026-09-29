@@ -404,3 +404,18 @@ func test_auth_modal_has_device_login_button():
 	
 	game.overlay.queue_free()
 	game.free()
+
+func test_supabase_oauth_url_and_callback_parsing():
+	var google_url := SupabaseClient.get_oauth_authorize_url("google", "spiritbound://auth-callback")
+	assert_true(google_url.contains("provider=google"), "OAuth URL contains provider=google")
+	assert_true(google_url.contains("redirect_to="), "OAuth URL contains redirect_to parameter")
+	assert_true(google_url.begins_with(SupabaseClient.SUPABASE_URL), "OAuth URL points to configured Supabase URL")
+	
+	var apple_url := SupabaseClient.get_oauth_authorize_url("apple", "spiritbound://auth-callback")
+	assert_true(apple_url.contains("provider=apple"), "OAuth URL contains provider=apple")
+	
+	# Test URL parsing without access_token
+	var invalid_res = await SupabaseClient.parse_oauth_callback_url("spiritbound://auth-callback?error=access_denied", "google")
+	assert_false(invalid_res.get("ok"), "Callback URL without access_token fails gracefully")
+	assert_true(str(invalid_res.get("error")).contains("access_token"), "Error describes missing access_token")
+
