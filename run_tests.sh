@@ -38,15 +38,42 @@ GODOT_DIR="${REPO_DIR}/Godot"
 #
 # Fails on Godot script/parse errors, and fails when the sentinel is absent -- so a suite that
 # silently skips (or was never wired up) counts as a failure, not a pass.
+# Runs a command with a maximum execution time (seconds).
+# If the process exceeds the timeout, it is terminated and returns exit code 124.
+run_with_timeout() {
+    local timeout_secs="$1"; shift
+    python3 -c '
+import sys, subprocess
+timeout = int(sys.argv[1])
+cmd = sys.argv[2:]
+try:
+    p = subprocess.Popen(cmd)
+    p.wait(timeout=timeout)
+    sys.exit(p.returncode)
+except subprocess.TimeoutExpired:
+    p.kill()
+    cmd_str = " ".join(cmd)
+    sys.stderr.write(f"\n\033[0;31m✗ TIMEOUT: Command exceeded {timeout}s and was killed: {cmd_str}\033[0m\n")
+    sys.exit(124)
+' "${timeout_secs}" "$@"
+}
+
 run_suite() {
     local label="$1"; shift
     local sentinel="$1"; shift
+    local timeout_secs="${SUITE_TIMEOUT:-150}"
     local log; log="$(mktemp)"
 
     set +e
-    "$@" 2>&1 | tee "${log}"
+    run_with_timeout "${timeout_secs}" "$@" 2>&1 | tee "${log}"
     local status="${PIPESTATUS[0]}"
     set -e
+
+    if [ "${status}" -eq 124 ]; then
+        echo -e "${RED}✗ ${label} FAILED — timed out after ${timeout_secs}s (stuck/hanging).${NC}"
+        rm -f "${log}"
+        exit 1
+    fi
 
     if grep -qE "SCRIPT ERROR|Parse Error|Failed to load script" "${log}"; then
         echo -e "${RED}✗ ${label} FAILED — the script did not run cleanly (see the errors above).${NC}"
@@ -261,9 +288,17 @@ if [ "$RUN_GUT" = true ]; then
     # it's absent. Also emits a JUnit XML report so CI can show which test failed, not just a
     # stdout dump.
     GUT_LOG="$(mktemp)"
-    godot --headless --path "${GODOT_DIR}" -s addons/gut/gut_cmdln.gd -- \
+    set +e
+    run_with_timeout 150 godot --headless --path "${GODOT_DIR}" -s addons/gut/gut_cmdln.gd -- \
         -gdir=res://tests/gut -gexit -gdisable_colors \
         -gjunit_xml_file=res://tests/gut/results.xml 2>&1 | tee "${GUT_LOG}"
+    gut_status="${PIPESTATUS[0]}"
+    set -e
+    if [ "${gut_status}" -eq 124 ]; then
+        echo -e "${RED}✗ GUT test suite FAILED — timed out after 150s${NC}"
+        rm -f "${GUT_LOG}"
+        exit 1
+    fi
     if grep -q "All tests passed!" "${GUT_LOG}"; then
         echo -e "${GREEN}✓ GUT test suite passed!${NC}"
         rm -f "${GUT_LOG}"

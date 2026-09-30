@@ -2109,7 +2109,12 @@ func _combat_event(kind: String, payload: Dictionary) -> void: _battle_screen._c
 func _show_boss_phase_banner(title: String, subtitle: String) -> void: _battle_screen._show_boss_phase_banner(title, subtitle)
 func _leave_battle() -> void: _battle_screen._leave_battle()
 func _show_hold_preview(card: Dictionary) -> void: _battle_screen._show_hold_preview(card)
-func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void: _battle_screen._set_enemy_targeted(enemy_index, targeted)
+func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
+	if _battle_screen: _battle_screen._set_enemy_targeted(enemy_index, targeted)
+func _update_targeting_arc(start_pos: Vector2, target_pos: Vector2, is_locked: bool) -> void:
+	if _battle_screen: _battle_screen._update_targeting_arc(start_pos, target_pos, is_locked)
+func _clear_targeting_arc() -> void:
+	if _battle_screen: _battle_screen._clear_targeting_arc()
 func _preview_energy_drain(cost: int) -> void:
 	if _battle_screen: _battle_screen._preview_energy_drain(cost)
 func _clear_energy_drain_preview() -> void:

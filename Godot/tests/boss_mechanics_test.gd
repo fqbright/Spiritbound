@@ -13,6 +13,10 @@ var checks := 0
 var content: SpiritContent
 
 func _init() -> void:
+	create_timer(60.0).timeout.connect(func():
+		push_error("TEST TIMEOUT: boss_mechanics_test did not complete within 60s!")
+		quit(1)
+	)
 	call_deferred("run")
 
 func check(condition: bool, message: String) -> void:

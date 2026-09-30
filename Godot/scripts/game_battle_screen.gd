@@ -6,6 +6,8 @@ class_name BattleScreen
 # screen's function goes through it.
 var g: SpiritGame
 var auto_stepping: bool = false
+const TargetingArcScript := preload("res://scripts/targeting_arc.gd")
+const TargetLockReticleScript := preload("res://scripts/target_lock_reticle.gd")
 
 func _init(game: SpiritGame) -> void:
 	g = game
@@ -2354,6 +2356,20 @@ func _show_cancel_zone(active: bool) -> void:
 	zone.add_child(lbl)
 	g.overlay.add_child(zone)
 
+func _update_targeting_arc(start_pos: Vector2, target_pos: Vector2, is_locked: bool) -> void:
+	if g.overlay == null: return
+	var arc: Control = g.overlay.get_node_or_null("TargetingArcOverlay") as Control
+	if arc == null:
+		arc = TargetingArcScript.new()
+		arc.name = "TargetingArcOverlay"
+		g.overlay.add_child(arc)
+	arc.call("set_points", start_pos, target_pos, is_locked)
+
+func _clear_targeting_arc() -> void:
+	if g.overlay == null: return
+	var arc := g.overlay.get_node_or_null("TargetingArcOverlay")
+	if arc: arc.queue_free()
+
 func _build_pile_element_summary(pile: Array, is_draw_pile: bool = false) -> Control:
 	var box := HBoxContainer.new()
 	box.custom_minimum_size = Vector2(340, 22)
@@ -2722,6 +2738,8 @@ func _clear_valid_targets() -> void:
 			if sprite: sprite.modulate = Color.WHITE
 			var seal: Control = box.get_node_or_null("LethalExecuteSeal")
 			if seal: seal.visible = false
+			var reticle: Node = box.get_node_or_null("TargetLockReticle")
+			if reticle: reticle.queue_free()
 
 func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 	for box in g.enemy_boxes:
@@ -2731,14 +2749,24 @@ func _set_enemy_targeted(enemy_index: int, targeted: bool) -> void:
 			# Brighten rather than enlarge: the old 1.08x jump read as the model popping.
 			var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
 			if sprite: sprite.modulate = Color(1.35, 1.3, 1.15) if targeted else Color.WHITE
+			var is_lethal := false
+			if targeted and g.combat and g.combat.state and g.selected_card >= 0 and g.selected_card < g.combat.state.hand.size():
+				var card_dict: Dictionary = g.content.card(str(g.combat.state.hand[g.selected_card].card_id))
+				var pred := _predict_damage(card_dict, enemy_index)
+				is_lethal = bool(pred.lethal)
 			var seal: Control = box.get_node_or_null("LethalExecuteSeal")
 			if seal:
-				var is_lethal := false
-				if targeted and g.combat and g.combat.state and g.selected_card >= 0 and g.selected_card < g.combat.state.hand.size():
-					var card_dict: Dictionary = g.content.card(str(g.combat.state.hand[g.selected_card].card_id))
-					var pred := _predict_damage(card_dict, enemy_index)
-					is_lethal = bool(pred.lethal)
 				seal.visible = is_lethal
+			var reticle: Control = box.get_node_or_null("TargetLockReticle") as Control
+			if targeted:
+				if reticle == null:
+					reticle = TargetLockReticleScript.new()
+					reticle.name = "TargetLockReticle"
+					box.add_child(reticle)
+				reticle.set("is_lethal", is_lethal)
+				reticle.visible = true
+			else:
+				if reticle: reticle.queue_free()
 
 # Stays synchronous so callers get a real bool back; the animation runs in _resolve_play.
 func _attempt_play_card(hand_index: int, target: int) -> bool:
@@ -3363,6 +3391,7 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	float_tw.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
 
 	if defeated:
+		_spawn_dissolve_particles(box.global_position + box.size * 0.5)
 		var def_tw := box.create_tween().set_parallel(true)
 		def_tw.tween_interval(g._battle_delay(0.20))
 		def_tw.chain().tween_property(box, "modulate:a", 0.0, g._battle_delay(0.45))
@@ -3372,6 +3401,27 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	popup.queue_free()
 	if defeated and g.combat != null and g.combat.state.phase == "won":
 		await _animate_finishing_blow(box, sprite)
+
+func _spawn_dissolve_particles(center_pos: Vector2) -> void:
+	if g.overlay == null: return
+	var p := CPUParticles2D.new()
+	p.position = center_pos
+	p.emitting = true
+	p.one_shot = true
+	p.explosiveness = 0.85
+	p.lifetime = 0.65
+	p.amount = 28
+	p.spread = 180.0
+	p.initial_velocity_min = 60.0
+	p.initial_velocity_max = 130.0
+	p.gravity = Vector2(0, -50.0)
+	p.scale_amount_min = 3.0
+	p.scale_amount_max = 6.0
+	p.color = Color(1.0, 0.82, 0.35, 0.9)
+	g.overlay.add_child(p)
+	var tw := p.create_tween()
+	tw.tween_interval(0.7)
+	tw.tween_callback(p.queue_free)
 
 func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 	if g.overlay == null: return
@@ -4249,6 +4299,34 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	seq.tween_interval(g._battle_delay(1.5))
 	seq.tween_property(banner, "modulate:a", 0.0, g._battle_delay(0.3))
 	seq.tween_callback(banner.queue_free)
+	var ch: int = 10
+	if g.combat != null and g.combat.state != null:
+		ch = int(g.combat.state.get("chapter", 10))
+	_show_boss_domain_expansion(ch)
+
+func _show_boss_domain_expansion(chapter: int = 10) -> void:
+	if g.overlay == null: return
+	var vignette := Panel.new()
+	vignette.name = "BossDomainVignette"
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vignette.z_index = 450
+	var style := StyleBoxFlat.new()
+	var aura_col := Color(0.35, 0.05, 0.08, 0.55) if chapter != 20 else Color(0.05, 0.2, 0.35, 0.55)
+	style.bg_color = aura_col
+	style.border_color = Color(1.0, 0.2, 0.2, 0.8)
+	style.set_border_width_all(4)
+	vignette.add_theme_stylebox_override("panel", style)
+	vignette.modulate.a = 0.0
+	g.overlay.add_child(vignette)
+
+	_shake_screen(12.0, 0.5)
+	var tw := vignette.create_tween()
+	tw.tween_property(vignette, "modulate:a", 1.0, g._battle_delay(0.15))
+	tw.tween_property(vignette, "modulate:a", 0.6, g._battle_delay(0.3))
+	tw.tween_interval(g._battle_delay(0.8))
+	tw.tween_property(vignette, "modulate:a", 0.0, g._battle_delay(0.5))
+	tw.tween_callback(vignette.queue_free)
 
 func _show_boss_intro_banner(encounter: Dictionary) -> void:
 	if g.overlay == null: return

@@ -77,6 +77,30 @@ func _gui_input(event: InputEvent) -> void:
 			_on_drag(event.position)
 			accept_event()
 
+func _displace_neighbors(displace: bool) -> void:
+	if game == null or not is_instance_valid(game.hand_zone): return
+	for child in game.hand_zone.get_children():
+		if child == self or not (child is HandCard): continue
+		var other := child as HandCard
+		if not is_instance_valid(other): continue
+		if other.is_held or other.is_dragging: continue
+		if displace:
+			var diff: int = other.hand_index - hand_index
+			if diff == 0: continue
+			var sign_val: float = -1.0 if diff < 0 else 1.0
+			var factor: float = 1.0 / float(abs(diff))
+			var offset_x: float = sign_val * (16.0 * factor + 4.0)
+			var offset_rot: float = deg_to_rad(sign_val * 2.0 * factor)
+			if other.current_tween: other.current_tween.kill()
+			other.current_tween = other.create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			other.current_tween.tween_property(other, "position:x", other.home_pos.x + offset_x, 0.15)
+			other.current_tween.tween_property(other, "rotation", other.home_rot + offset_rot, 0.15)
+		else:
+			if other.current_tween: other.current_tween.kill()
+			other.current_tween = other.create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			other.current_tween.tween_property(other, "position:x", other.home_pos.x, 0.18)
+			other.current_tween.tween_property(other, "rotation", other.home_rot, 0.18)
+
 func _on_touch_down(local_pos: Vector2) -> void:
 	is_held = true
 	is_dragging = false
@@ -85,6 +109,7 @@ func _on_touch_down(local_pos: Vector2) -> void:
 	_last_drag_pos = drag_start
 	z_index = 60
 	Input.vibrate_handheld(15)
+	_displace_neighbors(true)
 	# Light up what this card may hit as soon as it leaves the hand.
 	if game: game._show_valid_targets(game._card_target_mode(card_data))
 	if current_tween: current_tween.kill()
@@ -137,16 +162,29 @@ func _on_drag(local_pos: Vector2) -> void:
 			if target_enemy_idx != preview_index:
 				preview_index = target_enemy_idx
 				if target_enemy_idx >= 0:
-					if game: game._haptic("card_drag")
+					if game: game._haptic("heavy")
 					game._show_damage_preview(card_data, target_enemy_idx)
 				else: game._clear_damage_preview()
+
+			# Update the cubic bezier targeting arc from card top to drag point / locked enemy
+			var arc_start := global_position + Vector2(custom_minimum_size.x * 0.5, 4.0)
+			var arc_target := cur_global
+			if target_enemy_idx >= 0 and target_enemy_idx < game.enemy_boxes.size():
+				var t_box: Control = game.enemy_boxes[target_enemy_idx]
+				if t_box and is_instance_valid(t_box):
+					arc_target = t_box.global_position + t_box.size * 0.5
+			if game.has_method("_update_targeting_arc"):
+				game._update_targeting_arc(arc_start, arc_target, target_enemy_idx >= 0)
 
 func _on_touch_up() -> void:
 	_last_drag_pos = Vector2.ZERO
 	if not is_held: return
 	is_held = false
 	preview_index = -1
+	_displace_neighbors(false)
 	if game:
+		if game.has_method("_clear_targeting_arc"):
+			game._clear_targeting_arc()
 		if game.has_method("_clear_energy_drain_preview"):
 			game._clear_energy_drain_preview()
 		game._clear_damage_preview()

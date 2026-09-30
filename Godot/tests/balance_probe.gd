@@ -125,6 +125,10 @@ var softlocked := false
 var digest := 5381
 
 func _initialize() -> void:
+	create_timer(300.0).timeout.connect(func():
+		push_error("TEST TIMEOUT: balance_probe did not complete within 300s!")
+		quit(1)
+	)
 	for arg in OS.get_cmdline_user_args():
 		var flag := str(arg)
 		if flag == "--quick" or flag == "--balance-quick":

@@ -29,6 +29,10 @@ func check(condition: bool, message: String) -> void:
 		fail(message)
 
 func _initialize() -> void:
+	create_timer(180.0).timeout.connect(func():
+		push_error("TEST TIMEOUT: e2e_playthrough did not complete within 180s!")
+		quit(1)
+	)
 	_run()
 
 func _simulate_battle(game: Control, stage_idx: int) -> bool:
@@ -43,7 +47,9 @@ func _simulate_battle(game: Control, stage_idx: int) -> bool:
 	while steps < max_steps and game.combat != null and game.combat.state.phase != "won" and game.combat.state.phase != "lost":
 		steps += 1
 		# Wait if resolving
-		while game.resolving:
+		var res_guard := 0
+		while game.resolving and res_guard < 120:
+			res_guard += 1
 			await process_frame
 
 		if game.combat == null or game.combat.state.phase != "player":
@@ -59,19 +65,25 @@ func _simulate_battle(game: Control, stage_idx: int) -> bool:
 			if target_idx < 0: target_idx = 0
 			var played: bool = game._battle_screen._attempt_play_card(hand_idx, target_idx)
 			if played:
-				while game.resolving:
+				var res_card := 0
+				while game.resolving and res_card < 120:
+					res_card += 1
 					await process_frame
 			await process_frame
 		else:
 			# End player turn and run enemy turn
 			total_turns += 1
 			await game._battle_screen._enemy_turn()
-			while game.resolving:
+			var res_turn := 0
+			while game.resolving and res_turn < 120:
+				res_turn += 1
 				await process_frame
 			await process_frame
 
 	# Settle finishing blow animation if active
-	while game.resolving:
+	var res_settle := 0
+	while game.resolving and res_settle < 120:
+		res_settle += 1
 		await process_frame
 	for _i in 10:
 		await process_frame

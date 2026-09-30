@@ -17,6 +17,10 @@ func check(condition: bool, message: String) -> void:
 	else: fail(message)
 
 func _initialize() -> void:
+	create_timer(120.0).timeout.connect(func():
+		push_error("TEST TIMEOUT: ui_smoke did not complete within 120s!")
+		quit(1)
+	)
 	_run()
 
 func _run() -> void:
