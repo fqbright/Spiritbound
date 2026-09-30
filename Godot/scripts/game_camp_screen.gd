@@ -4082,6 +4082,38 @@ func _meridian_cultivation_section() -> Control:
 	vbox.add_child(summary_row)
 	return panel
 
+func _build_meridian_constellation(branch: String, allocated: Dictionary) -> Control:
+	var canvas := Control.new()
+	canvas.name = "MeridianConstellationCanvas"
+	canvas.custom_minimum_size = Vector2(300, 44)
+	canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var branch_col: Color = g.JADE if branch == "ren" else (g.EMBER if branch == "du" else g.GOLD)
+	canvas.draw.connect(func():
+		var w: float = canvas.size.x
+		var mid_y: float = 22.0
+		var pts: Array[Vector2] = [
+			Vector2(w * 0.2, mid_y),
+			Vector2(w * 0.5, mid_y),
+			Vector2(w * 0.8, mid_y)
+		]
+		var branch_nodes := ["%s_1" % branch, "%s_2" % branch, "%s_3" % branch]
+		for i in range(pts.size() - 1):
+			var r1: int = int(allocated.get(branch_nodes[i], 0))
+			var r2: int = int(allocated.get(branch_nodes[i+1], 0))
+			var line_col: Color = branch_col if (r1 > 0 and r2 > 0) else Color(branch_col.r, branch_col.g, branch_col.b, 0.25)
+			canvas.draw_line(pts[i], pts[i+1], line_col, 2.5 if (r1 > 0 and r2 > 0) else 1.0, true)
+		for i in pts.size():
+			var r: int = int(allocated.get(branch_nodes[i], 0))
+			if r > 0:
+				canvas.draw_circle(pts[i], 9.0, Color(branch_col.r, branch_col.g, branch_col.b, 0.3))
+				canvas.draw_circle(pts[i], 6.0, branch_col)
+				canvas.draw_circle(pts[i], 2.5, Color.WHITE)
+			else:
+				canvas.draw_circle(pts[i], 5.0, Color(0.2, 0.3, 0.35, 0.6))
+				canvas.draw_arc(pts[i], 5.0, 0, TAU, 16, Color(branch_col.r, branch_col.g, branch_col.b, 0.4), 1.5)
+	)
+	return canvas
+
 func _close_meridian_modal() -> void:
 	if g.overlay == null: return
 	var existing: Node = g.overlay.get_node_or_null("MeridianModal")
@@ -4168,6 +4200,10 @@ func show_meridian_modal() -> void:
 	var current_branch: Array = ["ren"]
 	var tab_buttons: Dictionary = {}
 
+	var constellation_box := VBoxContainer.new()
+	constellation_box.name = "MeridianConstellationBox"
+	vbox.add_child(constellation_box)
+
 	# Scrollable Node Container
 	var scroll := TouchScrollContainer.new()
 	scroll.name = "MeridianScroll"
@@ -4194,11 +4230,17 @@ func show_meridian_modal() -> void:
 				var b_col: Color = g.JADE if b == "ren" else (g.EMBER if b == "du" else g.GOLD)
 				btn_obj.add_theme_stylebox_override("normal", g._panel(Color("162a2d") if active else Color("0f191b"), 6, b_col if active else Color("233c42")))
 
+		for ch in constellation_box.get_children():
+			constellation_box.remove_child(ch)
+			ch.queue_free()
+
+		var allocated: Dictionary = g.profile.get("meridians", {})
+		constellation_box.add_child(_build_meridian_constellation(branch, allocated))
+
 		for ch in nodes_list.get_children():
 			nodes_list.remove_child(ch)
 			ch.queue_free()
 
-		var allocated: Dictionary = g.profile.get("meridians", {})
 		var branch_nodes: Array[String] = []
 		if branch == "ren": branch_nodes = ["ren_1", "ren_2", "ren_3"]
 		elif branch == "du": branch_nodes = ["du_1", "du_2", "du_3"]

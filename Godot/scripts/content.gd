@@ -917,7 +917,181 @@ func _init() -> void:
 	var file := FileAccess.open("res://data/core.json", FileAccess.READ)
 	raw = JSON.parse_string(file.get_as_text())
 	cards = raw.cards
+	_register_dual_element_cards()
 	_build_encounters()
+
+func _register_dual_element_cards() -> void:
+	var dual_cards := [
+		{
+			"id": "cloud_mist",
+			"nameKey": "card.cloud_mist",
+			"rarity": "Rare",
+			"pool": "Universal",
+			"cost": 1,
+			"exhaust": false,
+			"kind": "Attack",
+			"element": "water",
+			"elements": ["water", "fire"],
+			"special": "dual_vaporize",
+			"effects": [
+				{"operation": "damage", "target": "opponent", "amount": 10},
+				{"operation": "shield", "target": "actor", "amount": 6}
+			]
+		},
+		{
+			"id": "gale_thunder",
+			"nameKey": "card.gale_thunder",
+			"rarity": "Rare",
+			"pool": "Universal",
+			"cost": 2,
+			"exhaust": false,
+			"kind": "Attack",
+			"element": "thunder",
+			"elements": ["thunder", "wind"],
+			"special": "dual_gale_surge",
+			"effects": [
+				{"operation": "damage", "target": "opponent", "amount": 16}
+			]
+		},
+		{
+			"id": "toxic_vine",
+			"nameKey": "card.toxic_vine",
+			"rarity": "Uncommon",
+			"pool": "Universal",
+			"cost": 1,
+			"exhaust": false,
+			"kind": "Skill",
+			"element": "wood",
+			"elements": ["wood", "poison"],
+			"special": "dual_toxic_vine",
+			"effects": [
+				{"operation": "shield", "target": "actor", "amount": 8}
+			]
+		},
+		{
+			"id": "magma_burst",
+			"nameKey": "card.magma_burst",
+			"rarity": "Rare",
+			"pool": "Universal",
+			"cost": 2,
+			"exhaust": false,
+			"kind": "Attack",
+			"element": "fire",
+			"elements": ["fire", "earth"],
+			"special": "dual_magma_molten",
+			"effects": [
+				{"operation": "damage", "target": "opponent", "amount": 18},
+				{"operation": "shield", "target": "actor", "amount": 8}
+			]
+		},
+		{
+			"id": "frost_tempest",
+			"nameKey": "card.frost_tempest",
+			"rarity": "Rare",
+			"pool": "Universal",
+			"cost": 2,
+			"exhaust": false,
+			"kind": "Attack",
+			"element": "water",
+			"elements": ["water", "wind"],
+			"special": "dual_frost_tempest",
+			"effects": [
+				{"operation": "damage", "target": "opponent", "amount": 10}
+			]
+		},
+		{
+			"id": "holy_flame",
+			"nameKey": "card.holy_flame",
+			"rarity": "Epic",
+			"pool": "Universal",
+			"cost": 2,
+			"exhaust": false,
+			"kind": "Attack",
+			"element": "celestial",
+			"elements": ["fire", "celestial"],
+			"special": "dual_holy_flame",
+			"effects": [
+				{"operation": "damage", "target": "opponent", "amount": 22}
+			]
+		},
+		{
+			"id": "dark_miasma",
+			"nameKey": "card.dark_miasma",
+			"rarity": "Rare",
+			"pool": "Universal",
+			"cost": 1,
+			"exhaust": false,
+			"kind": "Skill",
+			"element": "poison",
+			"elements": ["dark", "poison"],
+			"special": "dual_dark_miasma",
+			"effects": [
+				{"operation": "shield", "target": "actor", "amount": 6}
+			]
+		},
+		{
+			"id": "thunder_earth",
+			"nameKey": "card.thunder_earth",
+			"rarity": "Rare",
+			"pool": "Universal",
+			"cost": 2,
+			"exhaust": false,
+			"kind": "Attack",
+			"element": "earth",
+			"elements": ["thunder", "earth"],
+			"special": "dual_thunder_earth",
+			"effects": [
+				{"operation": "damage", "target": "opponent", "amount": 14}
+			]
+		}
+	]
+
+	var zh_texts := {
+		"card.cloud_mist": "云雾敛",
+		"card.cloud_mist.desc": "造成10点伤害与6点护盾；若目标带灼烧则引爆【蒸腾】追加8点真实伤害。",
+		"card.gale_thunder": "狂飙疾",
+		"card.gale_thunder.desc": "风雷贯通造成16点穿透伤害，抽1张牌且下张牌费用-1。",
+		"card.toxic_vine": "青藤噬",
+		"card.toxic_vine.desc": "获得8点护盾，并对目标附加4层中毒与1层虚弱。",
+		"card.magma_burst": "地火崩",
+		"card.magma_burst.desc": "造成18点伤害与8点护盾；自身持有护盾时伤害提升6点。",
+		"card.frost_tempest": "霜风极",
+		"card.frost_tempest.desc": "对全体敌人造成10点冰霜伤害并附加2层易伤与冻结。",
+		"card.holy_flame": "天阳破",
+		"card.holy_flame.desc": "纯阳天火造成22点神圣伤害，净化自身所有负面状态。",
+		"card.dark_miasma": "蚀骨雾",
+		"card.dark_miasma.desc": "释放幽冥蚀气，使目标获得5层中毒与2层易伤。",
+		"card.thunder_earth": "碎岳霆",
+		"card.thunder_earth.desc": "雷霆裂地造成14点伤害，偷取敌方最多10点护盾归为己有。"
+	}
+
+	var en_texts := {
+		"card.cloud_mist": "Mist & Vapor",
+		"card.cloud_mist.desc": "Deal 10 damage & 6 Shield; triggers Vaporize (+8 true damage) if target is burning.",
+		"card.gale_thunder": "Gale Thunder",
+		"card.gale_thunder.desc": "Deal 16 piercing damage, draw 1 card and next card costs -1 Energy.",
+		"card.toxic_vine": "Thorny Briar",
+		"card.toxic_vine.desc": "Gain 8 Shield; inflict 4 Poison and 1 Weak on target.",
+		"card.magma_burst": "Magma Eruption",
+		"card.magma_burst.desc": "Deal 18 damage & 8 Shield; deals +6 bonus damage if player has Shield.",
+		"card.frost_tempest": "Frost Tempest",
+		"card.frost_tempest.desc": "Deal 10 Frost damage to ALL enemies and inflict 2 Vulnerable.",
+		"card.holy_flame": "Solar Flare",
+		"card.holy_flame.desc": "Deal 22 Celestial damage and cleanse all debuffs from player.",
+		"card.dark_miasma": "Bone Corruptor",
+		"card.dark_miasma.desc": "Inflict 5 Poison and 2 Vulnerable on target.",
+		"card.thunder_earth": "Mountain Thunder",
+		"card.thunder_earth.desc": "Deal 14 damage and steal up to 10 Shield from enemy."
+	}
+
+	for c in dual_cards:
+		cards.append(c)
+
+	if raw != null and raw.has("translations"):
+		if raw.translations.has("zh-Hans"):
+			for k in zh_texts: raw.translations["zh-Hans"][k] = zh_texts[k]
+		if raw.translations.has("en"):
+			for k in en_texts: raw.translations["en"][k] = en_texts[k]
 
 var custom_cards: Dictionary = {}
 
@@ -1521,7 +1695,7 @@ const ACHIEVEMENTS = [
 	# This has drifted silently before as cards were added; test_runner.gd now asserts this
 	# target against the live count so a future addition fails loudly instead of quietly
 	# making "collect all" completable early.
-	{"id":"collect_all","kind":"card_collection","target":165,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
+	{"id":"collect_all","kind":"card_collection","target":173,"tier":"platinum","nameKey":"ach.collect_all.name","descKey":"ach.collect_all.desc"},
 	{"id":"relics_all","kind":"relic_count","target":11,"tier":"platinum","nameKey":"ach.relics_all.name","descKey":"ach.relics_all.desc"},
 	{"id":"mastery5","kind":"mastery_level","target":5,"tier":"gold","nameKey":"ach.mastery5.name","descKey":"ach.mastery5.desc"},
 	{"id":"abyss10","kind":"abyss_floor","target":10,"tier":"silver","nameKey":"ach.abyss10.name","descKey":"ach.abyss10.desc"},

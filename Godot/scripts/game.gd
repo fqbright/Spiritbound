@@ -1455,8 +1455,12 @@ func _create_page(separation := 6) -> VBoxContainer:
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_top", _safe_top())
 	margin.add_theme_constant_override("margin_bottom", _safe_bottom())
-	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_right", 12)
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size if get_viewport() else Vector2(390, 844)
+	var horiz_margin := 12
+	if vp_size.x > 500.0:
+		horiz_margin = maxi(12, int((vp_size.x - 420.0) / 2.0))
+	margin.add_theme_constant_override("margin_left", horiz_margin)
+	margin.add_theme_constant_override("margin_right", horiz_margin)
 	margin.mouse_filter = Control.MOUSE_FILTER_PASS
 	root.add_child(margin)
 

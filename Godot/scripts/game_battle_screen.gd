@@ -943,9 +943,21 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	hp_bar.position = Vector2(6.0, content_y + 18.0)
 	unit.add_child(hp_bar)
 
+	var next_y: float = content_y + 36.0
+	if tier >= 2:
+		var rage_cur: int = int(enemy.get("rage", 0))
+		var is_enraged: bool = bool(enemy.get("is_enraged", false))
+		var rage_color: Color = Color("ef4444") if is_enraged else Color("f97316")
+		var rage_text: String = "狂暴 MAX!" if is_enraged else "怒气 %d/100" % rage_cur
+		var rage_bar := g._stat_bar(hp_bar_w, 10.0, rage_cur, 100, rage_color, rage_text, 8)
+		rage_bar.name = "BossRageBar"
+		rage_bar.position = Vector2(6.0, next_y)
+		unit.add_child(rage_bar)
+		next_y += 12.0
+
 	var badges := HFlowContainer.new()
 	badges.name = "EnemyBadges"
-	badges.position = Vector2(0.0, content_y + 36.0)
+	badges.position = Vector2(0.0, next_y)
 	badges.custom_minimum_size = Vector2(u_width, 18.0)
 	badges.size = badges.custom_minimum_size
 	badges.alignment = FlowContainer.ALIGNMENT_CENTER
@@ -960,9 +972,9 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	if int(enemy.get("vulnerable", 0)) > 0: badges.add_child(_status_chip_clickable("vulnerable", "▼", int(enemy.vulnerable), Color("ff6b6b"), 16.0, 30.0))
 	if int(enemy.get("weak", 0)) > 0: badges.add_child(_status_chip_clickable("weak", "●", int(enemy.weak), Color("b8c4c8"), 16.0, 30.0))
 
-	unit.custom_minimum_size = Vector2(u_width, content_y + 72.0)
+	unit.custom_minimum_size = Vector2(u_width, next_y + 36.0)
 	unit.size = unit.custom_minimum_size
-	glow.custom_minimum_size = Vector2(u_width - 4.0, content_y + 68.0 - 16.0)
+	glow.custom_minimum_size = Vector2(u_width - 4.0, next_y + 32.0 - 16.0)
 	glow.size = glow.custom_minimum_size
 
 	return unit
@@ -4152,6 +4164,23 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		g.play_sfx("attack_heavy")
 		_spawn_enemy_floating_text(int(payload.get("enemy", 0)), g.t("ui.boss_weakpoint_broken"), Color("ef4444"), 32, true)
 		g._toast(g.t("ui.boss_weakpoint_broken"), Color("f97316"))
+	elif kind == "boss_enraged":
+		_shake_screen(10.0, 0.35)
+		g.play_sfx("attack_heavy")
+		_spawn_enemy_floating_text(int(payload.get("enemy", 0)), "⚠️ 狂暴 MAX!", Color("ef4444"), 28, true)
+		g._toast("首领陷入狂暴状态！攻击力大幅提升！", Color("ef4444"))
+	elif kind == "boss_calmed":
+		_spawn_enemy_floating_text(int(payload.get("enemy", 0)), "怒气平息", Color("60a5fa"), 20)
+	elif kind == "dual_vaporize":
+		_spawn_enemy_floating_text(int(payload.get("target", 0)), "💨 蒸腾 +%d" % payload.get("damage", 8), Color("38bdf8"), 24)
+	elif kind == "dual_magma_molten":
+		_spawn_enemy_floating_text(int(payload.get("target", 0)), "🌋 崩岳 +%d" % payload.get("bonus", 6), Color("f97316"), 24)
+	elif kind == "dual_thunder_earth":
+		_spawn_enemy_floating_text(int(payload.get("target", 0)), "⚡ 碎岳夺甲 -%d" % payload.get("stolen_shield", 0), Color("fbbf24"), 22)
+	elif kind == "familiar_assist":
+		_spawn_player_floating_text("🐾 灵宠庇护 +%d" % payload.get("shield", 3), Color("6ee7b7"), 22)
+	elif kind == "leyline_surge":
+		_spawn_player_floating_text("🌀 地脉灵涌 +%d 灵气" % payload.get("qi", 15), Color("a78bfa"), 20)
 	elif kind == "equipment":
 		var item := g.content.equipment(payload.id); if not item.is_empty(): g._toast("%s %s" % [item.icon, g._equip_name(item)],g.GOLD)
 	elif kind == "card":

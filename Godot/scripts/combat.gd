@@ -376,6 +376,10 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var card := content.card(instance.card_id)
 	if card.is_empty(): return false
 	var actual_cost: int = int(card.cost)
+	if int(state.get("next_card_cost_discount", 0)) > 0:
+		var discount: int = int(state.get("next_card_cost_discount", 0))
+		actual_cost = maxi(0, actual_cost - discount)
+		state.next_card_cost_discount = 0
 	if state.get("card_branches", {}).get(card.id, "") == "flow":
 		actual_cost = maxi(0, actual_cost - 1)
 	var card_affix: String = str(state.get("card_affixes", {}).get(card.id, ""))
@@ -587,6 +591,51 @@ func play(hand_index: int, target_index := -1) -> bool:
 		state.energy = mini(10, state.energy + 2)
 		_draw(2)
 		emit_signal("event", "blood_pact", {"energy": 2, "cards": 3, "health_cost": 5})
+	elif sp == "dual_vaporize" and target_index >= 0:
+		var e: Dictionary = state.enemies[target_index]
+		if int(e.get("burn", 0)) > 0:
+			var vap_dmg := 8
+			dealt += _damage_enemy(target_index, vap_dmg, true)
+			emit_signal("event", "dual_vaporize", {"target": target_index, "damage": vap_dmg})
+	elif sp == "dual_gale_surge":
+		_draw(1)
+		state["next_card_cost_discount"] = 1
+		emit_signal("event", "dual_gale_surge", {"draw": 1, "discount": 1})
+	elif sp == "dual_toxic_vine" and target_index >= 0:
+		var e: Dictionary = state.enemies[target_index]
+		e["poison"] = int(e.get("poison", 0)) + 4
+		e["weak"] = int(e.get("weak", 0)) + 1
+		emit_signal("event", "dual_toxic_vine", {"target": target_index, "poison": 4, "weak": 1})
+	elif sp == "dual_magma_molten" and target_index >= 0:
+		if state.player.shield > 0:
+			var m_bonus := 6
+			dealt += _damage_enemy(target_index, m_bonus, false)
+			emit_signal("event", "dual_magma_molten", {"target": target_index, "bonus": m_bonus})
+	elif sp == "dual_frost_tempest":
+		for i in state.enemies.size():
+			if i != target_index and state.enemies[i].health > 0:
+				dealt += _damage_enemy(i, 10, false)
+				state.enemies[i]["vulnerable"] = int(state.enemies[i].get("vulnerable", 0)) + 2
+		if target_index >= 0 and state.enemies[target_index].health > 0:
+			state.enemies[target_index]["vulnerable"] = int(state.enemies[target_index].get("vulnerable", 0)) + 2
+		emit_signal("event", "dual_frost_tempest", {"damage": 10, "vulnerable": 2})
+	elif sp == "dual_holy_flame":
+		state.player["burn"] = 0
+		state.player["weak"] = 0
+		emit_signal("event", "dual_holy_flame", {"cleanse": true})
+	elif sp == "dual_dark_miasma" and target_index >= 0:
+		var e: Dictionary = state.enemies[target_index]
+		e["poison"] = int(e.get("poison", 0)) + 5
+		e["vulnerable"] = int(e.get("vulnerable", 0)) + 2
+		emit_signal("event", "dual_dark_miasma", {"target": target_index, "poison": 5, "vulnerable": 2})
+	elif sp == "dual_thunder_earth" and target_index >= 0:
+		var e: Dictionary = state.enemies[target_index]
+		var e_sh: int = int(e.get("shield", 0))
+		var stolen := mini(10, e_sh)
+		if stolen > 0:
+			e["shield"] = e_sh - stolen
+			state.player.shield += stolen
+			emit_signal("event", "dual_thunder_earth", {"target": target_index, "stolen_shield": stolen})
 
 	if bool(state.get("shadow_clone_active", false)) and sp != "shadow_clone":
 		state.shadow_clone_active = false
@@ -647,6 +696,11 @@ func end_turn() -> void:
 		if int(enemy.get("weak",0)) > 0: enemy.weak = maxi(0, int(enemy.weak) - 1)
 		if state.phase != "player": return
 		enemy.damage += enemy.mechanics.get("enrage",0)
+		if bool(enemy.get("is_enraged", false)):
+			enemy["is_enraged"] = false
+			enemy["rage"] = 0
+			enemy["damage"] = maxi(1, int(enemy.get("damage", 0)) - 4)
+			emit_signal("event", "boss_calmed", {"enemy": enemy_index})
 
 	if state.player.burn > 0:
 		var self_burn: int = state.player.burn
@@ -714,6 +768,16 @@ func end_turn() -> void:
 			if enemy.health > 0: enemy.burn = int(enemy.get("burn", 0)) + 1
 	elif weather == "frost":
 		state.player.shield = maxi(state.player.shield, 6)
+	elif weather in ["leyline", "qi_surge"]:
+		state.qi_gauge = mini(100, int(state.get("qi_gauge", 0)) + 15)
+		if state.turn % 2 == 0:
+			state.energy = mini(10, state.energy + 1)
+		emit_signal("event", "leyline_surge", {"qi": 15})
+	var fam_stg: int = int(state.get("hero_bonuses", {}).get("familiar_stage", 0))
+	if state.turn % 3 == 0 and fam_stg >= 1:
+		var fam_heal: int = 2 + fam_stg
+		state.player.shield += fam_heal
+		emit_signal("event", "familiar_assist", {"stage": fam_stg, "shield": fam_heal})
 	if _has_relic("venomFlask"):
 		for vi in state.enemies.size():
 			var ven_e: Dictionary = state.enemies[vi]
@@ -893,6 +957,15 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if enemy.health > 0 and enemy.health <= enemy.max_health * 0.25 and not bool(enemy.get("weakpoint_shattered", false)) and (bool(state.is_great_boss) or bool(enemy.get("is_boss", false))):
 		enemy["weakpoint_shattered"] = true
 		enemy["stun"] = int(enemy.get("stun", 0)) + 1
+	var is_boss_or_elite: bool = int(enemy.get("tier", 1)) >= 2 or bool(state.get("is_great_boss", false)) or bool(enemy.get("is_boss", false))
+	if is_boss_or_elite and enemy.health > 0:
+		if not bool(enemy.get("is_enraged", false)):
+			var rage_gain: int = int(dealt * 1.5) + 6
+			enemy["rage"] = mini(100, int(enemy.get("rage", 0)) + rage_gain)
+			if int(enemy["rage"]) >= 100:
+				enemy["is_enraged"] = true
+				enemy["damage"] = int(enemy.get("damage", 0)) + 4
+				emit_signal("event", "boss_enraged", {"enemy": index, "rage": enemy.rage})
 	var has_thorns_mut: bool = (str(enemy.get("mutation", "")) == "mut_thorns" or (enemy.get("affixes") is Array and enemy.affixes.has("mut_thorns")))
 	if dealt > 0 and (int(enemy.mechanics.get("thorns", 0)) > 0 or has_thorns_mut):
 		var t_amt: int = 2 if has_thorns_mut else int(enemy.mechanics.thorns)
@@ -1205,7 +1278,7 @@ func _shuffle(cards: Array) -> void:
 		var value = cards[i]; cards[i] = cards[j]; cards[j] = value
 
 func _enemy(id: String, title: String, title_en: String, art: String, health: int, damage: int, mechanics: Dictionary) -> Dictionary:
-	return {"id":id,"name":title,"name_en":title_en,"art":art,"art_key":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"poison":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true)}
+	return {"id":id,"name":title,"name_en":title_en,"art":art,"art_key":art,"health":health,"max_health":health,"shield":mechanics.get("shield_per_turn",0),"damage":damage,"burn":0,"poison":0,"stun":0,"vulnerable":0,"weak":0,"attacks":0,"hits":0,"revived":false,"intent":{},"mechanics":mechanics.duplicate(true),"rage":0,"rage_max":100,"is_enraged":false}
 
 func _is_attack(card: Dictionary) -> bool:
 	for effect in card.effects:
@@ -1216,7 +1289,7 @@ func _is_attack(card: Dictionary) -> bool:
 # a card that only applies Burn was being played with no target, and _resolve_effects drops
 # opponent statuses when target_index is -1, so those cards silently did nothing.
 func _targets_opponent(card: Dictionary) -> bool:
-	if card.get("special", "") in ["shield_slam", "catalyst_poison"]: return true
+	if card.get("special", "") in ["shield_slam", "catalyst_poison", "dual_vaporize", "dual_toxic_vine", "dual_magma_molten", "dual_dark_miasma", "dual_thunder_earth"]: return true
 	for effect in card.effects:
 		if effect.get("target", "") == "opponent": return true
 	return false
