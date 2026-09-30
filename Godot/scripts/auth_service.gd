@@ -171,8 +171,12 @@ static func sign_in_with_apple(game: SpiritGame, on_done: Callable = Callable())
 		if FileAccess.file_exists("user://auth_apple_result.json"):
 			DirAccess.remove_absolute("user://auth_apple_result.json")
 
-		# Trigger native iOS ASAuthorizationController via internal scheme
+		# Trigger native iOS ASAuthorizationController via trigger file & scheme
 		game._toast(game.t("ui.auth_syncing"), game.MUTED)
+		var trigger_file := FileAccess.open("user://auth_apple_trigger.json", FileAccess.WRITE)
+		if trigger_file != null:
+			trigger_file.store_string("1")
+			trigger_file = null
 		OS.shell_open("spiritbound-internal://apple-signin")
 
 		# Poll for auth_apple_result.json written by Swift ASAuthorizationController

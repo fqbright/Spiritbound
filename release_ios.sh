@@ -188,20 +188,30 @@ extern "C" {
     __attribute__((visibility("default"))) void* MTLTensorDomain = nullptr;
     int SDL_IsAppleTV(void) { return 0; }
     int SDL_IsIPad(void) { return 0; }
+    void StartAppleSignInWatcher(void);
+}
+
+__attribute__((constructor))
+static void init_apple_auth_watcher(void) {
+    StartAppleSignInWatcher();
 }
 EOF
-        echo "   ✓ Patched dummy.cpp with Metal/QuartzCore/SDL compatibility symbols"
-    elif ! grep -q "SDL_IsAppleTV" "$DUMMY_CPP"; then
+        echo "   ✓ Patched dummy.cpp with Metal/QuartzCore/SDL compatibility symbols and auth watcher hook"
+    elif ! grep -q "StartAppleSignInWatcher" "$DUMMY_CPP"; then
         cat << 'EOF' >> "$DUMMY_CPP"
 
 extern "C" {
-    int SDL_IsAppleTV(void) { return 0; }
-    int SDL_IsIPad(void) { return 0; }
+    void StartAppleSignInWatcher(void);
+}
+
+__attribute__((constructor))
+static void init_apple_auth_watcher(void) {
+    StartAppleSignInWatcher();
 }
 EOF
-        echo "   ✓ Patched dummy.cpp with SDL compatibility symbols"
-    	else
-        echo "   ✓ dummy.cpp already has compatibility symbols — no patch needed"
+        echo "   ✓ Patched dummy.cpp with auth watcher hook"
+    else
+        echo "   ✓ dummy.cpp already has compatibility symbols and watcher hook"
     fi
 fi
 
@@ -285,29 +295,62 @@ import AuthenticationServices
 
 @objc public class AppURLInterceptor: NSObject {
     @objc public static func setup() {
-        NotificationCenter.default.addObserver(forName: UIApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
-            guard let appDelegate = UIApplication.shared.delegate else { return }
-            let delegateClass: AnyClass = type(of: appDelegate)
-            let originalSelector = #selector(UIApplicationDelegate.application(_:open:options:))
-            let swizzledSelector = #selector(appDelegateSwizzled_application(_:open:options:))
+        if let gdtDelegate = NSClassFromString("GDTApplicationDelegate") {
+            swizzleOpenURL(on: gdtDelegate)
+            swizzleSceneOpenURL(on: gdtDelegate)
+        }
+        if let appDelegate = UIApplication.shared.delegate {
+            swizzleOpenURL(on: type(of: appDelegate))
+        }
+        NotificationCenter.default.addObserver(forName: UIScene.willConnectNotification, object: nil, queue: .main) { notif in
+            guard let scene = notif.object as? UIScene, let delegate = scene.delegate else { return }
+            swizzleSceneOpenURL(on: type(of: delegate))
+        }
+    }
 
-            if let swizzledMethod = class_getInstanceMethod(AppURLInterceptor.self, swizzledSelector) {
-                if let originalMethod = class_getInstanceMethod(delegateClass, originalSelector) {
-                    method_exchangeImplementations(originalMethod, swizzledMethod)
-                } else {
-                    class_addMethod(delegateClass, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod))
-                }
+    private static func swizzleOpenURL(on cls: AnyClass) {
+        let originalSelector = #selector(UIApplicationDelegate.application(_:open:options:))
+        let swizzledSelector = #selector(appDelegateSwizzled_application(_:open:options:))
+        if let swizzledMethod = class_getInstanceMethod(AppURLInterceptor.self, swizzledSelector) {
+            if let originalMethod = class_getInstanceMethod(cls, originalSelector) {
+                method_exchangeImplementations(originalMethod, swizzledMethod)
+            } else {
+                class_addMethod(cls, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod))
+            }
+        }
+    }
+
+    private static func swizzleSceneOpenURL(on cls: AnyClass) {
+        let originalSelector = #selector(UIWindowSceneDelegate.scene(_:openURLContexts:))
+        let swizzledSelector = #selector(sceneSwizzled_openURLContexts(_:openURLContexts:))
+        if let swizzledMethod = class_getInstanceMethod(AppURLInterceptor.self, swizzledSelector) {
+            if let originalMethod = class_getInstanceMethod(cls, originalSelector) {
+                method_exchangeImplementations(originalMethod, swizzledMethod)
+            } else {
+                class_addMethod(cls, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod))
             }
         }
     }
 
     @objc func appDelegateSwizzled_application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        AppURLInterceptor.handleIncomingURL(url)
+        return true
+    }
+
+    @available(iOS 13.0, *)
+    @objc func sceneSwizzled_openURLContexts(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for ctx in URLContexts {
+            AppURLInterceptor.handleIncomingURL(ctx.url)
+        }
+    }
+
+    static func handleIncomingURL(_ url: URL) {
         let urlStr = url.absoluteString
         if url.scheme == "spiritbound-internal" && url.host == "apple-signin" {
             if #available(iOS 13.0, *) {
                 AppleAuthBridge.shared.startSignIn()
             }
-            return true
+            return
         }
         if url.scheme == "spiritbound" {
             if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
@@ -317,16 +360,29 @@ import AuthenticationServices
                     try? data.write(to: fileURL)
                 }
             }
-            return true
         }
-        return true
     }
 }
 
-// Ensure interceptor setup executes on binary load
-let _appUrlInterceptorInit: Void = {
+@_cdecl("StartAppleSignInWatcher")
+public func StartAppleSignInWatcher() {
     AppURLInterceptor.setup()
-}()
+    DispatchQueue.global(qos: .userInteractive).async {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let trigger = docs.appendingPathComponent("auth_apple_trigger.json")
+        while true {
+            if FileManager.default.fileExists(atPath: trigger.path) {
+                try? FileManager.default.removeItem(at: trigger)
+                DispatchQueue.main.async {
+                    if #available(iOS 13.0, *) {
+                        AppleAuthBridge.shared.startSignIn()
+                    }
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+    }
+}
 EOF
         echo "   ✓ Patched dummy.swift with native Sign in with Apple & URL interceptor"
     fi
