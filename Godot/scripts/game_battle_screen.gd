@@ -8,6 +8,7 @@ var g: SpiritGame
 var auto_stepping: bool = false
 const TargetingArcScript := preload("res://scripts/targeting_arc.gd")
 const TargetLockReticleScript := preload("res://scripts/target_lock_reticle.gd")
+const RealmAuraScript := preload("res://scripts/realm_aura.gd")
 
 func _init(game: SpiritGame) -> void:
 	g = game
@@ -984,6 +985,17 @@ func _build_player_stage() -> Control:
 	glow.visible = false
 	stage.add_child(glow)
 
+	# Cultivation Realm Formation Aura (Phase 2)
+	var r_tier: int = clampi(int(g.profile.get("unlocked", 0)) / 50, 0, 5)
+	if int(g.profile.get("samsara_count", 0)) > 0:
+		r_tier = mini(5, r_tier + int(g.profile.get("samsara_count", 0)))
+	var realm_aura: Control = RealmAuraScript.new()
+	realm_aura.name = "PlayerRealmAura"
+	realm_aura.set("realm_tier", r_tier)
+	realm_aura.position = Vector2(player_x - 60.0, 84.0)
+	realm_aura.z_index = -3
+	stage.add_child(realm_aura)
+
 	# Hero Qi-Gauge Awakening Aura (Phase 16)
 	if g.combat and g.combat.can_cast_ultimate():
 		var ult_aura := Panel.new()
@@ -1129,6 +1141,11 @@ func _build_player_stage() -> Control:
 	var hp_bar := g._stat_bar(hp_bar_w, 18.0, int(g.combat.state.player.health), max_hp, g.EMBER, "%s  ♥ %d/%d" % [g.t("ui.spirit_name"), g.combat.state.player.health, max_hp], 10)
 	hp_bar.position = Vector2(player_x - hp_bar_w / 2.0, 106.0)
 	stage.add_child(hp_bar)
+
+	var max_hp_val: int = maxi(1, max_hp)
+	var hp_pct: float = float(g.combat.state.player.health) / float(max_hp_val)
+	if g.has_method("_set_low_hp_tension_audio"):
+		g._set_low_hp_tension_audio(hp_pct <= 0.25)
 
 	var incoming: int = g.combat.total_incoming_damage()
 	var effective_hp: int = int(g.combat.state.player.health) + int(g.combat.state.player.shield)
@@ -4524,6 +4541,8 @@ func _clear_danger_vignette() -> void:
 
 func _leave_battle() -> void:
 	Engine.time_scale = 1.0
+	if g.has_method("_set_low_hp_tension_audio"):
+		g._set_low_hp_tension_audio(false)
 	if g.combat != null and g.combat.state != null and g.combat.state.phase != "won":
 		g.profile.win_streak = 0
 		if g.profile.get("career_stats") is Dictionary:

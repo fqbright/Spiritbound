@@ -1561,6 +1561,16 @@ func _set_boss_phase_music(boosted: bool) -> void:
 	if battle_music != null and is_instance_valid(battle_music):
 		battle_music.pitch_scale = 1.06 if boosted else 1.0
 
+func _set_low_hp_tension_audio(enabled: bool) -> void:
+	if battle_music != null and is_instance_valid(battle_music):
+		var target_pitch: float = 0.92 if enabled else 1.0
+		var mus_vol: float = float(profile.get("music_volume", 1.0))
+		var base_db: float = 0.0 if mus_vol >= 0.99 else linear_to_db(maxf(mus_vol, 0.01))
+		var target_db: float = base_db - 3.5 if enabled else base_db
+		var tw := create_tween().set_parallel(true)
+		tw.tween_property(battle_music, "pitch_scale", target_pitch, 0.4)
+		tw.tween_property(battle_music, "volume_db", target_db, 0.4)
+
 func _panel(color: Color, radius := 12, border := Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new(); style.bg_color = color
 	style.corner_radius_top_left = radius; style.corner_radius_top_right = radius; style.corner_radius_bottom_left = radius; style.corner_radius_bottom_right = radius
