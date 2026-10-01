@@ -1271,8 +1271,11 @@ func _prestige_titles_section() -> Control:
 	head.add_child(cur_tag)
 	vbox.add_child(head)
 
-	var title_grid := HBoxContainer.new()
-	title_grid.add_theme_constant_override("separation", 6)
+	var title_grid := GridContainer.new()
+	title_grid.columns = 3
+	title_grid.add_theme_constant_override("h_separation", 6)
+	title_grid.add_theme_constant_override("v_separation", 6)
+	title_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var titles := [
 		{"key": "ui.title_master", "req": 0, "color": Color("a855f7")},
 		{"key": "ui.title_flame", "req": 10, "color": Color("f97316")},
@@ -1335,6 +1338,9 @@ func _sanctuary_garden_section() -> Control:
 
 	var stg_info := HBoxContainer.new()
 	stg_info.add_theme_constant_override("separation", 6)
+	var fox_avatar := g._label("🦊 灵狐", 13, Color("fba542"))
+	fox_avatar.name = "FoxAvatar"
+	stg_info.add_child(fox_avatar)
 	stg_info.add_child(g._label("【%s】" % stg_name, 11, Color("ffd700")))
 	stg_info.add_child(g._label(perk_desc, 9, Color("93c5fd")))
 	if fam_stg < 3:
@@ -1342,12 +1348,6 @@ func _sanctuary_garden_section() -> Control:
 	else:
 		stg_info.add_child(g._label("★ 极境成道 ★", 9, Color("ffd700")))
 	vbox.add_child(stg_info)
-
-	var fam_row := HBoxContainer.new()
-	fam_row.add_theme_constant_override("separation", 8)
-	var fox_avatar := g._label("🦊 灵狐", 18, Color("fba542"), HORIZONTAL_ALIGNMENT_CENTER)
-	fox_avatar.name = "FoxAvatar"
-	fam_row.add_child(fox_avatar)
 
 	var on_pet := func():
 		if g.is_inside_tree() and g.get_tree() != null:
@@ -1370,7 +1370,7 @@ func _sanctuary_garden_section() -> Control:
 	var pet_btn := g._button(g.t("ui.sanctuary_pet_btn"), on_pet, Color("2d261e"), Vector2(0, 32))
 	pet_btn.name = "PetFamiliarBtn"
 	pet_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fam_row.add_child(pet_btn)
+	pet_btn.add_theme_font_size_override("font_size", 10)
 
 	var on_feed := func():
 		var dust: int = int(g.profile.get("card_dust", 0))
@@ -1393,7 +1393,7 @@ func _sanctuary_garden_section() -> Control:
 	var feed_btn := g._button(g.t("ui.familiar_feed_btn"), on_feed, Color("3b2914"), Vector2(0, 32))
 	feed_btn.name = "FeedFamiliarBtn"
 	feed_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fam_row.add_child(feed_btn)
+	feed_btn.add_theme_font_size_override("font_size", 10)
 
 	var on_harvest := func():
 		g.profile.card_dust = int(g.profile.get("card_dust", 0)) + 20
@@ -1404,8 +1404,14 @@ func _sanctuary_garden_section() -> Control:
 	var harvest_btn := g._button(g.t("ui.sanctuary_harvest_btn"), on_harvest, Color("14382c"), Vector2(0, 32))
 	harvest_btn.name = "HarvestGardenBtn"
 	harvest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	fam_row.add_child(harvest_btn)
+	harvest_btn.add_theme_font_size_override("font_size", 10)
 
+	var fam_row := HBoxContainer.new()
+	fam_row.add_theme_constant_override("separation", 6)
+	fam_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fam_row.add_child(pet_btn)
+	fam_row.add_child(feed_btn)
+	fam_row.add_child(harvest_btn)
 	vbox.add_child(fam_row)
 	return panel
 
@@ -4542,7 +4548,7 @@ func _spiritual_roots_section() -> Control:
 	vbox.add_child(g._label(g.t("ui.spiritual_roots_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
+	row.add_theme_constant_override("separation", 3)
 	var roots: Dictionary = g.profile.get("spiritual_roots", {"metal": 1, "wood": 1, "water": 1, "fire": 1, "earth": 1})
 	for elem in ["metal", "wood", "water", "fire", "earth"]:
 		var val: int = int(roots.get(elem, 1))
@@ -4552,9 +4558,10 @@ func _spiritual_roots_section() -> Control:
 			if SpiritSave.invest_spiritual_root(g.profile, elem):
 				g._toast("灵根淬炼成功！%s提升至 %d" % [elem_name, val + 1], g.GOLD)
 				g.show_camp()
-		, Color("1e293b") if pts > 0 else Color("0f172a"), Vector2(0, 30))
+		, Color("1e293b") if pts > 0 else Color("0f172a"), Vector2(0, 28))
 		b.name = "RootBtn_%s" % elem
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 9)
 		row.add_child(b)
 	vbox.add_child(row)
 	return panel
@@ -4752,8 +4759,11 @@ func _hero_skins_section() -> Control:
 	var skins: Array = g.content.HERO_SKINS.get(hero_class, ["default"])
 	var cur_skin: String = str(g.profile.get("hero_skins", {}).get(hero_class, "default"))
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+	var skin_grid := GridContainer.new()
+	skin_grid.columns = 2
+	skin_grid.add_theme_constant_override("h_separation", 6)
+	skin_grid.add_theme_constant_override("v_separation", 6)
+	skin_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for sk in skins:
 		var skin_id: String = str(sk)
 		var is_equipped: bool = (skin_id == cur_skin)
@@ -4771,10 +4781,11 @@ func _hero_skins_section() -> Control:
 			g.play_sfx("equip")
 			g._toast(g.t("ui.skin_equipped_toast"), g.GOLD)
 			show_camp()
-		, Color("581c87") if is_equipped else Color("1e1b4b"), Vector2(100, 32))
+		, Color("581c87") if is_equipped else Color("1e1b4b"), Vector2(0, 32))
 		skin_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(skin_btn)
-	vbox.add_child(row)
+		skin_btn.add_theme_font_size_override("font_size", 10)
+		skin_grid.add_child(skin_btn)
+	vbox.add_child(skin_grid)
 	return panel
 
 func _hexagram_divination_section() -> Control:

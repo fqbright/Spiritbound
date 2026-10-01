@@ -30,6 +30,31 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	_pos = Vector2(float(scroll_horizontal), float(scroll_vertical))
 
+	var v_bar := get_v_scroll_bar()
+	if v_bar:
+		v_bar.custom_minimum_size.x = 4.0
+		v_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v_bar.add_theme_stylebox_override("scroll", StyleBoxEmpty.new())
+		var grabber := StyleBoxFlat.new()
+		grabber.bg_color = Color(1.0, 1.0, 1.0, 0.35)
+		grabber.corner_radius_top_left = 2
+		grabber.corner_radius_top_right = 2
+		grabber.corner_radius_bottom_right = 2
+		grabber.corner_radius_bottom_left = 2
+		v_bar.add_theme_stylebox_override("grabber", grabber)
+		v_bar.add_theme_stylebox_override("grabber_highlight", grabber)
+		v_bar.add_theme_stylebox_override("grabber_pressed", grabber)
+
+	var h_bar := get_h_scroll_bar()
+	if h_bar:
+		if not allow_horizontal:
+			horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+			h_bar.visible = false
+		else:
+			h_bar.custom_minimum_size.y = 4.0
+			h_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			h_bar.add_theme_stylebox_override("scroll", StyleBoxEmpty.new())
+
 func _limits() -> Vector2:
 	var v_bar := get_v_scroll_bar()
 	var h_bar := get_h_scroll_bar()

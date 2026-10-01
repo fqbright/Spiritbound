@@ -392,8 +392,16 @@ static func sync_cloud_save(game: SpiritGame, on_done: Callable = Callable()) ->
 		on_done.call(true)
 
 static func sign_out(game: SpiritGame, on_done: Callable = Callable()) -> void:
+	var was_linked := SpiritSave.is_cloud_linked(game.profile)
 	SupabaseClient.sign_out_client(game)
 	SpiritSave.unlink_account(game.profile)
+	if was_linked:
+		var tut_seen: bool = bool(game.profile.get("tutorial_seen", true))
+		var intro_seen: bool = bool(game.profile.get("intro_seen", true))
+		game.profile = SpiritSave.defaults(game.content)
+		game.profile.tutorial_seen = tut_seen
+		game.profile.intro_seen = intro_seen
+		SpiritSave.write(game.profile)
 	game._toast(game.t("ui.auth_sign_out_confirm"), game.MUTED)
 	if on_done.is_valid():
 		on_done.call(true)

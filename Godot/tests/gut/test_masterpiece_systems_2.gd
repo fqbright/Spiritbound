@@ -237,10 +237,10 @@ func test_performance_and_eco_settings():
 	assert_true(p.eco_mode, "Eco mode set to true")
 
 # ------------------------------------------------------------------------------
-# 8. Currency Display: 4 on Map, 3 on Other Screens
+# 8. Currency Display: Contextual Currency Display Across Screens
 # ------------------------------------------------------------------------------
 
-func test_currency_display_counts_map_vs_other_screens():
+func test_contextual_currency_display_across_screens():
 	var g := SpiritGame.new()
 	g.content = content
 	g.profile = SpiritSave.defaults(content)
@@ -253,12 +253,88 @@ func test_currency_display_counts_map_vs_other_screens():
 	var gold_row: BoxContainer = map_hdr.find_child("HeaderGoldRow", true, false) as BoxContainer
 	assert_not_null(gold_row, "HeaderGoldRow exists on map")
 	assert_eq(gold_row.get_child_count(), 4, "Map header displays exactly 4 currencies (Gold, Jade, Stamina, Dust)")
-	assert_not_null(gold_row.find_child("HeaderDustPill", true, false), "Dust pill is shown on map even with 0 dust")
+	assert_not_null(gold_row.find_child("HeaderDustPill", true, false), "Dust pill is shown on map")
 
-	# 2. Other Screens Header (e.g. Shop, Camp, Quests): exactly 3 currency pills (Gold, Jade, Stamina)
-	var other_hdr: HBoxContainer = g._header("SHOP", "Store", func(): pass)
-	add_child_autofree(other_hdr)
-	var stats_box: BoxContainer = other_hdr.find_child("HeaderStatsBox", true, false) as BoxContainer
-	assert_not_null(stats_box, "HeaderStatsBox exists on other screens")
-	assert_eq(stats_box.get_child_count(), 3, "Other screens header displays exactly 3 currencies (Gold, Jade, Stamina)")
-	assert_null(stats_box.find_child("HeaderDustPill", true, false), "Dust pill is NOT shown on other screens")
+	# 2. Shop Header: 3 currencies (Gold, Jade, Dust) - Dust is used for exchange/crafting in shop!
+	var shop_hdr: HBoxContainer = g._header(g.t("ui.shop_title"), "Store", func(): pass)
+	add_child_autofree(shop_hdr)
+	var shop_box: BoxContainer = shop_hdr.find_child("HeaderStatsBox", true, false) as BoxContainer
+	assert_not_null(shop_box, "HeaderStatsBox exists on shop")
+	assert_eq(shop_box.get_child_count(), 3, "Shop header displays 3 currencies (Gold, Jade, Dust)")
+	assert_not_null(shop_box.find_child("HeaderDustPill", true, false), "Dust pill is shown in shop")
+	assert_null(shop_box.find_child("HeaderStaminaPill", true, false), "Stamina pill is NOT in shop")
+
+	# 3. Camp Header: 4 currencies (Gold, Jade, Stamina, Dust) - all 4 make sense in camp!
+	var camp_hdr: HBoxContainer = g._header(g.t("ui.camp_title"), "Camp", func(): pass)
+	add_child_autofree(camp_hdr)
+	var camp_box: BoxContainer = camp_hdr.find_child("HeaderStatsBox", true, false) as BoxContainer
+	assert_not_null(camp_box, "HeaderStatsBox exists on camp")
+	assert_eq(camp_box.get_child_count(), 4, "Camp header displays 4 currencies (Gold, Jade, Stamina, Dust)")
+	assert_not_null(camp_box.find_child("HeaderDustPill", true, false), "Dust pill is shown in camp")
+	assert_not_null(camp_box.find_child("HeaderStaminaPill", true, false), "Stamina pill is shown in camp")
+
+	# 4. Quests Header: 3 currencies (Gold, Jade, Stamina)
+	var quests_hdr: HBoxContainer = g._header(g.t("ui.quests_title"), "Quests", func(): pass)
+	add_child_autofree(quests_hdr)
+	var quests_box: BoxContainer = quests_hdr.find_child("HeaderStatsBox", true, false) as BoxContainer
+	assert_not_null(quests_box, "HeaderStatsBox exists on quests")
+	assert_eq(quests_box.get_child_count(), 3, "Quests header displays 3 currencies (Gold, Jade, Stamina)")
+	assert_not_null(quests_box.find_child("HeaderStaminaPill", true, false), "Stamina pill is shown in quests")
+	assert_null(quests_box.find_child("HeaderDustPill", true, false), "Dust pill is NOT in quests")
+
+# 9. Account Sign Out: Bound vs Guest Progress
+# ------------------------------------------------------------------------------
+
+func test_account_sign_out_bound_vs_guest():
+	var g := SpiritGame.new()
+	g.content = content
+	add_child_autofree(g)
+	g.profile = SpiritSave.defaults(content)
+	g.profile.gold = 500
+
+	# Scenario A: Pure guest signs out -> progress is preserved
+	SpiritAuth.sign_out(g)
+	assert_eq(int(g.profile.gold), 500, "Guest profile progress is retained on sign out")
+
+	# Scenario B: Cloud-linked account signs out -> profile resets to defaults for new account
+	SpiritSave.link_account(g.profile, "google", "goog_12345", "test@gmail.com", "Tester")
+	assert_true(SpiritSave.is_cloud_linked(g.profile), "Account is now cloud-linked")
+	g.profile.gold = 9999
+
+	SpiritAuth.sign_out(g)
+	assert_false(SpiritSave.is_cloud_linked(g.profile), "Account is unlinked after sign out")
+	assert_eq(int(g.profile.gold), 30, "Cloud-linked account progress is reset to starter defaults (30 gold) so new login starts clean")
+
+# 10. Camp Screen UI Layout & Scrollbar Styling
+# ------------------------------------------------------------------------------
+
+func test_camp_screen_layout_and_scrollbar_styling():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+
+	# Test TouchScrollContainer non-blocking styling
+	var scroll := TouchScrollContainer.new()
+	add_child_autofree(scroll)
+	var v_bar := scroll.get_v_scroll_bar()
+	assert_not_null(v_bar, "VScrollBar exists on TouchScrollContainer")
+	assert_eq(v_bar.mouse_filter, Control.MOUSE_FILTER_IGNORE, "VScrollBar does not intercept or block touches")
+
+	# Test Camp screen sections layout
+	var camp_scr := CampScreen.new(g)
+	var titles_sec: Control = camp_scr._prestige_titles_section()
+	add_child_autofree(titles_sec)
+	var grid: GridContainer = titles_sec.find_child("GridContainer", true, false) as GridContainer
+	if grid == null:
+		for c in titles_sec.find_children("*", "GridContainer", true, false):
+			grid = c as GridContainer
+			break
+	assert_not_null(grid, "Prestige titles uses GridContainer to prevent horizontal overflow")
+	assert_eq(grid.columns, 3, "Prestige titles uses 3 columns")
+
+	var garden_sec: Control = camp_scr._sanctuary_garden_section()
+	add_child_autofree(garden_sec)
+	var pet_btn: Button = garden_sec.find_child("PetFamiliarBtn", true, false) as Button
+	assert_not_null(pet_btn, "PetFamiliarBtn exists in sanctuary garden")
+	assert_eq(pet_btn.get_theme_font_size("font_size"), 10, "Familiar buttons use compact font size to avoid overflow")
