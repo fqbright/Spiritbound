@@ -383,9 +383,17 @@ func show_battle() -> void:
 			"frost": w_name = "❄ 寒霜" if g.lang != "en" else "❄ Frost"; w_col = Color("38bdf8")
 			"thunder": w_name = "⚡ 天罡" if g.lang != "en" else "⚡ Thunder"; w_col = Color("facc15")
 			"leyline": w_name = "🌿 灵潮" if g.lang != "en" else "🌿 Leyline"; w_col = Color("4ade80")
+			"thunderstorm": w_name = "⛈️ 雷暴" if g.lang != "en" else "⛈️ Storm"; w_col = Color("facc15")
+			"blizzard": w_name = "🌨️ 暴雪" if g.lang != "en" else "🌨️ Blizzard"; w_col = Color("67e8f9")
+			"rain": w_name = "🌧️ 骤雨" if g.lang != "en" else "🌧️ Rain"; w_col = Color("34d399")
+			"fog": w_name = "🌫️ 浓雾" if g.lang != "en" else "🌫️ Fog"; w_col = Color("a78bfa")
 		var w_badge := g._button(w_name, func():
-			var w_key := "ui.weather_" + w_affix
-			g._toast(g.t(w_key), w_col)
+			var w_syn: Dictionary = SpiritContent.WEATHER_SYNERGIES.get(w_affix, {})
+			var w_desc: String = str(w_syn.get("desc_en" if g.lang == "en" else "desc_zh", ""))
+			if w_desc.is_empty():
+				var w_key := "ui.weather_" + w_affix
+				w_desc = g.t(w_key)
+			g._toast(w_desc, w_col)
 		, Color("101d22"), Vector2(52, 22))
 		w_badge.name = "BattleWeatherBadge"
 		w_badge.add_theme_color_override("font_color", w_col)
@@ -465,6 +473,9 @@ func show_battle() -> void:
 		var first_res: Dictionary = g.content.relic_resonance(first_res_id)
 		if not first_res.is_empty():
 			g._toast(g.tf("ui.relic_resonance_activated_toast", g._relic_resonance_name(first_res)))
+	if g.combat != null and g.combat.state.turn == 1 and not bool(g.combat.state.get("intro_bark_shown", false)):
+		g.combat.state["intro_bark_shown"] = true
+		_trigger_boss_bark("intro", 0)
 
 	var enemy_area := Control.new()
 	enemy_area.custom_minimum_size = Vector2(366.0, 235.0)
@@ -1090,6 +1101,27 @@ func _build_player_stage() -> Control:
 				g.show_battle()
 	)
 	stage.add_child(fam_btn)
+
+	var has_pills: bool = false
+	var pills_inv: Dictionary = g.profile.get("alchemy_pills", {})
+	for pk in pills_inv:
+		if int(pills_inv[pk]) > 0:
+			has_pills = true
+			break
+	if has_pills and g.combat and not bool(g.combat.state.get("pill_used_this_combat", false)):
+		var pill_btn := Button.new()
+		pill_btn.name = "CombatPillBtn"
+		pill_btn.text = "💊"
+		pill_btn.tooltip_text = g.t("ui.pill_quick_use")
+		pill_btn.custom_minimum_size = Vector2(34.0, 34.0)
+		pill_btn.size = pill_btn.custom_minimum_size
+		pill_btn.position = Vector2(player_x - 92.0, 48.0)
+		var p_style := g._panel(Color("1e3a2f"), 17, Color("34d399"))
+		pill_btn.add_theme_stylebox_override("normal", p_style)
+		pill_btn.add_theme_stylebox_override("hover", p_style)
+		pill_btn.add_theme_stylebox_override("pressed", p_style)
+		pill_btn.pressed.connect(_show_combat_pill_modal)
+		stage.add_child(pill_btn)
 
 	# Hero Qi-Gauge Awakening Aura (Phase 16)
 	if g.combat and g.combat.can_cast_ultimate():
@@ -2566,7 +2598,7 @@ func _build_pile_element_summary(pile: Array, is_draw_pile: bool = false) -> Con
 
 	if is_draw_pile and counted > 0:
 		var root_col := VBoxContainer.new()
-		root_col.add_theme_constant_override("separation", 3)
+		root_col.add_theme_constant_override("separation", 4)
 		root_col.add_child(box)
 
 		var p_atk: int = int(round(float(atk_c) / float(counted) * 100.0))
@@ -2575,6 +2607,29 @@ func _build_pile_element_summary(pile: Array, is_draw_pile: bool = false) -> Con
 		var forecast_lbl := g._label(g.tf("ui.draw_forecast_fmt", [p_atk, p_skl, p_pwr]), 9, Color("a5f3fc"), HORIZONTAL_ALIGNMENT_CENTER)
 		forecast_lbl.name = "DrawPileForecastLabel"
 		root_col.add_child(forecast_lbl)
+
+		var d_draw: int = mini(5, counted)
+		var p_atk_draw: int = int(round(_hypergeom_at_least_one(counted, atk_c, d_draw) * 100.0))
+		var p_def_draw: int = int(round(_hypergeom_at_least_one(counted, skl_c, d_draw) * 100.0))
+		var oracle_panel := PanelContainer.new()
+		oracle_panel.name = "LiveDeckOraclePanel"
+		var ost := g._panel(Color("09181c", 0.92), 6, Color("38bdf8"))
+		ost.content_margin_left = 6; ost.content_margin_right = 6
+		ost.content_margin_top = 3; ost.content_margin_bottom = 3
+		oracle_panel.add_theme_stylebox_override("panel", ost)
+		var orc_vbox := VBoxContainer.new()
+		orc_vbox.add_theme_constant_override("separation", 2)
+		oracle_panel.add_child(orc_vbox)
+
+		orc_vbox.add_child(g._label("🔮 " + g.t("ui.deck_oracle_title"), 10, Color("38bdf8"), HORIZONTAL_ALIGNMENT_CENTER))
+		var orc_row := HBoxContainer.new()
+		orc_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		orc_row.add_theme_constant_override("separation", 12)
+		orc_row.add_child(g._label("⚔️ %s: %d%%" % [g.t("ui.deck_oracle_odds_atk"), p_atk_draw], 9, Color("f87171")))
+		orc_row.add_child(g._label("🛡️ %s: %d%%" % [g.t("ui.deck_oracle_odds_def"), p_def_draw], 9, Color("60a5fa")))
+		orc_vbox.add_child(orc_row)
+		root_col.add_child(oracle_panel)
+
 		return root_col
 
 	return box
@@ -4288,6 +4343,12 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	if g.battle_log: g.battle_log.record(kind, payload, int(g.combat.state.get("turn", 0)) if g.combat else 0)
 	if kind == "turn":
 		g.battle_telemetry.turns = maxi(int(g.battle_telemetry.get("turns", 1)), int(payload.get("turn", 1)))
+		if g.combat and g.combat.state and g.combat.state.player:
+			var p_hp: int = int(g.combat.state.player.health)
+			var p_max: int = int(g.combat.state.player.max_health)
+			if p_hp > 0 and p_hp <= int(p_max * 0.25) and not bool(g.combat.state.get("player_low_hp_bark_shown", false)):
+				g.combat.state["player_low_hp_bark_shown"] = true
+				_trigger_boss_bark("player_low_hp", 0)
 	elif kind == "intent":
 		var style := _intent_style({"kind": payload.kind, "amount": payload.amount})
 		var tip: String = {"defend": "ui.intent_tip_defend", "empower": "ui.intent_tip_empower", "curse": "ui.intent_tip_curse"}.get(str(payload.kind), "")
@@ -4387,6 +4448,10 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 				_shake_screen(mini(14.0, float(dmg) * 0.35 + 4.0), 0.25)
 				_camera_punch(1.04, 0.15)
 				_trigger_finisher_hitstop()
+				if is_lethal and e_idx == 0:
+					_trigger_boss_bark("defeat", e_idx)
+				elif is_heavy and not is_lethal and e_idx == 0:
+					_trigger_boss_bark("heavy_hit", e_idx)
 			if g.combat and g.combat.state and e_idx < g.combat.state.enemies.size():
 				var en_dict: Dictionary = g.combat.state.enemies[e_idx]
 				var max_hp: int = int(en_dict.get("max_health", 1))
@@ -4428,6 +4493,7 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		var p_desc: String = payload.get("desc_en", "") if g.lang == "en" else payload.get("desc", "")
 		g.play_sfx("boss_phase2")
 		_show_boss_phase_banner(p_name, p_desc)
+		_trigger_boss_bark("phase2", 0)
 	elif kind == "resonance":
 		var r_type: String = str(payload.get("type", ""))
 		if r_type == "combustion": g.play_sfx("resonance_combustion")
@@ -4451,6 +4517,7 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		_shake_screen(8.0, 0.4)
 		g.play_sfx("boss_phase2")
 		_show_boss_phase_banner("Phase %d" % p_num, "首领阶段转换！" if g.lang != "en" else "Boss enters Phase %d!" % p_num)
+		_trigger_boss_bark("phase2", 0)
 	elif kind == "boss_mechanic":
 		var m_kind: String = str(payload.get("kind", ""))
 		var e_idx: int = int(payload.get("enemy", 0))
@@ -4851,4 +4918,120 @@ func _leave_battle() -> void:
 	g.profile.health = 60
 	SpiritSave.write(g.profile)
 	g.show_map()
+
+static func _hypergeom_at_least_one(total_cards: int, target_cards: int, draw_count: int) -> float:
+	if total_cards <= 0 or target_cards <= 0 or draw_count <= 0: return 0.0
+	if target_cards >= total_cards: return 1.0
+	var d: int = mini(draw_count, total_cards)
+	var non_target: int = total_cards - target_cards
+	if non_target < d: return 1.0
+	var p_none: float = 1.0
+	for i in range(d):
+		p_none *= float(non_target - i) / float(total_cards - i)
+	return clampf(1.0 - p_none, 0.0, 1.0)
+
+func _trigger_boss_bark(kind: String, enemy_idx: int = 0) -> void:
+	if g.combat == null or g.combat.state == null: return
+	if enemy_idx < 0 or enemy_idx >= g.combat.state.enemies.size(): return
+	var barks: Array = SpiritContent.BOSS_COMBAT_BARKS.get(kind, [])
+	if barks.is_empty(): return
+	var bark_idx: int = randi() % barks.size()
+	var bark_data: Dictionary = barks[bark_idx]
+	var text: String = str(bark_data.get("en" if g.lang == "en" else "zh", ""))
+	_spawn_boss_bark(enemy_idx, text)
+
+func _spawn_boss_bark(enemy_idx: int, text: String) -> void:
+	if enemy_idx < 0 or enemy_idx >= g.enemy_boxes.size(): return
+	var box: Control = g.enemy_boxes[enemy_idx]
+	if box == null or not is_instance_valid(box): return
+
+	var bubble := PanelContainer.new()
+	bubble.name = "BossBarkBubble"
+	var b_style := g._panel(Color("0f191d", 0.95), 10, Color("eab308"))
+	b_style.content_margin_left = 10; b_style.content_margin_right = 10
+	b_style.content_margin_top = 4; b_style.content_margin_bottom = 4
+	bubble.add_theme_stylebox_override("panel", b_style)
+
+	var lbl := g._label(text, 11, Color("fef08a"), HORIZONTAL_ALIGNMENT_CENTER)
+	bubble.add_child(lbl)
+
+	bubble.custom_minimum_size = Vector2(160, 28)
+	bubble.pivot_offset = Vector2(80, 28)
+	bubble.scale = Vector2(0.6, 0.6)
+	bubble.modulate.a = 0.0
+	bubble.position = Vector2(box.size.x * 0.5 - 80, -36)
+	box.add_child(bubble)
+
+	var tw := bubble.create_tween()
+	bubble.tree_exited.connect(tw.kill)
+	tw.set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(bubble, "scale", Vector2.ONE, 0.2)
+	tw.tween_property(bubble, "modulate:a", 1.0, 0.15)
+	tw.chain().tween_interval(2.2)
+	tw.chain().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(bubble, "modulate:a", 0.0, 0.3)
+	tw.tween_property(bubble, "position:y", -48.0, 0.3)
+	tw.chain().tween_callback(bubble.queue_free)
+
+func _show_combat_pill_modal() -> void:
+	if g.overlay == null or g.combat == null: return
+	_clear_combat_pill_modal()
+	var backdrop := Panel.new()
+	backdrop.name = "CombatPillModal"
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.add_theme_stylebox_override("panel", g._panel(Color(0, 0, 0, 0.65), 0))
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	g.overlay.add_child(backdrop)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(300, 260)
+	panel.size = panel.custom_minimum_size
+	panel.position = Vector2(37, 240)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f241d"), 14, Color("10b981")))
+	backdrop.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	vbox.add_child(g._label("💊 灵丹破局 (每场限服一粒)", 14, Color("a7f3d0"), HORIZONTAL_ALIGNMENT_CENTER))
+
+	var pills_inv: Dictionary = g.profile.get("alchemy_pills", {})
+	for recipe_id in SpiritContent.ALCHEMY_RECIPES:
+		var recipe: Dictionary = SpiritContent.ALCHEMY_RECIPES[recipe_id]
+		var count: int = int(pills_inv.get(recipe_id, 0))
+		var r_name: String = str(recipe.get("name_en" if g.lang == "en" else "name_zh", ""))
+		var r_desc: String = str(recipe.get("desc_en" if g.lang == "en" else "desc_zh", ""))
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var info_col := VBoxContainer.new()
+		info_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info_col.add_child(g._label("%s (存量: %d)" % [r_name, count], 11, Color("ffd700") if count > 0 else g.MUTED))
+		info_col.add_child(g._label(r_desc, 9, Color("94a3b8")))
+		row.add_child(info_col)
+
+		var use_btn := g._button(g.t("ui.pill_quick_use"), func():
+			if count > 0 and g.combat.use_alchemy_pill(recipe_id):
+				SpiritSave.consume_pill(g.profile, recipe_id)
+				g._toast(g.tf("ui.pill_used_fmt", r_name), g.GOLD)
+				_clear_combat_pill_modal()
+				show_battle()
+		, Color("059669") if count > 0 else Color("1e293b"), Vector2(60, 28))
+		use_btn.disabled = count <= 0
+		row.add_child(use_btn)
+		vbox.add_child(row)
+
+	var cancel_btn := g._button(g.t("ui.cancel"), _clear_combat_pill_modal, Color("334155"), Vector2(0, 30))
+	vbox.add_child(cancel_btn)
+
+func _clear_combat_pill_modal() -> void:
+	if g.overlay == null: return
+	var old := g.overlay.get_node_or_null("CombatPillModal")
+	if old and is_instance_valid(old): old.queue_free()
+
 

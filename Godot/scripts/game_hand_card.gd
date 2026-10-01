@@ -142,9 +142,10 @@ func _on_drag(local_pos: Vector2) -> void:
 	if is_dragging:
 		if current_tween: current_tween.kill()
 		global_position = cur_global - Vector2(custom_minimum_size.x / 2.0, custom_minimum_size.y / 2.0)
-		var target_rot: float = clampf(vel_x * 0.012 + delta.x * 0.0012, -0.22, 0.22)
+		var target_rot: float = clampf(vel_x * 0.016 + delta.x * 0.0016, -0.28, 0.28)
 		rotation = lerpf(rotation, target_rot, 0.45)
-		scale = Vector2(1.15, 1.15)
+		var tilt_y_squash: float = 1.0 - absf(target_rot) * 0.15
+		scale = Vector2(1.15, 1.15 * tilt_y_squash)
 		if game and game.has_method("_preview_energy_drain"):
 			game._preview_energy_drain(int(card_data.get("cost", 0)))
 		target_enemy_idx = -1

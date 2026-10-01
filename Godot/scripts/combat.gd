@@ -107,7 +107,20 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"boss_phase_2_triggered": false,
 		"is_pagoda": bool(encounter.get("is_pagoda", false)),
 		"current_card_id": "",
+		"card_mastery": hero_bonuses.get("card_mastery", {}),
+		"awakened_cards": hero_bonuses.get("awakened_cards", []),
+		"pagoda_soul_pacts": hero_bonuses.get("pagoda_soul_pacts", modifier.get("pagoda_soul_pacts", [])),
+		"defense_played_this_turn": false,
+		"played_cards_tally": {},
+		"player_fog_veil": 1 if str(modifier.get("weather_affix", "")) == "fog" else 0,
+		"pill_used_this_combat": false,
+		"taiji_retained_shield": 0,
 	}
+	if state.pagoda_soul_pacts.has("asura_blood_pact"):
+		state.player.max_health = maxi(1, int(round(float(state.player.max_health) * 0.75)))
+		state.player.health = mini(state.player.health, state.player.max_health)
+	if state.pagoda_soul_pacts.has("taishang_detachment"):
+		state.energy += 1
 	if state.is_training_dummy:
 		enemies.clear()
 		enemies.append(_enemy("training_dummy", "机关木人桩", "Training Dummy", "m_s001", 99999, 0, {}))
@@ -234,9 +247,10 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 			if el != "": unique_elems[el] = true
 		if unique_elems.size() >= 4:
 			draw_bonus += 1
-	if int(hero_bonuses.get("familiar_stage", 0)) >= 2:
-		draw_bonus += 1
-	_draw(5 + draw_bonus + (1 if _has_relic("cursedTome") else 0))
+	var open_draw: int = 5 + draw_bonus + (1 if _has_relic("cursedTome") else 0)
+	if state.get("pagoda_soul_pacts", []).has("taishang_detachment"):
+		open_draw = maxi(1, open_draw - 1)
+	_draw(open_draw)
 	if _has_relic("mysticScroll") and state.hand.size() < 10:
 		for i in range(state.draw.size() - 1, -1, -1):
 			var c_card := content.card(str(state.draw[i].card_id))
@@ -260,6 +274,39 @@ func _has_resonance(id: String) -> bool:
 
 func _equip_tier(id: String) -> int:
 	return int(state.get("equipment_tiers", {}).get(id, 0))
+
+func _is_card_awakened(card_id: String) -> bool:
+	if state.get("awakened_cards", []).has(card_id):
+		return true
+	var count: int = int(state.get("card_mastery", {}).get(card_id, 0))
+	return count >= 60
+
+func _is_defense_card(card: Dictionary) -> bool:
+	var kind: String = str(card.get("kind", ""))
+	if kind in ["Defense", "Shield"]: return true
+	if card.id == "defend" or int(card.get("shield", 0)) > 0: return true
+	return false
+
+func use_alchemy_pill(pill_id: String) -> bool:
+	if bool(state.get("pill_used_this_combat", false)):
+		return false
+	var recipe: Dictionary = SpiritContent.ALCHEMY_RECIPES.get(pill_id, {})
+	if recipe.is_empty(): return false
+	state.pill_used_this_combat = true
+	var eff: Dictionary = recipe.get("effect", {})
+	if eff.has("energy"):
+		state.energy = mini(10, state.energy + int(eff.energy))
+	if eff.has("shield"):
+		state.player.shield += int(eff.shield)
+	if eff.has("heal"):
+		state.player.health = mini(state.player.max_health, state.player.health + int(eff.heal))
+	if bool(eff.get("cleanse", false)):
+		state.player.burn = 0
+		if state.player.has("vulnerable"): state.player.vulnerable = 0
+		if state.player.has("weak"): state.player.weak = 0
+	emit_signal("event", "pill_used", {"pill_id": pill_id, "recipe": recipe})
+	return true
+
 
 # Intents are planned a turn ahead and executed exactly as telegraphed, so the icon the
 # player reacts to always matches what actually lands.
@@ -405,6 +452,8 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var card := content.card(instance.card_id)
 	if card.is_empty(): return false
 	var actual_cost: int = int(card.cost)
+	if state.get("pagoda_soul_pacts", []).has("adamantine_body"):
+		actual_cost += 1
 	if int(state.get("next_card_cost_discount", 0)) > 0:
 		var discount: int = int(state.get("next_card_cost_discount", 0))
 		actual_cost = maxi(0, actual_cost - discount)
@@ -484,6 +533,40 @@ func play(hand_index: int, target_index := -1) -> bool:
 	var wood_root: int = int(roots_dict.get("wood", 1))
 	if wood_root > 1 and str(card.get("element", "")).to_lower() in ["poison", "wood"]:
 		state.player.health = mini(state.player.max_health, state.player.health + (wood_root - 1))
+	if not state.has("played_cards_tally"): state.played_cards_tally = {}
+	state.played_cards_tally[card.id] = int(state.played_cards_tally.get(card.id, 0)) + 1
+	if _is_defense_card(card):
+		state.defense_played_this_turn = true
+	var is_awakened: bool = _is_card_awakened(card.id)
+	if is_awakened:
+		if card.id == "strike":
+			if state.turn_combo_count >= 2:
+				_draw(1)
+				emit_signal("event", "card_awakened_proc", {"card": "strike", "bonus": "draw"})
+		elif card.id in ["defend", "ward"]:
+			state.player.shield += 3
+			state.taiji_retained_shield = int(state.get("taiji_retained_shield", 0)) + 3
+			emit_signal("event", "card_awakened_proc", {"card": card.id, "bonus": "taiji"})
+		elif card.id == "spirit_surge":
+			state.energy += 1
+			state.player.focus = int(state.player.get("focus", 0)) + 1
+			emit_signal("event", "card_awakened_proc", {"card": "spirit_surge", "bonus": "energy_focus"})
+		elif card.id == "samadhi_fire":
+			for en in state.enemies:
+				if en.health > 0: en.burn = int(en.get("burn", 0)) + 3
+			emit_signal("event", "card_awakened_proc", {"card": "samadhi_fire", "bonus": "aoe_burn"})
+	var cur_weather: String = str(state.get("weather_affix", ""))
+	if cur_weather == "rain":
+		var card_el: String = str(card.get("element", "")).to_lower()
+		if card_el in ["water", "frost", "wood", "poison"]:
+			state.player.health = mini(state.player.max_health, state.player.health + 2)
+			emit_signal("event", "weather_synergy_proc", {"type": "rain", "heal": 2})
+	elif cur_weather == "thunderstorm" and harmful:
+		var card_el: String = str(card.get("element", "")).to_lower()
+		if card_el in ["thunder", "lightning", "storm", "metal"]:
+			if target_index >= 0 and target_index < state.enemies.size() and state.enemies[target_index].health > 0:
+				_damage_enemy(target_index, 3, true)
+				emit_signal("event", "weather_synergy_proc", {"type": "thunderstorm", "damage": 3})
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += actual_cost; state.swift_used = true
@@ -627,6 +710,10 @@ func play(hand_index: int, target_index := -1) -> bool:
 		emit_signal("event", "spirit_surge", {})
 	elif sp == "shield_slam" and target_index >= 0:
 		var slam_dmg: int = maxi(1, int(state.player.shield))
+		if _is_card_awakened("shield_slam"):
+			slam_dmg = int(round(slam_dmg * 1.5))
+			if state.enemies[target_index].health > 0:
+				state.enemies[target_index].stun = int(state.enemies[target_index].get("stun", 0)) + 1
 		var hit := _damage_enemy(target_index, slam_dmg, true)
 		dealt += hit
 		emit_signal("event", "shield_slam", {"target": target_index, "damage": slam_dmg})
@@ -811,7 +898,9 @@ func end_turn() -> void:
 		state.energy = maxi(1, state.energy - overload_due)
 		state.overload_pending = 0
 	var kept_shield: int = 0
-	if _has_resonance("res_sun_moon") or _has_resonance("res_bastion_unbreakable"):
+	if state.get("pagoda_soul_pacts", []).has("adamantine_body"):
+		kept_shield = state.player.shield
+	elif _has_resonance("res_sun_moon") or _has_resonance("res_bastion_unbreakable"):
 		kept_shield = state.player.shield
 	elif _has_resonance("res_glacial_mirror"):
 		kept_shield = int(state.player.shield * 0.6)
@@ -823,6 +912,8 @@ func end_turn() -> void:
 		kept_shield = int(state.player.shield / 2)
 	elif str(state.get("active_hexagram", "")) == "hex_kun":
 		kept_shield = mini(8, state.player.shield)
+	if int(state.get("taiji_retained_shield", 0)) > 0:
+		kept_shield = maxi(kept_shield, int(state.taiji_retained_shield))
 	state.player.shield = kept_shield
 	state.spirit_surge_active = false
 	state.shadow_clone_active = false
@@ -886,10 +977,14 @@ func end_turn() -> void:
 		state.player.health = mini(state.player.max_health, state.player.health + inscr_heal)
 	if _has_relic("thunderSeal") and state.turn % 3 == 0:
 		state.energy += 2 + (2 if _has_resonance("res_sun_moon") else 0)
+	if state.get("pagoda_soul_pacts", []).has("taishang_detachment"):
+		state.energy = mini(10, state.energy + 1)
 	var energy_cap: int = int(state.get("modifier", {}).get("energy_cap", 0))
 	if energy_cap > 0: state.energy = mini(state.energy, energy_cap)
 	state.swift_used = false; state.first_attack = false; state.moon_used = false; state.tide_used = false; state.gale_used = false; state.elements = {}; state.last_element = ""; state.swift_boots_used = false; state.echo_mirror_used = false; state.undo_state = {}
 	state.turn_combo_count = 0; state.turn_attack_count = 0
+	state.defense_played_this_turn = false
+	state.taiji_retained_shield = 0
 	var turn_draw: int = 2 + (1 if state.get("boons", []).has("boon_wind_stride") else 0) + (1 if _has_relic("cursedTome") else 0) + (1 if (_has_resonance("res_fox_wind") and state.turn == 2) else 0)
 	if weather == "leyline":
 		turn_draw += 1
@@ -898,6 +993,8 @@ func end_turn() -> void:
 		else: state.player.shield += 6
 	if _has_relic("lotusIncense") and bool(state.get("empty_hand_at_end", false)):
 		turn_draw += 2
+	if state.get("pagoda_soul_pacts", []).has("taishang_detachment"):
+		turn_draw = maxi(1, turn_draw - 1)
 	# Fewer Draws (Phase 8 Curse Run mutator): floored at 1 so a long fight can never fully
 	# stall the hand from growing at all.
 	turn_draw = maxi(1, turn_draw - int(state.get("modifier", {}).get("draw_penalty", 0)))
@@ -947,6 +1044,10 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 				# Curse Run's Glass Cannon/Berserker's Pact mutators (Phase 8) boost outgoing
 				# damage; read once per effect rather than per target since it never changes mid-swing.
 				var dmg_mult: float = float(state.get("modifier", {}).get("player_dmg_mult", 1.0))
+				if state.get("pagoda_soul_pacts", []).has("ten_thousand_swords") and not bool(state.get("defense_played_this_turn", false)):
+					dmg_mult *= 2.0
+				if card.id == "strike" and _is_card_awakened("strike"):
+					amount += 3
 				for index in targets:
 					if state.enemies[index].health <= 0: continue
 					var execute := 1.5 if state.runes.get(card.id,"") == "execute" and state.enemies[index].health <= state.enemies[index].max_health * .25 else 1.0
@@ -997,6 +1098,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 				if final_amt > 0:
 					if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
 					elif target_index >= 0:
+						if str(state.get("weather_affix", "")) == "blizzard" and effect.status in ["stun", "freeze", "weak"]:
+							final_amt += 1
 						state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
 						if _has_relic("frostNeedle"):
 							state.enemies[target_index].shield = maxi(0, int(state.enemies[target_index].get("shield", 0)) - 2)
@@ -1024,6 +1127,10 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 		emit_signal("event","shatter",{"enemy":index,"amount":sh_dmg})
 	var dealt := mini(enemy.health,amount - absorbed)
 	enemy.health -= dealt
+	if state.get("pagoda_soul_pacts", []).has("asura_blood_pact") and dealt > 0:
+		var leech: int = maxi(1, int(round(float(dealt) * 0.20)))
+		state.player.health = mini(state.player.max_health, state.player.health + leech)
+		emit_signal("event", "pact_leech", {"amount": leech})
 	if _has_resonance("res_abyssal_drain") and int(enemy.get("poison", 0)) > 0:
 		state.player.health = mini(state.player.max_health, state.player.health + 1)
 	emit_signal("event", "damage_dealt", {
@@ -1317,6 +1424,10 @@ func _summon_boss_add(owner_index: int, owner: Dictionary) -> void:
 # own pierce flag) — Chapter 30's revive attack is authored as unavoidable, so it can't be
 # absorbed or it would just be a normal swing.
 func _damage_player(amount: int, pierce := false) -> int:
+	if int(state.get("player_fog_veil", 0)) > 0:
+		state.player_fog_veil -= 1
+		emit_signal("event", "fog_veil_evaded", {})
+		return 0
 	var red: int = int(state.get("astral_earth_reduction", 0))
 	if red > 0:
 		amount = maxi(1, amount - red)

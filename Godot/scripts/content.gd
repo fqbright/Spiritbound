@@ -3407,6 +3407,13 @@ const UI_TEXT = {
 	"ui.settings_volume_sfx": {"zh-Hans":"音效音量", "en":"SFX Volume"},
 	"ui.settings_fps": {"zh-Hans":"画面刷新率 (帧率)", "en":"Frame Rate (FPS)"},
 	"ui.settings_fps_desc": {"zh-Hans":"30fps 省电温和，60fps 流畅标准，120fps 极速 (需设备支持 ProMotion 高刷)", "en":"30fps Power Saver, 60fps Standard Smooth, 120fps Ultra (ProMotion required)"},
+	"ui.herb_purple_lingzhi": {"zh-Hans":"紫灵芝", "en":"Purple Lingzhi"},
+	"ui.herb_sun_grass": {"zh-Hans":"纯阳草", "en":"Sun Grass"},
+	"ui.herb_frost_flower": {"zh-Hans":"玄霜花", "en":"Frost Flower"},
+	"ui.alchemy_stock_fmt": {"zh-Hans":"存量: %d", "en":"Stock: %d"},
+	"ui.pagoda_pact_active": {"zh-Hans":"已契结", "en":"Active"},
+	"ui.pagoda_bind_btn": {"zh-Hans":"缔结魂契", "en":"Bind Pact"},
+	"ui.pagoda_unbind_btn": {"zh-Hans":"解除魂契", "en":"Unbind Pact"},
 	"ui.deck_mana_curve": {"zh-Hans":"法力能耗曲线", "en":"Energy Curve"},
 	"ui.deck_archetype_ratio": {"zh-Hans":"牌组流派构成", "en":"Card Type Ratio"},
 	"ui.deck_dominant_element": {"zh-Hans":"主修流派", "en":"Primary Affinity"},
@@ -4085,7 +4092,36 @@ const UI_TEXT = {
 	"ui.archetype_combo": {"zh-Hans":"千刃连击流", "en":"Tempest Combo Archetype"},
 	"ui.archetype_balanced": {"zh-Hans":"万法归一灵修", "en":"Harmonious Qi Archetype"},
 	"ui.settings_fast_combat": {"zh-Hans":"极速对决", "en":"Ultra Fast Combat"},
-	"ui.settings_fast_combat_desc": {"zh-Hans":"精简抽牌与结算动画，毫秒级极速流转", "en":"Streamline draw & resolution delays for blitz-paced combat"}
+	"ui.settings_fast_combat_desc": {"zh-Hans":"精简抽牌与结算动画，毫秒级极速流转", "en":"Streamline draw & resolution delays for blitz-paced combat"},
+	"ui.mastery_tier_0": {"zh-Hans":"未入流", "en":"Uninitiated"},
+	"ui.mastery_tier_1": {"zh-Hans":"初窥门径", "en":"Initiate"},
+	"ui.mastery_tier_2": {"zh-Hans":"融会贯通", "en":"Adept"},
+	"ui.mastery_tier_3": {"zh-Hans":"出神入化 · 化境", "en":"Awakened Ascendant"},
+	"ui.mastery_leveled_up": {"zh-Hans":"卡牌参悟进阶！已达【%s】", "en":"Card Mastery ascended to [%s]!"},
+	"ui.awakened_badge": {"zh-Hans":"★ 化境", "en":"★ Awakened"},
+	"ui.deck_oracle_title": {"zh-Hans":"天机推演 · 命盘几率", "en":"Combat Odds & Deck Oracle"},
+	"ui.deck_oracle_odds_atk": {"zh-Hans":"抽中攻击牌概率", "en":"Odds of Drawing Attack"},
+	"ui.deck_oracle_odds_def": {"zh-Hans":"抽中防守牌概率", "en":"Odds of Drawing Defense"},
+	"ui.deck_oracle_distribution": {"zh-Hans":"牌堆结构占比", "en":"Draw Pile Distribution"},
+	"ui.herb_garden_title": {"zh-Hans":"百草园与炼丹炉", "en":"Herb Garden & Cauldron"},
+	"ui.herb_garden_sub": {"zh-Hans":"种植采摘上古药草，八卦炉炼制战阵秘丹", "en":"Cultivate ancient herbs and refine combat elixir pills"},
+	"ui.harvest_btn": {"zh-Hans":"采集灵草", "en":"Harvest Herbs"},
+	"ui.harvest_success": {"zh-Hans":"采得紫玉灵芝、赤阳草、玄冰花各2株！", "en":"Harvested 2 Lingzhi, 2 Sun Grass, 2 Frost Flower!"},
+	"ui.craft_pill_btn": {"zh-Hans":"八卦炉炼制", "en":"Refine in Cauldron"},
+	"ui.pill_crafted_fmt": {"zh-Hans":"炼化成功！获得【%s】x1", "en":"Refined successfully! Obtained [%s] x1"},
+	"ui.pill_insufficient_herbs": {"zh-Hans":"药材不足，无法起炉！", "en":"Insufficient herbs to refine!"},
+	"ui.pill_quick_use": {"zh-Hans":"服丹", "en":"Pill"},
+	"ui.pill_used_fmt": {"zh-Hans":"吞服【%s】，灵力沸腾！", "en":"Consumed [%s]!"},
+	"ui.pact_title": {"zh-Hans":"锁妖塔古妖魂契", "en":"Demonic Soul Pacts"},
+	"ui.pact_sub": {"zh-Hans":"逆天改命 · 与被镇压的大妖立下本命血誓", "en":"Defy destiny with ancient demonic covenants"},
+	"ui.pact_bound": {"zh-Hans":"魂契已结！承载逆天之力！", "en":"Soul Pact Bound! Harness demonic powers!"},
+	"ui.pact_unbound": {"zh-Hans":"已解除魂契", "en":"Soul Pact Relinquished"},
+	"ui.victory_scroll_title": {"zh-Hans":"降妖立轴画卷", "en":"Demon-Subduing Hanging Scroll"},
+	"ui.victory_scroll_btn": {"zh-Hans":"📜 降妖画卷", "en":"📜 Victory Scroll"},
+	"ui.victory_scroll_copied": {"zh-Hans":"降妖立轴画卷战报已生成并复制至剪贴板！", "en":"Victory scroll summary copied to clipboard!"},
+	"ui.eco_mode_label": {"zh-Hans":"智能降温省电", "en":"Eco Thermal Saver"},
+	"ui.eco_mode_desc": {"zh-Hans":"智能降低后台与微粒负载，有效减少手机发热", "en":"Reduces particle loads and thermal throttling"},
+	"ui.target_fps_label": {"zh-Hans":"帧率上限", "en":"Target FPS"}
 }
 
 func ui(key: String, language := "zh-Hans") -> String:
@@ -4337,3 +4373,165 @@ static func get_daily_challenge_info(date_str: String = "") -> Dictionary:
 		"weather": weather,
 		"relic": relic
 	}
+
+const AWAKENED_CARDS = {
+	"strike": {
+		"id": "strike",
+		"name_zh": "三昧神刺", "name_en": "Samadhi Strike",
+		"bonus_damage": 3,
+		"desc_zh": "造成额外 3 点真实伤害。若连击≥2，抽 1 张牌",
+		"desc_en": "Deals +3 bonus True Damage. If Combo ≥ 2, draw 1 card."
+	},
+	"ward": {
+		"id": "ward",
+		"name_zh": "太极玄甲", "name_en": "Taiji Aegis",
+		"bonus_shield": 3,
+		"desc_zh": "获得额外 3 点护甲，并在回合结束保留 3 点护甲",
+		"desc_en": "Gain +3 bonus Shield, and retain 3 Shield at end of turn."
+	},
+	"defend": {
+		"id": "defend",
+		"name_zh": "太极玄甲", "name_en": "Taiji Aegis",
+		"bonus_shield": 3,
+		"desc_zh": "获得额外 3 点护甲，并在回合结束保留 3 点护甲",
+		"desc_en": "Gain +3 bonus Shield, and retain 3 Shield at end of turn."
+	},
+	"spirit_surge": {
+		"id": "spirit_surge",
+		"name_zh": "九霄聚灵", "name_en": "Celestial Surge",
+		"bonus_energy": 1,
+		"desc_zh": "额外获得 1 点灵力与 1 点专注",
+		"desc_en": "Gain +1 extra Energy and +1 Focus."
+	},
+	"samadhi_fire": {
+		"id": "samadhi_fire",
+		"name_zh": "红莲业火", "name_en": "Crimson Lotus Flame",
+		"bonus_burn": 3,
+		"desc_zh": "额外施加 3 层焚身烈焰，伤害对全体敌人生效",
+		"desc_en": "Inflict 3 extra Burn to all enemies."
+	},
+	"shield_slam": {
+		"id": "shield_slam",
+		"name_zh": "撼地崩岳", "name_en": "Earthshaker Slam",
+		"bonus_ratio": 0.5,
+		"desc_zh": "基于护甲的伤害提升 50%，并眩晕目标 1 回合",
+		"desc_en": "Shield scaling increased by 50% and stuns target."
+	}
+}
+
+const BOSS_COMBAT_BARKS = {
+	"intro": [
+		{"zh": "何方宵小，胆敢惊扰本座清修！", "en": "Who dares disturb my sacred meditation!"},
+		{"zh": "尔等凡胎肉身，也配在此地问仙寻道？", "en": "Mortals, your journey ends in dust and bone!"},
+		{"zh": "此山由我镇守，纳下尔等灵元！", "en": "Surrender your spiritual essence to me!"}
+	],
+	"phase2": [
+		{"zh": "魔相显化，万劫俱灭！给本座化为齑粉！", "en": "True demonic form awaken! Suffer oblivion!"},
+		{"zh": "竟敢伤我法身！今日定将你神魂俱灭！", "en": "You dare wound my true avatar! Face annihilation!"},
+		{"zh": "天魔解体，焚尽残躯！受死！", "en": "By forbidden arts, perish with the void!"}
+	],
+	"heavy_hit": [
+		{"zh": "狂妄！竟有这般蛮横雷霆手段？！", "en": "Insolent! Where did you wield such power?!"},
+		{"zh": "痛煞我也！定要将你抽魂炼魄！", "en": "Aargh! I shall flay your soul alive!"},
+		{"zh": "休得张狂，接本座下一式！", "en": "Do not gloat yet, brace for my wrath!"}
+	],
+	"player_low_hp": [
+		{"zh": "气息已衰，你那灵脉气数已尽！", "en": "Your breath wanes, mortal. Your Dao is broken!"},
+		{"zh": "垂死挣扎，不过螳臂当车！", "en": "Struggling in vain against your inevitable demise!"},
+		{"zh": "桀桀桀，乖乖交出你的灵根吧！", "en": "Surrender your spiritual root to my feast!"}
+	],
+	"defeat": [
+		{"zh": "天道……不公！本座竟……败于凡尘……", "en": "The Heavens... betrayed me... How could I fall..."},
+		{"zh": "锁妖塔封印……终将……崩裂……", "en": "The Pagoda seal... will inevitably... shatter..."}
+	]
+}
+
+const ALCHEMY_RECIPES = {
+	"qi_pill": {
+		"id": "qi_pill",
+		"name_zh": "回灵聚气丹", "name_en": "Qi Gathering Pill",
+		"desc_zh": "实战中瞬间恢复 2 点灵力", "desc_en": "Instantly restores 2 Energy in combat",
+		"cost": {"purple_lingzhi": 2, "sun_grass": 1},
+		"effect": {"energy": 2}
+	},
+	"iron_shield_pill": {
+		"id": "iron_shield_pill",
+		"name_zh": "金刚玄甲散", "name_en": "Vajra Aegis Powder",
+		"desc_zh": "实战中瞬间获得 25 点玄金护甲", "desc_en": "Instantly grants 25 Shield in combat",
+		"cost": {"frost_flower": 2, "purple_lingzhi": 1},
+		"effect": {"shield": 25}
+	},
+	"nine_turn_pill": {
+		"id": "nine_turn_pill",
+		"name_zh": "九转续命膏", "name_en": "Nine-Turn Life Salve",
+		"desc_zh": "实战中恢复 30 点生命值并清除所有负面状态", "desc_en": "Restores 30 HP and cleanses all debuffs in combat",
+		"cost": {"sun_grass": 2, "frost_flower": 2},
+		"effect": {"heal": 30, "cleanse": true}
+	}
+}
+
+const PAGODA_SOUL_PACTS = {
+	"asura_blood_pact": {
+		"id": "asura_blood_pact",
+		"name_zh": "修罗噬血契", "name_en": "Asura Blood Pact",
+		"desc_zh": "造成伤害的 20% 转化为生命恢复，但最大生命值上限降低 25%",
+		"desc_en": "Heal 20% of unblocked damage dealt, but Max HP reduced by 25%",
+		"leech_ratio": 0.20,
+		"max_hp_mult": 0.75
+	},
+	"taishang_detachment": {
+		"id": "taishang_detachment",
+		"name_zh": "太上忘情契", "name_en": "Taishang Detachment Pact",
+		"desc_zh": "每回合起始额外获得 1 点灵力，但每回合抽牌数 -1",
+		"desc_en": "Gain +1 Energy at turn start, but draw 1 fewer card per turn",
+		"bonus_energy": 1,
+		"draw_penalty": 1
+	},
+	"ten_thousand_swords": {
+		"id": "ten_thousand_swords",
+		"name_zh": "万剑归宗契", "name_en": "Ten Thousand Swords Pact",
+		"desc_zh": "若回合内未打出任何防守牌，所有攻击造成的伤害翻倍",
+		"desc_en": "If no defense cards are played in a turn, attack damage is doubled (+100%)",
+		"attack_mult": 2.0
+	},
+	"adamantine_body": {
+		"id": "adamantine_body",
+		"name_zh": "金刚不坏契", "name_en": "Adamantine Body Pact",
+		"desc_zh": "回合结束时保留全部护甲不消散，但所有卡牌灵力消耗 +1",
+		"desc_en": "Retain all Shield between turns, but all cards cost +1 Energy",
+		"retain_shield": true,
+		"cost_increase": 1
+	}
+}
+
+const WEATHER_SYNERGIES = {
+	"thunderstorm": {
+		"id": "thunderstorm",
+		"name_zh": "九天雷暴", "name_en": "Thunderstorm",
+		"desc_zh": "天雷滚滚：金系/雷系卡牌额外附带 3 点破甲雷伤",
+		"desc_en": "Thunder roll: Metal/Thunder cards deal +3 bonus piercing damage",
+		"bonus_lightning_damage": 3
+	},
+	"blizzard": {
+		"id": "blizzard",
+		"name_zh": "极寒暴雪", "name_en": "Blizzard",
+		"desc_zh": "寒风刺骨：水系/冰系冻结与虚弱效果额外延长 1 回合",
+		"desc_en": "Bitter frost: Water/Ice freeze & chill effects last +1 turn",
+		"freeze_duration_bonus": 1
+	},
+	"rain": {
+		"id": "rain",
+		"name_zh": "甘霖骤雨", "name_en": "Verdant Rain",
+		"desc_zh": "生机复苏：打出木系或水系回灵治愈卡牌时额外恢复 2 点生命",
+		"desc_en": "Nature rejuvenation: Playing Wood or Water cards heals 2 HP",
+		"heal_bonus": 2
+	},
+	"fog": {
+		"id": "fog",
+		"name_zh": "九幽迷雾", "name_en": "Nether Fog",
+		"desc_zh": "雾隐幻形：首回合起始获得 1 层无相迷雾（免疫首次攻击）",
+		"desc_en": "Shadow veil: Start battle with 1 stack of Fog Veil (evade first hit)",
+		"start_veil": 1
+	}
+}
+

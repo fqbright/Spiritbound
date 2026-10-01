@@ -115,6 +115,7 @@ var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
 var map_music: AudioStreamPlayer
 var battle_music: AudioStreamPlayer
+var battle_tension_music: AudioStreamPlayer
 var battle_music_streams: Array[AudioStream] = []
 var sfx_muted := false
 var _sfx_pool: Array[AudioStreamPlayer] = []
@@ -471,7 +472,7 @@ func _ready() -> void:
 	_track_return_days()
 	lang = str(profile.get("language", "zh-Hans"))
 	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 4.0)
-	Engine.max_fps = int(profile.get("target_fps", 60))
+	_apply_performance_settings()
 	muted = bool(profile.get("music_muted", false))
 	sfx_muted = bool(profile.get("sfx_muted", false))
 	_build_audio()
@@ -1481,6 +1482,7 @@ func _create_page(separation := 6) -> VBoxContainer:
 func _build_audio() -> void:
 	map_music = AudioStreamPlayer.new(); map_music.stream = load("res://assets/audio/map_symphony.wav"); map_music.volume_db = -10; add_child(map_music)
 	battle_music = AudioStreamPlayer.new(); battle_music.volume_db = -10; add_child(battle_music)
+	battle_tension_music = AudioStreamPlayer.new(); battle_tension_music.volume_db = -80; add_child(battle_tension_music)
 	battle_music_streams = [
 		load("res://assets/audio/battle_stage_0.wav"),
 		load("res://assets/audio/battle_stage_1.wav"),
@@ -1488,8 +1490,11 @@ func _build_audio() -> void:
 		load("res://assets/audio/battle_stage_3.wav"),
 		load("res://assets/audio/battle_stage_4.wav"),
 	]
+	if battle_music_streams.size() > 0:
+		battle_tension_music.stream = battle_music_streams[0]
 	map_music.finished.connect(func(): if not muted: map_music.play())
 	battle_music.finished.connect(func(): if not muted: battle_music.play())
+	battle_tension_music.finished.connect(func(): if not muted and battle_tension_music.volume_db > -40: battle_tension_music.play())
 	_build_sfx()
 
 func _build_sfx() -> void:
@@ -1568,11 +1573,16 @@ func _play_music(battle := false, stage_level: int = 0) -> void:
 		if battle_music != null:
 			battle_music.pitch_scale = 1.0
 			battle_music.stop()
+		if battle_tension_music != null:
+			battle_tension_music.volume_db = -80.0
+			battle_tension_music.stop()
 		if map_music != null and not map_music.playing: map_music.play()
 
 func _set_boss_phase_music(boosted: bool) -> void:
 	if battle_music != null and is_instance_valid(battle_music):
 		battle_music.pitch_scale = 1.06 if boosted else 1.0
+	if battle_tension_music != null and is_instance_valid(battle_tension_music) and boosted:
+		_set_low_hp_tension_audio(true)
 
 func _set_low_hp_tension_audio(enabled: bool) -> void:
 	if battle_music != null and is_instance_valid(battle_music):
@@ -1583,6 +1593,16 @@ func _set_low_hp_tension_audio(enabled: bool) -> void:
 		var tw := create_tween().set_parallel(true)
 		tw.tween_property(battle_music, "pitch_scale", target_pitch, 0.4)
 		tw.tween_property(battle_music, "volume_db", target_db, 0.4)
+		if battle_tension_music != null and is_instance_valid(battle_tension_music):
+			var tension_db: float = base_db - 2.0 if enabled else -80.0
+			if enabled and not battle_tension_music.playing:
+				battle_tension_music.play()
+			tw.tween_property(battle_tension_music, "volume_db", tension_db, 0.5)
+
+func _apply_performance_settings() -> void:
+	Engine.max_fps = int(profile.get("target_fps", 60))
+	var eco: bool = bool(profile.get("eco_mode", false))
+	OS.low_processor_usage_mode = eco
 
 func _panel(color: Color, radius := 12, border := Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new(); style.bg_color = color
@@ -2993,9 +3013,8 @@ func show_settings() -> void:
 		else:
 			label_str += " (极速)" if is_zh else " (Max)"
 		var fps_btn := _button(label_str, func():
-			profile["target_fps"] = fps_val
-			Engine.max_fps = fps_val
-			SpiritSave.write(profile)
+			SpiritSave.set_target_fps(profile, fps_val)
+			_apply_performance_settings()
 			_close_settings()
 			show_settings()
 		, JADE if is_fps_active else Color("1c333a"), Vector2(0, 36))
@@ -3003,6 +3022,19 @@ func show_settings() -> void:
 		fps_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		fps_row.add_child(fps_btn)
 	fps_box.add_child(fps_row)
+
+	# Eco Mode toggle
+	var eco_active: bool = bool(profile.get("eco_mode", false))
+	var eco_label: String = "🌱 " + (t("ui.eco_mode_label") + ": " + (t("ui.settings_on") if eco_active else t("ui.settings_off")))
+	var eco_btn := _button(eco_label, func():
+		SpiritSave.set_eco_mode(profile, not eco_active)
+		_apply_performance_settings()
+		_close_settings()
+		show_settings()
+	, JADE if eco_active else Color("1c333a"), Vector2(0, 36))
+	eco_btn.name = "EcoModeBtn"
+	eco_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fps_box.add_child(eco_btn)
 	list.add_child(fps_box)
 
 	# 5. Account & Cloud Save Option

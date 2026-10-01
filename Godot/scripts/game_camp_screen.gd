@@ -1409,6 +1409,83 @@ func _sanctuary_garden_section() -> Control:
 	vbox.add_child(fam_row)
 	return panel
 
+func _herb_garden_and_cauldron_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "HerbGardenAndCauldronSection"
+	var pstyle := g._panel(Color("10241b"), 12, Color("10b981"))
+	pstyle.content_margin_left = 12
+	pstyle.content_margin_right = 12
+	pstyle.content_margin_top = 10
+	pstyle.content_margin_bottom = 10
+	panel.add_theme_stylebox_override("panel", pstyle)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label("🌿 " + g.t("ui.herb_garden_title"), 13, Color("6ee7b7")))
+	vbox.add_child(head)
+	vbox.add_child(g._label(g.t("ui.herb_garden_sub"), 9, Color("94a3b8"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var herbs: Dictionary = g.profile.get("herb_garden", {})
+	var herb_row := HBoxContainer.new()
+	herb_row.add_theme_constant_override("separation", 8)
+
+	var p_lingzhi: int = int(herbs.get("purple_lingzhi", 0))
+	var s_grass: int = int(herbs.get("sun_grass", 0))
+	var f_flower: int = int(herbs.get("frost_flower", 0))
+
+	herb_row.add_child(g._label("🍄 %s: %d" % [g.t("ui.herb_purple_lingzhi"), p_lingzhi], 10, Color("c084fc")))
+	herb_row.add_child(g._label("🌾 %s: %d" % [g.t("ui.herb_sun_grass"), s_grass], 10, Color("facc15")))
+	herb_row.add_child(g._label("❄️ %s: %d" % [g.t("ui.herb_frost_flower"), f_flower], 10, Color("67e8f9")))
+	vbox.add_child(herb_row)
+
+	var on_harvest := func():
+		var harvested: Dictionary = SpiritSave.harvest_herbs(g.profile)
+		var h_str: String = "🍄+%d 🌾+%d ❄️+%d" % [int(harvested.get("purple_lingzhi", 0)), int(harvested.get("sun_grass", 0)), int(harvested.get("frost_flower", 0))]
+		g._toast("✦ " + g.t("ui.harvest_btn") + " " + h_str, g.JADE)
+		show_camp()
+
+	var harvest_btn := g._button("🧺 " + g.t("ui.harvest_btn"), on_harvest, Color("14382c"), Vector2(0, 30))
+	harvest_btn.name = "HarvestHerbsBtn"
+	harvest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(harvest_btn)
+
+	var recipes_box := VBoxContainer.new()
+	recipes_box.add_theme_constant_override("separation", 6)
+	var pills_inv: Dictionary = g.profile.get("alchemy_pills", {})
+
+	for r_id in SpiritContent.ALCHEMY_RECIPES:
+		var recipe: Dictionary = SpiritContent.ALCHEMY_RECIPES[r_id]
+		var r_name: String = str(recipe.get("name_en" if g.lang == "en" else "name_zh", ""))
+		var r_desc: String = str(recipe.get("desc_en" if g.lang == "en" else "desc_zh", ""))
+		var stock: int = int(pills_inv.get(r_id, 0))
+
+		var r_row := HBoxContainer.new()
+		r_row.add_theme_constant_override("separation", 6)
+
+		var info_box := VBoxContainer.new()
+		info_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info_box.add_child(g._label("💊 %s (%s)" % [r_name, g.tf("ui.alchemy_stock_fmt", stock)], 11, Color("fef08a")))
+		info_box.add_child(g._label(r_desc, 9, Color("94a3b8"), HORIZONTAL_ALIGNMENT_LEFT, true))
+		r_row.add_child(info_box)
+
+		var craft_btn := g._button(g.t("ui.craft_pill_btn"), func():
+			if SpiritSave.craft_pill(g.profile, r_id):
+				g._toast("✦ " + r_name + " 炼制成功！", g.GOLD)
+				show_camp()
+			else:
+				g._toast("灵草不足，无法开炉炼制", Color("f87171"))
+		, Color("2d261e"), Vector2(56, 30))
+		craft_btn.name = "CraftPillBtn_" + r_id
+		r_row.add_child(craft_btn)
+
+		recipes_box.add_child(r_row)
+
+	vbox.add_child(recipes_box)
+	return panel
+
 func _astral_roots_section() -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "AstralRootsSection"
@@ -1475,6 +1552,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
 	list.add_child(_prestige_titles_section())
 	list.add_child(_sanctuary_garden_section())
+	list.add_child(_herb_garden_and_cauldron_section())
 	list.add_child(_spiritual_roots_section())
 	list.add_child(_astral_roots_section())
 	list.add_child(_meridian_cultivation_section())
@@ -4500,10 +4578,117 @@ func _endless_pagoda_section() -> Control:
 	vbox.add_child(g._label(g.t("ui.pagoda_title") + " (最高: 第%d层)" % cur_fl, 14, g.EMBER, HORIZONTAL_ALIGNMENT_LEFT))
 	vbox.add_child(g._label(g.t("ui.pagoda_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+
 	var enter_btn := g._button(g.tf("ui.pagoda_enter_btn", cur_fl), func(): begin_pagoda_battle(cur_fl), g.EMBER, Vector2(160, 32))
 	enter_btn.name = "PagodaEnterBtn"
-	vbox.add_child(enter_btn)
+	btn_row.add_child(enter_btn)
+
+	var pact_btn := g._button("📜 " + g.t("ui.pact_title"), _show_soul_pacts_modal, Color("581c87"), Vector2(140, 32))
+	pact_btn.name = "PagodaPactBtn"
+	btn_row.add_child(pact_btn)
+
+	vbox.add_child(btn_row)
 	return panel
+
+func _show_soul_pacts_modal() -> void:
+	var existing: Node = g.overlay.get_node_or_null("SoulPactsModal")
+	if existing != null:
+		existing.queue_free()
+
+	var modal := g._modal_dialog("SoulPactsModal", func():
+		var ex: Node = g.overlay.get_node_or_null("SoulPactsModal")
+		if ex != null:
+			if ex.get_parent(): ex.get_parent().remove_child(ex)
+			ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 460)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("180b26"), 16, Color("a855f7")))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	pad.add_child(vbox)
+	panel.add_child(pad)
+
+	var hdr := HBoxContainer.new()
+	var title_lbl := g._label("📜 " + g.t("ui.pact_title"), 16, Color("e9d5ff"))
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr.add_child(title_lbl)
+	var close_btn := g._button("✕", func():
+		var ex: Node = g.overlay.get_node_or_null("SoulPactsModal")
+		if ex != null: ex.queue_free()
+	, Color("3b185f"), Vector2(30, 30))
+	hdr.add_child(close_btn)
+	vbox.add_child(hdr)
+
+	vbox.add_child(g._label(g.t("ui.pact_sub"), 9, Color("c084fc"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 350)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
+
+	var list_box := VBoxContainer.new()
+	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_box.add_theme_constant_override("separation", 8)
+	scroll.add_child(list_box)
+
+	var bound_pacts: Array = g.profile.get("pagoda_soul_pacts", [])
+
+	for pact_id in SpiritContent.PAGODA_SOUL_PACTS:
+		var pact: Dictionary = SpiritContent.PAGODA_SOUL_PACTS[pact_id]
+		var is_bound: bool = bound_pacts.has(pact_id)
+		var p_name: String = str(pact.get("name_en" if g.lang == "en" else "name_zh", ""))
+		var p_desc: String = str(pact.get("desc_en" if g.lang == "en" else "desc_zh", ""))
+
+		var card_p := PanelContainer.new()
+		var cp_style := g._panel(Color("26123d" if is_bound else "150a21"), 10, Color("c084fc" if is_bound else "4c1d95"))
+		cp_style.content_margin_left = 10; cp_style.content_margin_right = 10
+		cp_style.content_margin_top = 8; cp_style.content_margin_bottom = 8
+		card_p.add_theme_stylebox_override("panel", cp_style)
+
+		var c_vbox := VBoxContainer.new()
+		c_vbox.add_theme_constant_override("separation", 4)
+		card_p.add_child(c_vbox)
+
+		var r_top := HBoxContainer.new()
+		var n_lbl := g._label(p_name, 12, Color("fbbf24") if is_bound else Color("e2e8f0"))
+		n_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r_top.add_child(n_lbl)
+
+		if is_bound:
+			var act_tag := g._label("★ " + g.t("ui.pagoda_pact_active"), 10, Color("34d399"))
+			r_top.add_child(act_tag)
+		c_vbox.add_child(r_top)
+
+		c_vbox.add_child(g._label(p_desc, 9, Color("d8b4fe"), HORIZONTAL_ALIGNMENT_LEFT, true))
+
+		var act_btn := g._button(g.t("ui.pagoda_unbind_btn") if is_bound else g.t("ui.pagoda_bind_btn"), func():
+			if is_bound:
+				SpiritSave.unbind_soul_pact(g.profile, pact_id)
+				g._toast("✦ " + g.t("ui.pagoda_unbind_btn") + ": " + p_name, Color("fca5a5"))
+			else:
+				SpiritSave.bind_soul_pact(g.profile, pact_id)
+				g._toast("✦ " + g.t("ui.pagoda_bind_btn") + ": " + p_name, Color("34d399"))
+			_show_soul_pacts_modal()
+		, Color("7e22ce" if not is_bound else "4c1d95"), Vector2(0, 28))
+		act_btn.name = "PactToggleBtn_" + pact_id
+		c_vbox.add_child(act_btn)
+
+		list_box.add_child(card_p)
 
 func begin_training_dummy_battle() -> void:
 	g.in_sandbox = true

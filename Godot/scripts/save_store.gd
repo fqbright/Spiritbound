@@ -28,7 +28,7 @@ static func _uuid() -> String:
 static func defaults(content: SpiritContent) -> Dictionary:
 	var collection := {}
 	for id in content.raw.startingDeck: collection[id] = collection.get(id,0) + 1
-	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"spirit_jade":10,"spirit_dust":0,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"deck_presets":{"1":content.raw.startingDeck.duplicate(),"2":content.raw.startingDeck.duplicate(),"3":content.raw.startingDeck.duplicate()},"deck_preset_names":{"1":"预设 1","2":"预设 2","3":"预设 3"},"active_deck_preset":1,"foil_cards":[],"run_history":[],"familiar_stage":0,"familiar_affinity":0,"astral_roots":{"metal":0,"wood":0,"water":0,"fire":0,"earth":0},"astral_sparks":0,"pagoda_highest_floor":1,"card_affixes":{},"fused_cards":[],"active_hexagram":"","bestiary_kills":{},"hero_skins":{"fox_spirit":"default","ironclad_sentinel":"default"},"auto_battle_enabled":false,"collection":collection,"upgrades":{},"card_branches":{},"first_boss_capstone_awarded":false,"seven_day_journey":{"unlocked_day":1,"claimed":[],"progress":{}},"relics":[],"equipment_owned":[],"equipment_slots":{},"equipment_tiers":{},"equipment_inscriptions":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":[],"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[],"history":[]},"tutorial_seen":false,"tutorials_seen":{},"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"career_stats":{"total_battles":0,"victories":0,"defeats":0,"current_win_streak":0,"longest_win_streak":0,"total_damage_dealt":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"favorite_hero":"fox_spirit","favorite_cards":{},"hall_of_fame":[]},"achievements_unlocked":{},"achievements_claimed":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]},"boss_rush_floor":1,"boss_rush_record":0,"text_scale":1.0,"idle_harvest":{"last_claim_time":0,"last_fast_claim_day":-1},"phantom_arena":{"day":-1,"wins_today":0,"claimed_today":false},"novice_journey":{"claimed":[]},"daily_first_win":{"day":-1,"claimed":false},"combat_consumables":{"strength":0,"focus":0,"energy":0},"stamina":{"current":100,"max":100,"last_regen_time":0},"samsara_count":0,"intro_seen":false,"meridians":{},"curse_run":{"selected":"","floors":{},"records":{},"cleared":[]},"world_event_record":{"period":-1,"claimed":false,"badges":[]},"feature_unlocks_seen":[],"friends":[],"first_seen_day":-1,"return_days_reported":[],"win_streak":0,"max_win_streak":0,"haptics_enabled":true,"music_volume":1.0,"sfx_volume":1.0,"ascension_level":0,"highest_ascension":0,"phantom_guard":{},"pending_sync_queue":[],"daily_challenge_runs":{},"fast_combat":false}
+	return {"schema_version":SCHEMA_VERSION,"account":new_account(),"updated_at":0,"gold":30,"spirit_jade":10,"spirit_dust":0,"health":60,"unlocked":0,"position":0,"deck":content.raw.startingDeck.duplicate(),"deck_presets":{"1":content.raw.startingDeck.duplicate(),"2":content.raw.startingDeck.duplicate(),"3":content.raw.startingDeck.duplicate()},"deck_preset_names":{"1":"预设 1","2":"预设 2","3":"预设 3"},"active_deck_preset":1,"foil_cards":[],"run_history":[],"familiar_stage":0,"familiar_affinity":0,"astral_roots":{"metal":0,"wood":0,"water":0,"fire":0,"earth":0},"astral_sparks":0,"pagoda_highest_floor":1,"card_affixes":{},"fused_cards":[],"active_hexagram":"","bestiary_kills":{},"hero_skins":{"fox_spirit":"default","ironclad_sentinel":"default"},"auto_battle_enabled":false,"collection":collection,"upgrades":{},"card_branches":{},"first_boss_capstone_awarded":false,"seven_day_journey":{"unlocked_day":1,"claimed":[],"progress":{}},"relics":[],"equipment_owned":[],"equipment_slots":{},"equipment_tiers":{},"equipment_inscriptions":{},"rune_inventory":{},"card_runes":{},"difficulty":0,"language":"zh-Hans","battle_speed":1.0,"hero_class":"fox_spirit","abyss_floor":1,"abyss_record":0,"abyss_boons":[],"daily_quests":[],"daily_reset_at":0,"weekly_quests":[],"weekly_reset_at":0,"claimed_stage_events":[],"compendium_discovered":[],"compendium_milestones_claimed":[],"hero_masteries":{},"daily_trial_record":{"day":-1,"stage":0,"badges":0,"best_stage":0,"streak":0,"streak_claimed":[],"history":[]},"tutorial_seen":false,"tutorials_seen":{},"login_reward":{"week":-1,"days":[],"claimed":[]},"lifetime_stats":{},"career_stats":{"total_battles":0,"victories":0,"defeats":0,"current_win_streak":0,"longest_win_streak":0,"total_damage_dealt":0,"total_shield_gained":0,"total_cards_played":0,"elites_slain":0,"bosses_slain":0,"favorite_hero":"fox_spirit","favorite_cards":{},"hall_of_fame":[]},"achievements_unlocked":{},"achievements_claimed":{},"reduce_motion":false,"season_pass":{"season_id":1,"season_name":"灵火初醒","xp":0,"claimed_free":[],"claimed_premium":[]},"boss_rush_floor":1,"boss_rush_record":0,"text_scale":1.0,"idle_harvest":{"last_claim_time":0,"last_fast_claim_day":-1},"phantom_arena":{"day":-1,"wins_today":0,"claimed_today":false},"novice_journey":{"claimed":[]},"daily_first_win":{"day":-1,"claimed":false},"combat_consumables":{"strength":0,"focus":0,"energy":0},"stamina":{"current":100,"max":100,"last_regen_time":0},"samsara_count":0,"intro_seen":false,"meridians":{},"curse_run":{"selected":"","floors":{},"records":{},"cleared":[]},"world_event_record":{"period":-1,"claimed":false,"badges":[]},"feature_unlocks_seen":[],"friends":[],"first_seen_day":-1,"return_days_reported":[],"win_streak":0,"max_win_streak":0,"haptics_enabled":true,"music_volume":1.0,"sfx_volume":1.0,"ascension_level":0,"highest_ascension":0,"phantom_guard":{},"pending_sync_queue":[],"daily_challenge_runs":{},"fast_combat":false,"target_fps":60,"eco_mode":false,"card_mastery":{},"herb_garden":{"purple_lingzhi":3,"sun_grass":3,"frost_flower":3,"last_harvest_time":0},"alchemy_pills":{"qi_pill":1,"iron_shield_pill":1,"nine_turn_pill":0},"pagoda_soul_pacts":[]}
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
@@ -206,6 +206,14 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not base.has("spiritual_root_points"): base.spiritual_root_points = 3
 	if not base.get("card_inscriptions") is Dictionary: base.card_inscriptions = {}
 	if not base.has("one_handed_mode"): base.one_handed_mode = "off"
+	if not base.has("target_fps"): base.target_fps = 60
+	if not base.has("eco_mode"): base.eco_mode = false
+	if not base.get("card_mastery") is Dictionary: base.card_mastery = {}
+	if not base.get("herb_garden") is Dictionary:
+		base.herb_garden = {"purple_lingzhi": 3, "sun_grass": 3, "frost_flower": 3, "last_harvest_time": 0}
+	if not base.get("alchemy_pills") is Dictionary:
+		base.alchemy_pills = {"qi_pill": 1, "iron_shield_pill": 1, "nine_turn_pill": 0}
+	if not base.get("pagoda_soul_pacts") is Array: base.pagoda_soul_pacts = []
 	base.schema_version = SCHEMA_VERSION
 	return base
 
@@ -334,4 +342,96 @@ static func merge_profiles(local_p: Dictionary, cloud_p: Dictionary) -> Dictiona
 	merged.compendium_discovered = c_disc
 	merged.updated_at = maxi(int(local_p.get("updated_at", 0)), int(cloud_p.get("updated_at", 0)))
 	return merged
+
+static func get_mastery_tier_for_count(count: int) -> int:
+	if count >= 60: return 3 # 出神入化 (Awakened)
+	if count >= 30: return 2 # 融会贯通
+	if count >= 10: return 1 # 初窥门径
+	return 0 # 未入流
+
+static func add_card_mastery(profile: Dictionary, card_id: String, amount: int = 1) -> Dictionary:
+	if not profile.get("card_mastery") is Dictionary:
+		profile.card_mastery = {}
+	var cur: int = int(profile.card_mastery.get(card_id, 0))
+	var new_val: int = cur + amount
+	profile.card_mastery[card_id] = new_val
+	var old_tier := get_mastery_tier_for_count(cur)
+	var new_tier := get_mastery_tier_for_count(new_val)
+	write(profile)
+	return {"card_id": card_id, "count": new_val, "tier": new_tier, "leveled_up": new_tier > old_tier}
+
+static func get_card_mastery_tier(profile: Dictionary, card_id: String) -> int:
+	var count: int = int(profile.get("card_mastery", {}).get(card_id, 0))
+	return get_mastery_tier_for_count(count)
+
+static func is_card_awakened(profile: Dictionary, card_id: String) -> bool:
+	return get_card_mastery_tier(profile, card_id) >= 3
+
+static func harvest_herbs(profile: Dictionary) -> Dictionary:
+	if not profile.get("herb_garden") is Dictionary:
+		profile.herb_garden = {"purple_lingzhi": 0, "sun_grass": 0, "frost_flower": 0, "last_harvest_time": 0}
+	var gained := {
+		"purple_lingzhi": 2,
+		"sun_grass": 2,
+		"frost_flower": 2
+	}
+	for herb in gained:
+		profile.herb_garden[herb] = int(profile.herb_garden.get(herb, 0)) + gained[herb]
+	profile.herb_garden.last_harvest_time = int(Time.get_unix_time_from_system())
+	write(profile)
+	return gained
+
+static func craft_pill(profile: Dictionary, recipe_id: String) -> bool:
+	if not profile.get("herb_garden") is Dictionary:
+		profile.herb_garden = {"purple_lingzhi": 0, "sun_grass": 0, "frost_flower": 0, "last_harvest_time": 0}
+	if not profile.get("alchemy_pills") is Dictionary:
+		profile.alchemy_pills = {"qi_pill": 0, "iron_shield_pill": 0, "nine_turn_pill": 0}
+	var recipe: Dictionary = SpiritContent.ALCHEMY_RECIPES.get(recipe_id, {})
+	if recipe.is_empty(): return false
+	var cost: Dictionary = recipe.get("cost", {})
+	for herb in cost:
+		if int(profile.herb_garden.get(herb, 0)) < int(cost[herb]):
+			return false
+	for herb in cost:
+		profile.herb_garden[herb] = int(profile.herb_garden.get(herb, 0)) - int(cost[herb])
+	profile.alchemy_pills[recipe_id] = int(profile.alchemy_pills.get(recipe_id, 0)) + 1
+	write(profile)
+	return true
+
+static func consume_pill(profile: Dictionary, pill_id: String) -> bool:
+	if not profile.get("alchemy_pills") is Dictionary:
+		return false
+	var cur: int = int(profile.alchemy_pills.get(pill_id, 0))
+	if cur <= 0: return false
+	profile.alchemy_pills[pill_id] = cur - 1
+	write(profile)
+	return true
+
+static func bind_soul_pact(profile: Dictionary, pact_id: String) -> bool:
+	if not profile.get("pagoda_soul_pacts") is Array:
+		profile.pagoda_soul_pacts = []
+	if not SpiritContent.PAGODA_SOUL_PACTS.has(pact_id):
+		return false
+	if profile.pagoda_soul_pacts.has(pact_id):
+		return false
+	profile.pagoda_soul_pacts.append(pact_id)
+	write(profile)
+	return true
+
+static func unbind_soul_pact(profile: Dictionary, pact_id: String) -> bool:
+	if not profile.get("pagoda_soul_pacts") is Array: return false
+	var idx: int = profile.pagoda_soul_pacts.find(pact_id)
+	if idx == -1: return false
+	profile.pagoda_soul_pacts.remove_at(idx)
+	write(profile)
+	return true
+
+static func set_target_fps(profile: Dictionary, fps: int) -> void:
+	profile.target_fps = fps
+	write(profile)
+
+static func set_eco_mode(profile: Dictionary, enabled: bool) -> void:
+	profile.eco_mode = enabled
+	write(profile)
+
 

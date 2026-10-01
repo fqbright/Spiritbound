@@ -11,6 +11,14 @@ func _init(game: SpiritGame) -> void:
 
 func show_reward() -> void:
 	g._clear(); g._play_music(false)
+	# Settle card mastery for cards played in this combat
+	if g.combat and g.combat.state.has("played_cards_tally"):
+		var tally: Dictionary = g.combat.state.played_cards_tally
+		for cid in tally:
+			var res: Dictionary = SpiritSave.add_card_mastery(g.profile, cid, int(tally[cid]))
+			if bool(res.get("leveled_up", false)):
+				var tier_name := g.t("ui.mastery_tier_%d" % int(res.tier))
+				g._toast(g.tf("ui.mastery_leveled_up", tier_name), g.GOLD)
 	var page := g._create_page(10)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 	page.add_child(g._label(g.t("ui.battle_won"), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
@@ -50,6 +58,10 @@ func show_reward() -> void:
 			var c_name: String = str(c_data.get("name_en", c_data.get("name", ""))) if g.lang == "en" else str(c_data.get("name", ""))
 			var mvp_lbl := g._label("★ %s: %s (+%d)" % [g.t("ui.mvp_card"), c_name, best_score], 11, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
 			tel_vbox.add_child(mvp_lbl)
+
+		var scroll_btn := g._button(g.t("ui.victory_scroll_btn"), _show_victory_scroll_modal, Color("592e1e"), Vector2(140, 26))
+		scroll_btn.name = "VictoryScrollBtn"
+		tel_vbox.add_child(scroll_btn)
 
 		page.add_child(tel_box)
 
@@ -249,6 +261,8 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	bonuses.energy_turn1 = int(bonuses.get("energy_turn1", 0)) + int(m_bonuses.get("energy_turn1", 0))
 	bonuses["familiar_stage"] = int(g.profile.get("familiar_stage", 0))
 	bonuses["astral_roots"] = g.profile.get("astral_roots", {}).duplicate()
+	bonuses["card_mastery"] = g.profile.get("card_mastery", {}).duplicate()
+	bonuses["pagoda_soul_pacts"] = g.profile.get("pagoda_soul_pacts", []).duplicate()
 	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into
@@ -1708,4 +1722,120 @@ func _format_battle_log_entry(entry: Dictionary) -> String:
 		"boss_phase":
 			return "✦ %s" % (str(payload.get("name_en", "")) if g.lang == "en" else str(payload.get("name", "")))
 		_: return ""
+
+func _show_victory_scroll_modal() -> void:
+	if g.overlay == null: return
+	_clear_victory_scroll_modal()
+	var backdrop := Panel.new()
+	backdrop.name = "VictoryScrollModal"
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.add_theme_stylebox_override("panel", g._panel(Color(0, 0, 0, 0.75), 0))
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	g.overlay.add_child(backdrop)
+
+	var scroll_panel := PanelContainer.new()
+	scroll_panel.custom_minimum_size = Vector2(340, 520)
+	scroll_panel.size = scroll_panel.custom_minimum_size
+	scroll_panel.position = Vector2(17, 100)
+	var scroll_style := g._panel(Color("2d1e12"), 14, Color("d4af37"))
+	scroll_style.border_width_left = 3
+	scroll_style.border_width_right = 3
+	scroll_style.border_width_top = 8
+	scroll_style.border_width_bottom = 8
+	scroll_panel.add_theme_stylebox_override("panel", scroll_style)
+	backdrop.add_child(scroll_panel)
+
+	var inner_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: inner_pad.add_theme_constant_override("margin_%s" % s, 12)
+	scroll_panel.add_child(inner_pad)
+
+	var parchment := PanelContainer.new()
+	var p_style := g._panel(Color("fdfbf7"), 8, Color("8b6b4d"))
+	p_style.border_width_left = 1
+	p_style.border_width_right = 1
+	p_style.border_width_top = 1
+	p_style.border_width_bottom = 1
+	parchment.add_theme_stylebox_override("panel", p_style)
+	inner_pad.add_child(parchment)
+
+	var p_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: p_pad.add_theme_constant_override("margin_%s" % s, 14)
+	parchment.add_child(p_pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	p_pad.add_child(vbox)
+
+	var header_lbl := g._label("📜 " + g.t("ui.victory_scroll_title"), 18, Color("4a2810"), HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(header_lbl)
+
+	var sub_lbl := g._label("太上清微 · 降魔伏妖录", 10, Color("8c6239"), HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(sub_lbl)
+
+	var div := HSeparator.new()
+	vbox.add_child(div)
+
+	var stage_name := "关卡 %d" % (g.current_stage + 1)
+	var boss_lbl := g._label("✦ 降伏妖魔: " + stage_name, 12, Color("2b1b11"))
+	vbox.add_child(boss_lbl)
+
+	var turns: int = int(g.battle_telemetry.get("turns", 1)) if g.battle_telemetry else 1
+	var dmg: int = int(g.battle_telemetry.get("dmg_dealt", 0)) if g.battle_telemetry else 0
+	var blk: int = int(g.battle_telemetry.get("dmg_blocked", 0)) if g.battle_telemetry else 0
+
+	var stats_col := VBoxContainer.new()
+	stats_col.add_theme_constant_override("separation", 4)
+	stats_col.add_child(g._label("• 鏖战回合: %d" % turns, 11, Color("423226")))
+	stats_col.add_child(g._label("• 倾泻灵威: %d 点" % dmg, 11, Color("802020")))
+	stats_col.add_child(g._label("• 御气化盾: %d 点" % blk, 11, Color("205080")))
+	vbox.add_child(stats_col)
+
+	var impacts: Dictionary = g.battle_telemetry.get("card_impact", {}) if g.battle_telemetry else {}
+	var best_card_id := ""
+	var best_score := 0
+	for cid in impacts:
+		if int(impacts[cid]) > best_score:
+			best_score = int(impacts[cid])
+			best_card_id = cid
+	var mvp_card_name := "普攻刺击"
+	if not best_card_id.is_empty():
+		var c_data := g.content.card(best_card_id)
+		mvp_card_name = str(c_data.get("name_en", c_data.get("name", ""))) if g.lang == "en" else str(c_data.get("name", ""))
+	var mvp_box := PanelContainer.new()
+	var m_style := g._panel(Color("f4eedb"), 6, Color("c29e46"))
+	m_style.content_margin_left = 8; m_style.content_margin_right = 8
+	m_style.content_margin_top = 4; m_style.content_margin_bottom = 4
+	mvp_box.add_theme_stylebox_override("panel", m_style)
+	var mvp_text := g._label("★ 本命通天灵牌: " + mvp_card_name, 11, Color("6b4c1b"), HORIZONTAL_ALIGNMENT_CENTER)
+	mvp_box.add_child(mvp_text)
+	vbox.add_child(mvp_box)
+
+	var seal_box := PanelContainer.new()
+	seal_box.custom_minimum_size = Vector2(100, 44)
+	seal_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var seal_style := g._panel(Color("c5221f"), 6, Color("e53935"))
+	seal_style.border_width_left = 2; seal_style.border_width_right = 2
+	seal_style.border_width_top = 2; seal_style.border_width_bottom = 2
+	seal_box.add_theme_stylebox_override("panel", seal_style)
+	var seal_lbl := g._label("【诛邪降魔印】", 11, Color("fff176"), HORIZONTAL_ALIGNMENT_CENTER)
+	seal_box.add_child(seal_lbl)
+	vbox.add_child(seal_box)
+
+	var copy_btn := g._button("复制战绩密卷", func():
+		var share_text := "【灵缚·降妖画卷】\n关卡: %s\n回合: %d | 伤害: %d | 抵御: %d\n本命神牌: %s\n印戳: 诛邪降魔印" % [stage_name, turns, dmg, blk, mvp_card_name]
+		DisplayServer.clipboard_set(share_text)
+		g._toast(g.t("ui.victory_scroll_copied"), g.GOLD)
+	, Color("8c2d19"), Vector2(0, 32))
+	copy_btn.name = "CopyScrollBtn"
+	vbox.add_child(copy_btn)
+
+	var close_btn := g._button(g.t("ui.close"), _clear_victory_scroll_modal, Color("594235"), Vector2(0, 30))
+	close_btn.name = "CloseScrollBtn"
+	vbox.add_child(close_btn)
+
+func _clear_victory_scroll_modal() -> void:
+	if g.overlay == null: return
+	var old := g.overlay.get_node_or_null("VictoryScrollModal")
+	if old and is_instance_valid(old): old.queue_free()
+
 
