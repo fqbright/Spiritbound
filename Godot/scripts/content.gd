@@ -1834,6 +1834,66 @@ func daily_trial_encounter(stage: int) -> Dictionary:
 		"background": (stage - 1) % 5
 	}
 
+# ------------------------------------------------------------------------------
+# Daily Lethal Tactical Puzzles (弈道残卷)
+# ------------------------------------------------------------------------------
+const LETHAL_PUZZLES: Array[Dictionary] = [
+	{
+		"id": "puzzle_01",
+		"title_zh": "残卷一 · 烈火焚天",
+		"title_en": "Riddle I · Raging Flames",
+		"desc_zh": "敌方拥有 18 点生命与 8 点护盾，仅凭当前手牌与 3 点灵力，于本回合达成破甲斩杀！",
+		"desc_en": "Enemy has 18 HP and 8 Shield. Achieve lethal with 3 energy using exact status combos!",
+		"energy": 3,
+		"player_hp": 30,
+		"deck": ["foxfire", "cinder_slash", "strike"],
+		"enemy": {"name": "赤焰傀儡", "name_en": "Flame Golem", "health": 18, "shield": 8, "damage": 20, "art": "m_s003.png"}
+	},
+	{
+		"id": "puzzle_02",
+		"title_zh": "残卷二 · 幽冥绝灭",
+		"title_en": "Riddle II · Abyssal Lethal",
+		"desc_zh": "深渊尸王尚有 24 点生机，巧妙借由毒素叠积与毒爆催化于一瞬灭杀！",
+		"desc_en": "Enemy has 24 HP. Leverage poison stacking and catalyst to execute in one turn!",
+		"energy": 3,
+		"player_hp": 25,
+		"deck": ["venom_fang", "catalyst", "strike"],
+		"enemy": {"name": "尸煞鬼王", "name_en": "Corpse King", "health": 24, "shield": 0, "poison": 4, "damage": 25, "art": "m_s002.png"}
+	},
+	{
+		"id": "puzzle_03",
+		"title_zh": "残卷三 · 磐石破军",
+		"title_en": "Riddle III · Bastion Rebound",
+		"desc_zh": "不动如山，借盾化刃。将重甲尽数化作破阵重击，一击决胜！",
+		"desc_en": "Convert towering stone shields into a crushing strike for instant victory!",
+		"energy": 3,
+		"player_hp": 40,
+		"deck": ["ward", "bastion_form", "shield_slam"],
+		"enemy": {"name": "崩山巨猿", "name_en": "Mountain Ape", "health": 20, "shield": 0, "damage": 30, "art": "m_s005.png"}
+	}
+]
+
+func lethal_puzzle(id: String) -> Dictionary:
+	for p in LETHAL_PUZZLES:
+		if str(p.get("id", "")) == id:
+			return p
+	return {}
+
+func lethal_puzzle_encounter(p: Dictionary) -> Dictionary:
+	var e_dict: Dictionary = p.get("enemy", {})
+	return {
+		"chapter": 999, "level": 1,
+		"health": int(e_dict.get("health", 20)),
+		"damage": int(e_dict.get("damage", 10)),
+		"reward": 50,
+		"name": str(e_dict.get("name", "残局守卫")),
+		"name_en": str(e_dict.get("name_en", "Puzzle Guard")),
+		"art": str(e_dict.get("art", "m_s001.png")),
+		"mechanics": {},
+		"adds": 0,
+		"background": 2
+	}
+
 # Weekly Theme Challenge (B3): reuses the Daily Trial's deterministic-per-period tag engine
 # above, but at a weekly cadence and with exactly one themed modifier instead of a combined
 # trio — "本周主题" reads as one clear theme, not a grab-bag. A shorter 8-stage gauntlet (vs
@@ -3304,6 +3364,17 @@ const UI_TEXT = {
 	"ui.boss_warning_banner": {"zh-Hans":"【警诫：%s 降临】", "en":"【WARNING: %s Approaches】"},
 	"ui.deck_lens_btn": {"zh-Hans":"流派透视", "en":"Build Lens"},
 	"ui.deck_lens_title": {"zh-Hans":"卡组流派雷达与健康分析", "en":"Deck Archetype Radar & Health"},
+	"ui.lethal_puzzles_title": {"zh-Hans":"弈道残卷 · 绝杀推演", "en":"Tactical Riddles · Lethal Puzzles"},
+	"ui.lethal_puzzles_sub": {"zh-Hans":"推演死局，限回合达成绝对斩杀", "en":"Solve the deadlock: calculate exact lethal in limited turns"},
+	"ui.lethal_puzzles_done": {"zh-Hans":"已破解", "en":"Solved"},
+	"ui.cultivation_realm_0": {"zh-Hans":"练气境", "en":"Qi Refining"},
+	"ui.cultivation_realm_1": {"zh-Hans":"筑基境", "en":"Foundation"},
+	"ui.cultivation_realm_2": {"zh-Hans":"金丹境", "en":"Golden Core"},
+	"ui.cultivation_realm_3": {"zh-Hans":"元婴境", "en":"Nascent Soul"},
+	"ui.cultivation_realm_4": {"zh-Hans":"化神境", "en":"Soul Formation"},
+	"ui.tribulation_title": {"zh-Hans":"九天紫霄雷劫", "en":"Nine Heavens Tribulation"},
+	"ui.tribulation_desc": {"zh-Hans":"天道威严，每 3 回合降下紫霄天罚，抵御雷劫突破桎梏！", "en":"Heavenly tribulation strikes every 3 turns. Endure the lightning to break through!"},
+	"ui.familiar_ultimate_ready": {"zh-Hans":"灵宠蓄力已满！点击释放本命神通！", "en":"Familiar Qi full! Tap to unleash Ultimate!"},
 	"ui.card_mastery_badge": {"zh-Hans":"✦ 宗师 ✦", "en":"✦ MASTER ✦"},
 	"ui.epiphany_title": {"zh-Hans":"✦ 神识顿悟 ✦", "en":"✦ Divine Epiphany ✦"},
 	"ui.epiphany_sub": {"zh-Hans":"生死绝境灵光一闪，请择一道心机缘：", "en":"A flash of insight in peril. Choose a divine boon:"},

@@ -438,3 +438,29 @@ static func delete_account(game: SpiritGame, on_done: Callable = Callable()) -> 
 	SpiritSave.write(game.profile)
 	game._toast(game.t("ui.account_delete_success_toast"), game.GOLD)
 	if on_done.is_valid(): on_done.call(true)
+
+# ------------------------------------------------------------------------------
+# Apple Game Center Native Integration (GameKit)
+# ------------------------------------------------------------------------------
+
+static func sync_game_center() -> void:
+	if OS.get_name() != "iOS": return
+	var f := FileAccess.open("user://gamecenter_trigger.json", FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify({"action": "auth"}))
+		f.close()
+
+static func submit_game_center_score(leaderboard_id: String, score: int) -> void:
+	if OS.get_name() != "iOS": return
+	var f := FileAccess.open("user://gamecenter_trigger.json", FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify({"action": "score", "leaderboard_id": leaderboard_id, "score": score}))
+		f.close()
+
+static func report_game_center_achievement(achievement_id: String, percent: float = 100.0) -> void:
+	if OS.get_name() != "iOS": return
+	var f := FileAccess.open("user://gamecenter_trigger.json", FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify({"action": "achievement", "achievement_id": achievement_id, "percent": percent}))
+		f.close()
+

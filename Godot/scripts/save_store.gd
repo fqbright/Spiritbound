@@ -197,6 +197,10 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not base.get("phantom_guard") is Dictionary: base.phantom_guard = {}
 	if not base.get("pending_sync_queue") is Array: base.pending_sync_queue = []
 	if not base.get("daily_challenge_runs") is Dictionary: base.daily_challenge_runs = {}
+	if not base.has("cultivation_realm"): base.cultivation_realm = 0
+	if not base.has("cultivation_exp"): base.cultivation_exp = 0
+	if not base.get("lethal_puzzles_cleared") is Array: base.lethal_puzzles_cleared = []
+	if not base.has("purged_cards_count"): base.purged_cards_count = 0
 	base.schema_version = SCHEMA_VERSION
 	return base
 
@@ -204,8 +208,35 @@ static func write(profile: Dictionary) -> void:
 	# updated_at is what a future cloud sync compares to resolve which copy is newer.
 	profile.updated_at = int(Time.get_unix_time_from_system())
 	profile.schema_version = SCHEMA_VERSION
-	var file := FileAccess.open(PATH,FileAccess.WRITE)
-	file.store_string(JSON.stringify(profile,"  "))
+	var json_payload := JSON.stringify(profile, "  ")
+	var file := FileAccess.open(PATH, FileAccess.WRITE)
+	file.store_string(json_payload)
+	if OS.get_name() == "iOS":
+		var icloud_f := FileAccess.open("user://icloud_trigger.json", FileAccess.WRITE)
+		if icloud_f != null:
+			icloud_f.store_string(JSON.stringify({"action": "save", "payload": json_payload}))
+			icloud_f.close()
+
+static func purge_card_from_deck(profile: Dictionary, card_id: String) -> bool:
+	if not profile.get("deck") is Array: return false
+	var deck: Array = profile.deck
+	if deck.size() <= 12: return false
+	var idx := deck.find(card_id)
+	if idx == -1: return false
+	deck.remove_at(idx)
+	profile.purged_cards_count = int(profile.get("purged_cards_count", 0)) + 1
+	write(profile)
+	return true
+
+static func advance_cultivation_realm(profile: Dictionary) -> bool:
+	var cur: int = int(profile.get("cultivation_realm", 0))
+	if cur >= 4: return false
+	profile.cultivation_realm = cur + 1
+	profile.cultivation_exp = 0
+	# Award realm breakthrough bonus
+	profile.health = clampi(int(profile.get("health", 60)) + 10, 1, 100)
+	write(profile)
+	return true
 
 static func has_account_name(profile: Dictionary) -> bool:
 	return not str(profile.get("account", {}).get("name", "")).strip_edges().is_empty()

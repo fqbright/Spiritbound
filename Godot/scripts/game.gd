@@ -647,6 +647,12 @@ func trigger_haptic(kind: String) -> void:
 
 func _haptic(kind: String) -> void:
 	if not bool(profile.get("haptics_enabled", true)): return
+	if OS.get_name() == "iOS":
+		var trigger_path := "user://haptic_trigger.json"
+		var hf := FileAccess.open(trigger_path, FileAccess.WRITE)
+		if hf != null:
+			hf.store_string(JSON.stringify({"kind": kind}))
+			hf.close()
 	match kind:
 		"tap": Input.vibrate_handheld(10)
 		"card_drag": Input.vibrate_handheld(12)
@@ -1530,12 +1536,14 @@ func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.
 	var base_scale: float = 1.0
 	if pitch_range > 0.0:
 		base_scale = randf_range(1.0 - pitch_range, 1.0 + pitch_range)
-	var combo_boost: float = 0.0
+	var combo_mult: float = 1.0
 	if combat != null and combat.state != null:
 		var combo_cnt: int = int(combat.state.get("turn_combo_count", 0))
-		if combo_cnt > 1:
-			combo_boost = minf((combo_cnt - 1) * 0.035, 0.35)
-	player.pitch_scale = clampf(base_scale + combo_boost, 0.5, 2.0)
+		if combo_cnt > 0 and (sfx_name.begins_with("card_") or sfx_name.begins_with("attack_")):
+			const PENTATONIC_SCALE: Array[float] = [1.0, 1.125, 1.25, 1.5, 1.667, 2.0]
+			var note_idx: int = clampi(combo_cnt - 1, 0, PENTATONIC_SCALE.size() - 1)
+			combo_mult = PENTATONIC_SCALE[note_idx]
+	player.pitch_scale = clampf(base_scale * combo_mult, 0.5, 2.5)
 	player.play()
 
 func _play_music(battle := false, stage_level: int = 0) -> void:
@@ -2138,6 +2146,10 @@ func _cast_hero_ultimate(target: int = 0) -> void:
 	if _battle_screen: _battle_screen._cast_hero_ultimate(target)
 func begin_training_dummy_battle() -> void:
 	if _camp_screen: _camp_screen.begin_training_dummy_battle()
+func begin_tribulation_battle() -> void:
+	if _camp_screen: _camp_screen.begin_tribulation_battle()
+func begin_lethal_puzzle_battle(puzzle_id: String) -> void:
+	if _camp_screen: _camp_screen.begin_lethal_puzzle_battle(puzzle_id)
 # Computed properties, not plain delegator functions, because ui_smoke.gd reads/advances
 # these as data (game.tutorial_step, game.TUTORIAL_STEPS) rather than calling a method.
 var tutorial_step: int:

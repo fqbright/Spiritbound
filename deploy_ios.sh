@@ -106,6 +106,96 @@ if [ -f "$DUMMY_SWIFT" ]; then
 import Foundation
 import UIKit
 import AuthenticationServices
+import GameKit
+
+@objc public class TapticBridge: NSObject {
+    public static let shared = TapticBridge()
+    private let lightGen = UIImpactFeedbackGenerator(style: .light)
+    private let mediumGen = UIImpactFeedbackGenerator(style: .medium)
+    private let heavyGen = UIImpactFeedbackGenerator(style: .heavy)
+    private let softGen = UIImpactFeedbackGenerator(style: .soft)
+    private let rigidGen = UIImpactFeedbackGenerator(style: .rigid)
+    private let notifGen = UINotificationFeedbackGenerator()
+
+    public func trigger(_ kind: String) {
+        DispatchQueue.main.async {
+            switch kind {
+            case "tap":
+                self.lightGen.prepare()
+                self.lightGen.impactOccurred()
+            case "card_drag":
+                self.softGen.prepare()
+                self.softGen.impactOccurred()
+            case "shield", "hit":
+                self.mediumGen.prepare()
+                self.mediumGen.impactOccurred()
+            case "heavy":
+                self.heavyGen.prepare()
+                self.heavyGen.impactOccurred()
+            case "lethal":
+                self.rigidGen.prepare()
+                self.rigidGen.impactOccurred()
+                self.notifGen.notificationOccurred(.warning)
+            case "success", "victory":
+                self.notifGen.notificationOccurred(.success)
+            case "defeat":
+                self.notifGen.notificationOccurred(.error)
+            default:
+                self.lightGen.impactOccurred()
+            }
+        }
+    }
+}
+
+@objc public class GameCenterBridge: NSObject {
+    public static let shared = GameCenterBridge()
+    public var isAuthenticated: Bool = false
+
+    public func authenticateLocalPlayer() {
+        GKLocalPlayer.local.authenticateHandler = { vc, error in
+            if let vc = vc {
+                if let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
+                   let rootVC = window.rootViewController {
+                    rootVC.present(vc, animated: true)
+                }
+            } else if GKLocalPlayer.local.isAuthenticated {
+                self.isAuthenticated = true
+                let dict: [String: Any] = [
+                    "status": "authenticated",
+                    "player_id": GKLocalPlayer.local.gamePlayerID,
+                    "alias": GKLocalPlayer.local.alias
+                ]
+                AppURLInterceptor.saveResultToAll(dict, filename: "gamecenter_status.json")
+            }
+        }
+    }
+
+    public func submitScore(leaderboardId: String, score: Int) {
+        if #available(iOS 14.0, *) {
+            GKLeaderboard.submitScore(score, context: 0, player: GKLocalPlayer.local, leaderboardIDs: [leaderboardId]) { _ in }
+        }
+    }
+
+    public func reportAchievement(achievementId: String, percentComplete: Double) {
+        let ach = GKAchievement(identifier: achievementId)
+        ach.percentComplete = percentComplete
+        ach.showsCompletionBanner = true
+        GKAchievement.report([ach]) { _ in }
+    }
+}
+
+@objc public class ICloudSyncBridge: NSObject {
+    public static let shared = ICloudSyncBridge()
+
+    public func saveProfileSnapshot(_ jsonStr: String) {
+        NSUbiquitousKeyValueStore.default.set(jsonStr, forKey: "spiritbound_cloud_save")
+        NSUbiquitousKeyValueStore.default.synchronize()
+    }
+
+    public func fetchProfileSnapshot() -> String? {
+        return NSUbiquitousKeyValueStore.default.string(forKey: "spiritbound_cloud_save")
+    }
+}
 
 @available(iOS 13.0, *)
 @objc public class AppleAuthBridge: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
@@ -272,7 +362,52 @@ public func StartAppleSignInWatcher() {
                             AppleAuthBridge.shared.startSignIn()
                         }
                     }
-                    break
+                }
+
+                let hapticTrigger = dir.appendingPathComponent("haptic_trigger.json")
+                if FileManager.default.fileExists(atPath: hapticTrigger.path) {
+                    if let data = try? Data(contentsOf: hapticTrigger),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let kind = json["kind"] as? String {
+                        TapticBridge.shared.trigger(kind)
+                    }
+                    try? FileManager.default.removeItem(at: hapticTrigger)
+                }
+
+                let gcTrigger = dir.appendingPathComponent("gamecenter_trigger.json")
+                if FileManager.default.fileExists(atPath: gcTrigger.path) {
+                    if let data = try? Data(contentsOf: gcTrigger),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let action = json["action"] as? String {
+                        DispatchQueue.main.async {
+                            if action == "auth" {
+                                GameCenterBridge.shared.authenticateLocalPlayer()
+                            } else if action == "score", let lb = json["leaderboard_id"] as? String, let score = json["score"] as? Int {
+                                GameCenterBridge.shared.submitScore(leaderboardId: lb, score: score)
+                            } else if action == "achievement", let ach = json["achievement_id"] as? String {
+                                let pct = json["percent"] as? Double ?? 100.0
+                                GameCenterBridge.shared.reportAchievement(achievementId: ach, percentComplete: pct)
+                            }
+                        }
+                    }
+                    try? FileManager.default.removeItem(at: gcTrigger)
+                }
+
+                let icloudTrigger = dir.appendingPathComponent("icloud_trigger.json")
+                if FileManager.default.fileExists(atPath: icloudTrigger.path) {
+                    if let data = try? Data(contentsOf: icloudTrigger),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let action = json["action"] as? String {
+                        if action == "save", let payload = json["payload"] as? String {
+                            ICloudSyncBridge.shared.saveProfileSnapshot(payload)
+                        } else if action == "load" {
+                            if let cloudStr = ICloudSyncBridge.shared.fetchProfileSnapshot() {
+                                let res: [String: Any] = ["status": "success", "data": cloudStr]
+                                AppURLInterceptor.saveResultToAll(res, filename: "icloud_result.json")
+                            }
+                        }
+                    }
+                    try? FileManager.default.removeItem(at: icloudTrigger)
                 }
             }
             Thread.sleep(forTimeInterval: 0.15)
@@ -280,7 +415,7 @@ public func StartAppleSignInWatcher() {
     }
 }
 EOF
-        echo "   ✓ Patched dummy.swift with native Sign in with Apple & URL interceptor"
+        echo "   ✓ Patched dummy.swift with native Sign in with Apple, GameCenter, Taptic & iCloud"
     fi
 fi
 

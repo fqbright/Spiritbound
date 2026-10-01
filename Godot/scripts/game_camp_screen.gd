@@ -1478,6 +1478,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_astral_roots_section())
 	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
+	list.add_child(_cultivation_realm_section())
 	list.add_child(_training_dummy_section())
 	list.add_child(_hero_skins_section())
 	list.add_child(_hexagram_divination_section())
@@ -1517,6 +1518,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_challenge_band_header("practice"))
 	list.add_child(_difficulty_tier_section())
 	list.add_child(_sandbox_section())
+	list.add_child(_lethal_puzzles_section())
 
 func _challenge_band_header(band_id: String) -> Control:
 	var accent := g.GOLD
@@ -4320,9 +4322,110 @@ func show_meridian_modal() -> void:
 
 	refresh_meridian_ui[0].call("ren")
 
-# -----------------------------------------------------------------------------
-# Phase 13: Advanced Systems (Dojo, Skins, Hexagrams, Card Fusion, Bestiary)
-# -----------------------------------------------------------------------------
+func begin_tribulation_battle() -> void:
+	var cur_realm: int = int(g.profile.get("cultivation_realm", 0))
+	var enc: Dictionary = {
+		"chapter": 888, "level": cur_realm + 1,
+		"health": 60 + cur_realm * 25,
+		"damage": 8 + cur_realm * 3,
+		"reward": 50,
+		"name": "紫霄心魔天劫",
+		"name_en": "Heavenly Tribulation",
+		"art": "m_s004.png",
+		"mechanics": {"shield_per_turn": 6},
+		"adds": 0,
+		"background": 4
+	}
+	g.in_sandbox = true
+	g.current_stage = 0
+	g.active_modifier = {"is_tribulation": true}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	g.combat.create(g._battle_seed(), enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+func begin_lethal_puzzle_battle(puzzle_id: String) -> void:
+	var p: Dictionary = g.content.lethal_puzzle(puzzle_id)
+	if p.is_empty(): return
+	var enc: Dictionary = g.content.lethal_puzzle_encounter(p)
+	g.in_sandbox = true
+	g.current_stage = 0
+	g.active_modifier = {"is_puzzle": true, "puzzle_id": puzzle_id}
+	g.combat = SpiritCombat.new(g.content)
+	g.combat.create(g._battle_seed(), enc, p.deck, int(p.get("player_hp", 30)), {}, [], {}, g.active_modifier, [], {})
+	g.combat.state.energy = int(p.get("energy", 3))
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+func _cultivation_realm_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "CultivationRealmSection"
+	panel.custom_minimum_size = Vector2(0, 95)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("131826"), 12, Color("38bdf8")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var realm_idx: int = clampi(int(g.profile.get("cultivation_realm", 0)), 0, 4)
+	var realm_name: String = g.t("ui.cultivation_realm_%d" % realm_idx)
+	vbox.add_child(g._label("✦ 修仙大境界: %s" % realm_name, 15, Color("38bdf8"), HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(g._label(g.t("ui.tribulation_desc"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var trib_btn := g._button(g.t("ui.tribulation_title"), begin_tribulation_battle, Color("0284c7"), Vector2(140, 32))
+	trib_btn.name = "TribulationBattleBtn"
+	row.add_child(trib_btn)
+	vbox.add_child(row)
+	return panel
+
+func _lethal_puzzles_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "LethalPuzzlesSection"
+	panel.custom_minimum_size = Vector2(0, 105)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("1e1724"), 12, Color("e879f9")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	vbox.add_child(g._label(g.t("ui.lethal_puzzles_title"), 15, Color("e879f9"), HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(g._label(g.t("ui.lethal_puzzles_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var cleared_arr: Array = g.profile.get("lethal_puzzles_cleared", [])
+	for p in g.content.LETHAL_PUZZLES:
+		var pid: String = str(p.get("id", ""))
+		var is_done: bool = cleared_arr.has(pid)
+		var p_title: String = str(p.get("title_zh", pid)) if g.lang == "zh-Hans" else str(p.get("title_en", pid))
+		var btn_text: String = ("✓ " + p_title) if is_done else p_title
+		var p_btn := g._button(btn_text, func(): begin_lethal_puzzle_battle(pid), g.JADE if is_done else Color("2c1c38"), Vector2(0, 32))
+		p_btn.name = "PuzzleBtn_%s" % pid
+		p_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(p_btn)
+	vbox.add_child(row)
+	return panel
 
 func begin_training_dummy_battle() -> void:
 	g.in_sandbox = true

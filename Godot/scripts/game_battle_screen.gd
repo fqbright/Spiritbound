@@ -427,6 +427,36 @@ func show_battle() -> void:
 		var a_lbl := g._label(arc_name, 10, arc_col, HORIZONTAL_ALIGNMENT_CENTER)
 		arc_badge.add_child(a_lbl)
 		top_sub.add_child(arc_badge)
+	var season_id: String = str(g.combat.state.get("season", "")) if (g.combat and g.combat.state) else ""
+	if season_id != "":
+		var season_badge := PanelContainer.new()
+		season_badge.name = "SeasonBadge"
+		var s_name := "🌸 节气·灵雨"
+		var s_col := Color("38bdf8")
+		if season_id == "season_summer_blaze":
+			s_name = "☀️ 节气·炽炎"
+			s_col = Color("f97316")
+		elif season_id == "season_autumn_wind":
+			s_name = "🍂 节气·金风"
+			s_col = Color("facc15")
+		elif season_id == "season_winter_frost":
+			s_name = "❄️ 节气·霜降"
+			s_col = Color("93c5fd")
+		var s_style := g._panel(Color("162426"), 8, s_col)
+		s_style.content_margin_left = 6; s_style.content_margin_right = 6
+		s_style.content_margin_top = 2; s_style.content_margin_bottom = 2
+		season_badge.add_theme_stylebox_override("panel", s_style)
+		season_badge.add_child(g._label(s_name, 10, s_col, HORIZONTAL_ALIGNMENT_CENTER))
+		top_sub.add_child(season_badge)
+	if g.combat and g.combat.state and bool(g.combat.state.get("is_tribulation", false)):
+		var trib_badge := PanelContainer.new()
+		trib_badge.name = "TribulationBadge"
+		var t_style := g._panel(Color("2d153b"), 8, Color("c084fc"))
+		t_style.content_margin_left = 6; t_style.content_margin_right = 6
+		t_style.content_margin_top = 2; t_style.content_margin_bottom = 2
+		trib_badge.add_theme_stylebox_override("panel", t_style)
+		trib_badge.add_child(g._label("⚡ 紫霄雷劫", 10, Color("e879f9"), HORIZONTAL_ALIGNMENT_CENTER))
+		top_sub.add_child(trib_badge)
 	if top_sub.get_child_count() > 0:
 		page.add_child(top_sub)
 	if g.combat != null and g.combat.state.turn == 1 and not g.combat.state.get("relic_resonances", []).is_empty() and not bool(g.combat.state.get("resonance_toast_shown", false)):
@@ -613,6 +643,9 @@ func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capst
 		if s:
 			var mat := ShaderMaterial.new()
 			mat.shader = s
+			var accel: Vector3 = Input.get_accelerometer()
+			var tilt: float = clampf(accel.x * 0.25, -1.0, 1.0) if accel.length() > 0.01 else 0.0
+			mat.set_shader_parameter("tilt_shift", tilt)
 			node.material = mat
 
 # One shader material per sprite so a mid-flash overlap on one enemy never disturbs another.
@@ -1033,6 +1066,30 @@ func _build_player_stage() -> Control:
 	realm_aura.position = Vector2(player_x - 60.0, 84.0)
 	realm_aura.z_index = -3
 	stage.add_child(realm_aura)
+
+	# Familiar Companion Battlefield Presence & Awakening Skill
+	var fam_btn := Button.new()
+	fam_btn.name = "FamiliarCompanion"
+	var fam_qi: int = int(g.combat.state.get("familiar_qi", 0)) if (g.combat and g.combat.state) else 0
+	var can_fam_ult: bool = (fam_qi >= 100)
+	fam_btn.text = "🦊" if not can_fam_ult else "🦊⚡"
+	fam_btn.tooltip_text = g.t("ui.familiar_ultimate_ready") if can_fam_ult else "灵宠本命灵技 (打出卡牌蓄力: %d%%)" % fam_qi
+	fam_btn.custom_minimum_size = Vector2(34.0, 34.0)
+	fam_btn.size = fam_btn.custom_minimum_size
+	fam_btn.position = Vector2(player_x + 58.0, 48.0)
+	var fam_style := g._panel(Color("1e3a40") if can_fam_ult else Color("141e24"), 17, Color("5ffbe2") if can_fam_ult else Color("2a4450"))
+	fam_btn.add_theme_stylebox_override("normal", fam_style)
+	fam_btn.add_theme_stylebox_override("hover", fam_style)
+	fam_btn.add_theme_stylebox_override("pressed", fam_style)
+	fam_btn.pressed.connect(func():
+		if g.combat and can_fam_ult:
+			var res: Dictionary = g.combat.activate_familiar_ultimate()
+			if res.get("ok", false):
+				g._toast(g.t("ui.familiar_ultimate_ready"), g.GOLD)
+				g._haptic("heavy")
+				g.show_battle()
+	)
+	stage.add_child(fam_btn)
 
 	# Hero Qi-Gauge Awakening Aura (Phase 16)
 	if g.combat and g.combat.can_cast_ultimate():
@@ -3658,7 +3715,17 @@ func _advance_to_reward() -> void:
 	if g.combat == null or g.combat.state.phase != "won": return
 	if g.in_sandbox:
 		g.in_sandbox = false
-		g._toast(g.t("ui.sandbox_complete_toast"), g.JADE)
+		if g.active_modifier.get("is_tribulation", false):
+			SpiritSave.advance_cultivation_realm(g.profile)
+			g._toast("✦ 雷劫散去，大境界突破成功！", g.GOLD)
+		elif g.active_modifier.get("is_puzzle", false):
+			var pid: String = str(g.active_modifier.get("puzzle_id", ""))
+			if not g.profile.lethal_puzzles_cleared.has(pid):
+				g.profile.lethal_puzzles_cleared.append(pid)
+				SpiritSave.write(g.profile)
+			g._toast("✦ 残局破解！神识大增！", g.JADE)
+		else:
+			g._toast(g.t("ui.sandbox_complete_toast"), g.JADE)
 		g.show_camp()
 		return
 	g.show_reward()

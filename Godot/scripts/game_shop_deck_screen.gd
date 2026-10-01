@@ -1514,6 +1514,10 @@ func show_deck() -> void:
 	lens_btn.name = "BuildLensBtn"
 	lens_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action_row.add_child(lens_btn)
+	var purge_altar_btn := g._button(g.t("ui.purge_title"), func(): show_deck_purge(show_deck, 0), Color("4a1d2e"), Vector2(0, 32))
+	purge_altar_btn.name = "DeckPurgeAltarBtn"
+	purge_altar_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_row.add_child(purge_altar_btn)
 	page.add_child(action_row)
 
 	# Search & Filter Chips (F3)

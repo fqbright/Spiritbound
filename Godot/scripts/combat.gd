@@ -28,7 +28,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	var add_art: String = str(encounter.get("add_art_key", encounter.get("art_key", boss_art)))
 	var add_name: String = str(encounter.get("add_name", "灵迹随从"))
 	var add_name_en: String = str(encounter.get("add_name_en", "Spirit Minion"))
-	for add_index in encounter.adds + modifier.get("extra_enemy", 0):
+	for add_index in int(encounter.get("adds", 0)) + int(modifier.get("extra_enemy", 0)):
 		enemies.append(_enemy("add-%d" % add_index, add_name, add_name_en, add_art, int(round((9 + encounter.chapter) * health_scale)), int(round((2 + encounter.chapter / 3 + damage_bonus) * damage_mult)), {}))
 	var draw_pile: Array = []
 	for i in deck.size(): draw_pile.append({"uid":i,"card_id":deck[i]})
@@ -97,6 +97,9 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"current_playing_affix":"",
 		"deck_archetype": dominant_archetype,
 		"ascension_level": asc_level,
+		"is_tribulation": bool(modifier.get("is_tribulation", false)),
+		"familiar_qi": 0,
+		"season": str(modifier.get("season", "")),
 	}
 	if state.is_training_dummy:
 		enemies.clear()
@@ -446,9 +449,19 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# per-turn and it must reset every turn — the two have the same name but different lifetimes.
 	state.cards_played_this_turn = int(state.get("cards_played_this_turn", 0)) + 1
 	state.turn_combo_count = int(state.get("turn_combo_count", 0)) + 1
+	state.familiar_qi = mini(100, int(state.get("familiar_qi", 0)) + 20)
 	if str(state.get("deck_archetype", "")) == "archetype_wind" and state.cards_played_this_turn == 3:
 		state.energy = mini(10, state.energy + 1)
 		emit_signal("event", "archetype_proc", {"type": "wind", "energy": 1})
+	var cur_season: String = str(state.get("season", ""))
+	if cur_season == "season_spring_rain":
+		var card_el: String = str(card.get("element", "")).to_lower()
+		if card_el in ["water", "poison", "wood"]:
+			state.player.health = mini(state.player.max_health, state.player.health + 2)
+			emit_signal("event", "season_proc", {"type": "spring_rain", "heal": 2})
+	elif cur_season == "season_autumn_wind" and state.cards_played_this_turn == 4:
+		state.energy = mini(10, state.energy + 1)
+		emit_signal("event", "season_proc", {"type": "autumn_wind", "energy": 1})
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += actual_cost; state.swift_used = true
@@ -707,6 +720,8 @@ func end_turn() -> void:
 				burn_damage = int(round(burn_damage * 1.3))
 			if str(state.get("active_hexagram", "")) == "hex_li":
 				burn_damage = int(round(burn_damage * 1.35))
+			if str(state.get("season", "")) == "season_summer_blaze":
+				burn_damage = int(round(burn_damage * 1.5))
 			_damage_enemy(enemy_index,burn_damage,false)
 			if state.has("stats"): state.stats.dot_damage = int(state.stats.get("dot_damage", 0)) + burn_damage
 			enemy.burn = maxi(0,enemy.burn - 1)
@@ -790,6 +805,12 @@ func end_turn() -> void:
 	if str(state.get("deck_archetype", "")) == "archetype_stone":
 		state.player.shield += 3
 		emit_signal("event", "archetype_proc", {"type": "stone", "shield": 3})
+	if bool(state.get("is_tribulation", false)) and state.turn % 3 == 0:
+		_damage_player(15)
+		for ti in state.enemies.size():
+			if state.enemies[ti].health > 0:
+				_damage_enemy(ti, 25, true)
+		emit_signal("event", "tribulation_lightning", {"damage_player": 15, "damage_enemy": 25})
 	var weather: String = str(state.get("weather_affix", ""))
 	if weather == "solar":
 		state.player.burn = int(state.player.get("burn", 0)) + 1
@@ -1511,3 +1532,15 @@ func ai_best_play() -> Dictionary:
 			best_target = target
 
 	return {"hand_index": best_idx, "target_index": best_target}
+
+func activate_familiar_ultimate() -> Dictionary:
+	if int(state.get("familiar_qi", 0)) < 100:
+		return {"ok": false, "reason": "qi_not_full"}
+	state.familiar_qi = 0
+	state.player.shield = int(state.player.get("shield", 0)) + 14
+	for enemy in state.enemies:
+		if enemy.health > 0:
+			enemy.weak = int(enemy.get("weak", 0)) + 2
+	emit_signal("event", "familiar_ultimate", {"shield": 14, "weak": 2})
+	return {"ok": true, "shield": 14, "weak": 2}
+
