@@ -197,6 +197,20 @@ import GameKit
     }
 }
 
+@objc public class LiveActivityBridge: NSObject {
+    public static let shared = LiveActivityBridge()
+    public func updateActivity(stamina: Int, maxStamina: Int, realm: Int, pagodaFloor: Int) {
+        let payload: [String: Any] = [
+            "stamina": stamina,
+            "max_stamina": maxStamina,
+            "realm": realm,
+            "pagoda": pagodaFloor,
+            "timestamp": Date().timeIntervalSince1970
+        ]
+        AppURLInterceptor.saveResultToAll(payload, filename: "live_activity_status.json")
+    }
+}
+
 @available(iOS 13.0, *)
 @objc public class AppleAuthBridge: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     @objc public static let shared = AppleAuthBridge()
@@ -408,6 +422,19 @@ public func StartAppleSignInWatcher() {
                         }
                     }
                     try? FileManager.default.removeItem(at: icloudTrigger)
+                }
+
+                let actTrigger = dir.appendingPathComponent("live_activity_trigger.json")
+                if FileManager.default.fileExists(atPath: actTrigger.path) {
+                    if let data = try? Data(contentsOf: actTrigger),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let st = json["stamina"] as? Int ?? 100
+                        let maxSt = json["max_stamina"] as? Int ?? 100
+                        let r = json["realm"] as? Int ?? 0
+                        let pag = json["highest_pagoda"] as? Int ?? 1
+                        LiveActivityBridge.shared.updateActivity(stamina: st, maxStamina: maxSt, realm: r, pagodaFloor: pag)
+                    }
+                    try? FileManager.default.removeItem(at: actTrigger)
                 }
             }
             Thread.sleep(forTimeInterval: 0.15)

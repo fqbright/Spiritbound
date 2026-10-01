@@ -2150,6 +2150,15 @@ func begin_tribulation_battle() -> void:
 	if _camp_screen: _camp_screen.begin_tribulation_battle()
 func begin_lethal_puzzle_battle(puzzle_id: String) -> void:
 	if _camp_screen: _camp_screen.begin_lethal_puzzle_battle(puzzle_id)
+func begin_pagoda_battle(floor: int = 1) -> void:
+	if _camp_screen: _camp_screen.begin_pagoda_battle(floor)
+func _play_biome_soundscape(chapter: int, weather: String = "") -> void:
+	if muted or sfx_muted: return
+	var sfx_name: String = "ambience_wind"
+	if weather == "solar": sfx_name = "ambience_fire"
+	elif weather == "frost": sfx_name = "ambience_frost"
+	elif weather == "spring_rain" or chapter % 3 == 0: sfx_name = "ambience_water"
+	play_sfx(sfx_name, 0.05, -6.0)
 # Computed properties, not plain delegator functions, because ui_smoke.gd reads/advances
 # these as data (game.tutorial_step, game.TUTORIAL_STEPS) rather than calling a method.
 var tutorial_step: int:

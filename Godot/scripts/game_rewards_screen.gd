@@ -606,6 +606,10 @@ func show_reward_details() -> void:
 	vic_card_btn.name = "VictoryCardBtn"
 	page.add_child(vic_card_btn)
 
+	var chronicle_btn := g._button(g.t("ui.battle_chronicle_btn"), _show_battle_chronicle_modal, Color("1f2d3d"), Vector2(0, 36))
+	chronicle_btn.name = "BattleChronicleBtn"
+	page.add_child(chronicle_btn)
+
 	if bool(g.pending_rewards.get("great_boss_kill", false)) or bool(g.pending_rewards.get("abyss_milestone", false)):
 		var recap_btn := g._button(g.t("ui.run_recap_view_btn"), show_run_recap, g.GOLD, Vector2(0, 36))
 		recap_btn.name = "ViewRunRecapBtn"
@@ -1379,6 +1383,57 @@ func _show_victory_card_modal() -> void:
 	, g.GOLD, Vector2(0, 36))
 	copy_btn.name = "VictoryCardCopyBtn"
 	vbox.add_child(copy_btn)
+
+func _show_battle_chronicle_modal() -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("BattleChronicleModal", func():
+		var ex: Node = g.overlay.get_node_or_null("BattleChronicleModal")
+		if ex: ex.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 0)
+	var pstyle := g._panel(Color("0f1722"), 14, Color("38bdf8"))
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 16
+	pstyle.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.battle_chronicle_title"), 15, Color("38bdf8")))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("221730"), Vector2(30, 30))
+	close_btn.name = "BattleChronicleCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	vbox.add_child(head)
+
+	var stats: Dictionary = g.combat.state.get("stats", {}) if g.combat and g.combat.state else {}
+	var dmg_dealt: int = int(stats.get("damage_dealt", 0))
+	var sh_blocked: int = int(stats.get("shield_blocked", 0))
+	var cards_pl: int = int(stats.get("cards_played", 0))
+	var mvp_c: String = str(stats.get("mvp_card", "strike"))
+	var mvp_dmg: int = int(stats.get("mvp_card_damage", 0))
+
+	vbox.add_child(g._label("⚔️ 总伤害: %d" % dmg_dealt, 13, g.EMBER))
+	vbox.add_child(g._label("🛡️ 护盾抵御: %d" % sh_blocked, 13, Color("67e8f9")))
+	vbox.add_child(g._label("🎴 出牌总数: %d" % cards_pl, 13, g.GOLD))
+	var card_data := g.content.card(mvp_c)
+	var mvp_name: String = str(card_data.get("name_zh" if g.lang != "en" else "name", mvp_c))
+	vbox.add_child(g._label("👑 核心斩敌单卡: %s (%d 伤害)" % [mvp_name, mvp_dmg], 13, Color("f472b6")))
+	var t_dmg: Array = stats.get("turn_damage", [])
+	if not t_dmg.is_empty():
+		vbox.add_child(g._label("📈 各回合输出推演: %s" % str(t_dmg), 11, Color("94a3b8")))
 
 func show_run_recap() -> void:
 	g._clear(); g._play_music(false)

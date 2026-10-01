@@ -1475,6 +1475,7 @@ func _build_camp_character(list: VBoxContainer) -> void:
 	list.add_child(_account_panel())
 	list.add_child(_prestige_titles_section())
 	list.add_child(_sanctuary_garden_section())
+	list.add_child(_spiritual_roots_section())
 	list.add_child(_astral_roots_section())
 	list.add_child(_meridian_cultivation_section())
 	list.add_child(_hero_archetypes_section())
@@ -1513,6 +1514,7 @@ func _build_camp_challenges(list: VBoxContainer) -> void:
 	list.add_child(_curse_run_section())
 	list.add_child(_abyss_section())
 	list.add_child(_samsara_section())
+	list.add_child(_endless_pagoda_section())
 	# Practice & tuning: nothing here is a permanent run — the difficulty ladder changes what the
 	# campaign above does, and the sandbox is a throwaway bout.
 	list.add_child(_challenge_band_header("practice"))
@@ -4425,6 +4427,82 @@ func _lethal_puzzles_section() -> Control:
 		p_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(p_btn)
 	vbox.add_child(row)
+	return panel
+
+func begin_pagoda_battle(floor: int = 1) -> void:
+	var enc: Dictionary = g.content.pagoda_encounter(floor)
+	g.in_sandbox = true
+	g.current_stage = 0
+	g.active_modifier = {"is_pagoda": true, "pagoda_floor": floor}
+	g.combat = SpiritCombat.new(g.content)
+	var equipped: Array = g.profile.equipment_slots.values()
+	g.combat.create(g._battle_seed(), enc, g.profile.deck, 60, g.profile.upgrades, equipped, g.profile.card_runes, g.active_modifier, g.profile.relics, g._current_hero_mastery_bonuses(), g.profile.equipment_tiers, g.profile.equipment_inscriptions, g.profile.get("card_branches", {}))
+	g.battle_log = BattleLog.new()
+	g.combat.event.connect(g._combat_event)
+	g.advancing_to_reward = false
+	g.selected_card = -1
+	g.show_battle()
+	g._maybe_end_turn()
+
+func _spiritual_roots_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "SpiritualRootsSection"
+	panel.custom_minimum_size = Vector2(0, 110)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("162433"), 12, Color("38bdf8")))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var pts: int = int(g.profile.get("spiritual_root_points", 0))
+	vbox.add_child(g._label(g.t("ui.spiritual_roots_title") + " (" + g.tf("ui.spiritual_root_pts", pts) + ")", 14, Color("38bdf8"), HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(g._label(g.t("ui.spiritual_roots_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	var roots: Dictionary = g.profile.get("spiritual_roots", {"metal": 1, "wood": 1, "water": 1, "fire": 1, "earth": 1})
+	for elem in ["metal", "wood", "water", "fire", "earth"]:
+		var val: int = int(roots.get(elem, 1))
+		var elem_perk: Dictionary = g.content.SPIRITUAL_ROOT_PERKS.get(elem, {})
+		var elem_name: String = str(elem_perk.get("name_zh" if g.lang != "en" else "name_en", elem))
+		var b := g._button("%s:%d" % [elem_name, val], func():
+			if SpiritSave.invest_spiritual_root(g.profile, elem):
+				g._toast("灵根淬炼成功！%s提升至 %d" % [elem_name, val + 1], g.GOLD)
+				g.show_camp()
+		, Color("1e293b") if pts > 0 else Color("0f172a"), Vector2(0, 30))
+		b.name = "RootBtn_%s" % elem
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(b)
+	vbox.add_child(row)
+	return panel
+
+func _endless_pagoda_section() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "EndlessPagodaSection"
+	panel.custom_minimum_size = Vector2(0, 95)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", g._panel(Color("261a15"), 12, g.EMBER))
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 10)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	pad.add_child(vbox)
+
+	var cur_fl: int = int(g.profile.get("pagoda_highest_floor", 1))
+	vbox.add_child(g._label(g.t("ui.pagoda_title") + " (最高: 第%d层)" % cur_fl, 14, g.EMBER, HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(g._label(g.t("ui.pagoda_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	var enter_btn := g._button(g.tf("ui.pagoda_enter_btn", cur_fl), func(): begin_pagoda_battle(cur_fl), g.EMBER, Vector2(160, 32))
+	enter_btn.name = "PagodaEnterBtn"
+	vbox.add_child(enter_btn)
 	return panel
 
 func begin_training_dummy_battle() -> void:

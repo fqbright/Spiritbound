@@ -78,11 +78,13 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"encounter":encounter.duplicate(true),
 		"is_great_boss":bool(encounter.get("is_great_boss", false)),
 		"chapter":int(encounter.get("chapter", 1)),
+		"level":int(encounter.get("level", 1)),
+		"is_boss":bool(encounter.get("is_boss", false)) or int(encounter.get("level", 1)) == 5 or bool(encounter.get("is_great_boss", false)),
 		"last_element":"",
 		"weather_affix":str(modifier.get("weather_affix", "")),
 		"turn_combo_count":0,
 		"turn_attack_count":0,
-		"stats":{"damage_dealt":0,"direct_damage":0,"dot_damage":0,"cards_played":0,"shield_gained":0,"shield_blocked":0,"cards_tally":{},"turns_taken":0},
+		"stats":{"damage_dealt":0,"direct_damage":0,"dot_damage":0,"cards_played":0,"shield_gained":0,"shield_blocked":0,"cards_tally":{},"turns_taken":0,"turn_damage":[],"mvp_card":"","mvp_card_damage":0,"last_recorded_total_dmg":0},
 		"cards_played_this_turn":0,
 		"player_blocked_this_turn":0,
 		"mirror_shield_active":false,
@@ -100,6 +102,11 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"is_tribulation": bool(modifier.get("is_tribulation", false)),
 		"familiar_qi": 0,
 		"season": str(modifier.get("season", "")),
+		"spiritual_roots": hero_bonuses.get("spiritual_roots", {"metal": 1, "wood": 1, "water": 1, "fire": 1, "earth": 1}),
+		"card_inscriptions": hero_bonuses.get("card_inscriptions", {}),
+		"boss_phase_2_triggered": false,
+		"is_pagoda": bool(encounter.get("is_pagoda", false)),
+		"current_card_id": "",
 	}
 	if state.is_training_dummy:
 		enemies.clear()
@@ -462,6 +469,21 @@ func play(hand_index: int, target_index := -1) -> bool:
 	elif cur_season == "season_autumn_wind" and state.cards_played_this_turn == 4:
 		state.energy = mini(10, state.energy + 1)
 		emit_signal("event", "season_proc", {"type": "autumn_wind", "energy": 1})
+	state.current_card_id = card.id
+	var inscribed_rune: String = str(state.get("card_inscriptions", {}).get(card.id, ""))
+	if inscribed_rune == "rune_vampire" and harmful:
+		state.player.health = mini(state.player.max_health, state.player.health + 2)
+		emit_signal("event", "rune_inscribed_proc", {"card": card.id, "rune": "rune_vampire"})
+	elif inscribed_rune == "rune_surging" and state.cards_played_this_turn == 1:
+		state.energy += 1
+		emit_signal("event", "rune_inscribed_proc", {"card": card.id, "rune": "rune_surging"})
+	elif inscribed_rune == "rune_iron_wall":
+		state.player.shield += 4
+		emit_signal("event", "rune_inscribed_proc", {"card": card.id, "rune": "rune_iron_wall"})
+	var roots_dict: Dictionary = state.get("spiritual_roots", {})
+	var wood_root: int = int(roots_dict.get("wood", 1))
+	if wood_root > 1 and str(card.get("element", "")).to_lower() in ["poison", "wood"]:
+		state.player.health = mini(state.player.max_health, state.player.health + (wood_root - 1))
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += actual_cost; state.swift_used = true
@@ -722,6 +744,9 @@ func end_turn() -> void:
 				burn_damage = int(round(burn_damage * 1.35))
 			if str(state.get("season", "")) == "season_summer_blaze":
 				burn_damage = int(round(burn_damage * 1.5))
+			var fire_r: int = int(state.get("spiritual_roots", {}).get("fire", 1))
+			if fire_r > 1:
+				burn_damage = int(round(burn_damage * (1.0 + float(fire_r - 1) * 0.1)))
 			_damage_enemy(enemy_index,burn_damage,false)
 			if state.has("stats"): state.stats.dot_damage = int(state.stats.get("dot_damage", 0)) + burn_damage
 			enemy.burn = maxi(0,enemy.burn - 1)
@@ -805,6 +830,15 @@ func end_turn() -> void:
 	if str(state.get("deck_archetype", "")) == "archetype_stone":
 		state.player.shield += 3
 		emit_signal("event", "archetype_proc", {"type": "stone", "shield": 3})
+	var earth_r: int = int(state.get("spiritual_roots", {}).get("earth", 1))
+	if earth_r > 1:
+		state.player.shield += (earth_r - 1) * 2
+	if state.has("stats"):
+		if not state.stats.has("turn_damage"): state.stats.turn_damage = []
+		var prev_tot: int = int(state.stats.get("last_recorded_total_dmg", 0))
+		var cur_tot: int = int(state.stats.get("damage_dealt", 0))
+		state.stats.turn_damage.append(cur_tot - prev_tot)
+		state.stats.last_recorded_total_dmg = cur_tot
 	if bool(state.get("is_tribulation", false)) and state.turn % 3 == 0:
 		_damage_player(15)
 		for ti in state.enemies.size():
@@ -931,6 +965,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 						state.enemies[index].vulnerable = int(state.enemies[index].get("vulnerable", 0)) + 1
 			"shield":
 				var shield_gain := amount
+				var water_r: int = int(state.get("spiritual_roots", {}).get("water", 1))
+				if water_r > 1: shield_gain += (water_r - 1)
 				if state.get("rune_sets", []).has("set_stone") and rng.randf() < 0.25:
 					shield_gain = int(round(shield_gain * 1.5))
 					emit_signal("event","rune_set",{"id":"set_stone"})
@@ -977,7 +1013,8 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if int(enemy.mechanics.get("frost_armor", 0)) > 0:
 		amount = maxi(1, amount - int(enemy.mechanics.frost_armor))
 	if int(enemy.get("vulnerable", 0)) > 0:
-		amount = int(round(amount * 1.5)) + (2 if _has_resonance("res_chaos_titan") else 0)
+		var metal_r: int = int(state.get("spiritual_roots", {}).get("metal", 1))
+		amount = int(round(amount * 1.5)) + (2 if _has_resonance("res_chaos_titan") else 0) + (metal_r - 1 if metal_r > 1 else 0)
 	var old_shield: int = int(enemy.shield)
 	var absorbed := 0 if pierce else mini(enemy.shield,amount)
 	enemy.shield -= absorbed
@@ -1001,8 +1038,26 @@ func _damage_enemy(index: int, amount: int, pierce: bool) -> int:
 	if state.has("stats"):
 		state.stats.damage_dealt = int(state.stats.get("damage_dealt", 0)) + (dealt + absorbed)
 		state.stats.direct_damage = int(state.stats.get("direct_damage", 0)) + (dealt + absorbed)
+		if str(state.get("current_card_id", "")) != "":
+			var cid: String = str(state.current_card_id)
+			if not state.stats.has("card_damage_tally"): state.stats.card_damage_tally = {}
+			var new_dmg: int = int(state.stats.card_damage_tally.get(cid, 0)) + (dealt + absorbed)
+			state.stats.card_damage_tally[cid] = new_dmg
+			if new_dmg > int(state.stats.get("mvp_card_damage", 0)):
+				state.stats.mvp_card = cid
+				state.stats.mvp_card_damage = new_dmg
 	if index == 0 and bool(state.get("is_great_boss", false)) and not bool(enemy.get("phase_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
 		_trigger_great_boss_phase_2(enemy)
+	if index == 0 and bool(state.get("is_boss", false)) and not bool(state.get("is_great_boss", false)) and not bool(state.get("boss_phase_2_triggered", false)) and enemy.health > 0 and enemy.health <= enemy.max_health / 2:
+		state.boss_phase_2_triggered = true
+		enemy.damage = int(enemy.get("damage", 0)) + 3
+		enemy.shield = int(enemy.get("shield", 0)) + 12
+		emit_signal("event", "boss_phase_transition", {
+			"boss_name": enemy.get("name", "妖王"),
+			"enrage_quote": "凡夫蝼蚁，安敢逆天！显吾法相！",
+			"bonus_shield": 12,
+			"bonus_damage": 3
+		})
 	_check_mechanics_phases(index, enemy)
 	if enemy.health > 0 and enemy.health <= enemy.max_health * 0.25 and not bool(enemy.get("weakpoint_shattered", false)) and (bool(state.is_great_boss) or bool(enemy.get("is_boss", false))):
 		enemy["weakpoint_shattered"] = true

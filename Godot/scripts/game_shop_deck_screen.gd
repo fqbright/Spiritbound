@@ -1520,6 +1520,15 @@ func show_deck() -> void:
 	action_row.add_child(purge_altar_btn)
 	page.add_child(action_row)
 
+	var inscribe_bar := HBoxContainer.new()
+	inscribe_bar.name = "DeckInscribeBar"
+	inscribe_bar.add_theme_constant_override("separation", 8)
+	var inscribe_btn := g._button("✨ " + g.t("ui.card_inscribe_title"), _show_card_inscribe_modal, Color("1d2c38"), Vector2(0, 32))
+	inscribe_btn.name = "DeckInscribeBtn"
+	inscribe_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inscribe_bar.add_child(inscribe_btn)
+	page.add_child(inscribe_bar)
+
 	# Search & Filter Chips (F3)
 	var search_row := HBoxContainer.new()
 	search_row.add_theme_constant_override("separation", 6)
@@ -2559,4 +2568,55 @@ func show_reforge_modal(item_id: String) -> void:
 		vbox.add_child(inscribe_box)
 
 	refresh_modal_ui[0].call()
+
+func _show_card_inscribe_modal() -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("CardInscribeModal", func():
+		var ex: Node = g.overlay.get_node_or_null("CardInscribeModal")
+		if ex: ex.queue_free()
+	)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 0)
+	var pstyle := g._panel(Color("0f172a"), 14, Color("38bdf8"))
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 16
+	pstyle.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+
+	var head := HBoxContainer.new()
+	head.add_child(g._label(g.t("ui.card_inscribe_title"), 15, Color("38bdf8")))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("221730"), Vector2(30, 30))
+	close_btn.name = "CardInscribeCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	vbox.add_child(head)
+
+	vbox.add_child(g._label(g.t("ui.card_inscribe_sub"), 10, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+	for r_id in g.content.CARD_INSCRIPTIONS:
+		var r_data: Dictionary = g.content.CARD_INSCRIPTIONS[r_id]
+		var r_name: String = str(r_data.get("name_zh" if g.lang != "en" else "name_en", r_id))
+		var r_desc: String = str(r_data.get("desc_zh" if g.lang != "en" else "desc_en", ""))
+		var r_btn := g._button("铭刻 " + r_name + ": " + r_desc, func():
+			var deck: Array = g.profile.get("deck", [])
+			if not deck.is_empty():
+				SpiritSave.inscribe_card(g.profile, str(deck[0]), r_id)
+				g._toast("已为核心单卡铭刻【%s】！" % r_name, g.GOLD)
+				modal.queue_free()
+				show_deck()
+		, Color("1e293b"), Vector2(0, 34))
+		r_btn.name = "RuneOptBtn_" + r_id
+		vbox.add_child(r_btn)
 

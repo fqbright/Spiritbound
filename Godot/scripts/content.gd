@@ -1894,6 +1894,80 @@ func lethal_puzzle_encounter(p: Dictionary) -> Dictionary:
 		"background": 2
 	}
 
+const SPIRITUAL_ROOT_PERKS: Dictionary = {
+	"metal": {"name_zh": "金灵根", "name_en": "Metal Root", "desc_zh": "对易伤目标伤害每点+1", "desc_en": "+1 DMG vs Vulnerable per point"},
+	"wood": {"name_zh": "木灵根", "name_en": "Wood Root", "desc_zh": "打出毒素牌时每点回复1点生命", "desc_en": "Heal 1 HP on poison card per point"},
+	"water": {"name_zh": "水灵根", "name_en": "Water Root", "desc_zh": "获得护盾时每点额外+1", "desc_en": "+1 extra Shield per point"},
+	"fire": {"name_zh": "火灵根", "name_en": "Fire Root", "desc_zh": "燃烧额外伤害每点+10%", "desc_en": "+10% Burn damage per point"},
+	"earth": {"name_zh": "土灵根", "name_en": "Earth Root", "desc_zh": "回合结束保留护盾每点+2", "desc_en": "+2 Retained shield per point"}
+}
+
+const CARD_INSCRIPTIONS: Dictionary = {
+	"rune_vampire": {"name_zh": "嗜血纹", "name_en": "Vampire Rune", "desc_zh": "造成伤害时吸取2点生命", "desc_en": "Heal 2 HP on dealing damage"},
+	"rune_surging": {"name_zh": "回气纹", "name_en": "Surging Rune", "desc_zh": "回合首次打出时回复1点能量", "desc_en": "Gain 1 Energy on first play in turn"},
+	"rune_iron_wall": {"name_zh": "破军纹", "name_en": "Iron Wall Rune", "desc_zh": "打出时额外获得4点护盾", "desc_en": "Gain +4 Shield when played"}
+}
+
+const FATE_ENCOUNTERS: Array[Dictionary] = [
+	{
+		"id": "fate_sword_tomb",
+		"title_zh": "上古剑冢叩关",
+		"title_en": "Ancient Sword Tomb",
+		"desc_zh": "荒古剑冢万剑齐鸣。你愿以神魂精血为引，叩问通灵神剑，还是退避三舍？",
+		"desc_en": "Thousands of blades hum in the ancient tomb. Will you offer soul blood to claim an ancient blade?",
+		"choices": [
+			{"id": "claim_blade", "text_zh": "以血祭剑 (-10 生命，得核心金卡)", "text_en": "Sacrifice Blood (-10 HP, Gain Gold Card)", "hp_cost": 10, "reward_card": "thousand_blades"},
+			{"id": "leave", "text_zh": "躬身退去 (无事发生)", "text_en": "Depart Peacefully (Nothing happens)"}
+		]
+	},
+	{
+		"id": "fate_longevity_trade",
+		"title_zh": "寿元易宝·道心叩问",
+		"title_en": "Longevity Exchange",
+		"desc_zh": "古刹盲眼老僧合十微语：‘施主道心坚定，若愿损一丝寿元道行，可换天外灵玉。’",
+		"desc_en": "The blind monk whispers: 'Sacrifice a shred of cultivation vitality for heavenly spirit jade?'",
+		"choices": [
+			{"id": "trade_vitality", "text_zh": "损益换玉 (-5 生命上限，得 30 灵玉)", "text_en": "Sacrifice Max HP (-5 Max HP, +30 Jade)", "max_hp_cost": 5, "reward_jade": 30},
+			{"id": "decline", "text_zh": "守持道心 (无事发生)", "text_en": "Guard Daoist Mind (Nothing happens)"}
+		]
+	}
+]
+
+func pagoda_encounter(floor: int) -> Dictionary:
+	var base_hp: int = 50 + floor * 14
+	var base_dmg: int = 8 + int(floor * 1.6)
+	var affix_type: int = floor % 4
+	var mechanics: Dictionary = {}
+	var affix_name: String = ""
+	match affix_type:
+		0:
+			mechanics["thorns"] = 2 + int(floor / 5)
+			affix_name = "【荆棘反震】"
+		1:
+			mechanics["enrage"] = 2
+			affix_name = "【狂暴嗜血】"
+		2:
+			mechanics["shield"] = 8 + int(floor / 4) * 4
+			affix_name = "【金石玄甲】"
+		3:
+			mechanics["poison"] = 2
+			affix_name = "【万毒攻心】"
+	return {
+		"chapter": 777,
+		"level": floor,
+		"health": base_hp,
+		"damage": base_dmg,
+		"reward": 20 + floor * 5,
+		"name": "锁妖塔恶煞 · 第%d层 %s" % [floor, affix_name],
+		"name_en": "Demon Pagoda Fiend · Floor %d" % floor,
+		"art": "m_s00%d.png" % ((floor % 5) + 1),
+		"art_key": "m_s%03d" % ((floor % 5) + 1),
+		"tier": 3,
+		"mechanics": mechanics,
+		"adds": 1 if floor >= 10 else 0,
+		"is_pagoda": true
+	}
+
 # Weekly Theme Challenge (B3): reuses the Daily Trial's deterministic-per-period tag engine
 # above, but at a weekly cadence and with exactly one themed modifier instead of a combined
 # trio — "本周主题" reads as one clear theme, not a grab-bag. A shorter 8-stage gauntlet (vs
@@ -3372,6 +3446,22 @@ const UI_TEXT = {
 	"ui.cultivation_realm_2": {"zh-Hans":"金丹境", "en":"Golden Core"},
 	"ui.cultivation_realm_3": {"zh-Hans":"元婴境", "en":"Nascent Soul"},
 	"ui.cultivation_realm_4": {"zh-Hans":"化神境", "en":"Soul Formation"},
+	"ui.spiritual_roots_title": {"zh-Hans":"先天五行灵根台", "en":"Five Elements Spiritual Roots"},
+	"ui.spiritual_roots_sub": {"zh-Hans":"炼化天地五行之息，觉醒万法神髓", "en":"Cultivate the five elements to awaken supreme affinities"},
+	"ui.invest_root_btn": {"zh-Hans":"凝练灵根 (+1)", "en":"Cultivate (+1)"},
+	"ui.spiritual_root_pts": {"zh-Hans":"可用灵根造化点: %d", "en":"Available Root Points: %d"},
+	"ui.pagoda_enter_btn": {"zh-Hans":"登临锁妖塔 (第%d层)", "en":"Ascend Pagoda (Floor %d)"},
+	"ui.card_inscribe_title": {"zh-Hans":"神兵器纹铭刻", "en":"Card Rune Inscription"},
+	"ui.card_inscribe_sub": {"zh-Hans":"为本命单卡注入古老器纹，赋予专属神通", "en":"Inscribe ancient runes to bestow unique traits on cards"},
+	"ui.card_inscribe_btn": {"zh-Hans":"铭刻器纹", "en":"Inscribe Rune"},
+	"ui.battle_chronicle_btn": {"zh-Hans":"天道战报 📊", "en":"Battle Chronicle 📊"},
+	"ui.battle_chronicle_title": {"zh-Hans":"天道演武战报", "en":"Battle Chronicle"},
+	"ui.boss_phase_2_banner": {"zh-Hans":"【妖王法相 · 狂暴显圣】", "en":"【BOSS AVATAR: ENRAGE AWAKENING】"},
+	"ui.one_handed_title": {"zh-Hans":"单手沉浸模式", "en":"One-Handed Mode"},
+	"ui.one_handed_off": {"zh-Hans":"单手模式: 关闭", "en":"One-Handed: Off"},
+	"ui.one_handed_left": {"zh-Hans":"单手模式: 左手偏置", "en":"One-Handed: Left Hand"},
+	"ui.one_handed_right": {"zh-Hans":"单手模式: 右手偏置", "en":"One-Handed: Right Hand"},
+	"ui.fate_encounter_title": {"zh-Hans":"天机仙缘 · 仙道叩问", "en":"Daoist Fate Encounter"},
 	"ui.tribulation_title": {"zh-Hans":"九天紫霄雷劫", "en":"Nine Heavens Tribulation"},
 	"ui.tribulation_desc": {"zh-Hans":"天道威严，每 3 回合降下紫霄天罚，抵御雷劫突破桎梏！", "en":"Heavenly tribulation strikes every 3 turns. Endure the lightning to break through!"},
 	"ui.familiar_ultimate_ready": {"zh-Hans":"灵宠蓄力已满！点击释放本命神通！", "en":"Familiar Qi full! Tap to unleash Ultimate!"},

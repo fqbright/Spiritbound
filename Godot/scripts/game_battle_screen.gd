@@ -2322,6 +2322,9 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	var distance: float = float(index) - center_idx
 	var spacing: float = minf(64.0, 250.0 / maxf(1.0, float(count - 1)))
 	var center_x: float = 366.0 / 2.0
+	var one_handed: String = str(g.profile.get("one_handed_mode", "off"))
+	if one_handed == "left": center_x -= 22.0
+	elif one_handed == "right": center_x += 22.0
 	tile.home_rot = deg_to_rad(distance * 2.8)
 	tile.home_pos = Vector2(center_x + distance * spacing - 58.0, 10.0 + absf(distance) * 4.2)
 	# The cost badge is offset 10px up-and-left of the tile (see its position below), so a full
@@ -4242,18 +4245,23 @@ func _show_epiphany_dialog() -> void:
 
 func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: int = 24, is_crit: bool = false) -> void:
 	if g.overlay == null: return
-	var label := g._label(text, font_size, color, HORIZONTAL_ALIGNMENT_CENTER)
-	label.position = pos - Vector2(60, 18)
-	label.size = Vector2(120, 36)
+	var is_heavy: bool = is_crit or text.to_int() >= 25
+	var display_text: String = text
+	if is_heavy and text.is_valid_int():
+		var clr_flairs := ["【破！】", "【绝！】", "【烈！】", "【震！】"]
+		display_text = clr_flairs[abs(hash(text)) % clr_flairs.size()] + " " + text
+	var label := g._label(display_text, font_size, color, HORIZONTAL_ALIGNMENT_CENTER)
+	label.position = pos - Vector2(75, 18)
+	label.size = Vector2(150, 36)
 	label.z_index = 400
-	label.pivot_offset = Vector2(60, 18)
+	label.pivot_offset = Vector2(75, 18)
 	label.scale = Vector2(0.4, 0.4)
 	label.add_theme_color_override("font_outline_color", Color(0.04, 0.04, 0.06, 0.95))
-	label.add_theme_constant_override("outline_size", 5)
+	label.add_theme_constant_override("outline_size", 6 if is_heavy else 5)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.overlay.add_child(label)
 
-	var target_scale: Vector2 = Vector2(1.5, 1.5) if is_crit else Vector2(1.2, 1.2)
+	var target_scale: Vector2 = Vector2(1.8, 1.8) if is_heavy else (Vector2(1.5, 1.5) if is_crit else Vector2(1.2, 1.2))
 	var x_offset: float = randf_range(-24.0, 24.0) if is_crit else 0.0
 	var tw := label.create_tween()
 	tw.set_parallel(true)
@@ -4265,6 +4273,11 @@ func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: i
 	tw.chain().tween_property(label, "position:y", label.position.y - 36.0, g._battle_delay(0.35)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(label, "modulate:a", 0.0, g._battle_delay(0.35))
 	tw.chain().tween_callback(label.queue_free)
+
+	if is_heavy and is_instance_valid(g.root):
+		var zoom_tw := g.root.create_tween()
+		zoom_tw.tween_property(g.root, "scale", Vector2(1.018, 1.018), 0.05).set_trans(Tween.TRANS_QUAD)
+		zoom_tw.chain().tween_property(g.root, "scale", Vector2.ONE, 0.07)
 
 func _combat_event(kind: String, payload: Dictionary) -> void:
 	if g.battle_log: g.battle_log.record(kind, payload, int(g.combat.state.get("turn", 0)) if g.combat else 0)
@@ -4278,6 +4291,11 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	elif kind == "thorns": g._toast(g.tf("ui.thorns_toast", payload.amount), Color("ff8a8a"))
 	elif kind == "revive": g._toast(g.tf("ui.revive_toast", payload.amount),Color("9bffd3"))
 	elif kind == "ultimate_cast": g._toast("✦ %s ✦" % payload.get("name", "Ultimate"), Color("ffd700"))
+	elif kind == "boss_phase_transition":
+		_shake_screen(16.0, 0.5)
+		g.play_sfx("attack_heavy")
+		g._toast(g.t("ui.boss_phase_2_banner"), Color("ef4444"))
+		_spawn_enemy_floating_text(0, "【法相天地 · 狂暴】", Color("ef4444"), 30, true)
 	elif kind == "boss_weakpoint_broken":
 		_shake_screen(14.0, 0.4)
 		g.play_sfx("attack_heavy")

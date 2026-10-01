@@ -201,6 +201,11 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not base.has("cultivation_exp"): base.cultivation_exp = 0
 	if not base.get("lethal_puzzles_cleared") is Array: base.lethal_puzzles_cleared = []
 	if not base.has("purged_cards_count"): base.purged_cards_count = 0
+	if not base.get("spiritual_roots") is Dictionary:
+		base.spiritual_roots = {"metal": 1, "wood": 1, "water": 1, "fire": 1, "earth": 1}
+	if not base.has("spiritual_root_points"): base.spiritual_root_points = 3
+	if not base.get("card_inscriptions") is Dictionary: base.card_inscriptions = {}
+	if not base.has("one_handed_mode"): base.one_handed_mode = "off"
 	base.schema_version = SCHEMA_VERSION
 	return base
 
@@ -216,6 +221,36 @@ static func write(profile: Dictionary) -> void:
 		if icloud_f != null:
 			icloud_f.store_string(JSON.stringify({"action": "save", "payload": json_payload}))
 			icloud_f.close()
+		var act_f := FileAccess.open("user://live_activity_trigger.json", FileAccess.WRITE)
+		if act_f != null:
+			act_f.store_string(JSON.stringify({
+				"stamina": profile.get("stamina", {}).get("current", 100),
+				"max_stamina": profile.get("stamina", {}).get("max", 100),
+				"realm": int(profile.get("cultivation_realm", 0)),
+				"highest_pagoda": int(profile.get("pagoda_highest_floor", 1))
+			}))
+			act_f.close()
+
+static func invest_spiritual_root(profile: Dictionary, element: String) -> bool:
+	if int(profile.get("spiritual_root_points", 0)) <= 0: return false
+	if not profile.get("spiritual_roots") is Dictionary:
+		profile.spiritual_roots = {"metal": 1, "wood": 1, "water": 1, "fire": 1, "earth": 1}
+	if not profile.spiritual_roots.has(element): return false
+	profile.spiritual_roots[element] = int(profile.spiritual_roots[element]) + 1
+	profile.spiritual_root_points = int(profile.get("spiritual_root_points", 0)) - 1
+	write(profile)
+	return true
+
+static func inscribe_card(profile: Dictionary, card_id: String, rune_kind: String) -> bool:
+	if not profile.get("card_inscriptions") is Dictionary:
+		profile.card_inscriptions = {}
+	profile.card_inscriptions[card_id] = rune_kind
+	write(profile)
+	return true
+
+static func record_pagoda_progress(profile: Dictionary, floor: int) -> void:
+	profile.pagoda_highest_floor = maxi(int(profile.get("pagoda_highest_floor", 1)), floor)
+	write(profile)
 
 static func purge_card_from_deck(profile: Dictionary, card_id: String) -> bool:
 	if not profile.get("deck") is Array: return false
