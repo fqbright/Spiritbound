@@ -1885,9 +1885,9 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		stamina_pill.name = "HeaderStaminaPill"
 		gold_row.add_child(stamina_pill)
 
-		if int(profile.get("spirit_dust", 0)) > 0:
-			var dust_pill := _currency_pill(load("res://assets/icons/hud_dust.png"), int(profile.get("spirit_dust", 0)), Color("c79bff"))
-			gold_row.add_child(dust_pill)
+		var dust_pill := _currency_pill(load("res://assets/icons/hud_dust.png"), int(profile.get("spirit_dust", 0)), Color("c79bff"))
+		dust_pill.name = "HeaderDustPill"
+		gold_row.add_child(dust_pill)
 
 		logo_stack.add_child(gold_row)
 
@@ -1903,11 +1903,11 @@ func _header(title: String, subtitle: String, back := Callable()) -> HBoxContain
 		stats_box.add_theme_constant_override("separation", 3)
 		stats_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
-		var hp_pill := _currency_pill(load("res://assets/icons/hud_heart.png"), int(profile.health), TEXT)
-		stats_box.add_child(hp_pill)
-
 		var gold_pill2 := _currency_pill(load("res://assets/icons/hud_gold.png"), int(profile.gold), GOLD)
 		stats_box.add_child(gold_pill2)
+
+		var jade_pill2 := _currency_pill(load("res://assets/icons/hud_jade.png"), int(profile.get("spirit_jade", 10)), Color("78e9c0"))
+		stats_box.add_child(jade_pill2)
 
 		_ensure_stamina_current()
 		var stamina_pill2 := _currency_pill(load("res://assets/icons/hud_stamina.png"), int(profile.get("stamina", {}).get("current", 100)), Color("5ec5ff"), func(): show_stamina_modal())

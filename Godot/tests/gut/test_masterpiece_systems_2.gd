@@ -235,3 +235,30 @@ func test_performance_and_eco_settings():
 
 	SpiritSave.set_eco_mode(p, true)
 	assert_true(p.eco_mode, "Eco mode set to true")
+
+# ------------------------------------------------------------------------------
+# 8. Currency Display: 4 on Map, 3 on Other Screens
+# ------------------------------------------------------------------------------
+
+func test_currency_display_counts_map_vs_other_screens():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.profile.spirit_dust = 0 # Ensure dust is 0
+	add_child_autofree(g)
+
+	# 1. Map Header ("SPIRITBOUND"): exactly 4 currency pills (Gold, Jade, Stamina, Dust)
+	var map_hdr: HBoxContainer = g._header("SPIRITBOUND", "")
+	add_child_autofree(map_hdr)
+	var gold_row: BoxContainer = map_hdr.find_child("HeaderGoldRow", true, false) as BoxContainer
+	assert_not_null(gold_row, "HeaderGoldRow exists on map")
+	assert_eq(gold_row.get_child_count(), 4, "Map header displays exactly 4 currencies (Gold, Jade, Stamina, Dust)")
+	assert_not_null(gold_row.find_child("HeaderDustPill", true, false), "Dust pill is shown on map even with 0 dust")
+
+	# 2. Other Screens Header (e.g. Shop, Camp, Quests): exactly 3 currency pills (Gold, Jade, Stamina)
+	var other_hdr: HBoxContainer = g._header("SHOP", "Store", func(): pass)
+	add_child_autofree(other_hdr)
+	var stats_box: BoxContainer = other_hdr.find_child("HeaderStatsBox", true, false) as BoxContainer
+	assert_not_null(stats_box, "HeaderStatsBox exists on other screens")
+	assert_eq(stats_box.get_child_count(), 3, "Other screens header displays exactly 3 currencies (Gold, Jade, Stamina)")
+	assert_null(stats_box.find_child("HeaderDustPill", true, false), "Dust pill is NOT shown on other screens")
