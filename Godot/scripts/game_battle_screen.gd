@@ -1490,12 +1490,14 @@ func _add_hand(page: VBoxContainer) -> void:
 			g._toast("尚有余力未发，再按一次结束", g.GOLD)
 			if pass_btn != null and is_instance_valid(pass_btn):
 				pass_btn.text = "确认?"
-			var timer := g.get_tree().create_timer(3.0)
-			timer.timeout.connect(func():
-				pass_confirm_active[0] = false
-				if pass_btn != null and is_instance_valid(pass_btn):
-					pass_btn.text = g.t("ui.pass_turn")
-			)
+				var reset_tw := pass_btn.create_tween()
+				pass_btn.tree_exited.connect(reset_tw.kill)
+				reset_tw.tween_interval(3.0)
+				reset_tw.tween_callback(func():
+					pass_confirm_active[0] = false
+					if pass_btn != null and is_instance_valid(pass_btn):
+						pass_btn.text = g.t("ui.pass_turn")
+				)
 			return
 		pass_confirm_active[0] = false
 		g._pass_turn()
@@ -4088,7 +4090,8 @@ func _spawn_elemental_slash_arc(enemy_index: int, element: String) -> void:
 	arc.add_point(p2)
 	g.overlay.add_child(arc)
 
-	var tw := g.get_tree().create_tween()
+	var tw := arc.create_tween()
+	arc.tree_exited.connect(tw.kill)
 	tw.set_parallel(true)
 	tw.tween_property(arc, "width", 0.5, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(arc, "modulate:a", 0.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -4104,7 +4107,8 @@ func _spawn_enemy_dissolve_fx(enemy_index: int) -> void:
 	var center := Vector2(195, 220)
 	if box != null:
 		center = box.global_position + Vector2(box.size.x / 2.0, box.size.y / 2.0)
-		var tw_box := g.get_tree().create_tween()
+		var tw_box := box.create_tween()
+		box.tree_exited.connect(tw_box.kill)
 		tw_box.set_parallel(true)
 		tw_box.tween_property(box, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		tw_box.tween_property(box, "scale", Vector2(0.85, 0.85), 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
@@ -4125,6 +4129,10 @@ func _spawn_enemy_dissolve_fx(enemy_index: int) -> void:
 	p.scale_amount_max = 4.5
 	p.color = Color("6ee7b7", 0.95)
 	g.overlay.add_child(p)
+	var tw_p := p.create_tween()
+	p.tree_exited.connect(tw_p.kill)
+	tw_p.tween_interval(0.7)
+	tw_p.tween_callback(p.queue_free)
 
 	var p_gold := CPUParticles2D.new()
 	p_gold.position = center
@@ -4142,13 +4150,10 @@ func _spawn_enemy_dissolve_fx(enemy_index: int) -> void:
 	p_gold.scale_amount_max = 3.5
 	p_gold.color = Color("fbbf24", 0.9)
 	g.overlay.add_child(p_gold)
-
-	var tw := g.get_tree().create_tween()
-	tw.tween_interval(0.7)
-	tw.tween_callback(func():
-		if is_instance_valid(p): p.queue_free()
-		if is_instance_valid(p_gold): p_gold.queue_free()
-	)
+	var tw_gold := p_gold.create_tween()
+	p_gold.tree_exited.connect(tw_gold.kill)
+	tw_gold.tween_interval(0.7)
+	tw_gold.tween_callback(p_gold.queue_free)
 
 func _spawn_player_floating_text(text: String, color: Color, font_size: int = 24) -> void:
 	if g.overlay == null: return
@@ -4679,12 +4684,9 @@ func _dismiss_first_card_drag_hint() -> void:
 		g.profile.first_card_dragged = true
 		SpiritSave.write(g.profile)
 		var tw := hint.create_tween()
+		hint.tree_exited.connect(tw.kill)
 		tw.tween_property(hint, "modulate:a", 0.0, 0.2)
-		tw.tween_callback(func():
-			if is_instance_valid(hint):
-				if hint.get_parent(): hint.get_parent().remove_child(hint)
-				hint.queue_free()
-		)
+		tw.tween_callback(hint.queue_free)
 
 func _update_danger_vignette() -> void:
 	if g.overlay == null: return
@@ -4725,12 +4727,9 @@ func _clear_danger_vignette() -> void:
 	var existing := g.overlay.get_node_or_null("DangerVignette")
 	if existing != null:
 		var tw := existing.create_tween()
+		existing.tree_exited.connect(tw.kill)
 		tw.tween_property(existing, "modulate:a", 0.0, 0.25)
-		tw.tween_callback(func():
-			if is_instance_valid(existing):
-				if existing.get_parent(): existing.get_parent().remove_child(existing)
-				existing.queue_free()
-		)
+		tw.tween_callback(existing.queue_free)
 
 func _leave_battle() -> void:
 	Engine.time_scale = 1.0

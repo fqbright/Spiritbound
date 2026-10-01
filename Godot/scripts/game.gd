@@ -2003,7 +2003,9 @@ func _toast(message: String, color := TEXT) -> void:
 	toast.position = Vector2(65, 110); toast.size = Vector2(260, 40)
 	toast.add_theme_stylebox_override("normal", _panel(Color("153d42"), 14, color))
 	overlay.add_child(toast)
-	var tween := create_tween(); tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.95); tween.tween_property(toast,"modulate:a",0.0,.35); tween.tween_callback(toast.queue_free)
+	var tween := toast.create_tween()
+	toast.tree_exited.connect(tween.kill)
+	tween.tween_property(toast,"position:y",86,.22); tween.tween_interval(.95); tween.tween_property(toast,"modulate:a",0.0,.35); tween.tween_callback(toast.queue_free)
 
 # One-time "you just unlocked X" toast the moment a gated Camp feature's threshold is first
 # crossed, so a player discovers Compendium/Daily Trial/Weekly Challenge/Boss Rush/Abyss/
@@ -3839,12 +3841,14 @@ func _spawn_currency_flight(origin: Vector2, target: Vector2, count: int = 6, co
 		var dur := 0.5
 
 		var tw := coin.create_tween()
+		coin.tree_exited.connect(tw.kill)
 		tw.tween_interval(delay)
 		tw.set_parallel(true)
 		tw.tween_property(coin, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tw.tween_property(coin, "modulate:a", 1.0, 0.1)
 
 		var flight_tw := coin.create_tween()
+		coin.tree_exited.connect(flight_tw.kill)
 		flight_tw.tween_interval(delay)
 		flight_tw.tween_method(func(val: float):
 			if is_instance_valid(coin):
@@ -3855,11 +3859,7 @@ func _spawn_currency_flight(origin: Vector2, target: Vector2, count: int = 6, co
 				coin.position = inv * inv * p0 + 2.0 * inv * val * p1 + val * val * p2
 		, 0.0, 1.0, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		flight_tw.tween_property(coin, "scale", Vector2(0.4, 0.4), 0.1)
-		flight_tw.tween_callback(func():
-			if is_instance_valid(coin):
-				if coin.get_parent(): coin.get_parent().remove_child(coin)
-				coin.queue_free()
-		)
+		flight_tw.tween_callback(coin.queue_free)
 
 func _ensure_stamina_current() -> void:
 	if not profile.has("stamina") or not profile.stamina is Dictionary:

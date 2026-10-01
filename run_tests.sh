@@ -6,6 +6,7 @@ set -e
 # ==============================================================================
 # Usage:
 #   ./run_tests.sh                 # Run core suites (unit + ui_smoke + e2e_playthrough + balance + gut)
+#   ./run_tests.sh --fast          # Run rapid suites (unit + boss_mechanics + gut, <4s)
 #   ./run_tests.sh --all           # Run EVERYTHING (core + monkey + leaks + diff)
 #   ./run_tests.sh --monkey        # Run Chaos Monkey stress tests
 #   ./run_tests.sh --leaks         # Run Memory & Object leak profiler
@@ -209,6 +210,16 @@ for arg in "$@"; do
             RUN_BALANCE=false
             RUN_GUT=false
             REFRESH_BASELINES=true
+            ;;
+        --fast)
+            RUN_UNIT=true
+            RUN_SMOKE=false
+            RUN_E2E=false
+            RUN_BALANCE=false
+            RUN_GUT=true
+            RUN_MONKEY=false
+            RUN_LEAKS=false
+            RUN_DIFF=false
             ;;
         *)
             ;;

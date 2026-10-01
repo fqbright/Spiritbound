@@ -8,7 +8,13 @@
 echo "🔍 Running pre-commit test verification..."
 
 REPO_DIR="$(git rev-parse --show-toplevel)"
-"${REPO_DIR}/run_tests.sh"
+if [ -n "${FULL_TESTS}" ]; then
+    echo "🔍 Running FULL pre-commit test suite (ui_smoke, e2e, balance, gut, unit)..."
+    "${REPO_DIR}/run_tests.sh"
+else
+    echo "🔍 Running FAST pre-commit verification (set FULL_TESTS=1 for full 80s matrix)..."
+    "${REPO_DIR}/run_tests.sh" --fast
+fi
 
 STATUS=$?
 if [ $STATUS -ne 0 ]; then

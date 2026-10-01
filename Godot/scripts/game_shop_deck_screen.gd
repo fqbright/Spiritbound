@@ -1146,13 +1146,15 @@ func _buy_card_with_feedback(tile: Panel, card: Dictionary, price: int) -> void:
 	if int(g.profile.gold) < price:
 		g._toast(g.t("ui.shop_no_gold"))
 		return
-	var buy_btn: Button = tile.get_node_or_null("BuyButton") as Button
-	if buy_btn: buy_btn.disabled = true
-	var pop := tile.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop.tween_property(tile, "scale", Vector2(1.06, 1.06), 0.09)
-	pop.tween_property(tile, "scale", Vector2.ONE, 0.14)
-	g._haptic("tap")
-	await pop.finished
+	if tile and is_instance_valid(tile):
+		var buy_btn: Button = tile.get_node_or_null("BuyButton") as Button
+		if buy_btn: buy_btn.disabled = true
+		var pop := tile.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tile.tree_exited.connect(pop.kill)
+		pop.tween_property(tile, "scale", Vector2(1.06, 1.06), 0.09)
+		pop.tween_property(tile, "scale", Vector2.ONE, 0.14)
+		g._haptic("tap")
+		await pop.finished
 	_buy_card(card, price)
 
 func _card_art_panel(card_id: String, art_size: Vector2, radius := 8) -> Control:

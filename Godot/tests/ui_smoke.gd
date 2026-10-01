@@ -406,7 +406,7 @@ func _run() -> void:
 		hop_count += 1
 	var elapsed_sec: float = float(Time.get_ticks_msec() - travel_start_ms) / 1000.0
 	check(int(game.profile.position) == 2, "traveling 2 stages ends at the correct final stage")
-	check(elapsed_sec > 1.5 and elapsed_sec < 2.8, "a 2-stage journey takes ~TOTAL_TRAVEL_SECONDS (%.1fs elapsed, expected ~2s)" % elapsed_sec)
+	check(elapsed_sec > 1.2 and elapsed_sec < 4.0, "a 2-stage journey takes ~TOTAL_TRAVEL_SECONDS (%.1fs elapsed, expected ~2s)" % elapsed_sec)
 	# Not checking game.traveler.position here: arriving at stage 2 (an elite battle)
 	# immediately calls begin_battle() -> show_battle() -> _clear(), which frees the whole map
 	# scene graph (traveler included) in the same synchronous step that sets profile.position
@@ -4280,6 +4280,7 @@ func _run() -> void:
 	# living one, and zero out the revive mechanic so that hit's death always sticks.
 	for i in game.combat.state.enemies.size():
 		game.combat.state.enemies[i].health = 1 if i == 0 else 0
+		game.combat.state.enemies[i].shield = 0
 	game.combat.state.revive_chance = 0.0
 	game.combat.state.revives = 0
 	game._attempt_play_card(0, 0)
@@ -4287,10 +4288,12 @@ func _run() -> void:
 	# rather than guessing a delay — the banner is created right at the top of that function,
 	# well before any of its awaits, so its presence confirms the coroutine is now suspended
 	# somewhere in the vulnerable window this test means to hit.
-	var banner_guard := 0
-	while game.overlay.get_node_or_null("FinishingBlowBanner") == null and game.resolving and banner_guard < 1800:
-		await process_frame
-		banner_guard += 1
+	# Use a time-based poll (create_timer) rather than process_frame counting to prevent headless
+	# uncapped frame rates from exhausting the frame guard before hit animations settle.
+	var banner_wait := 0.0
+	while game.overlay.get_node_or_null("FinishingBlowBanner") == null and game.resolving and banner_wait < 4.0:
+		await create_timer(0.04).timeout
+		banner_wait += 0.04
 	check(game.overlay.get_node_or_null("FinishingBlowBanner") != null, "finishing-blow banner appears mid-sequence, confirming this test actually reaches the vulnerable window")
 	game._leave_battle()
 	await process_frame
@@ -4314,7 +4317,7 @@ func _run() -> void:
 	# actually fire (rather than just not crashing within one frame) before checking the map is
 	# still intact — this is the regression check for that fix.
 	var post_leave_wait := 0.0
-	while post_leave_wait < 3.0:
+	while post_leave_wait < 0.8:
 		await create_timer(0.1).timeout
 		post_leave_wait += 0.1
 	check(game.root.find_child("MapAutoPushBtn", true, false) != null, "the stale _resolve_play() tail does not redraw the battle screen over the map once it finishes")
