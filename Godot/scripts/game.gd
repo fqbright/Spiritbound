@@ -471,6 +471,7 @@ func _ready() -> void:
 	_track_return_days()
 	lang = str(profile.get("language", "zh-Hans"))
 	battle_speed = clampf(float(profile.get("battle_speed", 1.0)), 1.0, 4.0)
+	Engine.max_fps = int(profile.get("target_fps", 60))
 	muted = bool(profile.get("music_muted", false))
 	sfx_muted = bool(profile.get("sfx_muted", false))
 	_build_audio()
@@ -2950,6 +2951,36 @@ func show_settings() -> void:
 		text_size_row.add_child(ts_btn)
 	text_size_box.add_child(text_size_row)
 	list.add_child(text_size_box)
+
+	# 4c. Frame Rate / FPS Option
+	var fps_box := VBoxContainer.new()
+	fps_box.add_theme_constant_override("separation", 6)
+	fps_box.add_child(_label(t("ui.settings_fps"), 12, TEXT))
+	fps_box.add_child(_label(t("ui.settings_fps_desc"), 9, MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var fps_row := HBoxContainer.new()
+	fps_row.add_theme_constant_override("separation", 8)
+	var current_fps: int = int(profile.get("target_fps", 60))
+	for fps_val in [30, 60, 120]:
+		var is_fps_active: bool = (current_fps == fps_val)
+		var label_str: String = "%d FPS" % fps_val
+		if fps_val == 30:
+			label_str += " (省电)" if is_zh else " (Eco)"
+		elif fps_val == 60:
+			label_str += " (流畅)" if is_zh else " (Std)"
+		else:
+			label_str += " (极速)" if is_zh else " (Max)"
+		var fps_btn := _button(label_str, func():
+			profile["target_fps"] = fps_val
+			Engine.max_fps = fps_val
+			SpiritSave.write(profile)
+			_close_settings()
+			show_settings()
+		, JADE if is_fps_active else Color("1c333a"), Vector2(0, 36))
+		fps_btn.name = "FpsBtn_%d" % fps_val
+		fps_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		fps_row.add_child(fps_btn)
+	fps_box.add_child(fps_row)
+	list.add_child(fps_box)
 
 	# 5. Account & Cloud Save Option
 	var account_box := VBoxContainer.new()

@@ -37,6 +37,24 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	var resonance_ids: Array[String] = []
 	for r in active_resonances:
 		resonance_ids.append(str(r.get("id", "")))
+
+	var elem_tally: Dictionary = {}
+	for c_id in deck:
+		var c_info := content.card(str(c_id))
+		if str(c_info.get("rarity", "")) == "Starter":
+			continue
+		var el := str(c_info.get("element", "")).to_lower()
+		if el != "":
+			elem_tally[el] = int(elem_tally.get(el, 0)) + 1
+	var dominant_archetype := ""
+	if int(elem_tally.get("fire", 0)) >= 4:
+		dominant_archetype = "archetype_fire"
+	elif int(elem_tally.get("stone", 0)) >= 4 or int(elem_tally.get("earth", 0)) >= 4:
+		dominant_archetype = "archetype_stone"
+	elif int(elem_tally.get("poison", 0)) >= 4 or int(elem_tally.get("wood", 0)) >= 4:
+		dominant_archetype = "archetype_poison"
+	elif int(elem_tally.get("wind", 0)) >= 4 or int(elem_tally.get("thunder", 0)) >= 4:
+		dominant_archetype = "archetype_wind"
 	state = {
 		"player":{"health":player_health,"max_health":60,"shield":0,"burn":0,"focus":0,"strength":0}, "enemies":enemies,
 		"draw":draw_pile,"hand":[],"discard":[],"exhaust":[],"energy":2,"turn":1,"phase":"player",
@@ -77,6 +95,7 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"hex_kan_triggered_this_turn":false,
 		"is_training_dummy":bool(modifier.get("is_training_dummy", false)),
 		"current_playing_affix":"",
+		"deck_archetype": dominant_archetype,
 		"ascension_level": asc_level,
 	}
 	if state.is_training_dummy:
@@ -427,6 +446,9 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# per-turn and it must reset every turn — the two have the same name but different lifetimes.
 	state.cards_played_this_turn = int(state.get("cards_played_this_turn", 0)) + 1
 	state.turn_combo_count = int(state.get("turn_combo_count", 0)) + 1
+	if str(state.get("deck_archetype", "")) == "archetype_wind" and state.cards_played_this_turn == 3:
+		state.energy = mini(10, state.energy + 1)
+		emit_signal("event", "archetype_proc", {"type": "wind", "energy": 1})
 	# Plays are gated by energy alone now, so Swift's "first play is free" reads as refunding
 	# that play's own cost rather than an action slot that no longer exists.
 	if rune == "swift" and not state.swift_used: state.energy += actual_cost; state.swift_used = true
@@ -495,6 +517,9 @@ func play(hand_index: int, target_index := -1) -> bool:
 		bonus += int(state.inscr_bonuses.get("atk", 0))
 	if harmful and state.equipment.has("stoneSpear"):
 		bonus += [0, 1, 2, 4][clampi(_equip_tier("stoneSpear"), 0, 3)]
+	if harmful and not state.first_attack and str(state.get("deck_archetype", "")) == "archetype_fire" and target_index >= 0 and target_index < state.enemies.size() and state.enemies[target_index].health > 0:
+		state.enemies[target_index].burn = int(state.enemies[target_index].get("burn", 0)) + 1
+		emit_signal("event", "archetype_proc", {"type": "fire", "burn": 1})
 	if harmful: state.first_attack = true
 	var resonance := int(state.elements.get(card.get("element",""),0)) if rune == "resonance" else 0
 	var dealt := _resolve_effects(card, target_index, bonus + resonance, 1.0)
@@ -689,7 +714,8 @@ func end_turn() -> void:
 		# keeps ticking every turn until the target is healed or dies, not worn down by 1 each
 		# turn the way Burn is. Deliberately no "poison = maxi(0, poison - 1)" line here.
 		if int(enemy.get("poison", 0)) > 0 and enemy.health > 0:
-			var p_dmg: int = int(enemy.poison)
+			var poison_mult: float = 1.2 if str(state.get("deck_archetype", "")) == "archetype_poison" else 1.0
+			var p_dmg: int = int(round(float(enemy.poison) * poison_mult))
 			_damage_enemy(enemy_index, p_dmg, false)
 			if state.has("stats"): state.stats.dot_damage = int(state.stats.get("dot_damage", 0)) + p_dmg
 		if int(enemy.get("vulnerable",0)) > 0: enemy.vulnerable = maxi(0, int(enemy.vulnerable) - 1)
@@ -761,6 +787,9 @@ func end_turn() -> void:
 	state.spirit_surge_active = false
 	state.shadow_clone_active = false
 	if state.get("boons", []).has("boon_iron_core"): state.player.shield += 5
+	if str(state.get("deck_archetype", "")) == "archetype_stone":
+		state.player.shield += 3
+		emit_signal("event", "archetype_proc", {"type": "stone", "shield": 3})
 	var weather: String = str(state.get("weather_affix", ""))
 	if weather == "solar":
 		state.player.burn = int(state.player.get("burn", 0)) + 1

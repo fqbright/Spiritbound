@@ -221,10 +221,35 @@ static func fetch_user(token: String, node: Node = null) -> Dictionary:
 		return {"ok": true, "user": res.get("data"), "error": ""}
 	return {"ok": false, "user": {}, "error": str(res.get("error", "Failed to fetch user"))}
 
-static func parse_oauth_callback_url(url: String, provider: String = "google", node: Node = null) -> Dictionary:
-	if not url.contains("access_token="):
-		return {"ok": false, "session": {}, "error": "No access_token found in URL"}
+static func exchange_code_for_session(auth_code: String, provider: String = "google", node: Node = null) -> Dictionary:
+	var url := SUPABASE_URL + "/auth/v1/token?grant_type=pkce"
+	var body_dict: Dictionary = {
+		"auth_code": auth_code
+	}
+	var res = await _http_request(url, HTTPClient.METHOD_POST, PackedStringArray(), JSON.stringify(body_dict), node)
+	if res.get("ok", false) and res.get("data") is Dictionary:
+		var data: Dictionary = res.get("data")
+		var access_token := str(data.get("access_token", ""))
+		var refresh_token := str(data.get("refresh_token", ""))
+		var expires_in := int(data.get("expires_in", 3600))
+		var user_data: Dictionary = data.get("user", {})
+		var sess := {
+			"access_token": access_token,
+			"refresh_token": refresh_token,
+			"expires_in": expires_in,
+			"expires_at": int(Time.get_unix_time_from_system()) + expires_in,
+			"provider": provider,
+			"user": user_data,
+			"user_id": str(user_data.get("id", "")),
+			"email": str(user_data.get("email", "")),
+			"display_name": str(user_data.get("user_metadata", {}).get("full_name", user_data.get("email", "")))
+		}
+		_current_session = sess
+		save_session(sess)
+		return {"ok": true, "session": sess, "error": ""}
+	return {"ok": false, "session": {}, "error": str(res.get("error", "Code exchange failed"))}
 
+static func parse_oauth_callback_url(url: String, provider: String = "google", node: Node = null) -> Dictionary:
 	var frag := ""
 	if url.contains("#"):
 		frag = url.split("#", true, 1)[1]
@@ -238,6 +263,15 @@ static func parse_oauth_callback_url(url: String, provider: String = "google", n
 		var kv = part.split("=", true, 1)
 		if kv.size() == 2:
 			params[kv[0]] = kv[1].uri_decode()
+
+	# 1. Handle PKCE authorization code flow (Supabase Auth default)
+	if params.has("code"):
+		var code: String = str(params["code"])
+		return await exchange_code_for_session(code, provider, node)
+
+	# 2. Handle Implicit token flow
+	if not params.has("access_token"):
+		return {"ok": false, "session": {}, "error": "No access_token or code found in URL"}
 
 	var access_token := str(params.get("access_token", ""))
 	if access_token.is_empty():

@@ -3271,6 +3271,8 @@ const UI_TEXT = {
 	"ui.settings_haptics_desc": {"zh-Hans":"打牌、暴击受击与UI交互时的微震感", "en":"Vibration on card plays, impacts, and UI taps"},
 	"ui.settings_volume_music": {"zh-Hans":"音乐音量", "en":"Music Volume"},
 	"ui.settings_volume_sfx": {"zh-Hans":"音效音量", "en":"SFX Volume"},
+	"ui.settings_fps": {"zh-Hans":"画面刷新率 (帧率)", "en":"Frame Rate (FPS)"},
+	"ui.settings_fps_desc": {"zh-Hans":"30fps 省电温和，60fps 流畅标准，120fps 极速 (需设备支持 ProMotion 高刷)", "en":"30fps Power Saver, 60fps Standard Smooth, 120fps Ultra (ProMotion required)"},
 	"ui.deck_mana_curve": {"zh-Hans":"法力能耗曲线", "en":"Energy Curve"},
 	"ui.deck_archetype_ratio": {"zh-Hans":"牌组流派构成", "en":"Card Type Ratio"},
 	"ui.deck_dominant_element": {"zh-Hans":"主修流派", "en":"Primary Affinity"},

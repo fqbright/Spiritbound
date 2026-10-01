@@ -7,6 +7,7 @@ class_name MapScreen
 # circularly, so no valid inheritance order exists. `g` is the live SpiritGame/game.gd
 # instance; every reference to shared state or another screen's function goes through it.
 var g: SpiritGame
+const InkTransitionScript := preload("res://scripts/ink_transition.gd")
 
 # Guards against a second swipe firing mid-transition (see _slide_to_chapter) — the pins on
 # both throwaway pages are real, tappable buttons, so a swipe alone isn't the only thing that
@@ -1833,6 +1834,8 @@ func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Calla
 	title_box.add_child(cleared_lbl)
 
 	var next_ch_name: String = g.content.chapter_name(safe_next_ch, g.lang)
+	var ink = InkTransitionScript.new(safe_next_ch + 1, next_ch_name, g.t("ui.entering_new_realm"))
+	g.root.add_child(ink)
 	var new_ch_lbl := g._label(g.tf("ui.chapter_title", safe_next_ch + 1) + " · " + next_ch_name, 22, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	title_box.add_child(new_ch_lbl)
 

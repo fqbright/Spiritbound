@@ -401,6 +401,32 @@ func show_battle() -> void:
 		var c_lbl := g._label(g.tf("ui.combo_meter", combo_cnt), 10, Color("fbbf24"), HORIZONTAL_ALIGNMENT_CENTER)
 		combo_badge.add_child(c_lbl)
 		top_sub.add_child(combo_badge)
+	var arc_id: String = str(g.combat.state.get("deck_archetype", "")) if g.combat and g.combat.state else ""
+	if arc_id != "":
+		var arc_badge := PanelContainer.new()
+		arc_badge.name = "ArchetypeBadge"
+		var arc_name: String = ""
+		var arc_col: Color = g.GOLD
+		match arc_id:
+			"archetype_fire":
+				arc_name = "🔥 烈火焚身"
+				arc_col = Color("f97316")
+			"archetype_stone":
+				arc_name = "🗿 不动金刚"
+				arc_col = Color("eab308")
+			"archetype_poison":
+				arc_name = "🐍 万毒噬心"
+				arc_col = Color("4ade80")
+			"archetype_wind":
+				arc_name = "🌪️ 疾风连击"
+				arc_col = Color("38bdf8")
+		var a_style := g._panel(Color("162426"), 8, arc_col)
+		a_style.content_margin_left = 6; a_style.content_margin_right = 6
+		a_style.content_margin_top = 2; a_style.content_margin_bottom = 2
+		arc_badge.add_theme_stylebox_override("panel", a_style)
+		var a_lbl := g._label(arc_name, 10, arc_col, HORIZONTAL_ALIGNMENT_CENTER)
+		arc_badge.add_child(a_lbl)
+		top_sub.add_child(arc_badge)
 	if top_sub.get_child_count() > 0:
 		page.add_child(top_sub)
 	if g.combat != null and g.combat.state.turn == 1 and not g.combat.state.get("relic_resonances", []).is_empty() and not bool(g.combat.state.get("resonance_toast_shown", false)):
@@ -1391,7 +1417,33 @@ func _add_hand(page: VBoxContainer) -> void:
 		exhaust_chip.name = "ExhaustPileChip"
 		status.add_child(exhaust_chip)
 
-	var pass_btn := g._button(g.t("ui.pass_turn"), g._pass_turn, Color("1c2a30"), Vector2(44, 42))
+	var pass_btn: Button
+	var pass_confirm_active: Array = [false]
+	var on_pass_click := func():
+		var unspent := int(g.combat.state.energy) if g.combat and g.combat.state else 0
+		var has_playable := false
+		if g.combat and g.combat.state:
+			for h in g.combat.state.hand:
+				var c_obj: Dictionary = g.content.card(str(h.get("card_id", "")))
+				if not c_obj.is_empty() and int(c_obj.get("cost", 0)) <= unspent and int(c_obj.get("cost", 0)) > 0:
+					has_playable = true
+					break
+		if has_playable and unspent > 0 and not pass_confirm_active[0]:
+			pass_confirm_active[0] = true
+			g._toast("尚有余力未发，再按一次结束", g.GOLD)
+			if pass_btn != null and is_instance_valid(pass_btn):
+				pass_btn.text = "确认?"
+			var timer := g.get_tree().create_timer(3.0)
+			timer.timeout.connect(func():
+				pass_confirm_active[0] = false
+				if pass_btn != null and is_instance_valid(pass_btn):
+					pass_btn.text = g.t("ui.pass_turn")
+			)
+			return
+		pass_confirm_active[0] = false
+		g._pass_turn()
+
+	pass_btn = g._button(g.t("ui.pass_turn"), on_pass_click, Color("1c2a30"), Vector2(44, 42))
 	pass_btn.name = "PassTurnBtn"
 	var total_enemy_incoming: int = g.combat.total_incoming_damage() if g.combat else 0
 	var player_shield: int = int(g.combat.state.player.shield) if (g.combat and g.combat.state and g.combat.state.player) else 0
@@ -4181,6 +4233,14 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		_spawn_player_floating_text("🐾 灵宠庇护 +%d" % payload.get("shield", 3), Color("6ee7b7"), 22)
 	elif kind == "leyline_surge":
 		_spawn_player_floating_text("🌀 地脉灵涌 +%d 灵气" % payload.get("qi", 15), Color("a78bfa"), 20)
+	elif kind == "archetype_proc":
+		var t_type := str(payload.get("type", ""))
+		if t_type == "wind":
+			_spawn_player_floating_text("🌪️ 疾风连击 +1 能量", Color("38bdf8"), 22)
+		elif t_type == "stone":
+			_spawn_player_floating_text("🗿 金刚磐石 +3 护盾", Color("eab308"), 22)
+		elif t_type == "fire":
+			_spawn_enemy_floating_text(int(payload.get("target", 0)), "🔥 烈火焚身 +1 灼烧", Color("f97316"), 22)
 	elif kind == "equipment":
 		var item := g.content.equipment(payload.id); if not item.is_empty(): g._toast("%s %s" % [item.icon, g._equip_name(item)],g.GOLD)
 	elif kind == "card":
@@ -4209,12 +4269,31 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 			var combo_hits: int = int(g.combat.state.get("turn_combo_count", 0)) if g.combat and g.combat.state else 0
 			if combo_hits >= 2:
 				_spawn_combo_counter(e_idx, combo_hits)
-			var is_crit: bool = is_vuln or dmg >= 20
-			var txt: String = "💥 −%d" % dmg if is_vuln else "−%d" % dmg
-			var col: Color = Color("fbbf24") if is_vuln else Color("f87171")
-			var f_size: int = 28 if is_crit else 24
+			var is_lethal: bool = bool(payload.get("lethal", false))
+			var is_heavy: bool = bool(payload.get("heavy", false)) or dmg >= 25
+			var is_pierce: bool = bool(payload.get("pierce", false))
+			var is_crit: bool = is_vuln or is_heavy or is_lethal
+			var txt: String = "−%d" % dmg
+			var col: Color = Color("f87171")
+			var f_size: int = 24
+			if is_lethal:
+				txt = "☠ −%d 诛" % dmg
+				col = Color("ef4444")
+				f_size = 30
+			elif is_heavy:
+				txt = "💥 −%d" % dmg
+				col = Color("fbbf24")
+				f_size = 28
+			elif is_pierce:
+				txt = "🗡 −%d 破" % dmg
+				col = Color("c084fc")
+				f_size = 25
+			elif is_vuln:
+				txt = "⚡ −%d" % dmg
+				col = Color("f59e0b")
+				f_size = 26
 			_spawn_enemy_floating_text(e_idx, txt, col, f_size, is_crit)
-			if dmg >= 25 or bool(payload.get("lethal", false)):
+			if is_heavy or is_lethal:
 				_shake_screen(mini(14.0, float(dmg) * 0.35 + 4.0), 0.25)
 				_camera_punch(1.04, 0.15)
 				_trigger_finisher_hitstop()

@@ -162,20 +162,37 @@ import AuthenticationServices
             "status": "error",
             "error": error.localizedDescription
         ]
-        saveResult(dict, filename: "auth_apple_result.json")
+        AppURLInterceptor.saveResultToAll(dict, filename: "auth_apple_result.json")
     }
 
     private func saveResult(_ dict: [String: Any], filename: String) {
-        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let fileURL = docs.appendingPathComponent(filename)
-            if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
-                try? data.write(to: fileURL)
-            }
-        }
+        AppURLInterceptor.saveResultToAll(dict, filename: filename)
     }
 }
 
 @objc public class AppURLInterceptor: NSObject {
+    public static func getSearchDirectories() -> [URL] {
+        var dirs: [URL] = []
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            dirs.append(docs)
+        }
+        if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            dirs.append(appSupport)
+            dirs.append(appSupport.appendingPathComponent("Godot/app_userdata/Spiritbound"))
+            dirs.append(appSupport.appendingPathComponent("Spiritbound"))
+        }
+        return dirs
+    }
+
+    public static func saveResultToAll(_ dict: [String: Any], filename: String) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) else { return }
+        for dir in getSearchDirectories() {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let fileURL = dir.appendingPathComponent(filename)
+            try? data.write(to: fileURL)
+        }
+    }
+
     @objc public static func setup() {
         if let gdtDelegate = NSClassFromString("GDTApplicationDelegate") {
             swizzleOpenURL(on: gdtDelegate)
@@ -235,13 +252,8 @@ import AuthenticationServices
             return
         }
         if url.scheme == "spiritbound" {
-            if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let fileURL = docs.appendingPathComponent("oauth_callback_result.json")
-                let dict: [String: Any] = ["url": urlStr]
-                if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted]) {
-                    try? data.write(to: fileURL)
-                }
-            }
+            let dict: [String: Any] = ["url": urlStr]
+            saveResultToAll(dict, filename: "oauth_callback_result.json")
         }
     }
 }
@@ -250,15 +262,17 @@ import AuthenticationServices
 public func StartAppleSignInWatcher() {
     AppURLInterceptor.setup()
     DispatchQueue.global(qos: .userInteractive).async {
-        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-        let trigger = docs.appendingPathComponent("auth_apple_trigger.json")
         while true {
-            if FileManager.default.fileExists(atPath: trigger.path) {
-                try? FileManager.default.removeItem(at: trigger)
-                DispatchQueue.main.async {
-                    if #available(iOS 13.0, *) {
-                        AppleAuthBridge.shared.startSignIn()
+            for dir in AppURLInterceptor.getSearchDirectories() {
+                let trigger = dir.appendingPathComponent("auth_apple_trigger.json")
+                if FileManager.default.fileExists(atPath: trigger.path) {
+                    try? FileManager.default.removeItem(at: trigger)
+                    DispatchQueue.main.async {
+                        if #available(iOS 13.0, *) {
+                            AppleAuthBridge.shared.startSignIn()
+                        }
                     }
+                    break
                 }
             }
             Thread.sleep(forTimeInterval: 0.15)
