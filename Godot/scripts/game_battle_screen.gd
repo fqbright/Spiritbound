@@ -9,6 +9,7 @@ var auto_stepping: bool = false
 const TargetingArcScript := preload("res://scripts/targeting_arc.gd")
 const TargetLockReticleScript := preload("res://scripts/target_lock_reticle.gd")
 const RealmAuraScript := preload("res://scripts/realm_aura.gd")
+const SpringSecondaryMotionScript := preload("res://scripts/spring_secondary_motion.gd")
 
 func _init(game: SpiritGame) -> void:
 	g = game
@@ -659,6 +660,41 @@ func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capst
 			mat.set_shader_parameter("tilt_shift", tilt)
 			node.material = mat
 
+func _get_hero_volumetric_shader() -> Shader:
+	if g._hero_volumetric_shader == null and ResourceLoader.exists("res://assets/shaders/hero_volumetric_lighting.gdshader"):
+		g._hero_volumetric_shader = load("res://assets/shaders/hero_volumetric_lighting.gdshader")
+	return g._hero_volumetric_shader
+
+func _install_hero_volumetric_shader(sprite: CanvasItem, hero_key: String = "fox") -> ShaderMaterial:
+	var s := _get_hero_volumetric_shader()
+	if s == null:
+		return _install_hit_flash(sprite)
+	var mat := ShaderMaterial.new()
+	mat.shader = s
+	match hero_key:
+		"stone_sentinel", "hero_stone_sentinel":
+			mat.set_shader_parameter("light_color", Vector4(1.0, 0.75, 0.35, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(0.95, 0.70, 0.30, 1.0))
+			mat.set_shader_parameter("ambient_intensity", 0.90)
+			mat.set_shader_parameter("specular_power", 24.0)
+		"shadow_stalker", "hero_shadow_stalker":
+			mat.set_shader_parameter("light_color", Vector4(0.75, 0.35, 1.0, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(0.70, 0.30, 0.95, 1.0))
+			mat.set_shader_parameter("ambient_intensity", 0.82)
+			mat.set_shader_parameter("specular_power", 32.0)
+		"miasma_witch", "hero_miasma_witch":
+			mat.set_shader_parameter("light_color", Vector4(0.40, 1.0, 0.55, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(0.35, 0.95, 0.50, 1.0))
+			mat.set_shader_parameter("ambient_intensity", 0.86)
+			mat.set_shader_parameter("specular_power", 20.0)
+		_: # fox_spirit / default
+			mat.set_shader_parameter("light_color", Vector4(0.35, 0.88, 1.0, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(0.35, 0.88, 1.0, 1.0))
+			mat.set_shader_parameter("ambient_intensity", 0.85)
+			mat.set_shader_parameter("specular_power", 16.0)
+	sprite.material = mat
+	return mat
+
 # One shader material per sprite so a mid-flash overlap on one enemy never disturbs another.
 func _install_hit_flash(sprite: CanvasItem) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
@@ -683,7 +719,12 @@ func _squash_impact(sprite: Node2D, base_scale: float, strength := 0.22, duratio
 	tween.tween_property(sprite, "scale", Vector2(base_scale * (1.0 - strength * 0.4), base_scale * (1.0 + strength * 0.4)), duration * 0.32).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, duration * 0.4).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
-	if sprite.has_meta("rig_tail"):
+	if sprite.has_meta("tail_spring"):
+		var t_spring = sprite.get_meta("tail_spring")
+		if t_spring and is_instance_valid(t_spring) and t_spring.has_method("apply_impulse"):
+			t_spring.apply_impulse(Vector2(-28.0, 14.0))
+			t_spring.apply_angular_impulse(36.0)
+	elif sprite.has_meta("rig_tail"):
 		var tail: Node2D = sprite.get_meta("rig_tail") as Node2D
 		if tail and is_instance_valid(tail):
 			var t_tween := tail.create_tween()
@@ -1187,16 +1228,22 @@ func _build_player_stage() -> Control:
 		stage.add_child(tail)
 		sprite.set_meta("rig_tail", tail)
 
-		# Tail secondary swaying + lag bobbing
-		var tail_rot := tail.create_tween().set_loops()
-		tail_rot.tween_property(tail, "rotation_degrees", 5.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tail_rot.tween_property(tail, "rotation_degrees", -5.0, 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		# Spring-Damper physical secondary motion controller for tail
+		var tail_spring: Node = SpringSecondaryMotionScript.new()
+		tail_spring.name = "TailSpringMotion"
+		tail_spring.stiffness = 95.0
+		tail_spring.damping = 8.5
+		tail_spring.rot_stiffness = 65.0
+		tail_spring.rot_damping = 7.0
+		stage.add_child(tail_spring)
+		tail_spring.init_from_target(tail)
+		tail.set_meta("spring_motion", tail_spring)
+		sprite.set_meta("tail_spring", tail_spring)
 
-		var tail_bob := tail.create_tween().set_loops()
-		tail_bob.tween_property(tail, "position:y", 41.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tail_bob.parallel().tween_property(tail, "scale:x", tail_scale.x * 1.04, 1.2).set_trans(Tween.TRANS_SINE)
-		tail_bob.tween_property(tail, "position:y", 47.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tail_bob.parallel().tween_property(tail, "scale:x", tail_scale.x * 0.96, 1.2).set_trans(Tween.TRANS_SINE)
+		# Gentle organic sway driving spring target offset
+		var tail_sway := stage.create_tween().set_loops()
+		tail_sway.tween_method(func(rot: float): if is_instance_valid(tail_spring): tail_spring.target_rot_offset = rot, -4.5, 4.5, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tail_sway.tween_method(func(rot: float): if is_instance_valid(tail_spring): tail_spring.target_rot_offset = rot, 4.5, -4.5, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 		# 3. Main Body Sprite
 		sprite.texture = load(rig_body_path)
@@ -1205,7 +1252,8 @@ func _build_player_stage() -> Control:
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
 		sprite.position = Vector2(player_x, 52.0)
-		_install_hit_flash(sprite)
+		sprite.set_meta("base_pos_y", 52.0)
+		_install_hero_volumetric_shader(sprite, hero_sprite_key)
 		stage.add_child(sprite)
 
 		# Primary breathing cycle (vertical bobbing + thoracic squash & stretch)
@@ -1244,6 +1292,12 @@ func _build_player_stage() -> Control:
 		var orb_glow := orb.create_tween().set_loops()
 		orb_glow.tween_property(orb, "modulate:a", 1.0, 0.85).set_trans(Tween.TRANS_SINE)
 		orb_glow.tween_property(orb, "modulate:a", 0.72, 0.85).set_trans(Tween.TRANS_SINE)
+
+		var light_ctrl := HeroShaderLightingController.new()
+		light_ctrl.name = "HeroShaderLightingController"
+		light_ctrl.sprite = sprite
+		light_ctrl.orb = orb
+		stage.add_child(light_ctrl)
 	else:
 		sprite.texture = g._get_character_texture(hero_sprite_key)
 		var tex_w: float = float(sprite.texture.get_width()) if sprite.texture else 341.33
@@ -1252,7 +1306,8 @@ func _build_player_stage() -> Control:
 		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.set_meta("base_scale", scale_factor)
 		sprite.position = Vector2(player_x, 52.0)
-		_install_hit_flash(sprite)
+		sprite.set_meta("base_pos_y", 52.0)
+		_install_hero_volumetric_shader(sprite, hero_sprite_key)
 		stage.add_child(sprite)
 
 		var idle := sprite.create_tween().set_loops()
@@ -1260,6 +1315,11 @@ func _build_player_stage() -> Control:
 		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 0.985, scale_factor * 1.025), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		idle.tween_property(sprite, "position:y", sprite.position.y + 2.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		idle.parallel().tween_property(sprite, "scale", Vector2(scale_factor * 1.015, scale_factor * 0.98), 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+		var light_ctrl := HeroShaderLightingController.new()
+		light_ctrl.name = "HeroShaderLightingController"
+		light_ctrl.sprite = sprite
+		stage.add_child(light_ctrl)
 
 	_apply_status_fx(stage, sprite, sprite.position, spr_size.x / 2.0, g.combat.state.player)
 
@@ -2539,11 +2599,54 @@ func _update_targeting_arc(start_pos: Vector2, target_pos: Vector2, is_locked: b
 		arc.name = "TargetingArcOverlay"
 		g.overlay.add_child(arc)
 	arc.call("set_points", start_pos, target_pos, is_locked)
+	_update_hero_drag_tracking(target_pos)
 
 func _clear_targeting_arc() -> void:
 	if g.overlay == null: return
 	var arc := g.overlay.get_node_or_null("TargetingArcOverlay")
 	if arc: arc.queue_free()
+	_clear_hero_drag_tracking()
+
+func _update_hero_drag_tracking(drag_pos: Vector2) -> void:
+	if g == null: return
+	var player_sprite: Sprite2D = null
+	if g.root and is_instance_valid(g.root):
+		player_sprite = g.root.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_sprite == null and is_instance_valid(g):
+		player_sprite = g.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_sprite == null or not is_instance_valid(player_sprite): return
+	var p_pos: Vector2 = player_sprite.global_position
+	var delta_x: float = drag_pos.x - p_pos.x
+	var norm_x: float = clampf(delta_x / 240.0, -1.0, 1.0)
+	var target_tilt: float = norm_x * 0.12
+	player_sprite.rotation = lerpf(player_sprite.rotation, target_tilt, 0.20)
+	var base_y: float = float(player_sprite.get_meta("base_pos_y", 52.0))
+	var delta_y: float = drag_pos.y - p_pos.y
+	var norm_y: float = clampf(delta_y / 360.0, -0.6, 0.6)
+	player_sprite.position.y = lerpf(player_sprite.position.y, base_y + norm_y * 3.5, 0.20)
+
+	if player_sprite.has_meta("tail_spring"):
+		var t_spring = player_sprite.get_meta("tail_spring")
+		if t_spring and is_instance_valid(t_spring) and t_spring.has_method("set_target_pose"):
+			t_spring.set_target_pose(Vector2(-norm_x * 6.0, 0.0), -norm_x * 9.0)
+
+func _clear_hero_drag_tracking() -> void:
+	if g == null: return
+	var player_sprite: Sprite2D = null
+	if g.root and is_instance_valid(g.root):
+		player_sprite = g.root.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_sprite == null and is_instance_valid(g):
+		player_sprite = g.find_child("PlayerSprite", true, false) as Sprite2D
+	if player_sprite == null or not is_instance_valid(player_sprite): return
+	var tw := player_sprite.create_tween()
+	tw.tween_property(player_sprite, "rotation", 0.0, 0.32).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	var base_y: float = float(player_sprite.get_meta("base_pos_y", 52.0))
+	tw.parallel().tween_property(player_sprite, "position:y", base_y, 0.32).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+	if player_sprite.has_meta("tail_spring"):
+		var t_spring = player_sprite.get_meta("tail_spring")
+		if t_spring and is_instance_valid(t_spring) and t_spring.has_method("set_target_pose"):
+			t_spring.set_target_pose(Vector2.ZERO, 0.0)
 
 func _build_pile_element_summary(pile: Array, is_draw_pile: bool = false) -> Control:
 	var box := HBoxContainer.new()
@@ -3101,12 +3204,17 @@ func _animate_player_action(card: Dictionary) -> void:
 				# Step forward, tail fan-out, and spirit orb missile strike!
 				tween.tween_property(player_sprite, "position:x", origin.x + 38.0, dur * 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 				tween.parallel().tween_property(player_sprite, "rotation_degrees", 8.0, dur * 0.35)
-				var tail: Node2D = player_sprite.get_meta("rig_tail", null) as Node2D
-				if tail and is_instance_valid(tail):
-					var tail_tween := tail.create_tween()
-					tail_tween.tween_property(tail, "rotation_degrees", 26.0, dur * 0.35).set_trans(Tween.TRANS_QUAD)
-					tail_tween.tween_interval(dur * 0.16)
-					tail_tween.tween_property(tail, "rotation_degrees", 0.0, dur * 0.49).set_trans(Tween.TRANS_ELASTIC)
+				var t_spring = player_sprite.get_meta("tail_spring", null)
+				if t_spring and is_instance_valid(t_spring) and t_spring.has_method("apply_impulse"):
+					t_spring.apply_impulse(Vector2(-42.0, -12.0))
+					t_spring.apply_angular_impulse(-45.0)
+				else:
+					var tail: Node2D = player_sprite.get_meta("rig_tail", null) as Node2D
+					if tail and is_instance_valid(tail):
+						var tail_tween := tail.create_tween()
+						tail_tween.tween_property(tail, "rotation_degrees", 26.0, dur * 0.35).set_trans(Tween.TRANS_QUAD)
+						tail_tween.tween_interval(dur * 0.16)
+						tail_tween.tween_property(tail, "rotation_degrees", 0.0, dur * 0.49).set_trans(Tween.TRANS_ELASTIC)
 				var orb: Node2D = player_sprite.get_meta("rig_orb", null) as Node2D
 				if orb and is_instance_valid(orb):
 					var orb_base: Vector2 = orb.get_meta("base_pos", orb.position)
@@ -3173,6 +3281,11 @@ func _animate_player_action(card: Dictionary) -> void:
 		var is_defense := cid.contains("ward") or cid.contains("hide") or cid.contains("barrier") or cid.contains("guard")
 		if is_defense:
 			# Defensive turtle squash & barrier pulse
+			if player_sprite.has_meta("tail_spring"):
+				var t_spring = player_sprite.get_meta("tail_spring")
+				if t_spring and is_instance_valid(t_spring) and t_spring.has_method("apply_impulse"):
+					t_spring.apply_impulse(Vector2(-18.0, 10.0))
+					t_spring.apply_angular_impulse(25.0)
 			tween.tween_property(player_sprite, "position:x", origin.x - 12.0, dur * 0.35).set_trans(Tween.TRANS_QUAD)
 			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 1.18, base_scale * 0.86), dur * 0.35)
 			tween.parallel().tween_property(player_sprite, "modulate", Color(1.2, 1.8, 2.4), dur * 0.35)
@@ -3182,6 +3295,11 @@ func _animate_player_action(card: Dictionary) -> void:
 			tween.parallel().tween_property(player_sprite, "modulate", Color.WHITE, dur * 0.47)
 		else:
 			# Levitate & energy surge
+			if player_sprite.has_meta("tail_spring"):
+				var t_spring = player_sprite.get_meta("tail_spring")
+				if t_spring and is_instance_valid(t_spring) and t_spring.has_method("apply_impulse"):
+					t_spring.apply_impulse(Vector2(0.0, 22.0))
+					t_spring.apply_angular_impulse(-18.0)
 			tween.tween_property(player_sprite, "position:y", origin.y - 20.0, dur * 0.38).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 			tween.parallel().tween_property(player_sprite, "scale", Vector2(base_scale * 0.92, base_scale * 1.18), dur * 0.38)
 			tween.parallel().tween_property(player_sprite, "modulate", Color(1.8, 1.5, 2.2), dur * 0.38)
@@ -5033,5 +5151,25 @@ func _clear_combat_pill_modal() -> void:
 	if g.overlay == null: return
 	var old := g.overlay.get_node_or_null("CombatPillModal")
 	if old and is_instance_valid(old): old.queue_free()
+
+class HeroShaderLightingController extends Node:
+	var sprite: Sprite2D
+	var orb: Sprite2D
+
+	func _process(_delta: float) -> void:
+		if not is_instance_valid(sprite) or sprite.material == null or not (sprite.material is ShaderMaterial):
+			return
+		var mat: ShaderMaterial = sprite.material as ShaderMaterial
+		if is_instance_valid(orb) and sprite.texture:
+			var orb_global: Vector2 = orb.global_position
+			var local_pos: Vector2 = sprite.to_local(orb_global)
+			var tex_size: Vector2 = sprite.texture.get_size()
+			var light_uv: Vector2 = Vector2(local_pos.x / maxf(1.0, tex_size.x) + 0.5, local_pos.y / maxf(1.0, tex_size.y) + 0.5)
+			mat.set_shader_parameter("light_pos", light_uv)
+		else:
+			var t: float = float(Time.get_ticks_msec()) * 0.0015
+			var dynamic_uv := Vector2(0.5 + sin(t) * 0.35, 0.35 + cos(t * 1.3) * 0.25)
+			mat.set_shader_parameter("light_pos", dynamic_uv)
+
 
 

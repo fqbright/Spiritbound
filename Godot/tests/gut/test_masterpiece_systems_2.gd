@@ -338,3 +338,101 @@ func test_camp_screen_layout_and_scrollbar_styling():
 	var pet_btn: Button = garden_sec.find_child("PetFamiliarBtn", true, false) as Button
 	assert_not_null(pet_btn, "PetFamiliarBtn exists in sanctuary garden")
 	assert_eq(pet_btn.get_theme_font_size("font_size"), 10, "Familiar buttons use compact font size to avoid overflow")
+
+# ------------------------------------------------------------------------------
+# 11. Volumetric 2.5D Hero Presentation & Spring-Damper Physics
+# ------------------------------------------------------------------------------
+
+func test_hero_volumetric_lighting_shader_and_multi_hero_tuning():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+
+	var shader: Shader = battle_screen._get_hero_volumetric_shader()
+	assert_not_null(shader, "Hero volumetric lighting shader loaded successfully")
+
+	# Test Fox Spirit tuning
+	var fox_sprite := Sprite2D.new()
+	add_child_autofree(fox_sprite)
+	var fox_mat: ShaderMaterial = battle_screen._install_hero_volumetric_shader(fox_sprite, "fox_spirit")
+	assert_not_null(fox_mat, "Fox spirit shader material installed")
+	assert_eq(fox_mat.shader, shader, "Uses hero volumetric lighting shader")
+	var fox_light_color = fox_mat.get_shader_parameter("light_color")
+	assert_almost_eq(fox_light_color.x, 0.35, 0.05, "Fox Spirit cyan light tuning")
+
+	# Test Stone Sentinel tuning
+	var stone_sprite := Sprite2D.new()
+	add_child_autofree(stone_sprite)
+	var stone_mat: ShaderMaterial = battle_screen._install_hero_volumetric_shader(stone_sprite, "stone_sentinel")
+	var stone_light_color = stone_mat.get_shader_parameter("light_color")
+	assert_almost_eq(stone_light_color.x, 1.0, 0.05, "Stone Sentinel warm amber light tuning")
+
+	# Test Shadow Stalker tuning
+	var shadow_sprite := Sprite2D.new()
+	add_child_autofree(shadow_sprite)
+	var shadow_mat: ShaderMaterial = battle_screen._install_hero_volumetric_shader(shadow_sprite, "shadow_stalker")
+	var shadow_light_color = shadow_mat.get_shader_parameter("light_color")
+	assert_almost_eq(shadow_light_color.x, 0.75, 0.05, "Shadow Stalker violet light tuning")
+
+	# Test Miasma Witch tuning
+	var witch_sprite := Sprite2D.new()
+	add_child_autofree(witch_sprite)
+	var witch_mat: ShaderMaterial = battle_screen._install_hero_volumetric_shader(witch_sprite, "miasma_witch")
+	var witch_light_color = witch_mat.get_shader_parameter("light_color")
+	assert_almost_eq(witch_light_color.y, 1.0, 0.05, "Miasma Witch emerald light tuning")
+
+func test_spring_secondary_motion_physics_convergence():
+	var dummy := Node2D.new()
+	dummy.position = Vector2(100, 100)
+	dummy.rotation_degrees = 15.0
+	add_child_autofree(dummy)
+
+	var SpringScript = load("res://scripts/spring_secondary_motion.gd")
+	var spring = SpringScript.new()
+	add_child_autofree(spring)
+	spring.init_from_target(dummy)
+
+	assert_eq(spring.base_position, Vector2(100, 100), "Recorded base position")
+	assert_eq(spring.base_rotation, 15.0, "Recorded base rotation")
+	assert_true(spring.is_settled(), "Spring initially at rest")
+
+	# Apply linear and angular impulse
+	spring.apply_impulse(Vector2(60, -30))
+	spring.apply_angular_impulse(40.0)
+
+	assert_false(spring.is_settled(), "Spring active after impulse")
+
+	# Advance simulation across multiple frames
+	for frame in 180:
+		spring._process(0.016)
+
+	assert_true(spring.is_settled(0.5), "Spring settled smoothly after 180 frames without diverging")
+	assert_almost_eq(dummy.position.x, 100.0, 0.5, "Restored near base x position")
+	assert_almost_eq(dummy.position.y, 100.0, 0.5, "Restored near base y position")
+	assert_almost_eq(dummy.rotation_degrees, 15.0, 0.5, "Restored near base rotation")
+
+func test_card_drag_perspective_gaze_tracking_clamping():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+
+	var p_sprite := Sprite2D.new()
+	p_sprite.name = "PlayerSprite"
+	p_sprite.position = Vector2(102, 52)
+	p_sprite.set_meta("base_pos_y", 52.0)
+	g.add_child(p_sprite)
+
+	# Drag way to the right
+	battle_screen._update_hero_drag_tracking(Vector2(1000, 200))
+	assert_true(p_sprite.rotation <= 0.15, "Hero rotation clamped within 0.15 rad on extreme right drag")
+	assert_true(p_sprite.rotation > 0.0, "Hero tilted positively towards right drag")
+
+	# Drag way to the left
+	battle_screen._update_hero_drag_tracking(Vector2(-500, 200))
+	assert_true(p_sprite.rotation >= -0.15, "Hero rotation clamped within -0.15 rad on extreme left drag")
+	assert_true(p_sprite.rotation < 0.0, "Hero tilted negatively towards left drag")
+

@@ -146,6 +146,8 @@ func _on_drag(local_pos: Vector2) -> void:
 		rotation = lerpf(rotation, target_rot, 0.45)
 		var tilt_y_squash: float = 1.0 - absf(target_rot) * 0.15
 		scale = Vector2(1.15, 1.15 * tilt_y_squash)
+		if game and game.has_method("_update_hero_drag_tracking"):
+			game._update_hero_drag_tracking(cur_global)
 		if game and game.has_method("_preview_energy_drain"):
 			game._preview_energy_drain(int(card_data.get("cost", 0)))
 		target_enemy_idx = -1
@@ -188,6 +190,8 @@ func _on_touch_up() -> void:
 			game._clear_targeting_arc()
 		if game.has_method("_clear_energy_drain_preview"):
 			game._clear_energy_drain_preview()
+		if game.has_method("_clear_hero_drag_tracking"):
+			game._clear_hero_drag_tracking()
 		game._clear_damage_preview()
 		game._clear_valid_targets()
 		game._show_cancel_zone(false)

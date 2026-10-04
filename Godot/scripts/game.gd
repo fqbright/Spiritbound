@@ -143,6 +143,7 @@ var _card_atlas_2: Texture2D = null
 var _road_texture: NoiseTexture2D = null
 var _mote_texture: GradientTexture2D = null
 var _hit_flash_shader: Shader = null
+var _hero_volumetric_shader: Shader = null
 var _card_foil_shader: Shader = null
 var _ember_texture: GradientTexture2D = null
 var _terrain_grain_texture: NoiseTexture2D = null
@@ -2193,6 +2194,10 @@ func _update_targeting_arc(start_pos: Vector2, target_pos: Vector2, is_locked: b
 	if _battle_screen: _battle_screen._update_targeting_arc(start_pos, target_pos, is_locked)
 func _clear_targeting_arc() -> void:
 	if _battle_screen: _battle_screen._clear_targeting_arc()
+func _update_hero_drag_tracking(drag_pos: Vector2) -> void:
+	if _battle_screen and _battle_screen.has_method("_update_hero_drag_tracking"): _battle_screen._update_hero_drag_tracking(drag_pos)
+func _clear_hero_drag_tracking() -> void:
+	if _battle_screen and _battle_screen.has_method("_clear_hero_drag_tracking"): _battle_screen._clear_hero_drag_tracking()
 func _preview_energy_drain(cost: int) -> void:
 	if _battle_screen: _battle_screen._preview_energy_drain(cost)
 func _clear_energy_drain_preview() -> void:
