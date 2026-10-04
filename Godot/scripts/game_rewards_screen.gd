@@ -612,23 +612,37 @@ func show_reward_details() -> void:
 	var page := g._create_page(8)
 	page.add_child(g._label(g.t("ui.battle_won"), 24, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 
+	var aux_grid := GridContainer.new()
+	aux_grid.name = "RewardAuxActionsGrid"
+	aux_grid.columns = 2
+	aux_grid.add_theme_constant_override("h_separation", 8)
+	aux_grid.add_theme_constant_override("v_separation", 6)
+	aux_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
 	if g.battle_log and not g.battle_log.entries.is_empty():
-		var log_btn := g._button(g.t("ui.battle_log_view_btn"), show_battle_log, Color("17363e"), Vector2(0, 36))
+		var log_btn := g._button(g.t("ui.battle_log_view_btn"), show_battle_log, Color("17363e"), Vector2(0, 30))
 		log_btn.name = "ViewBattleLogBtn"
-		page.add_child(log_btn)
+		log_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		aux_grid.add_child(log_btn)
 
-	var vic_card_btn := g._button(g.t("ui.victory_card_btn"), _show_victory_card_modal, Color("3b2554"), Vector2(0, 36))
+	var vic_card_btn := g._button(g.t("ui.victory_card_btn"), _show_victory_card_modal, Color("3b2554"), Vector2(0, 30))
 	vic_card_btn.name = "VictoryCardBtn"
-	page.add_child(vic_card_btn)
+	vic_card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	aux_grid.add_child(vic_card_btn)
 
-	var chronicle_btn := g._button(g.t("ui.battle_chronicle_btn"), _show_battle_chronicle_modal, Color("1f2d3d"), Vector2(0, 36))
+	var chronicle_btn := g._button(g.t("ui.battle_chronicle_btn"), _show_battle_chronicle_modal, Color("1f2d3d"), Vector2(0, 30))
 	chronicle_btn.name = "BattleChronicleBtn"
-	page.add_child(chronicle_btn)
+	chronicle_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	aux_grid.add_child(chronicle_btn)
 
 	if bool(g.pending_rewards.get("great_boss_kill", false)) or bool(g.pending_rewards.get("abyss_milestone", false)):
-		var recap_btn := g._button(g.t("ui.run_recap_view_btn"), show_run_recap, g.GOLD, Vector2(0, 36))
+		var recap_btn := g._button(g.t("ui.run_recap_view_btn"), show_run_recap, g.GOLD, Vector2(0, 30))
 		recap_btn.name = "ViewRunRecapBtn"
-		page.add_child(recap_btn)
+		recap_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		aux_grid.add_child(recap_btn)
+
+	if aux_grid.get_child_count() > 0:
+		page.add_child(aux_grid)
 
 	# The rating ask, at the deepest point a first-session player reaches (the first Great Boss
 	# kill — see SpiritRate for why that moment and not launch). Offered as a button rather than

@@ -4662,10 +4662,11 @@ func _show_soul_pacts_modal() -> void:
 
 	vbox.add_child(g._label(g.t("ui.pact_sub"), 9, Color("c084fc"), HORIZONTAL_ALIGNMENT_LEFT, true))
 
-	var scroll := ScrollContainer.new()
+	var scroll := TouchScrollContainer.new()
+	scroll.allow_vertical = true
+	scroll.allow_horizontal = false
 	scroll.custom_minimum_size = Vector2(0, 350)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
 
 	var list_box := VBoxContainer.new()

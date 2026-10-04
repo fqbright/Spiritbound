@@ -314,12 +314,40 @@ func test_camp_screen_layout_and_scrollbar_styling():
 	g.profile = SpiritSave.defaults(content)
 	add_child_autofree(g)
 
-	# Test TouchScrollContainer non-blocking styling
+	# Test TouchScrollContainer non-blocking styling and hidden scrollbars
 	var scroll := TouchScrollContainer.new()
 	add_child_autofree(scroll)
 	var v_bar := scroll.get_v_scroll_bar()
 	assert_not_null(v_bar, "VScrollBar exists on TouchScrollContainer")
 	assert_eq(v_bar.mouse_filter, Control.MOUSE_FILTER_IGNORE, "VScrollBar does not intercept or block touches")
+	assert_eq(scroll.vertical_scroll_mode, ScrollContainer.SCROLL_MODE_SHOW_NEVER, "Vertical scrollbar is set to SHOW_NEVER")
+	assert_eq(scroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_SHOW_NEVER, "Horizontal scrollbar is set to SHOW_NEVER")
+	assert_false(v_bar.visible, "VScrollBar is invisible so it never obscures UI content")
+
+	# Test Map chapter plaque position and ascension button removal
+	g.show_map()
+	var plaque: Control = g.root.find_child("ChapterPlaque", true, false) as Control
+	assert_not_null(plaque, "ChapterPlaque exists on map screen")
+	if plaque:
+		assert_true(plaque.position.y >= 110.0, "ChapterPlaque is shifted down (y=%.1f >= 110.0) so it is not covered by top header" % plaque.position.y)
+	var asc_btn: Node = g.root.find_child("MapAscensionBtn", true, false)
+	assert_null(asc_btn, "MapAscensionBtn (T几) is removed from big map screen per UX requirements")
+
+	# Test Deck preset rename button has valid text label instead of unrendered emoji
+	g.show_deck()
+	var rename_btn: Button = g.root.find_child("PresetRenameBtn", true, false) as Button
+	assert_not_null(rename_btn, "PresetRenameBtn exists in deck screen")
+	if rename_btn:
+		assert_true(rename_btn.text == "改名" or rename_btn.text == "Rename", "PresetRenameBtn has clear text ('%s') instead of missing/unrendered emoji" % rename_btn.text)
+
+	# Test Title screen uses scrollable container to prevent mobile button overflow
+	g.show_title_screen()
+	var title_scroll: ScrollContainer = g.root.find_child("*", true, false) as ScrollContainer
+	if title_scroll == null:
+		for c in g.root.find_children("*", "TouchScrollContainer", true, false):
+			title_scroll = c as ScrollContainer
+			break
+	assert_not_null(title_scroll, "Title screen wraps in TouchScrollContainer to prevent button overflow on mobile")
 
 	# Test Camp screen sections layout
 	var camp_scr := CampScreen.new(g)

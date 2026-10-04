@@ -1494,7 +1494,7 @@ func show_deck() -> void:
 		p_btn.name = "PresetBtn_%d" % slot_idx
 		p_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		preset_row.add_child(p_btn)
-	var rename_btn := g._button("✏️", func(): _rename_preset_modal(active_slot), Color("17363e"), Vector2(34, 30))
+	var rename_btn := g._button(g.t("ui.account_rename"), func(): _rename_preset_modal(active_slot), Color("17363e"), Vector2(48, 30))
 	rename_btn.name = "PresetRenameBtn"
 	rename_btn.tooltip_text = g.t("ui.preset_rename_title")
 	preset_row.add_child(rename_btn)

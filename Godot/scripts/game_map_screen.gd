@@ -829,7 +829,7 @@ func _add_map_chapter(chapter: int) -> void:
 	# legibility, matching the stage-pin captions' existing floating-text treatment.
 	var plaque := Control.new()
 	plaque.name = "ChapterPlaque"
-	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 78.0)
+	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 114.0)
 	plaque.size = Vector2(260, 52)
 	plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	band.add_child(plaque)
@@ -851,19 +851,13 @@ func _add_map_chapter(chapter: int) -> void:
 	plaque_name.add_theme_constant_override("shadow_offset_y", 1)
 	plaque_stack.add_child(plaque_name)
 
-	var cur_asc: int = int(g.profile.get("ascension_level", 0))
-	var asc_btn := g._button("⚡ T%d" % cur_asc, _show_ascension_modal, Color("3b1848") if cur_asc > 0 else Color("1b2028"), Vector2(60, 24))
-	asc_btn.name = "MapAscensionBtn"
-	asc_btn.position = Vector2(g.MAP_WIDTH / 2.0 - 30.0, 134.0 if g.current_map_chapter == int(g.profile.position) / 5 else 164.0)
-	band.add_child(asc_btn)
-
 	if g.current_map_chapter != int(g.profile.position) / 5:
 		var back_curr_btn := g._button(g.t("ui.map_back_to_current"), func():
 			g.current_map_chapter = int(g.profile.position) / 5
 			show_map()
 		, Color("1d4a40"), Vector2(100, 24))
 		back_curr_btn.name = "MapBackToCurrentBtn"
-		back_curr_btn.position = Vector2((g.MAP_WIDTH - 100.0) / 2.0, 134.0)
+		back_curr_btn.position = Vector2((g.MAP_WIDTH - 100.0) / 2.0, 172.0)
 		band.add_child(back_curr_btn)
 
 # Replaces the old ChapterPrevBtn/ChapterNextBtn pair: a left/right swipe anywhere on the map

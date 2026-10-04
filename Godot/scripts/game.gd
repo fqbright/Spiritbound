@@ -819,13 +819,13 @@ func show_title_screen() -> void:
 	root.add_child(backdrop)
 	root.move_child(backdrop, 0)
 
-	var page := _create_page(12)
+	var page := _create_scrollable_page(8)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	# Fox spirit crest
 	var crest := TextureRect.new()
 	crest.texture = _get_character_texture("fox")
-	crest.custom_minimum_size = Vector2(0, 100)
+	crest.custom_minimum_size = Vector2(0, 64)
 	crest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	page.add_child(crest)
@@ -837,7 +837,7 @@ func show_title_screen() -> void:
 	logo.texture = logo_tex
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(230, 60)
+	logo.custom_minimum_size = Vector2(190, 44)
 	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	page.add_child(logo)
 
@@ -852,14 +852,14 @@ func show_title_screen() -> void:
 
 	var acc_card := PanelContainer.new()
 	var acc_style := _panel(Color("0c1a1e", 0.9), 10, JADE if is_linked else Color("c4923e"))
-	acc_style.content_margin_left = 14
-	acc_style.content_margin_right = 14
-	acc_style.content_margin_top = 10
-	acc_style.content_margin_bottom = 10
+	acc_style.content_margin_left = 12
+	acc_style.content_margin_right = 12
+	acc_style.content_margin_top = 6
+	acc_style.content_margin_bottom = 6
 	acc_card.add_theme_stylebox_override("panel", acc_style)
 
 	var acc_vbox := VBoxContainer.new()
-	acc_vbox.add_theme_constant_override("separation", 4)
+	acc_vbox.add_theme_constant_override("separation", 3)
 	acc_card.add_child(acc_vbox)
 
 	var acc_top_row := HBoxContainer.new()
@@ -887,7 +887,7 @@ func show_title_screen() -> void:
 			_create_account(acc_name)
 		else:
 			show_map()
-	, EMBER, Vector2(0, 50))
+	, EMBER, Vector2(0, 44))
 	start_btn.name = "TitleStartBtn"
 	page.add_child(start_btn)
 
@@ -898,14 +898,14 @@ func show_title_screen() -> void:
 				if ok:
 					show_title_screen()
 			)
-		, JADE, Vector2(0, 42))
+		, JADE, Vector2(0, 36))
 		device_btn.name = "TitleDeviceAuthBtn"
 		page.add_child(device_btn)
 
 	# Account Switch / Login Button
 	var auth_btn := _button(t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title"), func():
 		show_auth_modal(func(): show_map())
-	, Color("1a4049") if not is_linked else JADE, Vector2(0, 40))
+	, Color("1a4049") if not is_linked else JADE, Vector2(0, 36))
 	auth_btn.name = "TitleAuthBtn"
 	page.add_child(auth_btn)
 
@@ -915,7 +915,7 @@ func show_title_screen() -> void:
 
 	var apple_btn := _button("Apple", func():
 		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
-	, Color("080808"), Vector2(0, 38))
+	, Color("080808"), Vector2(0, 36))
 	apple_btn.name = "TitleAppleBtn"
 	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var apple_icon := TextureRect.new()
@@ -923,14 +923,14 @@ func show_title_screen() -> void:
 	apple_icon.custom_minimum_size = Vector2(16, 16)
 	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	apple_icon.position = Vector2(10, 11)
+	apple_icon.position = Vector2(10, 10)
 	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	apple_btn.add_child(apple_icon)
 	oauth_row.add_child(apple_btn)
 
 	var google_btn := _button("Google", func():
 		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
-	, Color("f0f2f5"), Vector2(0, 38))
+	, Color("f0f2f5"), Vector2(0, 36))
 	google_btn.name = "TitleGoogleBtn"
 	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
@@ -941,7 +941,7 @@ func show_title_screen() -> void:
 	google_icon.custom_minimum_size = Vector2(16, 16)
 	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	google_icon.position = Vector2(10, 11)
+	google_icon.position = Vector2(10, 10)
 	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	google_btn.add_child(google_icon)
 	oauth_row.add_child(google_btn)
@@ -950,7 +950,7 @@ func show_title_screen() -> void:
 		if not SpiritSave.has_account_name(profile):
 			_create_account("灵界探险家")
 		show_map()
-	, Color("17363e"), Vector2(0, 38))
+	, Color("17363e"), Vector2(0, 36))
 	guest_btn.name = "TitleGuestBtn"
 	guest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	oauth_row.add_child(guest_btn)
@@ -967,12 +967,12 @@ func show_title_screen() -> void:
 		profile.language = lang
 		SpiritSave.write(profile)
 		show_title_screen()
-	, Color("142226"), Vector2(70, 32))
+	, Color("142226"), Vector2(70, 30))
 	bot_row.add_child(lang_btn)
 
 	var set_btn := _button(t("ui.nav_settings"), func():
 		show_settings()
-	, Color("142226"), Vector2(70, 32))
+	, Color("142226"), Vector2(70, 30))
 	bot_row.add_child(set_btn)
 
 	page.add_child(bot_row)
@@ -992,37 +992,37 @@ func show_account_setup(from_rename: bool = false) -> void:
 	}, self)
 	_clear(); _play_music(false)
 	var backdrop := _background("spirit-world-map-v1.jpg", .34); root.add_child(backdrop); root.move_child(backdrop, 0)
-	var page := _create_page(10)
+	var page := _create_scrollable_page(8)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	var crest := TextureRect.new()
 	crest.texture = _get_character_texture("fox")
-	crest.custom_minimum_size = Vector2(0, 130)
+	crest.custom_minimum_size = Vector2(0, 72)
 	crest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	page.add_child(crest)
 
-	page.add_child(_label("SPIRITBOUND", 26, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	page.add_child(_label(t("ui.account_welcome"), 15, JADE, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label("SPIRITBOUND", 22, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label(t("ui.account_welcome"), 14, JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	page.add_child(_label(t("ui.account_prompt"), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	var field := LineEdit.new()
 	field.placeholder_text = t("ui.account_placeholder")
 	field.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	field.max_length = 16
-	field.custom_minimum_size = Vector2(0, 52)
+	field.custom_minimum_size = Vector2(0, 44)
 	field.text = str(profile.get("account", {}).get("name", ""))
 	if font_cjk: field.add_theme_font_override("font", font_cjk)
-	field.add_theme_font_size_override("font_size", 16)
+	field.add_theme_font_size_override("font_size", 15)
 	field.add_theme_color_override("font_color", TEXT)
-	field.add_theme_stylebox_override("normal", _panel(Color("10242b"), 12, Color("2a4d55")))
-	field.add_theme_stylebox_override("focus", _panel(Color("14303a"), 12, JADE))
+	field.add_theme_stylebox_override("normal", _panel(Color("10242b"), 10, Color("2a4d55")))
+	field.add_theme_stylebox_override("focus", _panel(Color("14303a"), 10, JADE))
 	page.add_child(field)
 
 	page.add_child(_button(t("ui.account_start"), func():
 		_create_account(field.text)
 		_track_account_setup_completed("typed")
-	, EMBER, Vector2(0, 50)))
+	, EMBER, Vector2(0, 44)))
 
 	page.add_child(_label(t("ui.auth_or_continue"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	var auth_row := HBoxContainer.new()
@@ -1034,15 +1034,15 @@ func show_account_setup(from_rename: bool = false) -> void:
 		_create_account(chosen_name)
 		_track_account_setup_completed("apple")
 		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
-	, Color("080808"), Vector2(0, 42))
+	, Color("080808"), Vector2(0, 36))
 	apple_btn.name = "SignInWithAppleBtn"
 	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var apple_icon := TextureRect.new()
 	apple_icon.texture = load("res://assets/icons/icon_apple.png")
-	apple_icon.custom_minimum_size = Vector2(18, 18)
+	apple_icon.custom_minimum_size = Vector2(16, 16)
 	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	apple_icon.position = Vector2(10, 12)
+	apple_icon.position = Vector2(10, 10)
 	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	apple_btn.add_child(apple_icon)
 	auth_row.add_child(apple_btn)
@@ -1053,7 +1053,7 @@ func show_account_setup(from_rename: bool = false) -> void:
 		_create_account(chosen_name)
 		_track_account_setup_completed("google")
 		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
-	, Color("f0f2f5"), Vector2(0, 42))
+	, Color("f0f2f5"), Vector2(0, 36))
 	google_btn.name = "SignInWithGoogleBtn"
 	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
@@ -1061,10 +1061,10 @@ func show_account_setup(from_rename: bool = false) -> void:
 	google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
 	var google_icon := TextureRect.new()
 	google_icon.texture = load("res://assets/icons/icon_google.png")
-	google_icon.custom_minimum_size = Vector2(18, 18)
+	google_icon.custom_minimum_size = Vector2(16, 16)
 	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	google_icon.position = Vector2(10, 12)
+	google_icon.position = Vector2(10, 10)
 	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	google_btn.add_child(google_icon)
 	auth_row.add_child(google_btn)
@@ -1079,11 +1079,11 @@ func show_account_setup(from_rename: bool = false) -> void:
 			_track_account_setup_completed("email")
 			show_map()
 		)
-	, Color("17363e"), Vector2(0, 38))
+	, Color("17363e"), Vector2(0, 34))
 	email_btn.name = "SignInWithEmailBtn"
 	page.add_child(email_btn)
 
-	var lang_btn := _button(t("ui.lang_toggle"), func(): lang = "en" if lang == "zh-Hans" else "zh-Hans"; profile.language = lang; show_account_setup(), Color("17363e"), Vector2(0, 38))
+	var lang_btn := _button(t("ui.lang_toggle"), func(): lang = "en" if lang == "zh-Hans" else "zh-Hans"; profile.language = lang; show_account_setup(), Color("17363e"), Vector2(0, 34))
 	page.add_child(lang_btn)
 	field.grab_focus()
 
@@ -1484,6 +1484,37 @@ func _create_page(separation := 6) -> VBoxContainer:
 	page.mouse_filter = Control.MOUSE_FILTER_PASS
 	margin.add_child(page)
 	return page
+
+func _create_scrollable_page(separation := 6) -> VBoxContainer:
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_top", _safe_top())
+	margin.add_theme_constant_override("margin_bottom", _safe_bottom())
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size if get_viewport() else Vector2(390, 844)
+	var horiz_margin := 12
+	if vp_size.x > 500.0:
+		horiz_margin = maxi(12, int((vp_size.x - 420.0) / 2.0))
+	margin.add_theme_constant_override("margin_left", horiz_margin)
+	margin.add_theme_constant_override("margin_right", horiz_margin)
+	margin.mouse_filter = Control.MOUSE_FILTER_PASS
+	root.add_child(margin)
+
+	var scroll := TouchScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.allow_vertical = true
+	scroll.allow_horizontal = false
+	margin.add_child(scroll)
+
+	var page := VBoxContainer.new()
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_theme_constant_override("separation", separation)
+	page.mouse_filter = Control.MOUSE_FILTER_PASS
+	scroll.add_child(page)
+	return page
+
 
 func _build_audio() -> void:
 	map_music = AudioStreamPlayer.new(); map_music.stream = load("res://assets/audio/map_symphony.wav"); map_music.volume_db = -10; add_child(map_music)
