@@ -15,6 +15,7 @@ var preview_index := -1
 var is_previewing := false
 var _press_time_ms := 0
 var _last_drag_pos := Vector2.ZERO
+var _ether_trail: Line2D = null
 
 # Below this, a press-then-release-without-dragging counts as a quick tap that plays the
 # card. At or above it, the same release just closes the peek without playing — press and
@@ -148,6 +149,31 @@ func _on_drag(local_pos: Vector2) -> void:
 		scale = Vector2(1.15, 1.15 * tilt_y_squash)
 		if game and game.has_method("_update_hero_drag_tracking"):
 			game._update_hero_drag_tracking(cur_global)
+		if game and game.overlay:
+			if _ether_trail == null:
+				_ether_trail = Line2D.new()
+				_ether_trail.name = "CardEtherTrail"
+				_ether_trail.width = 6.0
+				_ether_trail.joint_mode = Line2D.LINE_JOINT_ROUND
+				_ether_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
+				_ether_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
+				var curve := Curve.new()
+				curve.add_point(Vector2(0.0, 0.2))
+				curve.add_point(Vector2(1.0, 1.0))
+				_ether_trail.width_curve = curve
+				var elem: String = str(card_data.get("element", ""))
+				match elem:
+					"Fire": _ether_trail.default_color = Color(1.0, 0.55, 0.20, 0.75)
+					"Water": _ether_trail.default_color = Color(0.35, 0.75, 1.0, 0.75)
+					"Storm": _ether_trail.default_color = Color(0.85, 0.45, 1.0, 0.75)
+					"Earth": _ether_trail.default_color = Color(1.0, 0.85, 0.35, 0.75)
+					"Toxin": _ether_trail.default_color = Color(0.35, 0.95, 0.50, 0.75)
+					_: _ether_trail.default_color = Color(0.90, 0.95, 1.0, 0.65)
+				_ether_trail.z_index = 340
+				game.overlay.add_child(_ether_trail)
+			_ether_trail.add_point(cur_global)
+			if _ether_trail.get_point_count() > 14:
+				_ether_trail.remove_point(0)
 		if game and game.has_method("_preview_energy_drain"):
 			game._preview_energy_drain(int(card_data.get("cost", 0)))
 		target_enemy_idx = -1
@@ -201,6 +227,7 @@ func _on_touch_up() -> void:
 	# (just closes the peek — holding a card to read it should never also play it).
 	var was_quick_tap: bool = Time.get_ticks_msec() - _press_time_ms < TAP_THRESHOLD_MS
 	_end_preview()
+	_clear_ether_trail()
 
 	var played := false
 	if not is_dragging:
@@ -225,6 +252,15 @@ func _on_touch_up() -> void:
 	if not played:
 		_spring_back()
 	is_dragging = false
+
+func _clear_ether_trail() -> void:
+	if _ether_trail != null:
+		var trail := _ether_trail
+		_ether_trail = null
+		if is_instance_valid(trail):
+			var tw := trail.create_tween()
+			tw.tween_property(trail, "modulate:a", 0.0, 0.18)
+			tw.tween_callback(trail.queue_free)
 
 func _spring_back() -> void:
 	z_index = hand_index

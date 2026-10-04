@@ -436,3 +436,81 @@ func test_card_drag_perspective_gaze_tracking_clamping():
 	assert_true(p_sprite.rotation >= -0.15, "Hero rotation clamped within -0.15 rad on extreme left drag")
 	assert_true(p_sprite.rotation < 0.0, "Hero tilted negatively towards left drag")
 
+# ------------------------------------------------------------------------------
+# 12. Combat Juice, Boss 2.5D Volumetric Rims & Ether Trails
+# ------------------------------------------------------------------------------
+
+func test_enemy_volumetric_shader_and_tier_tuning():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+
+	# Tier 1 Minion
+	var m1 := Sprite2D.new()
+	add_child_autofree(m1)
+	var mat1 = battle_screen._install_enemy_volumetric_shader(m1, {"tier": 1})
+	assert_not_null(mat1, "Minion volumetric shader created")
+	assert_almost_eq(float(mat1.get_shader_parameter("rim_intensity")), 0.25, 0.05, "Minion rim intensity is subtle (0.25)")
+
+	# Tier 2 Elite
+	var m2 := Sprite2D.new()
+	add_child_autofree(m2)
+	var mat2 = battle_screen._install_enemy_volumetric_shader(m2, {"tier": 2})
+	assert_almost_eq(float(mat2.get_shader_parameter("rim_intensity")), 0.40, 0.05, "Elite rim intensity is elevated (0.40)")
+
+	# Tier 3 Chapter Boss
+	var m3 := Sprite2D.new()
+	add_child_autofree(m3)
+	var mat3 = battle_screen._install_enemy_volumetric_shader(m3, {"tier": 3})
+	assert_almost_eq(float(mat3.get_shader_parameter("rim_intensity")), 0.55, 0.05, "Boss rim intensity is high (0.55)")
+	var rim3 = mat3.get_shader_parameter("rim_color")
+	assert_almost_eq(rim3.x, 0.85, 0.05, "Boss violet-red rim color")
+
+	# Tier 4 Great World Boss
+	var m4 := Sprite2D.new()
+	add_child_autofree(m4)
+	var mat4 = battle_screen._install_enemy_volumetric_shader(m4, {"tier": 4})
+	assert_almost_eq(float(mat4.get_shader_parameter("rim_intensity")), 0.65, 0.05, "World Boss rim intensity is peak (0.65)")
+
+func test_combat_hit_stop_and_camera_punch_safety():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+
+	assert_eq(Engine.time_scale, 1.0, "Time scale initially 1.0")
+	battle_screen._micro_hit_stop(0.05)
+	# Fast safety: Engine.time_scale stays within valid range and leave battle restores 1.0
+	battle_screen._leave_battle()
+	assert_eq(Engine.time_scale, 1.0, "Time scale restored cleanly after leave battle")
+
+func test_danger_vignette_activation_and_cleanup():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.combat = SpiritCombat.new(content)
+	g.combat.state = {
+		"player": {"health": 12, "max_health": 60, "shield": 0},
+		"enemies": [],
+		"phase": "player"
+	}
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+
+	battle_screen._update_danger_vignette()
+	var vig = g.overlay.get_node_or_null("DangerVignette")
+	assert_not_null(vig, "DangerVignette created at <= 25% HP")
+
+	# Heal back to full
+	g.combat.state.player.health = 60
+	battle_screen._update_danger_vignette()
+	battle_screen._clear_danger_vignette()
+	var vig_cleared = g.overlay.get_node_or_null("DangerVignette")
+	assert_true(vig_cleared == null or vig_cleared.is_queued_for_deletion(), "DangerVignette cleaned up when safe")
+
+

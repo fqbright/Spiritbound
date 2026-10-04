@@ -656,16 +656,21 @@ func _haptic(kind: String) -> void:
 			hf.store_string(JSON.stringify({"kind": kind}))
 			hf.close()
 	match kind:
-		"tap": Input.vibrate_handheld(10)
-		"card_drag": Input.vibrate_handheld(12)
+		"selection": Input.vibrate_handheld(8)
+		"tap": Input.vibrate_handheld(12)
+		"card_drag": Input.vibrate_handheld(14)
+		"medium": Input.vibrate_handheld(28)
 		"shield": Input.vibrate_handheld(25)
 		"hit": Input.vibrate_handheld(40)
 		"heavy": Input.vibrate_handheld(75)
+		"crit":
+			Input.vibrate_handheld(75)
+			if is_inside_tree() and get_tree():
+				get_tree().create_timer(0.08, true, false, true).timeout.connect(func(): Input.vibrate_handheld(85))
 		"lethal":
 			Input.vibrate_handheld(85)
 			if is_inside_tree() and get_tree():
-				var t := get_tree().create_timer(0.1)
-				t.timeout.connect(func(): Input.vibrate_handheld(100))
+				get_tree().create_timer(0.1, true, false, true).timeout.connect(func(): Input.vibrate_handheld(100))
 		_: Input.vibrate_handheld(15)
 
 func _cycle_speed() -> void:

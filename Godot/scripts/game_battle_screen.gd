@@ -695,6 +695,47 @@ func _install_hero_volumetric_shader(sprite: CanvasItem, hero_key: String = "fox
 	sprite.material = mat
 	return mat
 
+func _install_enemy_volumetric_shader(sprite: CanvasItem, enemy: Dictionary) -> ShaderMaterial:
+	var s := _get_hero_volumetric_shader()
+	if s == null:
+		return _install_hit_flash(sprite)
+	var mat := ShaderMaterial.new()
+	mat.shader = s
+	var tier: int = int(enemy.get("tier", 1))
+	match tier:
+		4: # Great World Boss
+			mat.set_shader_parameter("light_pos", Vector2(-0.45, 0.25))
+			mat.set_shader_parameter("light_color", Vector4(1.0, 0.25, 0.20, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(1.0, 0.35, 0.45, 1.0))
+			mat.set_shader_parameter("rim_intensity", 0.65)
+			mat.set_shader_parameter("ambient_intensity", 0.88)
+			mat.set_shader_parameter("specular_power", 32.0)
+			mat.set_shader_parameter("normal_depth", 2.6)
+		3: # Chapter Boss
+			mat.set_shader_parameter("light_pos", Vector2(-0.35, 0.30))
+			mat.set_shader_parameter("light_color", Vector4(0.85, 0.35, 1.0, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(0.85, 0.30, 0.95, 1.0))
+			mat.set_shader_parameter("rim_intensity", 0.55)
+			mat.set_shader_parameter("ambient_intensity", 0.85)
+			mat.set_shader_parameter("specular_power", 24.0)
+			mat.set_shader_parameter("normal_depth", 2.4)
+		2: # Elite
+			mat.set_shader_parameter("light_pos", Vector2(-0.30, 0.35))
+			mat.set_shader_parameter("light_color", Vector4(1.0, 0.55, 0.20, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(1.0, 0.50, 0.25, 1.0))
+			mat.set_shader_parameter("rim_intensity", 0.40)
+			mat.set_shader_parameter("ambient_intensity", 0.85)
+			mat.set_shader_parameter("specular_power", 18.0)
+		_: # Normal Minion
+			mat.set_shader_parameter("light_pos", Vector2(-0.25, 0.40))
+			mat.set_shader_parameter("light_color", Vector4(0.80, 0.85, 0.95, 1.0))
+			mat.set_shader_parameter("rim_color", Vector4(0.75, 0.82, 0.90, 0.8))
+			mat.set_shader_parameter("rim_intensity", 0.25)
+			mat.set_shader_parameter("ambient_intensity", 0.90)
+			mat.set_shader_parameter("specular_power", 14.0)
+	sprite.material = mat
+	return mat
+
 # One shader material per sprite so a mid-flash overlap on one enemy never disturbs another.
 func _install_hit_flash(sprite: CanvasItem) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
@@ -907,7 +948,7 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	# enemy roughly three times its intended size after any action.
 	sprite.set_meta("base_scale", scale_factor)
 	sprite.position = Vector2(center_x, 26.0 + spr_size.y / 2.0)
-	_install_hit_flash(sprite)
+	_install_enemy_volumetric_shader(sprite, enemy)
 
 	# Tier visual hierarchy: Floating boss crests
 	if tier == 3:
@@ -3011,6 +3052,16 @@ func _camera_punch(intensity: float = 1.035, duration := 0.14) -> void:
 	punch.tween_property(g.root, "scale", Vector2(intensity, intensity), duration * 0.35)
 	punch.tween_property(g.root, "scale", Vector2.ONE, duration * 0.65)
 
+func _micro_hit_stop(freeze_time: float = 0.07) -> void:
+	if bool(g.profile.get("reduce_motion", false)): return
+	if Engine.time_scale != 1.0: return
+	if g.get_tree() == null: return
+	var prev_scale: float = Engine.time_scale
+	Engine.time_scale = 0.15
+	g.get_tree().create_timer(freeze_time, true, false, true).timeout.connect(func():
+		Engine.time_scale = prev_scale
+	)
+
 func _target_ring(hot: bool) -> StyleBoxFlat:
 	var ring := g._panel(Color(1.0, 0.86, 0.42, 0.22 if hot else 0.08), 14, Color(1.0, 0.92, 0.55, 1.0) if hot else Color(1.0, 0.86, 0.42, 0.7))
 	var width := 3 if hot else 2
@@ -3676,10 +3727,22 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	g.overlay.add_child(popup)
 
 	var punch := popup.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	punch.tween_property(popup, "scale", Vector2(1.35, 1.35), g._battle_delay(0.16))
+	punch.tween_property(popup, "scale", Vector2(1.42, 1.42) if (defeated or amount >= 25) else Vector2(1.25, 1.25), g._battle_delay(0.14))
 	punch.tween_property(popup, "scale", Vector2(1.10, 1.10), g._battle_delay(0.10))
 
-	g._haptic("heavy" if defeated else "hit")
+	if defeated:
+		_micro_hit_stop(0.08)
+		_camera_punch(1.045, 0.18)
+		g._haptic("lethal")
+	elif amount >= 25:
+		_micro_hit_stop(0.06)
+		_camera_punch(1.032, 0.15)
+		g._haptic("crit")
+	elif amount >= 15:
+		_camera_punch(1.020, 0.12)
+		g._haptic("heavy")
+	else:
+		g._haptic("hit")
 	_shake_screen(10.0 if defeated else clampf(float(amount) * 0.55, 3.5, 8.5))
 
 	var sprite: Node2D = box.get_node_or_null("MonsterSprite") as Node2D
@@ -3699,12 +3762,13 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 		kb_tween.tween_property(sprite, "position", orig_pos, kb_dur * 0.60).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 		kb_tween.parallel().tween_property(sprite, "scale", Vector2.ONE * base_scale, kb_dur * 0.60).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
+	# Bouncing parabolic trajectory
+	var drift_x: float = randf_range(-22.0, 22.0)
 	var float_tw := popup.create_tween()
-	# Keep fully visible at 1.1 scale for comfortable reading!
-	float_tw.tween_interval(g._battle_delay(0.50))
-	# Then float up and fade out smoothly
-	float_tw.tween_property(popup, "position:y", popup.position.y - 42.0, g._battle_delay(0.45)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	float_tw.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.45))
+	float_tw.tween_property(popup, "position:x", popup.position.x + drift_x, g._battle_delay(0.60)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	float_tw.parallel().tween_property(popup, "position:y", popup.position.y - 36.0, g._battle_delay(0.24)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	float_tw.chain().tween_property(popup, "position:y", popup.position.y - 18.0, g._battle_delay(0.28)).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	float_tw.parallel().tween_property(popup, "modulate:a", 0.0, g._battle_delay(0.28))
 
 	if defeated:
 		_spawn_dissolve_particles(box.global_position + box.size * 0.5)
@@ -4888,33 +4952,42 @@ func _update_danger_vignette() -> void:
 			vig.z_index = 250
 			var v_style := StyleBoxFlat.new()
 			v_style.bg_color = Color.TRANSPARENT
-			v_style.border_color = Color(0.88, 0.08, 0.08, 0.55)
-			v_style.border_width_left = 8; v_style.border_width_right = 8
-			v_style.border_width_top = 8; v_style.border_width_bottom = 8
-			v_style.corner_radius_top_left = 12; v_style.corner_radius_top_right = 12
-			v_style.corner_radius_bottom_left = 12; v_style.corner_radius_bottom_right = 12
-			v_style.shadow_color = Color(0.9, 0.05, 0.05, 0.45)
-			v_style.shadow_size = 14
+			v_style.border_color = Color(0.92, 0.08, 0.08, 0.65)
+			v_style.border_width_left = 18; v_style.border_width_right = 18
+			v_style.border_width_top = 18; v_style.border_width_bottom = 18
+			v_style.corner_radius_top_left = 24; v_style.corner_radius_top_right = 24
+			v_style.corner_radius_bottom_left = 24; v_style.corner_radius_bottom_right = 24
+			v_style.shadow_color = Color(0.92, 0.05, 0.05, 0.55)
+			v_style.shadow_size = 28
 			vig.add_theme_stylebox_override("panel", v_style)
 			g.overlay.add_child(vig)
 			var tw := vig.create_tween().set_loops()
-			tw.tween_property(vig, "modulate:a", 0.4, g._battle_delay(0.4)).set_trans(Tween.TRANS_SINE)
-			tw.tween_property(vig, "modulate:a", 1.0, g._battle_delay(0.25)).set_trans(Tween.TRANS_SINE)
-			tw.tween_property(vig, "modulate:a", 0.6, g._battle_delay(0.2)).set_trans(Tween.TRANS_SINE)
-			tw.tween_property(vig, "modulate:a", 1.0, g._battle_delay(0.25)).set_trans(Tween.TRANS_SINE)
-			tw.tween_interval(g._battle_delay(0.5))
+			tw.tween_property(vig, "modulate:a", 1.0, g._battle_delay(0.18)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_property(vig, "modulate:a", 0.45, g._battle_delay(0.16)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tw.tween_property(vig, "modulate:a", 0.90, g._battle_delay(0.16)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_property(vig, "modulate:a", 0.25, g._battle_delay(0.40)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			tw.tween_interval(g._battle_delay(0.25))
 			g._haptic("heavy")
+			if g.has_method("_set_low_hp_tension_audio"):
+				g._set_low_hp_tension_audio(true)
 	else:
 		_clear_danger_vignette()
+		if g.has_method("_set_low_hp_tension_audio"):
+			g._set_low_hp_tension_audio(false)
 
-func _clear_danger_vignette() -> void:
+func _clear_danger_vignette(immediate: bool = false) -> void:
 	if g.overlay == null: return
 	var existing := g.overlay.get_node_or_null("DangerVignette")
 	if existing != null:
+		if immediate or not existing.is_inside_tree():
+			existing.queue_free()
+			return
+		existing.name = "DangerVignette_Fading"
 		var tw := existing.create_tween()
 		existing.tree_exited.connect(tw.kill)
 		tw.tween_property(existing, "modulate:a", 0.0, 0.25)
 		tw.tween_callback(existing.queue_free)
+
 
 func _leave_battle() -> void:
 	Engine.time_scale = 1.0

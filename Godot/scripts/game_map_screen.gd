@@ -544,7 +544,7 @@ func show_map() -> void:
 
 	if g.is_inside_tree() and g.get_tree():
 		await g.get_tree().process_frame
-	if g.map_scroll: g.map_scroll.scroll_vertical = 0
+	if is_instance_valid(g) and is_instance_valid(g.map_scroll): g.map_scroll.scroll_vertical = 0
 
 # Quick access to the two challenge modes (Daily Trial, Endless Abyss) — both already live as
 # their own section in Camp's "挑战" tab, but reaching them meant Camp -> tab tap. The header
@@ -1097,6 +1097,26 @@ func _add_routes(chapter: int = -1) -> void:
 		walked.points = _build_road_curve(walked_points).get_baked_points()
 		walked.visible = false
 		g.map_canvas.add_child(walked)
+
+	# Flowing Leyline Qi Pulse (current stage -> next accessible stage)
+	var cur_pos_idx: int = int(g.profile.position)
+	var next_pos_idx: int = mini(cur_pos_idx + 1, int(g.profile.unlocked))
+	if cur_pos_idx < next_pos_idx and cur_pos_idx >= start_idx and cur_pos_idx < start_idx + 5 and next_pos_idx < g.content.encounters.size():
+		var p_from := _map_point(cur_pos_idx)
+		var p_to := _map_point(next_pos_idx)
+		var leyline := Line2D.new()
+		leyline.name = "FlowingLeyline"
+		leyline.width = 5.0
+		leyline.default_color = Color(1.0, 0.85, 0.35, 0.75)
+		leyline.z_index = 4
+		leyline.joint_mode = Line2D.LINE_JOINT_ROUND
+		leyline.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		leyline.end_cap_mode = Line2D.LINE_CAP_ROUND
+		leyline.points = _build_road_curve(PackedVector2Array([p_from, p_to])).get_baked_points()
+		g.map_canvas.add_child(leyline)
+		var l_tw := leyline.create_tween().set_loops()
+		l_tw.tween_property(leyline, "modulate:a", 0.35, 0.85).set_trans(Tween.TRANS_SINE)
+		l_tw.tween_property(leyline, "modulate:a", 1.0, 0.85).set_trans(Tween.TRANS_SINE)
 
 func _add_stage_pin(index: int) -> void:
 	var encounter: Dictionary = g.content.encounters[index]

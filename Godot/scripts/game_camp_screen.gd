@@ -1350,10 +1350,27 @@ func _sanctuary_garden_section() -> Control:
 	vbox.add_child(stg_info)
 
 	var on_pet := func():
-		if g.is_inside_tree() and g.get_tree() != null:
-			var tw := fox_avatar.create_tween()
-			tw.tween_property(fox_avatar, "scale", Vector2(1.2, 1.2), 0.15)
-			tw.chain().tween_property(fox_avatar, "scale", Vector2.ONE, 0.15)
+		g._haptic("tap")
+		if g.is_inside_tree() and g.get_tree() != null and is_instance_valid(fox_avatar):
+			var orig_pos := fox_avatar.position
+			var tw := fox_avatar.create_tween().set_parallel(true)
+			tw.tween_property(fox_avatar, "scale", Vector2(1.28, 1.28), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tw.tween_property(fox_avatar, "position:y", orig_pos.y - 14.0, 0.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.chain().tween_property(fox_avatar, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(fox_avatar, "position:y", orig_pos.y, 0.18).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+			# Floating hearts & spirit sparkle
+			if fox_avatar.get_parent():
+				var heart := g._label("♥ ✦", 16, Color("ff70a6"), HORIZONTAL_ALIGNMENT_CENTER)
+				heart.position = fox_avatar.position + Vector2(randf_range(-10.0, 10.0), -24.0)
+				heart.z_index = 100
+				fox_avatar.get_parent().add_child(heart)
+				var h_tw := heart.create_tween().set_parallel(true)
+				h_tw.tween_property(heart, "position:y", heart.position.y - 28.0, 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+				h_tw.tween_property(heart, "scale", Vector2(1.3, 1.3), 0.2)
+				h_tw.chain().tween_property(heart, "modulate:a", 0.0, 0.25)
+				h_tw.chain().tween_callback(heart.queue_free)
+
 		g.profile.card_dust = int(g.profile.get("card_dust", 0)) + 5
 		var aff: int = int(g.profile.get("familiar_affinity", 0)) + 10
 		var stg: int = int(g.profile.get("familiar_stage", 0))
@@ -1365,7 +1382,10 @@ func _sanctuary_garden_section() -> Control:
 		g.profile.familiar_affinity = aff
 		SpiritSave.write(g.profile)
 		g._toast(g.t("ui.sanctuary_pet_toast"), Color("fba542"))
-		show_camp()
+		if g.is_inside_tree() and g.get_tree() != null:
+			g.get_tree().create_timer(0.35, true, false, true).timeout.connect(show_camp)
+		else:
+			show_camp()
 
 	var pet_btn := g._button(g.t("ui.sanctuary_pet_btn"), on_pet, Color("2d261e"), Vector2(0, 32))
 	pet_btn.name = "PetFamiliarBtn"
