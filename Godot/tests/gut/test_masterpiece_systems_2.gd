@@ -615,5 +615,32 @@ func test_music_tracks_integrity_and_sample_rates():
 		assert_not_null(stream, "AudioStream loads successfully: %s" % track)
 		assert_gt(stream.get_length(), 20.0, "Soundtrack has full length > 20s: %s" % track)
 
+func test_targeting_arc_zero_division_safety():
+	var arc_script = load("res://scripts/targeting_arc.gd")
+	var arc = arc_script.new()
+	add_child_autofree(arc)
+	arc.set_points(Vector2(100, 200), Vector2(100, 200), false)
+	arc.queue_redraw()
+	assert_not_null(arc, "Targeting arc safely initializes without division by zero")
+
+func test_ui_translations_completeness():
+	var critical_keys := [
+		"ui.nav_settings",
+		"ui.auth_start_subtitle",
+		"ui.auth_or_continue",
+		"ui.confirm",
+		"ui.close",
+		"ui.share",
+		"ui.gold_insufficient",
+		"ui.card_fusion_synthesize",
+		"ui.enemy_default_name",
+		"ui.skin_selector_title"
+	]
+	for k in critical_keys:
+		var zh: String = content.ui(k, "zh-Hans")
+		var en: String = content.ui(k, "en")
+		assert_true(zh.length() > 0 and zh != k, "Key '%s' has valid zh-Hans translation" % k)
+		assert_true(en.length() > 0 and en != k, "Key '%s' has valid en translation" % k)
+
 
 

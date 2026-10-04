@@ -2614,6 +2614,7 @@ func _show_damage_preview(card: Dictionary, enemy_index: int) -> void:
 		var seal_txt: String = "【 斩 】" if g.lang != "en" else "【 EXECUTE 】"
 		var seal_lbl := g._label(seal_txt, 14, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
 		execute_seal.add_child(seal_lbl)
+		execute_seal.pivot_offset = Vector2(40.0, 12.0)
 		holder.add_child(execute_seal)
 		var s_tw := execute_seal.create_tween().set_loops()
 		s_tw.tween_property(execute_seal, "scale", Vector2(1.15, 1.15), 0.22).set_trans(Tween.TRANS_SINE)

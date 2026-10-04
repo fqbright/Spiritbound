@@ -36,15 +36,16 @@ func _draw() -> void:
 	var base_col: Color = Color(1.0, 0.85, 0.25, 0.95) if is_locked else Color(0.35, 0.88, 0.98, 0.85)
 	var glow_col: Color = Color(1.0, 0.45, 0.1, 0.5) if is_locked else Color(0.1, 0.4, 0.8, 0.35)
 
+	var denom: float = float(maxi(1, pts.size() - 1))
 	for i in range(pts.size() - 1):
-		var t := float(i) / float(pts.size() - 1)
+		var t := float(i) / denom
 		var w := lerpf(4.5, 2.0, t)
 		draw_line(pts[i], pts[i+1], glow_col, w + 4.0)
 		draw_line(pts[i], pts[i+1], base_col, w)
 
 	var pulse: float = sin(pulse_time * 8.0) * 0.2 + 0.85
 	for i in range(2, pts.size() - 1, 2):
-		var t := float(i) / float(pts.size() - 1)
+		var t := float(i) / denom
 		var r := lerpf(6.5, 3.5, t) * pulse
 		draw_circle(pts[i], r + 2.0, glow_col)
 		draw_circle(pts[i], r, Color.WHITE.lerp(base_col, 0.4))

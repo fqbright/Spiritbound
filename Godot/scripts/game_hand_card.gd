@@ -187,11 +187,13 @@ func _on_drag(local_pos: Vector2) -> void:
 		target_enemy_idx = -1
 		# A card that acts on you cannot be aimed at an enemy, so it never hovers one.
 		if game and game._card_target_mode(card_data) == "enemy":
+			var hovered_box: Control = null
 			for box in game.enemy_boxes:
 				if box and is_instance_valid(box):
 					var rect: Rect2 = box.get_global_rect()
 					if rect.has_point(cur_global):
 						target_enemy_idx = int(box.get_meta("enemy_index"))
+						hovered_box = box
 						game._set_enemy_targeted(target_enemy_idx, true)
 					else:
 						game._set_enemy_targeted(int(box.get_meta("enemy_index")), false)
@@ -206,10 +208,8 @@ func _on_drag(local_pos: Vector2) -> void:
 			# Update the cubic bezier targeting arc from card top to drag point / locked enemy
 			var arc_start := global_position + Vector2(custom_minimum_size.x * 0.5, 4.0)
 			var arc_target := cur_global
-			if target_enemy_idx >= 0 and target_enemy_idx < game.enemy_boxes.size():
-				var t_box: Control = game.enemy_boxes[target_enemy_idx]
-				if t_box and is_instance_valid(t_box):
-					arc_target = t_box.global_position + t_box.size * 0.5
+			if hovered_box and is_instance_valid(hovered_box):
+				arc_target = hovered_box.global_position + hovered_box.size * 0.5
 			if game.has_method("_update_targeting_arc"):
 				game._update_targeting_arc(arc_start, arc_target, target_enemy_idx >= 0)
 
