@@ -22,6 +22,7 @@ func show_reward() -> void:
 	var page := g._create_page(10)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 	page.add_child(g._label(g.t("ui.battle_won"), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	_spawn_victory_coin_fountain(page)
 
 	# Battle Telemetry Summary Row
 	if g.battle_telemetry and (int(g.battle_telemetry.get("dmg_dealt", 0)) > 0 or int(g.battle_telemetry.get("turns", 1)) > 0):
@@ -1837,5 +1838,45 @@ func _clear_victory_scroll_modal() -> void:
 	if g.overlay == null: return
 	var old := g.overlay.get_node_or_null("VictoryScrollModal")
 	if old and is_instance_valid(old): old.queue_free()
+
+func _spawn_victory_coin_fountain(parent: Control) -> void:
+	if parent == null or not is_instance_valid(parent): return
+	if bool(g.profile.get("reduce_motion", false)): return
+	var holder := Control.new()
+	holder.name = "VictoryCoinFountain"
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.z_index = 280
+	holder.position = Vector2(g.MAP_WIDTH * 0.5, 240.0)
+	parent.add_child(holder)
+
+	var num_coins := 14
+	for i in range(num_coins):
+		var coin := Label.new()
+		coin.text = "🪙"
+		coin.add_theme_font_size_override("font_size", 16)
+		coin.position = Vector2.ZERO
+		coin.modulate.a = 0.0
+		holder.add_child(coin)
+
+		var angle: float = randf_range(-PI * 0.85, -PI * 0.15)
+		var speed: float = randf_range(70.0, 160.0)
+		var burst_vec := Vector2(cos(angle), sin(angle)) * speed
+		var target_hud := Vector2(randf_range(-40.0, 40.0), -210.0)
+
+		var tw := coin.create_tween()
+		tw.tween_interval(i * 0.035)
+		tw.tween_property(coin, "modulate:a", 1.0, 0.08)
+		tw.parallel().tween_property(coin, "position", burst_vec, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.chain().tween_property(coin, "position", target_hud, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(coin, "scale", Vector2(0.5, 0.5), 0.32)
+		tw.chain().tween_callback(func():
+			if i % 3 == 0:
+				g._haptic("light")
+			coin.queue_free()
+		)
+	var holder_clean := holder.create_tween()
+	holder_clean.tween_interval(1.2)
+	holder_clean.tween_callback(holder.queue_free)
+
 
 

@@ -2544,14 +2544,14 @@ func _predict_damage(card: Dictionary, enemy_index: int) -> Dictionary:
 	if base <= 0: return result
 	result.is_attack = true
 
-	var bonus := int(g.combat.state.upgrades.get(card.id, 0))
+	var bonus := int(g.combat.state.get("upgrades", {}).get(card.id, 0))
 	bonus += int(g.combat.state.player.get("strength", 0))
-	if int(g.combat.state.player.focus) > 0: bonus += 3 * int(g.combat.state.player.focus)
-	if not bool(g.combat.state.first_attack):
-		if g.combat.state.equipment.has("emberBlade"): bonus += 3
+	if int(g.combat.state.player.get("focus", 0)) > 0: bonus += 3 * int(g.combat.state.player.focus)
+	if not bool(g.combat.state.get("first_attack", false)):
+		if g.combat.state.get("equipment", []).has("emberBlade"): bonus += 3
 		if g.combat.state.get("relics", []).has("starShard"): bonus += 2
-	var rune: String = g.combat.state.runes.get(card.id, "")
-	if rune == "resonance": bonus += int(g.combat.state.elements.get(card.get("element", ""), 0))
+	var rune: String = g.combat.state.get("runes", {}).get(card.id, "")
+	if rune == "resonance": bonus += int(g.combat.state.get("elements", {}).get(card.get("element", ""), 0))
 
 	var enemy: Dictionary = g.combat.state.enemies[enemy_index]
 	var total := 0
@@ -2601,6 +2601,23 @@ func _show_damage_preview(card: Dictionary, enemy_index: int) -> void:
 		var tw := holder.create_tween().set_loops()
 		tw.tween_property(lethal_badge, "modulate:a", 0.45, 0.3).set_trans(Tween.TRANS_SINE)
 		tw.tween_property(lethal_badge, "modulate:a", 1.0, 0.3).set_trans(Tween.TRANS_SINE)
+
+		var execute_seal := PanelContainer.new()
+		execute_seal.name = "ExecuteSealStamp"
+		execute_seal.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var seal_style := g._panel(Color(0.75, 0.08, 0.08, 0.95), 6, Color("ffd700"))
+		seal_style.border_width_left = 2; seal_style.border_width_right = 2
+		seal_style.border_width_top = 2; seal_style.border_width_bottom = 2
+		seal_style.content_margin_left = 8; seal_style.content_margin_right = 8
+		seal_style.content_margin_top = 2; seal_style.content_margin_bottom = 2
+		execute_seal.add_theme_stylebox_override("panel", seal_style)
+		var seal_txt: String = "【 斩 】" if g.lang != "en" else "【 EXECUTE 】"
+		var seal_lbl := g._label(seal_txt, 14, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+		execute_seal.add_child(seal_lbl)
+		holder.add_child(execute_seal)
+		var s_tw := execute_seal.create_tween().set_loops()
+		s_tw.tween_property(execute_seal, "scale", Vector2(1.15, 1.15), 0.22).set_trans(Tween.TRANS_SINE)
+		s_tw.tween_property(execute_seal, "scale", Vector2(1.0, 1.0), 0.22).set_trans(Tween.TRANS_SINE)
 	elif prediction.blocked > 0:
 		holder.add_child(g._label(g.tf("ui.preview_blocked", prediction.blocked), 10, Color("9fd8ff"), HORIZONTAL_ALIGNMENT_CENTER))
 
@@ -2985,6 +3002,121 @@ func _spawn_radial_shockwave(center_pos: Vector2, wave_color: Color = Color("ffd
 	, 1.0, 0.0, g._battle_delay(0.4)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(wave.queue_free)
 	_shake_screen(6.0, 0.2)
+
+func _flash_screen_bloom() -> void:
+	if g.overlay == null: return
+	var flash := ColorRect.new()
+	flash.name = "FinisherScreenBloom"
+	flash.color = Color(1.0, 0.96, 0.90, 0.45)
+	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash.z_index = 460
+	g.overlay.add_child(flash)
+	var tw := flash.create_tween()
+	tw.tween_property(flash, "modulate:a", 0.0, g._battle_delay(0.18)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(flash.queue_free)
+
+func _update_battle_parallax(delta_drag: Vector2) -> void:
+	var bg_root := g.root.get_node_or_null("BattleBackgroundHolder") if (g.root and is_instance_valid(g.root)) else null
+	if bg_root == null: return
+	var map_bg := bg_root.get_node_or_null("BattleMapBackground") as Control
+	if map_bg:
+		var base_x: float = -(map_bg.size.x - g.MAP_WIDTH) * 0.5
+		map_bg.position.x = base_x + clampf(delta_drag.x * 0.03, -8.0, 8.0)
+	var wash := bg_root.get_node_or_null("BattleTerrainWash") as Control
+	if wash:
+		wash.position.x = clampf(delta_drag.x * 0.015, -4.0, 4.0)
+
+func _reset_battle_parallax() -> void:
+	var bg_root := g.root.get_node_or_null("BattleBackgroundHolder") if (g.root and is_instance_valid(g.root)) else null
+	if bg_root == null: return
+	var map_bg := bg_root.get_node_or_null("BattleMapBackground") as Control
+	if map_bg:
+		var base_x: float = -(map_bg.size.x - g.MAP_WIDTH) * 0.5
+		var tw := map_bg.create_tween()
+		tw.tween_property(map_bg, "position:x", base_x, 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var wash := bg_root.get_node_or_null("BattleTerrainWash") as Control
+	if wash:
+		var tw := wash.create_tween()
+		tw.tween_property(wash, "position:x", 0.0, 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+func _spawn_touch_ripple(pos: Vector2) -> void:
+	if g.overlay == null: return
+	var rip := Control.new()
+	rip.position = pos
+	rip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rip.z_index = 100
+	var radius: Array[float] = [4.0]
+	var alpha: Array[float] = [0.8]
+	rip.draw.connect(func():
+		rip.draw_arc(Vector2.ZERO, radius[0], 0.0, TAU, 32, Color(0.4, 0.8, 1.0, alpha[0]), 2.5, true)
+	)
+	g.overlay.add_child(rip)
+	var tw := rip.create_tween().set_parallel(true)
+	tw.tween_method(func(r: float): radius[0] = r; rip.queue_redraw(), 4.0, 32.0, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(a: float): alpha[0] = a; rip.queue_redraw(), 0.8, 0.0, 0.35)
+	tw.chain().tween_callback(rip.queue_free)
+
+func _show_boss_enrage_cinematic(enemy_idx: int = 0) -> void:
+	if g.overlay == null: return
+	var cutin := Control.new()
+	cutin.name = "BossEnrageCutin"
+	cutin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cutin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cutin.z_index = 460
+	g.overlay.add_child(cutin)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.01, 0.05, 0.72)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cutin.add_child(dim)
+
+	var slash_bar := Panel.new()
+	slash_bar.custom_minimum_size = Vector2(g.MAP_WIDTH, 84)
+	slash_bar.size = slash_bar.custom_minimum_size
+	slash_bar.position = Vector2(0, 360)
+	var s_style := g._panel(Color(0.25, 0.04, 0.04, 0.95), 0, Color("ff2222"))
+	s_style.border_width_top = 3; s_style.border_width_bottom = 3
+	slash_bar.add_theme_stylebox_override("panel", s_style)
+	cutin.add_child(slash_bar)
+
+	var title_lbl := g._label(g.t("ui.boss_phase_2_banner"), 22, Color("ffd700"), HORIZONTAL_ALIGNMENT_CENTER)
+	title_lbl.position = Vector2(0, 372)
+	title_lbl.size = Vector2(g.MAP_WIDTH, 36)
+	cutin.add_child(title_lbl)
+
+	var sub_lbl := g._label("⚡ BOSS ENRAGE AWAKENING ⚡", 12, Color("ff8a8a"), HORIZONTAL_ALIGNMENT_CENTER)
+	sub_lbl.position = Vector2(0, 408)
+	sub_lbl.size = Vector2(g.MAP_WIDTH, 24)
+	cutin.add_child(sub_lbl)
+
+	var box: Control = null
+	for b in g.enemy_boxes:
+		if b and is_instance_valid(b) and int(b.get_meta("enemy_index")) == enemy_idx:
+			box = b; break
+	if box:
+		var p := CPUParticles2D.new()
+		p.name = "BossEnrageAura"
+		p.position = box.global_position + box.size * 0.5
+		p.amount = 32
+		p.lifetime = 0.8
+		p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+		p.emission_rect_extents = box.size * 0.4
+		p.gravity = Vector2(0, -90)
+		p.color = Color(0.95, 0.15, 0.35, 0.85)
+		p.scale_amount_min = 3.0
+		p.scale_amount_max = 6.0
+		g.overlay.add_child(p)
+		var p_tw := p.create_tween()
+		p_tw.tween_interval(1.8)
+		p_tw.tween_property(p, "modulate:a", 0.0, 0.5)
+		p_tw.tween_callback(p.queue_free)
+
+	var tw := cutin.create_tween()
+	tw.tween_property(cutin, "modulate:a", 1.0, 0.12)
+	tw.tween_interval(0.40)
+	tw.tween_property(cutin, "modulate:a", 0.0, 0.22)
+	tw.tween_callback(cutin.queue_free)
 
 func _spawn_ultimate_cinematic(hero_class: String, ult_name: String) -> void:
 	if g.overlay == null: return
@@ -3733,7 +3865,10 @@ func _animate_enemy_hit(enemy_index: int, amount: int, defeated: bool) -> void:
 	if defeated:
 		_micro_hit_stop(0.08)
 		_camera_punch(1.045, 0.18)
+		_spawn_radial_shockwave(box.global_position + box.size * 0.5, Color("ff3b30"))
+		_flash_screen_bloom()
 		g._haptic("lethal")
+
 	elif amount >= 25:
 		_micro_hit_stop(0.06)
 		_camera_punch(1.032, 0.15)
@@ -4540,10 +4675,12 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 	elif kind == "revive": g._toast(g.tf("ui.revive_toast", payload.amount),Color("9bffd3"))
 	elif kind == "ultimate_cast": g._toast("✦ %s ✦" % payload.get("name", "Ultimate"), Color("ffd700"))
 	elif kind == "boss_phase_transition":
-		_shake_screen(16.0, 0.5)
+		_shake_screen(18.0, 0.6)
 		g.play_sfx("attack_heavy")
-		g._toast(g.t("ui.boss_phase_2_banner"), Color("ef4444"))
-		_spawn_enemy_floating_text(0, "【法相天地 · 狂暴】", Color("ef4444"), 30, true)
+		g._haptic("crit")
+		_show_boss_enrage_cinematic(0)
+		_spawn_enemy_floating_text(0, "【法相天地 · 狂暴】", Color("ef4444"), 32, true)
+
 	elif kind == "boss_weakpoint_broken":
 		_shake_screen(14.0, 0.4)
 		g.play_sfx("attack_heavy")

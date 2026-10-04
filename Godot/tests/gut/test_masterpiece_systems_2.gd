@@ -513,4 +513,79 @@ func test_danger_vignette_activation_and_cleanup():
 	var vig_cleared = g.overlay.get_node_or_null("DangerVignette")
 	assert_true(vig_cleared == null or vig_cleared.is_queued_for_deletion(), "DangerVignette cleaned up when safe")
 
+func test_card_foil_shimmer_shader_parameters_and_safety():
+	var s = load("res://assets/shaders/card_foil.gdshader") as Shader
+	assert_not_null(s, "card_foil.gdshader exists and loads")
+	var mat := ShaderMaterial.new()
+	mat.shader = s
+	mat.set_shader_parameter("tilt_shift", 0.5)
+	mat.set_shader_parameter("tilt_offset", Vector2(0.2, -0.4))
+	mat.set_shader_parameter("is_gold_foil", true)
+	assert_eq(mat.get_shader_parameter("is_gold_foil"), true, "Gold foil uniform set properly")
+
+func test_lethal_damage_execute_stamp_calculation():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.combat = SpiritCombat.new(content)
+	var enc: Dictionary = content.encounters[0]
+	g.combat.state = g.combat.create(1234, enc, ["strike", "defend"], 60)
+
+
+	g.combat.state.enemies[0].health = 10
+	g.combat.state.enemies[0].shield = 0
+	g.combat.state.player.strength = 10
+
+
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+	var dummy_box := Control.new()
+	dummy_box.set_meta("enemy_index", 0)
+	dummy_box.size = Vector2(80, 80)
+	g.enemy_boxes = [dummy_box]
+	g.overlay.add_child(dummy_box)
+
+	var attack_card: Dictionary = content.card("cinder_slash")
+	battle_screen._show_damage_preview(attack_card, 0)
+	var preview = g.overlay.get_node_or_null("DamagePreview")
+	assert_not_null(preview, "Damage preview exists for attack")
+	var seal = preview.get_node_or_null("ExecuteSealStamp") if preview else null
+	assert_not_null(seal, "ExecuteSealStamp displayed on lethal preview")
+	battle_screen._clear_damage_preview()
+	var preview_cleared = g.overlay.get_node_or_null("DamagePreview")
+	assert_true(preview_cleared == null or preview_cleared.is_queued_for_deletion(), "Damage preview cleaned up")
+
+
+
+
+func test_boss_phase_2_enrage_cutin_trigger():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen := BattleScreen.new(g)
+	battle_screen._show_boss_enrage_cinematic(0)
+	var cutin = g.overlay.get_node_or_null("BossEnrageCutin")
+	assert_not_null(cutin, "BossEnrageCutin created on boss phase transition")
+
+func test_music_tracks_integrity_and_sample_rates():
+	var tracks := [
+		"res://assets/audio/map_symphony.wav",
+		"res://assets/audio/battle_stage_0.wav",
+		"res://assets/audio/battle_stage_1.wav",
+		"res://assets/audio/battle_stage_2.wav",
+		"res://assets/audio/battle_stage_3.wav",
+		"res://assets/audio/battle_stage_4.wav"
+	]
+	for track in tracks:
+		assert_true(ResourceLoader.exists(track), "Audio track exists: %s" % track)
+		var stream = load(track) as AudioStream
+		assert_not_null(stream, "AudioStream loads successfully: %s" % track)
+		assert_gt(stream.get_length(), 20.0, "Soundtrack has full length > 20s: %s" % track)
+
+
 

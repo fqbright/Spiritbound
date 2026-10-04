@@ -149,6 +149,14 @@ func _on_drag(local_pos: Vector2) -> void:
 		scale = Vector2(1.15, 1.15 * tilt_y_squash)
 		if game and game.has_method("_update_hero_drag_tracking"):
 			game._update_hero_drag_tracking(cur_global)
+		if game and game.has_method("_update_battle_parallax"):
+			game._update_battle_parallax(delta)
+		var card_frame := get_node_or_null("CardFrame")
+		if card_frame:
+			for child in card_frame.get_children():
+				if child is TextureRect and child.material is ShaderMaterial:
+					child.material.set_shader_parameter("tilt_shift", clampf(delta.x * 0.015, -1.0, 1.0))
+					child.material.set_shader_parameter("tilt_offset", Vector2(clampf(delta.x * 0.008, -1.0, 1.0), clampf(delta.y * 0.008, -1.0, 1.0)))
 		if game and game.overlay:
 			if _ether_trail == null:
 				_ether_trail = Line2D.new()
@@ -205,6 +213,8 @@ func _on_drag(local_pos: Vector2) -> void:
 			if game.has_method("_update_targeting_arc"):
 				game._update_targeting_arc(arc_start, arc_target, target_enemy_idx >= 0)
 
+var _last_tap_time_ms := 0
+
 func _on_touch_up() -> void:
 	_last_drag_pos = Vector2.ZERO
 	if not is_held: return
@@ -218,33 +228,44 @@ func _on_touch_up() -> void:
 			game._clear_energy_drain_preview()
 		if game.has_method("_clear_hero_drag_tracking"):
 			game._clear_hero_drag_tracking()
+		if game.has_method("_reset_battle_parallax"):
+			game._reset_battle_parallax()
 		game._clear_damage_preview()
 		game._clear_valid_targets()
 		game._show_cancel_zone(false)
 
-	# The peek has been showing since the moment this touch began; decide now, from how
-	# long that actually was, whether this reads as a tap (plays the card) or a hold
-	# (just closes the peek — holding a card to read it should never also play it).
-	var was_quick_tap: bool = Time.get_ticks_msec() - _press_time_ms < TAP_THRESHOLD_MS
+	var now_ms: int = Time.get_ticks_msec()
+	var was_quick_tap: bool = now_ms - _press_time_ms < TAP_THRESHOLD_MS
+	var is_double_tap: bool = was_quick_tap and (now_ms - _last_tap_time_ms < 320)
+	_last_tap_time_ms = now_ms
 	_end_preview()
 	_clear_ether_trail()
 
 	var played := false
 	if not is_dragging:
-		if was_quick_tap:
-			# Defer the rebuild until this input callback has returned; playing a card
-			# recreates the battle view and frees the current hand nodes.
+		if is_double_tap:
+			var target_mode: String = game._card_target_mode(card_data) if game else "none"
+			var auto_target: int = -1
+			if target_mode == "enemy" and game:
+				var living: Array = game._living_enemies()
+				if not living.is_empty(): auto_target = living[0]
+			played = game._attempt_play_card(hand_index, auto_target)
+		elif was_quick_tap:
 			game.call_deferred("_tap_card", hand_index)
 		else:
 			_spring_back()
 		is_dragging = false
 		return
 
+	# Quick-Cast upward flick for non-targeted cards (defense, buff, draw)
+	var is_flick_up: bool = is_dragging and (position.y < home_pos.y - 45.0) and absf(position.x - home_pos.x) < 90.0
+	if is_flick_up and game and game._card_target_mode(card_data) != "enemy":
+		played = game._attempt_play_card(hand_index, -1)
+
 	# If dropped in the cancel zone (bottom hand region) or below 560y, cancel play cleanly
-	if is_dragging and global_position.y < 560.0 and position.y < home_pos.y - 60.0:
+	if not played and is_dragging and global_position.y < 560.0 and position.y < home_pos.y - 60.0:
 		var final_target := target_enemy_idx
 		if final_target < 0 and game._card_target_mode(card_data) == "enemy":
-			# Dropped short of any enemy: with one left there is no ambiguity to resolve.
 			var alive_indices: Array = game._living_enemies()
 			if alive_indices.size() == 1: final_target = alive_indices[0]
 		played = game._attempt_play_card(hand_index, final_target)
@@ -252,6 +273,7 @@ func _on_touch_up() -> void:
 	if not played:
 		_spring_back()
 	is_dragging = false
+
 
 func _clear_ether_trail() -> void:
 	if _ether_trail != null:
