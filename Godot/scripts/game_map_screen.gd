@@ -1681,7 +1681,8 @@ func _travel_to(index: int) -> void:
 		return
 
 	var hop_count: int = maxi(1, absi(index - start_index))
-	var hop_duration: float = TOTAL_TRAVEL_SECONDS / float(hop_count)
+	var speed_mult: float = maxf(1.0, g.battle_speed) if g.auto_battle_active else 1.0
+	var hop_duration: float = (TOTAL_TRAVEL_SECONDS / float(hop_count)) / speed_mult
 	var step: int = 1 if index >= start_index else -1
 	var tween := g.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var scroll_from: float = float(g.map_scroll.scroll_vertical) if g.map_scroll else 0.0

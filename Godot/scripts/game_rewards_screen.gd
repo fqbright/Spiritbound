@@ -109,10 +109,10 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 	button.disabled = true
 	g._haptic("heavy")
 	var shake := chest.create_tween()
-	shake.tween_property(chest, "rotation", -0.05, 0.08)
-	shake.tween_property(chest, "rotation", 0.05, 0.08)
-	shake.tween_property(chest, "rotation", -0.03, 0.07)
-	shake.tween_property(chest, "rotation", 0.0, 0.07)
+	shake.tween_property(chest, "rotation", -0.05, g._battle_delay(0.08))
+	shake.tween_property(chest, "rotation", 0.05, g._battle_delay(0.08))
+	shake.tween_property(chest, "rotation", -0.03, g._battle_delay(0.07))
+	shake.tween_property(chest, "rotation", 0.0, g._battle_delay(0.07))
 	await shake.finished
 
 	atlas.region.position.x = atlas.atlas.get_width() / 2.0
@@ -121,8 +121,8 @@ func _open_chest(chest: TextureRect, atlas: AtlasTexture, button: Button) -> voi
 	g.play_sfx("chest_open")
 	g.play_sfx("coin")
 	var pop := chest.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), 0.16)
-	pop.tween_property(chest, "scale", Vector2.ONE, 0.12)
+	pop.tween_property(chest, "scale", Vector2(1.12, 1.12), g._battle_delay(0.16))
+	pop.tween_property(chest, "scale", Vector2.ONE, g._battle_delay(0.12))
 	await pop.finished
 	await g.get_tree().create_timer(g._battle_delay(0.25)).timeout
 
@@ -927,7 +927,7 @@ func _reward_item(title: String, detail: String, color: Color) -> PanelContainer
 func _finish_reward() -> void:
 	SpiritSave.write(g.profile)
 	if g.auto_battle_active:
-		var next_idx: int = int(g.profile.unlocked)
+		var next_idx: int = mini(g.current_stage + 1, g.content.encounters.size() - 1)
 		if next_idx >= g.content.encounters.size() - 1 and g.current_stage >= g.content.encounters.size() - 1:
 			g.stop_auto_battle()
 			g.show_map()
@@ -939,6 +939,8 @@ func _finish_reward() -> void:
 		g.spend_stamina(5)
 		g.auto_battle_stats.stages_cleared = int(g.auto_battle_stats.get("stages_cleared", 0)) + 1
 		g.auto_battle_stats.gold_earned = int(g.auto_battle_stats.get("gold_earned", 0)) + int(g.pending_rewards.get("gold", 0))
+		g.profile.position = next_idx
+		SpiritSave.write(g.profile)
 		await g.get_tree().create_timer(g._battle_delay(0.35)).timeout
 		var kind := g.get_node_kind(next_idx)
 		if kind in ["event","merchant","rest","bonus"] and not _is_stage_event_claimed(next_idx) and not _is_replay(next_idx):
@@ -1253,7 +1255,7 @@ func show_event(index: int, kind: String) -> void:
 		_auto_handle_stage_event(index, kind)
 
 func _auto_handle_stage_event(index: int, kind: String) -> void:
-	await g.get_tree().create_timer(g._battle_delay(0.55)).timeout
+	await g.get_tree().create_timer(g._battle_delay(0.40)).timeout
 	if not g.auto_battle_active or _is_stage_event_claimed(index): return
 	if kind == "event":
 		g.profile.gold += 50
@@ -1262,7 +1264,6 @@ func _auto_handle_stage_event(index: int, kind: String) -> void:
 		SpiritSave.write(g.profile)
 		g._haptic("heavy")
 		g._toast(g.t("ui.event_blood_pact") + " +50", g.GOLD)
-		g.begin_battle(index)
 	elif kind == "rest":
 		var heal_val: int = 35
 		if int(g.profile.get("ascension_level", 0)) >= 5:
@@ -1273,7 +1274,6 @@ func _auto_handle_stage_event(index: int, kind: String) -> void:
 		SpiritSave.write(g.profile)
 		g._haptic("tap")
 		g._toast(g.t("ui.rest_heal_choice") + " +" + str(heal_val), g.GOLD)
-		g.begin_battle(index)
 	elif kind == "bonus":
 		g.profile.gold += 60
 		g._advance_quest("earn_gold", 60)
@@ -1281,7 +1281,6 @@ func _auto_handle_stage_event(index: int, kind: String) -> void:
 		SpiritSave.write(g.profile)
 		g._haptic("tap")
 		g._toast(g.t("ui.bonus_gold_choice"), g.GOLD)
-		g.begin_battle(index)
 	else:
 		g.profile.gold += 25
 		g._advance_quest("earn_gold", 25)
@@ -1289,7 +1288,8 @@ func _auto_handle_stage_event(index: int, kind: String) -> void:
 		SpiritSave.write(g.profile)
 		g._haptic("tap")
 		g._toast(g.t("ui.event_opt_potion") + " +25", g.GOLD)
-		g.begin_battle(index)
+	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
+	_finish_reward()
 
 # A turn-by-turn readout of everything combat.gd's `event` signal fired during the just-
 # finished fight (BattleLog just records kind/payload/turn as they happen — see battle_log.gd —

@@ -57,6 +57,8 @@ func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
 func begin_battle(index: int) -> void:
 	g.resolving = false
 	auto_stepping = false
+	g.battle_speed = clampf(float(g.profile.get("battle_speed", g.battle_speed)), 1.0, 4.0)
+	g.profile.battle_speed = g.battle_speed
 	g.battle_telemetry = {"turns": 1, "dmg_dealt": 0, "dmg_blocked": 0, "card_impact": {}}
 	g.last_played_card_id = ""
 
@@ -344,6 +346,11 @@ func show_battle() -> void:
 	var speed_btn := g._button(speed_label, g._cycle_speed, Color("1a3a42"), Vector2(38, 28))
 	speed_btn.name = "SpeedToggle"
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var speed_color: Color = g.JADE
+	if g.battle_speed >= 4.0: speed_color = Color("a855f7")
+	elif g.battle_speed >= 3.0: speed_color = g.EMBER
+	elif g.battle_speed >= 2.0: speed_color = g.GOLD
+	speed_btn.add_theme_color_override("font_color", speed_color)
 	top.add_child(speed_btn)
 
 	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
@@ -353,7 +360,7 @@ func show_battle() -> void:
 		if auto_btn != null and is_instance_valid(auto_btn):
 			auto_btn.text = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
 			var btn_color := Color("205944") if g.auto_battle_active else Color("1a3a42")
-			auto_btn.add_theme_stylebox_override("normal", g._panel(btn_color, 10, g.GOLD))
+			auto_btn.add_theme_stylebox_override("normal", g._panel(btn_color, 10, g.GOLD if g.auto_battle_active else Color("1c333a")))
 			auto_btn.add_theme_stylebox_override("hover", g._panel(btn_color.lightened(0.1), 10, g.JADE))
 			auto_btn.add_theme_stylebox_override("pressed", g._panel(btn_color.darkened(0.12), 10, g.EMBER))
 		if g.auto_battle_active and not g.resolving and g.combat != null and g.combat.state.phase == "player":
@@ -361,6 +368,10 @@ func show_battle() -> void:
 	auto_btn = g._button(auto_label, on_toggle_auto, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(52, 28))
 	auto_btn.name = "AutoBattleToggle"
 	auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if g.auto_battle_active:
+		auto_btn.add_theme_stylebox_override("normal", g._panel(Color("205944"), 10, g.GOLD))
+		auto_btn.add_theme_stylebox_override("hover", g._panel(Color("205944").lightened(0.1), 10, g.JADE))
+		auto_btn.add_theme_stylebox_override("pressed", g._panel(Color("205944").darkened(0.12), 10, g.EMBER))
 	top.add_child(auto_btn)
 
 	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(32, 28))

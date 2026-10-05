@@ -911,6 +911,58 @@ func test_combat_pile_inspectors():
 	assert_not_null(close_btn, "PileCloseBtn present")
 	modal.queue_free()
 
+func test_auto_battle_retains_configured_speed_across_consecutive_battles():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	g.root = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g.root)
+	add_child_autofree(g)
+
+	# Set speed to 3.0x (EMBER color)
+	g._change_battle_speed(3.0)
+	assert_eq(g.battle_speed, 3.0, "Battle speed is 3.0x")
+	assert_eq(float(g.profile.battle_speed), 3.0, "Profile persists battle speed 3.0x")
+
+	# Begin first battle
+	g.begin_battle(0)
+	assert_eq(g.battle_speed, 3.0, "First battle retains 3.0x speed")
+	var speed_btn_1: Button = g.root.find_child("SpeedToggle", true, false) as Button
+	assert_not_null(speed_btn_1, "SpeedToggle exists in first battle")
+	assert_eq(speed_btn_1.text, "3x", "SpeedToggle shows 3x in first battle")
+	assert_eq(speed_btn_1.get_theme_color("font_color"), g.EMBER, "SpeedToggle has EMBER font color override in first battle")
+
+	# Turn on auto-battle
+	g.toggle_auto_battle(true)
+	assert_true(g.auto_battle_active, "Auto battle is active")
+	var auto_btn_1: Button = g.root.find_child("AutoBattleToggle", true, false) as Button
+	assert_not_null(auto_btn_1, "AutoBattleToggle exists")
+
+	# Simulate beginning second consecutive battle as in auto-battle flow
+	g.begin_battle(1)
+	assert_eq(g.battle_speed, 3.0, "Second battle continues using 3.0x speed without reverting to 1x")
+	var speed_btn_2: Button = g.root.find_child("SpeedToggle", true, false) as Button
+	assert_not_null(speed_btn_2, "SpeedToggle exists in second battle")
+	assert_eq(speed_btn_2.text, "3x", "SpeedToggle continues showing 3x in second battle")
+	assert_eq(speed_btn_2.get_theme_color("font_color"), g.EMBER, "SpeedToggle continues having EMBER font color override in second battle")
+	var auto_btn_2: Button = g.root.find_child("AutoBattleToggle", true, false) as Button
+	assert_not_null(auto_btn_2, "AutoBattleToggle remains active in second battle")
+
+	# Test 4.0x speed as well
+	g._change_battle_speed(4.0)
+	assert_eq(g.battle_speed, 4.0, "Speed updated to 4x")
+	g.begin_battle(2)
+	assert_eq(g.battle_speed, 4.0, "Third battle retains 4.0x speed")
+	var speed_btn_3: Button = g.root.find_child("SpeedToggle", true, false) as Button
+	assert_not_null(speed_btn_3, "SpeedToggle exists in third battle")
+	assert_eq(speed_btn_3.text, "⚡4x", "SpeedToggle shows ⚡4x in third battle")
+	assert_eq(speed_btn_3.get_theme_color("font_color"), Color("a855f7"), "SpeedToggle has purple color in third battle")
+
+	g._leave_battle()
+
+
 
 
 

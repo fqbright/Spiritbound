@@ -676,7 +676,13 @@ func _haptic(kind: String) -> void:
 		_: Input.vibrate_handheld(15)
 
 func _cycle_speed() -> void:
-	var idx: int = BATTLE_SPEED_OPTIONS.find(battle_speed)
+	var idx: int = -1
+	for i in range(BATTLE_SPEED_OPTIONS.size()):
+		if is_equal_approx(battle_speed, BATTLE_SPEED_OPTIONS[i]):
+			idx = i
+			break
+	if idx < 0:
+		idx = 0
 	idx = (idx + 1) % BATTLE_SPEED_OPTIONS.size()
 	battle_speed = BATTLE_SPEED_OPTIONS[idx]
 	profile.battle_speed = battle_speed
