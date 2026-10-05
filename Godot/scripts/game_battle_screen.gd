@@ -57,7 +57,8 @@ func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
 func begin_battle(index: int) -> void:
 	g.resolving = false
 	auto_stepping = false
-	g.battle_speed = clampf(float(g.profile.get("battle_speed", g.battle_speed)), 1.0, 4.0)
+	if g.profile.has("battle_speed") and float(g.profile.battle_speed) > g.battle_speed:
+		g.battle_speed = float(g.profile.battle_speed)
 	g.profile.battle_speed = g.battle_speed
 	g.battle_telemetry = {"turns": 1, "dmg_dealt": 0, "dmg_blocked": 0, "card_impact": {}}
 	g.last_played_card_id = ""
