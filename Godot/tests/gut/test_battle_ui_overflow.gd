@@ -250,3 +250,92 @@ func test_player_side_panel_never_overflows_screen():
 			"[%s] PlayerSidePanel right edge (%f) must not exceed screen page width (366.0)" % [lang, right_edge])
 
 		game.queue_free()
+
+# ------------------------------------------------------------------------------
+# 5. Retreat Confirmation Modal & Progressive Speed / Auto Unlocks
+# ------------------------------------------------------------------------------
+
+func test_retreat_confirmation_modal_and_progressive_unlocks():
+	var game := _create_game("zh-Hans")
+	# At stage 0, speed and auto are locked
+	game.profile.unlocked = 0
+	game.battle_speed = 1.0
+	game.auto_battle_active = false
+	game.begin_battle(0)
+
+	var speed_btn: Button = game.root.find_child("SpeedToggle", true, false) as Button
+	var auto_btn: Button = game.root.find_child("AutoBattleToggle", true, false) as Button
+	var leave_btn: Button = game.root.find_child("LeaveBattleBtn", true, false) as Button
+
+	assert_not_null(speed_btn, "SpeedToggle exists")
+	assert_not_null(auto_btn, "AutoBattleToggle exists")
+	assert_not_null(leave_btn, "LeaveBattleBtn exists")
+
+	assert_true(speed_btn.text.begins_with("🔒"), "SpeedToggle shows locked at stage 0")
+	assert_true(auto_btn.text.begins_with("🔒"), "AutoBattleToggle shows locked at stage 0")
+
+	# Tapping leave button opens confirmation modal without immediately exiting
+	leave_btn.pressed.emit()
+	var modal: Node = game.overlay.get_node_or_null("RetreatConfirmModal")
+	assert_not_null(modal, "RetreatConfirmModal opened on tapping leave_btn")
+
+	# Cancel dismisses modal
+	var cancel_btn: Button = modal.find_child("RetreatCancelBtn", true, false) as Button
+	assert_not_null(cancel_btn, "RetreatCancelBtn exists")
+	cancel_btn.pressed.emit()
+	assert_null(game.overlay.get_node_or_null("RetreatConfirmModal"), "Modal closed on cancel")
+	assert_not_null(game.combat, "Combat continues after canceling retreat")
+
+	# Re-open and confirm exit
+	leave_btn.pressed.emit()
+	var modal2: Node = game.overlay.get_node_or_null("RetreatConfirmModal")
+	assert_not_null(modal2, "RetreatConfirmModal re-opened")
+	var confirm_btn: Button = modal2.find_child("RetreatConfirmBtn", true, false) as Button
+	assert_not_null(confirm_btn, "RetreatConfirmBtn exists")
+	confirm_btn.pressed.emit()
+	assert_null(game.overlay.get_node_or_null("RetreatConfirmModal"), "Modal closed after retreat")
+
+	# Now test at stage >= 1: speed unlocked, auto locked
+	game.profile.unlocked = 1
+	game.begin_battle(1)
+	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
+	auto_btn = game.root.find_child("AutoBattleToggle", true, false) as Button
+	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at stage 1")
+	assert_true(auto_btn.text.begins_with("🔒"), "Auto still locked at stage 1")
+
+	# Now test at stage >= 2: both speed and auto unlocked
+	game.profile.unlocked = 2
+	game.begin_battle(2)
+	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
+	auto_btn = game.root.find_child("AutoBattleToggle", true, false) as Button
+	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at stage 2")
+	assert_false(auto_btn.text.begins_with("🔒"), "Auto unlocked at stage 2")
+
+	game.queue_free()
+
+func test_title_screen_long_email_and_layout_bounds():
+	var game := _create_game("zh-Hans")
+	game.profile.account = {
+		"user_id": "test_user_id",
+		"provider": "apple",
+		"name": "灵界探险家",
+		"email": "NR2YC4BM8C@PRIVATERELAY.APPLEID.COM"
+	}
+	game.show_title_screen()
+
+	var start_btn: Button = game.root.find_child("TitleStartBtn", true, false) as Button
+	assert_not_null(start_btn, "TitleStartBtn exists")
+
+	# Linked user does not render quick oauth row with redundant Apple/Google/Guest buttons
+	var guest_btn: Node = game.root.find_child("TitleGuestBtn", true, false)
+	assert_null(guest_btn, "TitleGuestBtn not shown for authenticated linked user")
+
+	# Account status card exists and is properly bounded
+	var acc_card: PanelContainer = null
+	for child in start_btn.get_parent().get_children():
+		if child is PanelContainer:
+			acc_card = child as PanelContainer
+			break
+	assert_not_null(acc_card, "Account status card found")
+
+	game.queue_free()

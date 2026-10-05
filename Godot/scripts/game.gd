@@ -870,7 +870,7 @@ func show_title_screen() -> void:
 	var acc_name: String = str(profile.get("account", {}).get("name", "")).strip_edges()
 	if acc_name.is_empty():
 		acc_name = "灵界探险家" if lang.begins_with("zh") else "Spirit Explorer"
-	var acc_email: String = str(profile.get("account", {}).get("email", ""))
+	var acc_email: String = str(profile.get("account", {}).get("email", "")).strip_edges()
 
 	var acc_card := PanelContainer.new()
 	var acc_style := _panel(Color("0c1a1e", 0.92), 14, JADE if is_linked else Color("c4923e", 0.8))
@@ -880,17 +880,31 @@ func show_title_screen() -> void:
 	acc_style.content_margin_bottom = 4
 	acc_card.add_theme_stylebox_override("panel", acc_style)
 	acc_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	acc_card.custom_minimum_size = Vector2(0, 26)
 
 	var acc_top_row := HBoxContainer.new()
 	acc_top_row.add_theme_constant_override("separation", 6)
+	acc_top_row.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	var acc_icon_lbl := _label("☁️" if is_linked else "👤", 11, JADE if is_linked else GOLD)
 	acc_top_row.add_child(acc_icon_lbl)
 
 	var display_label := acc_name
 	if is_linked and not acc_email.is_empty():
-		display_label += " (" + acc_email + ")"
+		var short_email := acc_email
+		var at_idx := acc_email.find("@")
+		if at_idx > 0:
+			var u := acc_email.substr(0, at_idx)
+			var d := acc_email.substr(at_idx)
+			if u.length() > 6: u = u.substr(0, 4) + ".."
+			if d.length() > 10: d = d.substr(0, 6) + ".."
+			short_email = u + d
+		display_label = "%s (%s)" % [acc_name, short_email]
 	var acc_name_lbl := _label(display_label, 11, TEXT)
+	acc_name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	acc_name_lbl.clip_text = true
+	acc_name_lbl.custom_minimum_size = Vector2(0, 0)
+	acc_name_lbl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	acc_top_row.add_child(acc_name_lbl)
 
 	var status_tag := _label(t("ui.auth_cloud_synced") if is_linked else t("ui.auth_status_guest"), 9, JADE if is_linked else Color("e09c48"))
@@ -935,59 +949,60 @@ func show_title_screen() -> void:
 	auth_row.add_child(auth_btn)
 	page.add_child(auth_row)
 
-	# Quick OAuth row: Apple, Google, Guest (Clean 28px height)
-	var oauth_row := HBoxContainer.new()
-	oauth_row.add_theme_constant_override("separation", 6)
+	# Quick OAuth row: Apple, Google, Guest only shown when not yet linked
+	if not is_linked:
+		var oauth_row := HBoxContainer.new()
+		oauth_row.add_theme_constant_override("separation", 6)
 
-	var apple_btn := _button("Apple", func():
-		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
-	, Color("080808"), Vector2(0, 28))
-	apple_btn.name = "TitleAppleBtn"
-	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if font_cjk: apple_btn.add_theme_font_override("font", font_cjk)
-	apple_btn.add_theme_font_size_override("font_size", 10)
-	var apple_icon := TextureRect.new()
-	apple_icon.texture = load("res://assets/icons/icon_apple.png")
-	apple_icon.custom_minimum_size = Vector2(14, 14)
-	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	apple_icon.position = Vector2(8, 7)
-	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	apple_btn.add_child(apple_icon)
-	oauth_row.add_child(apple_btn)
+		var apple_btn := _button("Apple", func():
+			SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
+		, Color("080808"), Vector2(0, 28))
+		apple_btn.name = "TitleAppleBtn"
+		apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if font_cjk: apple_btn.add_theme_font_override("font", font_cjk)
+		apple_btn.add_theme_font_size_override("font_size", 10)
+		var apple_icon := TextureRect.new()
+		apple_icon.texture = load("res://assets/icons/icon_apple.png")
+		apple_icon.custom_minimum_size = Vector2(14, 14)
+		apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		apple_icon.position = Vector2(8, 7)
+		apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		apple_btn.add_child(apple_icon)
+		oauth_row.add_child(apple_btn)
 
-	var google_btn := _button("Google", func():
-		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
-	, Color("f0f2f5"), Vector2(0, 28))
-	google_btn.name = "TitleGoogleBtn"
-	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
-	google_btn.add_theme_color_override("font_hover_color", Color("111111"))
-	google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
-	if font_cjk: google_btn.add_theme_font_override("font", font_cjk)
-	google_btn.add_theme_font_size_override("font_size", 10)
-	var google_icon := TextureRect.new()
-	google_icon.texture = load("res://assets/icons/icon_google.png")
-	google_icon.custom_minimum_size = Vector2(14, 14)
-	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	google_icon.position = Vector2(8, 7)
-	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	google_btn.add_child(google_icon)
-	oauth_row.add_child(google_btn)
+		var google_btn := _button("Google", func():
+			SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
+		, Color("f0f2f5"), Vector2(0, 28))
+		google_btn.name = "TitleGoogleBtn"
+		google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
+		google_btn.add_theme_color_override("font_hover_color", Color("111111"))
+		google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
+		if font_cjk: google_btn.add_theme_font_override("font", font_cjk)
+		google_btn.add_theme_font_size_override("font_size", 10)
+		var google_icon := TextureRect.new()
+		google_icon.texture = load("res://assets/icons/icon_google.png")
+		google_icon.custom_minimum_size = Vector2(14, 14)
+		google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		google_icon.position = Vector2(8, 7)
+		google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		google_btn.add_child(google_icon)
+		oauth_row.add_child(google_btn)
 
-	var guest_btn := _button(t("ui.auth_guest_start"), func():
-		if not SpiritSave.has_account_name(profile):
-			_create_account("灵界探险家")
-		show_map()
-	, Color("17363e"), Vector2(0, 28))
-	guest_btn.name = "TitleGuestBtn"
-	guest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if font_cjk: guest_btn.add_theme_font_override("font", font_cjk)
-	guest_btn.add_theme_font_size_override("font_size", 10)
-	oauth_row.add_child(guest_btn)
+		var guest_btn := _button(t("ui.auth_status_guest"), func():
+			if not SpiritSave.has_account_name(profile):
+				_create_account("灵界探险家")
+			show_map()
+		, Color("17363e"), Vector2(0, 28))
+		guest_btn.name = "TitleGuestBtn"
+		guest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if font_cjk: guest_btn.add_theme_font_override("font", font_cjk)
+		guest_btn.add_theme_font_size_override("font_size", 10)
+		oauth_row.add_child(guest_btn)
 
-	page.add_child(oauth_row)
+		page.add_child(oauth_row)
 
 	# Bottom utility row: Language, Settings, and Version (One single compact line)
 	var bot_row := HBoxContainer.new()
@@ -1011,7 +1026,7 @@ func show_title_screen() -> void:
 	set_btn.add_theme_font_size_override("font_size", 10)
 	bot_row.add_child(set_btn)
 
-	var ver_lbl := _label("v1.1.0 · Build 46", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var ver_lbl := _label("v1.1.0 · Build 49", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	ver_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bot_row.add_child(ver_lbl)
 

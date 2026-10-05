@@ -330,30 +330,68 @@ func show_battle() -> void:
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 32
 	top.add_theme_constant_override("separation", 6)
+
 	var stage_lbl := g._label("%d-%d  %s" % [encounter.chapter, encounter.level, g._current_stage_label()], 12, g.JADE)
-	stage_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stage_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	stage_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	stage_lbl.clip_text = true
+	stage_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	stage_lbl.custom_minimum_size = Vector2(0, 0)
 	top.add_child(stage_lbl)
 
-	var turn_lbl := g._label(g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD)
+	var turn_lbl := g._label("· " + g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD)
 	turn_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(turn_lbl)
 
-	var speed_label: String = "⚡4x" if g.battle_speed >= 4.0 else ((str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x")
-	var speed_btn := g._button(speed_label, g._cycle_speed, Color("1a3a42"), Vector2(38, 28))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(spacer)
+
+	var speed_unlocked: bool = int(g.profile.get("unlocked", 0)) >= 1 or g.battle_speed > 1.0
+	var speed_label: String
+	if not speed_unlocked:
+		speed_label = "🔒1x"
+	elif g.battle_speed >= 4.0:
+		speed_label = "⚡4x"
+	else:
+		speed_label = ((str(int(g.battle_speed)) if g.battle_speed == float(int(g.battle_speed)) else str(g.battle_speed)) + "x")
+
+	var on_cycle_speed = func():
+		if not speed_unlocked:
+			g._toast(g.t("ui.speed_locked_toast"), g.GOLD)
+			g.play_sfx("error")
+			return
+		g._cycle_speed()
+
+	var speed_btn := g._button(speed_label, on_cycle_speed, Color("142226") if not speed_unlocked else Color("1a3a42"), Vector2(38, 28))
 	speed_btn.name = "SpeedToggle"
 	speed_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var speed_color: Color = g.JADE
-	if g.battle_speed >= 4.0: speed_color = Color("a855f7")
-	elif g.battle_speed >= 3.0: speed_color = g.EMBER
-	elif g.battle_speed >= 2.0: speed_color = g.GOLD
+	if not speed_unlocked:
+		speed_color = g.MUTED
+	elif g.battle_speed >= 4.0:
+		speed_color = Color("a855f7")
+	elif g.battle_speed >= 3.0:
+		speed_color = g.EMBER
+	elif g.battle_speed >= 2.0:
+		speed_color = g.GOLD
 	speed_btn.add_theme_color_override("font_color", speed_color)
 	top.add_child(speed_btn)
 
-	var auto_label: String = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
+	var auto_unlocked: bool = int(g.profile.get("unlocked", 0)) >= 2 or g.auto_battle_active
+	var auto_label: String
+	if not auto_unlocked:
+		auto_label = "🔒" + g.t("ui.auto_battle")
+	elif g.auto_battle_active:
+		auto_label = g.t("ui.auto_battle_active")
+	else:
+		auto_label = g.t("ui.auto_battle")
+
 	var auto_btn: Button
 	var on_toggle_auto = func():
+		if not auto_unlocked:
+			g._toast(g.t("ui.auto_locked_toast"), g.GOLD)
+			g.play_sfx("error")
+			return
 		g.toggle_auto_battle()
 		if auto_btn != null and is_instance_valid(auto_btn):
 			auto_btn.text = g.t("ui.auto_battle_active") if g.auto_battle_active else g.t("ui.auto_battle")
@@ -363,17 +401,32 @@ func show_battle() -> void:
 			auto_btn.add_theme_stylebox_override("pressed", g._panel(btn_color.darkened(0.12), 10, g.EMBER))
 		if g.auto_battle_active and not g.resolving and g.combat != null and g.combat.state.phase == "player":
 			_maybe_step_auto_battle()
-	auto_btn = g._button(auto_label, on_toggle_auto, Color("205944") if g.auto_battle_active else Color("1a3a42"), Vector2(52, 28))
+
+	var auto_bg := Color("142226") if not auto_unlocked else (Color("205944") if g.auto_battle_active else Color("1a3a42"))
+	auto_btn = g._button(auto_label, on_toggle_auto, auto_bg, Vector2(52, 28))
 	auto_btn.name = "AutoBattleToggle"
 	auto_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	if g.auto_battle_active:
+	if not auto_unlocked:
+		auto_btn.add_theme_color_override("font_color", g.MUTED)
+	elif g.auto_battle_active:
 		auto_btn.add_theme_stylebox_override("normal", g._panel(Color("205944"), 10, g.GOLD))
 		auto_btn.add_theme_stylebox_override("hover", g._panel(Color("205944").lightened(0.1), 10, g.JADE))
 		auto_btn.add_theme_stylebox_override("pressed", g._panel(Color("205944").darkened(0.12), 10, g.EMBER))
 	top.add_child(auto_btn)
 
-	var leave_btn := g._button("⌂", _leave_battle, Color("17363e"), Vector2(32, 28))
+	var leave_size := Vector2(32, 28)
+	var leave_btn := g._button("", _prompt_leave_battle, Color("17363e"), leave_size)
+	leave_btn.name = "LeaveBattleBtn"
 	leave_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var leave_icon := TextureRect.new()
+	leave_icon.texture = load("res://assets/icons/icon_retreat_home.png")
+	leave_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	leave_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	leave_icon.custom_minimum_size = Vector2(20, 20)
+	leave_icon.size = leave_icon.custom_minimum_size
+	leave_icon.position = (leave_size - leave_icon.size) / 2.0
+	leave_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	leave_btn.add_child(leave_icon)
 	top.add_child(leave_btn)
 	page.add_child(top)
 
@@ -4070,9 +4123,11 @@ func _animate_finishing_blow(box: Control, sprite: Node2D) -> void:
 	var banner := PanelContainer.new()
 	banner.name = "FinishingBlowBanner"
 	banner.z_index = 460
-	banner.custom_minimum_size = Vector2(260, 56)
-	banner.position = Vector2(65, 340)
-	banner.pivot_offset = Vector2(130, 28)
+	var vp_w: float = float(g.get_viewport().get_visible_rect().size.x if g.get_viewport() else 390.0)
+	var banner_w := 260.0
+	banner.custom_minimum_size = Vector2(banner_w, 56)
+	banner.position = Vector2((vp_w - banner_w) / 2.0, 340)
+	banner.pivot_offset = Vector2(banner_w / 2.0, 28)
 	banner.scale = Vector2(0.4, 0.4)
 	banner.modulate.a = 0.0
 	var b_style := g._panel(Color(0.1, 0.03, 0.02, 0.95), 12, Color("ffd700"))
@@ -4958,9 +5013,11 @@ func _show_boss_phase_banner(title: String, subtitle: String) -> void:
 	var banner := PanelContainer.new()
 	banner.name = "BossPhaseBanner"
 	banner.z_index = 460
-	banner.custom_minimum_size = Vector2(300, 64)
-	banner.position = Vector2(45, 280)
-	banner.pivot_offset = Vector2(150, 32)
+	var vp_w: float = float(g.get_viewport().get_visible_rect().size.x if g.get_viewport() else 390.0)
+	var banner_w := 300.0
+	banner.custom_minimum_size = Vector2(banner_w, 64)
+	banner.position = Vector2((vp_w - banner_w) / 2.0, 280)
+	banner.pivot_offset = Vector2(banner_w / 2.0, 32)
 	banner.scale = Vector2(0.6, 0.6)
 	banner.modulate.a = 0.0
 	var b_style := g._panel(Color(0.14, 0.03, 0.05, 0.95), 14, Color("ff5959"))
@@ -5287,10 +5344,12 @@ func _show_turn_banner(is_player: bool) -> void:
 	lbl.add_theme_constant_override("outline_size", 4)
 	pad.add_child(lbl)
 
-	banner.custom_minimum_size = Vector2(280, 42)
-	banner.position = Vector2(55, 330)
+	var vp_w: float = float(g.get_viewport().get_visible_rect().size.x if g.get_viewport() else 390.0)
+	var banner_w := 280.0
+	banner.custom_minimum_size = Vector2(banner_w, 42)
+	banner.position = Vector2((vp_w - banner_w) / 2.0, 330)
 	banner.scale = Vector2(0.85, 0.85)
-	banner.pivot_offset = Vector2(140, 21)
+	banner.pivot_offset = Vector2(banner_w / 2.0, 21)
 	banner.modulate.a = 0.0
 
 	g.overlay.add_child(banner)
@@ -5365,6 +5424,77 @@ func _spawn_card_cast_beam(from_pos: Vector2, enemy_index: int, card: Dictionary
 	tw.parallel().tween_property(bolt, "modulate:a", 0.0, dur * 0.5)
 	tw.tween_callback(bolt.queue_free)
 
+
+func _prompt_leave_battle() -> void:
+	if g.combat == null or g.combat.state == null or g.combat.state.phase == "won" or g.combat.state.phase == "lost":
+		_leave_battle()
+		return
+	_show_retreat_confirm_modal()
+
+func _show_retreat_confirm_modal() -> void:
+	if g.overlay == null:
+		_leave_battle()
+		return
+	var modal_name := "RetreatConfirmModal"
+	var existing: Node = g.overlay.get_node_or_null(modal_name)
+	if existing:
+		existing.queue_free()
+
+	var close := func():
+		var stale: Node = g.overlay.get_node_or_null(modal_name)
+		if stale != null:
+			if stale.get_parent() != null: stale.get_parent().remove_child(stale)
+			stale.queue_free()
+
+	var modal := g._modal_dialog(modal_name, close)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var vp_w: int = int(g.get_viewport_rect().size.x) if g.get_viewport() else 390
+	var panel := PanelContainer.new()
+	panel.name = "%sPanel" % modal_name
+	panel.custom_minimum_size = Vector2(mini(310, vp_w - 32), 0)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0b171c", 0.96), 14, g.EMBER))
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 16)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 12)
+	pad.add_child(col)
+
+	var title_lbl := g._label(g.t("ui.retreat_confirm_title"), 16, g.EMBER, HORIZONTAL_ALIGNMENT_CENTER)
+	title_lbl.name = "RetreatTitle"
+	col.add_child(title_lbl)
+
+	var desc_lbl := g._label(g.t("ui.retreat_confirm_desc"), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER, true)
+	desc_lbl.name = "RetreatDesc"
+	col.add_child(desc_lbl)
+
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 10)
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var cancel_btn := g._button(g.t("ui.retreat_cancel_btn"), close, Color("17363e"), Vector2(100, 34))
+	cancel_btn.name = "RetreatCancelBtn"
+	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	buttons.add_child(cancel_btn)
+
+	var confirm_btn := g._button(g.t("ui.retreat_confirm_btn"), func():
+		close.call()
+		_leave_battle()
+	, g.EMBER, Vector2(100, 34))
+	confirm_btn.name = "RetreatConfirmBtn"
+	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	buttons.add_child(confirm_btn)
+
+	col.add_child(buttons)
 
 func _leave_battle() -> void:
 	Engine.time_scale = 1.0

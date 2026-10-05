@@ -183,14 +183,19 @@ func _add_map_right_rail(parent: Control) -> void:
 		banner_holder.add_child(digest_btn)
 		rail.add_child(banner_holder)
 
+	var auto_unlocked := int(g.profile.get("unlocked", 0)) >= 2
 	var auto_push_btn := g._button("", func():
+		if not auto_unlocked:
+			g._toast(g.t("ui.auto_locked_toast"), g.GOLD)
+			g.play_sfx("error")
+			return
 		if not g.can_spend_stamina(5):
 			g._toast(g.t("ui.stamina_insufficient"))
 			g.show_stamina_modal()
 			return
 		g.toggle_auto_battle(true)
 		_next_stage()
-	, Color("1d4d3a") if g.auto_battle_active else Color("142c33"), Vector2(46, 46))
+	, Color("142226") if not auto_unlocked else (Color("1d4d3a") if g.auto_battle_active else Color("142c33")), Vector2(46, 46))
 	auto_push_btn.name = "MapAutoPushBtn"
 	auto_push_btn.custom_minimum_size = Vector2(46, 46)
 	auto_push_btn.size = auto_push_btn.custom_minimum_size
@@ -202,8 +207,11 @@ func _add_map_right_rail(parent: Control) -> void:
 	ap_icon.size = ap_icon.custom_minimum_size
 	ap_icon.position = Vector2(11, 8)
 	ap_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if not auto_unlocked:
+		ap_icon.modulate = Color(0.4, 0.4, 0.4, 0.5)
 	auto_push_btn.add_child(ap_icon)
-	var ap_lbl := g._label(g.t("ui.auto_battle"), 9, g.GOLD if g.auto_battle_active else g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	var ap_label_text: String = ("🔒" + g.t("ui.auto_battle")) if not auto_unlocked else g.t("ui.auto_battle")
+	var ap_lbl := g._label(ap_label_text, 9, g.MUTED if not auto_unlocked else (g.GOLD if g.auto_battle_active else g.TEXT), HORIZONTAL_ALIGNMENT_CENTER)
 	ap_lbl.position = Vector2(0, 30)
 	ap_lbl.size = Vector2(46, 14)
 	ap_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
