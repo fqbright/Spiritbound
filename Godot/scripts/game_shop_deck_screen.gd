@@ -1431,7 +1431,9 @@ func _rename_preset_modal(slot_idx: int) -> void:
 	panel.add_child(list)
 
 	var head := HBoxContainer.new()
-	head.add_child(g._label(g.t("ui.preset_rename_title"), 14, g.GOLD))
+	var title_lbl := g._label(g.t("ui.preset_rename_title"), 14, g.GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title_lbl)
 	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
 	close_btn.name = "PresetRenameCloseBtn"
 	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1442,6 +1444,8 @@ func _rename_preset_modal(slot_idx: int) -> void:
 
 	var input := LineEdit.new()
 	input.name = "PresetNameInput"
+	if g.font_cjk: input.add_theme_font_override("font", g.font_cjk)
+	input.max_length = 16
 	var cur_name: String = str(g.profile.get("deck_preset_names", {}).get(str(slot_idx), g.t("ui.deck_preset_%d" % slot_idx)))
 	input.text = cur_name
 	input.custom_minimum_size = Vector2(0, 36)
@@ -1452,7 +1456,7 @@ func _rename_preset_modal(slot_idx: int) -> void:
 		if new_name.is_empty():
 			new_name = g.t("ui.deck_preset_%d" % slot_idx)
 		if not g.profile.get("deck_preset_names") is Dictionary:
-			g.profile.deck_preset_names = {"1": "预设 1", "2": "预设 2", "3": "预设 3"}
+			g.profile.deck_preset_names = {"1": g.t("ui.deck_preset_1"), "2": g.t("ui.deck_preset_2"), "3": g.t("ui.deck_preset_3")}
 		g.profile.deck_preset_names[str(slot_idx)] = new_name
 		SpiritSave.write(g.profile)
 		modal.queue_free()
@@ -1460,6 +1464,7 @@ func _rename_preset_modal(slot_idx: int) -> void:
 		show_deck()
 	, g.GOLD, Vector2(0, 36))
 	save_btn.name = "PresetRenameConfirmBtn"
+	input.text_submitted.connect(func(_t: String) -> void: save_btn.pressed.emit())
 	list.add_child(save_btn)
 
 func show_deck() -> void:
@@ -1536,6 +1541,8 @@ func show_deck() -> void:
 	search_row.add_theme_constant_override("separation", 6)
 	var search_edit := LineEdit.new()
 	search_edit.name = "DeckSearchInput"
+	if g.font_cjk: search_edit.add_theme_font_override("font", g.font_cjk)
+	search_edit.max_length = 32
 	search_edit.placeholder_text = g.t("ui.deck_search_placeholder")
 	search_edit.text = g.deck_search_query
 	search_edit.custom_minimum_size = Vector2(0, 34)
@@ -1783,7 +1790,9 @@ func _show_import_deck_dialog() -> void:
 	panel.add_child(list)
 
 	var head := HBoxContainer.new()
-	head.add_child(g._label(g.t("ui.deck_import_title"), 14, g.GOLD))
+	var title_lbl := g._label(g.t("ui.deck_import_title"), 14, g.GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title_lbl)
 	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(30, 30))
 	close_btn.name = "DeckImportCloseBtn"
 	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1794,6 +1803,8 @@ func _show_import_deck_dialog() -> void:
 
 	var code_input := LineEdit.new()
 	code_input.name = "DeckCodeInput"
+	if g.font_cjk: code_input.add_theme_font_override("font", g.font_cjk)
+	code_input.max_length = 1024
 	code_input.placeholder_text = g.t("ui.deck_import_placeholder")
 	code_input.custom_minimum_size = Vector2(0, 38)
 	var clip_text := g._clipboard_get().strip_edges()
@@ -1843,6 +1854,7 @@ func _show_import_deck_dialog() -> void:
 		show_deck()
 	, g.EMBER, Vector2(0, 40))
 	confirm_btn.name = "DeckImportConfirmBtn"
+	code_input.text_submitted.connect(func(_t: String) -> void: confirm_btn.pressed.emit())
 	list.add_child(confirm_btn)
 
 func _deck_card_tile(card: Dictionary, owned: int) -> Control:

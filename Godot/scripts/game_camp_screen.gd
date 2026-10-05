@@ -3749,6 +3749,8 @@ func show_friends_modal() -> void:
 
 	var code_input := LineEdit.new()
 	code_input.name = "FriendsCodeInput"
+	if g.font_cjk: code_input.add_theme_font_override("font", g.font_cjk)
+	code_input.max_length = 32
 	code_input.placeholder_text = g.t("ui.friends_code_placeholder")
 	code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	code_input.custom_minimum_size = Vector2(0, 36)
@@ -3756,6 +3758,8 @@ func show_friends_modal() -> void:
 
 	var nickname_input := LineEdit.new()
 	nickname_input.name = "FriendsNicknameInput"
+	if g.font_cjk: nickname_input.add_theme_font_override("font", g.font_cjk)
+	nickname_input.max_length = 16
 	nickname_input.placeholder_text = g.t("ui.friends_nickname_placeholder")
 	nickname_input.custom_minimum_size = Vector2(90, 36)
 	add_row.add_child(nickname_input)
@@ -3777,6 +3781,8 @@ func show_friends_modal() -> void:
 
 	var add_btn := g._button(g.t("ui.friends_add_btn"), _add_friend.bind(code_input, nickname_input, list), g.EMBER, Vector2(0, 38))
 	add_btn.name = "FriendsAddBtn"
+	code_input.text_submitted.connect(func(_t: String) -> void: nickname_input.grab_focus())
+	nickname_input.text_submitted.connect(func(_t: String) -> void: add_btn.pressed.emit())
 	vbox.add_child(add_btn)
 
 	_rebuild_friends_list(list)

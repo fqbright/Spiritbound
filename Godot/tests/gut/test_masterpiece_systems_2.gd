@@ -642,5 +642,51 @@ func test_ui_translations_completeness():
 		assert_true(zh.length() > 0 and zh != k, "Key '%s' has valid zh-Hans translation" % k)
 		assert_true(en.length() > 0 and en != k, "Key '%s' has valid en translation" % k)
 
+func test_line_edit_cjk_and_submission():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var deck_screen = load("res://scripts/game_shop_deck_screen.gd").new(g)
+
+	deck_screen._rename_preset_modal(1)
+	var modal = g.overlay.get_node_or_null("PresetRenameModal")
+	assert_not_null(modal, "PresetRenameModal opened")
+	var input: LineEdit = modal.find_child("PresetNameInput", true, false) as LineEdit
+	assert_not_null(input, "PresetNameInput found")
+	assert_eq(input.max_length, 16, "PresetNameInput has max length 16")
+	modal.queue_free()
+
+	deck_screen._show_import_deck_dialog()
+	var imp_modal = g.overlay.get_node_or_null("DeckImportModal")
+	assert_not_null(imp_modal, "DeckImportModal opened")
+	var code_input: LineEdit = imp_modal.find_child("DeckCodeInput", true, false) as LineEdit
+	assert_not_null(code_input, "DeckCodeInput found")
+	assert_eq(code_input.max_length, 1024, "DeckCodeInput has max length 1024")
+	imp_modal.queue_free()
+
+func test_music_volume_and_toggle_combat_safety():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	# Mute toggling
+	g.muted = false
+	g._toggle_music_settings()
+	assert_true(g.muted, "Music is muted")
+	assert_eq(float(g.profile.music_volume), 0.0, "Volume set to 0 when muted")
+	g._toggle_music_settings()
+	assert_false(g.muted, "Music is unmuted")
+	assert_eq(float(g.profile.music_volume), 1.0, "Volume restored to 1.0 when unmuted")
+
+	# Volume scaling
+	g._change_music_volume(0.5)
+	assert_false(g.muted, "Music not muted at 0.5")
+	assert_eq(float(g.profile.music_volume), 0.5, "Volume saved as 0.5")
+	g._change_music_volume(0.0)
+	assert_true(g.muted, "Volume 0.0 marks muted")
+
 
 

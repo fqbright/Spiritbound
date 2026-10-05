@@ -1019,10 +1019,12 @@ func show_account_setup(from_rename: bool = false) -> void:
 	field.add_theme_stylebox_override("focus", _panel(Color("14303a"), 10, JADE))
 	page.add_child(field)
 
-	page.add_child(_button(t("ui.account_start"), func():
+	var start_btn := _button(t("ui.account_start"), func():
 		_create_account(field.text)
 		_track_account_setup_completed("typed")
-	, EMBER, Vector2(0, 44)))
+	, EMBER, Vector2(0, 44))
+	field.text_submitted.connect(func(_t: String) -> void: start_btn.pressed.emit())
+	page.add_child(start_btn)
 
 	page.add_child(_label(t("ui.auth_or_continue"), 10, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 	var auth_row := HBoxContainer.new()
@@ -3521,6 +3523,7 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 	# Input fields
 	var email_input := LineEdit.new()
 	email_input.name = "AuthEmailInput"
+	email_input.max_length = 64
 	email_input.placeholder_text = t("ui.auth_email_placeholder")
 	email_input.custom_minimum_size = Vector2(0, 44)
 	if font_cjk: email_input.add_theme_font_override("font", font_cjk)
@@ -3532,6 +3535,7 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 
 	var pass_input := LineEdit.new()
 	pass_input.name = "AuthPasswordInput"
+	pass_input.max_length = 32
 	pass_input.placeholder_text = t("ui.auth_password_placeholder")
 	pass_input.secret = true
 	pass_input.custom_minimum_size = Vector2(0, 44)
@@ -3544,6 +3548,7 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 
 	var name_input := LineEdit.new()
 	name_input.name = "AuthNameInput"
+	name_input.max_length = 16
 	name_input.placeholder_text = t("ui.auth_name_placeholder")
 	name_input.custom_minimum_size = Vector2(0, 44)
 	if font_cjk: name_input.add_theme_font_override("font", font_cjk)
@@ -3562,6 +3567,14 @@ func show_auth_modal(on_success: Callable = Callable()) -> void:
 	# Submit button
 	var submit_btn := _button(t("ui.auth_btn_login"), Callable(), EMBER, Vector2(0, 46))
 	submit_btn.name = "AuthSubmitBtn"
+	email_input.text_submitted.connect(func(_t: String) -> void: pass_input.grab_focus())
+	pass_input.text_submitted.connect(func(_t: String) -> void:
+		if is_signup_mode["value"]:
+			name_input.grab_focus()
+		else:
+			submit_btn.pressed.emit()
+	)
+	name_input.text_submitted.connect(func(_t: String) -> void: submit_btn.pressed.emit())
 	vbox.add_child(submit_btn)
 
 	var update_mode = func(signup: bool):
@@ -3765,7 +3778,8 @@ func _toggle_music_settings() -> void:
 		if battle_music != null: battle_music.stop()
 	else:
 		profile.music_volume = 1.0
-		_play_music(false)
+		var in_combat := (combat != null and is_instance_valid(combat) and combat.state != null and str(combat.state.get("phase", "")) != "")
+		_play_music(in_combat)
 	SpiritSave.write(profile)
 	_close_settings()
 	if is_inside_tree(): show_settings()
@@ -3783,8 +3797,12 @@ func _change_music_volume(vol: float) -> void:
 		var db_val: float = 0.0 if vol >= 0.99 else linear_to_db(vol)
 		if map_music != null: map_music.volume_db = db_val
 		if battle_music != null: battle_music.volume_db = db_val
-		if map_music != null and battle_music != null:
-			if not map_music.playing and not battle_music.playing:
+		var in_combat := (combat != null and is_instance_valid(combat) and combat.state != null and str(combat.state.get("phase", "")) != "")
+		if in_combat:
+			if battle_music != null and not battle_music.playing:
+				_play_music(true)
+		else:
+			if map_music != null and not map_music.playing:
 				_play_music(false)
 	SpiritSave.write(profile)
 	_close_settings()
