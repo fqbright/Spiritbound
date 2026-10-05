@@ -4503,8 +4503,88 @@ func _cultivation_realm_section() -> Control:
 	var trib_btn := g._button(g.t("ui.tribulation_title"), begin_tribulation_battle, Color("0284c7"), Vector2(140, 32))
 	trib_btn.name = "TribulationBattleBtn"
 	row.add_child(trib_btn)
+
+	var preview_btn := g._button("✦ 境界感悟" if g.lang == "zh-Hans" else "✦ Realm Lore", func(): _show_realm_breakthrough_ceremony(realm_idx), Color("1e293b"), Vector2(100, 32))
+	preview_btn.name = "RealmCeremonyPreviewBtn"
+	row.add_child(preview_btn)
+
 	vbox.add_child(row)
 	return panel
+
+func _show_realm_breakthrough_ceremony(realm_idx: int) -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("BreakthroughCeremonyModal", func():
+		var ex: Node = g.overlay.get_node_or_null("BreakthroughCeremonyModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(320, 360)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0b151e"), 16, g.GOLD))
+	panel.scale = Vector2(0.85, 0.85)
+	panel.pivot_offset = Vector2(160, 180)
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 16)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	pad.add_child(vbox)
+
+	var realm_name: String = g.t("ui.cultivation_realm_%d" % clampi(realm_idx, 0, 4))
+
+	var head_lbl := g._label("☯ 仙道登临 · 破境圆满 ☯" if g.lang == "zh-Hans" else "☯ Celestial Realm Breakthrough ☯", 13, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(head_lbl)
+
+	var title_lbl := g._label("【 %s 】" % realm_name, 22, Color("38bdf8"), HORIZONTAL_ALIGNMENT_CENTER)
+	vbox.add_child(title_lbl)
+
+	var desc_box := PanelContainer.new()
+	desc_box.add_theme_stylebox_override("panel", g._panel(Color("13232d"), 8, Color("1e3a4b")))
+	var d_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: d_pad.add_theme_constant_override("margin_%s" % s, 10)
+	desc_box.add_child(d_pad)
+	var d_vbox := VBoxContainer.new()
+	d_vbox.add_theme_constant_override("separation", 6)
+	d_pad.add_child(d_vbox)
+
+	var perks: Array = [
+		"✦ 初始气血上限 +%d 点" % (realm_idx * 15),
+		"✦ 初始护盾加持 +%d 点" % (realm_idx * 5),
+		"✦ 战斗灵气流转速度全面提升",
+		"✦ 参悟高阶天地奥义卡牌概率提升"
+	] if g.lang == "zh-Hans" else [
+		"✦ Max Health +%d" % (realm_idx * 15),
+		"✦ Initial Shield +%d" % (realm_idx * 5),
+		"✦ Combat Qi flow efficiency boosted",
+		"✦ Higher chance for Celestial card offerings"
+	]
+
+	for p_text in perks:
+		d_vbox.add_child(g._label(p_text, 11, Color("cbd5e1"), HORIZONTAL_ALIGNMENT_LEFT))
+	vbox.add_child(desc_box)
+
+	var confirm_btn := g._button("纳气归元" if g.lang == "zh-Hans" else "Absorb Qi", func():
+		modal.queue_free()
+	, g.GOLD, Vector2(0, 40))
+	confirm_btn.name = "BreakthroughConfirmBtn"
+	vbox.add_child(confirm_btn)
+
+	g.play_sfx("battle_victory")
+	g._haptic("heavy")
+
+	var tw := panel.create_tween()
+	panel.tree_exited.connect(tw.kill)
+	tw.tween_property(panel, "scale", Vector2(1.04, 1.04), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(panel, "scale", Vector2(1.0, 1.0), 0.12)
 
 func _lethal_puzzles_section() -> Control:
 	var panel := PanelContainer.new()

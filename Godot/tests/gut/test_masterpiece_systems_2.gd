@@ -688,5 +688,57 @@ func test_music_volume_and_toggle_combat_safety():
 	g._change_music_volume(0.0)
 	assert_true(g.muted, "Volume 0.0 marks muted")
 
+func test_turn_transition_banner_and_beam():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen = load("res://scripts/game_battle_screen.gd").new(g)
+
+	battle_screen._show_turn_banner(true)
+	var banner = g.overlay.get_node_or_null("TurnBanner")
+	assert_not_null(banner, "Player TurnBanner created")
+	banner.queue_free()
+
+	battle_screen._show_turn_banner(false)
+	var enemy_banner = g.overlay.get_node_or_null("TurnBanner")
+	assert_not_null(enemy_banner, "Enemy TurnBanner created")
+	enemy_banner.queue_free()
+
+func test_card_detail_inspector_modal():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var deck_screen = load("res://scripts/game_shop_deck_screen.gd").new(g)
+
+	var card: Dictionary = g.content.card("strike")
+	deck_screen._show_card_detail_modal(card)
+	var modal = g.overlay.get_node_or_null("CardDetailModal")
+	assert_not_null(modal, "CardDetailModal created")
+	var close_btn = modal.find_child("CardDetailCloseBtn", true, false)
+	assert_not_null(close_btn, "CardDetailCloseBtn present")
+	modal.queue_free()
+
+func test_realm_breakthrough_ceremony():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var camp_screen = load("res://scripts/game_camp_screen.gd").new(g)
+
+	camp_screen._show_realm_breakthrough_ceremony(1)
+	var modal = g.overlay.get_node_or_null("BreakthroughCeremonyModal")
+	assert_not_null(modal, "BreakthroughCeremonyModal created")
+	var confirm_btn = modal.find_child("BreakthroughConfirmBtn", true, false)
+	assert_not_null(confirm_btn, "BreakthroughConfirmBtn present")
+	modal.queue_free()
+
 
 

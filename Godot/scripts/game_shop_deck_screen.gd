@@ -1973,7 +1973,142 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 		foil_btn.add_theme_color_override("font_color", Color("ffd700"))
 	controls.add_child(foil_btn)
 
+	var inspect_btn := g._button("🔍", func(): _show_card_detail_modal(card), Color("172a30"), Vector2(30, 30))
+	inspect_btn.name = "InspectBtn_%s" % card.id
+	controls.add_child(inspect_btn)
+
+	tile.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_show_card_detail_modal(card)
+	)
+
 	return tile
+
+func _show_card_detail_modal(card: Dictionary) -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("CardDetailModal", func():
+		var ex: Node = g.overlay.get_node_or_null("CardDetailModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 480)
+	var accent := g._card_color(card)
+	panel.add_theme_stylebox_override("panel", g._panel(Color("0f1f26"), 16, accent))
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for s in ["left", "right"]: pad.add_theme_constant_override("margin_%s" % s, 14)
+	for s in ["top", "bottom"]: pad.add_theme_constant_override("margin_%s" % s, 12)
+	panel.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	var card_name: String = g.content.text(card.nameKey, g.lang)
+	var head := HBoxContainer.new()
+	var title_lbl := g._label(card_name, 17, g.GOLD)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title_lbl)
+
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("1c333a"), Vector2(32, 32))
+	close_btn.name = "CardDetailCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	vbox.add_child(head)
+
+	var art_box := CenterContainer.new()
+	var art_frame := Panel.new()
+	art_frame.custom_minimum_size = Vector2(170, 200)
+	art_frame.clip_contents = true
+	var is_foil: bool = g.profile.get("foil_cards", []).has(card.id)
+	var up_lvl: int = int(g.profile.upgrades.get(card.id, 0))
+	art_frame.add_theme_stylebox_override("panel", g._panel(Color("11242a"), 12, Color("ffd700") if is_foil else accent))
+
+	var art := TextureRect.new()
+	art.texture = g._get_card_texture(card.id)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	g._apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0 or is_foil)
+	art_frame.add_child(art)
+	art_box.add_child(art_frame)
+	vbox.add_child(art_box)
+
+	var info_row := HBoxContainer.new()
+	info_row.add_theme_constant_override("separation", 6)
+	var kind_elem_str := g._kind_element_line(card)
+	info_row.add_child(g._label(kind_elem_str, 12, g.TEXT))
+	var cost_lbl := g._label("灵气: %d" % int(card.cost) if g.lang == "zh-Hans" else "Cost: %d" % int(card.cost), 12, g.EMBER)
+	cost_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	info_row.add_child(cost_lbl)
+	vbox.add_child(info_row)
+
+	var desc_lbl := g._label(g._card_description(card), 11, Color("cbd5e1"), HORIZONTAL_ALIGNMENT_LEFT, true)
+	vbox.add_child(desc_lbl)
+
+	var branch_box := PanelContainer.new()
+	branch_box.add_theme_stylebox_override("panel", g._panel(Color("162c35"), 8, Color("20404a")))
+	var b_pad := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]: b_pad.add_theme_constant_override("margin_%s" % s, 6)
+	branch_box.add_child(b_pad)
+	var b_vbox := VBoxContainer.new()
+	b_vbox.add_theme_constant_override("separation", 2)
+	b_pad.add_child(b_vbox)
+
+	var cur_branch: String = str(g.profile.get("card_branches", {}).get(card.id, "base"))
+	var branch_title: String = "✦ 升级分支: " if g.lang == "zh-Hans" else "✦ Upgrade Branch: "
+	if cur_branch == "flow":
+		branch_title += "【顺流】(灵气消耗 -1)" if g.lang == "zh-Hans" else "[Flow] (-1 Cost)"
+	elif cur_branch == "surge":
+		branch_title += "【狂涌】(基础威力 +3)" if g.lang == "zh-Hans" else "[Surge] (+3 Power)"
+	else:
+		branch_title += "【未分化 / 基础】" if g.lang == "zh-Hans" else "[Base Form]"
+	b_vbox.add_child(g._label(branch_title, 10, g.JADE if cur_branch == "flow" else (g.EMBER if cur_branch == "surge" else g.MUTED)))
+
+	var rune_id: String = g.profile.get("card_runes", {}).get(card.id, "")
+	var rune_text: String
+	if not rune_id.is_empty():
+		var r_info := g.content.rune(rune_id)
+		rune_text = "✦ 已镶嵌符文: %s · %s" % [r_info.name, r_info.desc] if g.lang == "zh-Hans" else "✦ Inscribed Rune: %s" % r_info.name
+	else:
+		rune_text = "✦ 符文孔位: 未镶嵌" if g.lang == "zh-Hans" else "✦ Rune Slot: Empty"
+	b_vbox.add_child(g._label(rune_text, 10, Color("fef08a") if not rune_id.is_empty() else g.MUTED))
+	vbox.add_child(branch_box)
+
+	var act_row := HBoxContainer.new()
+	act_row.add_theme_constant_override("separation", 8)
+	var in_deck: int = g.profile.deck.count(card.id)
+	var owned: int = int(g.profile.collection.get(card.id, 0))
+	var count_lbl := g._label("卡组: %d / %d" % [in_deck, owned] if g.lang == "zh-Hans" else "Deck: %d / %d" % [in_deck, owned], 11, g.TEXT)
+	count_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	act_row.add_child(count_lbl)
+
+	var minus_btn := g._button("− 移除" if g.lang == "zh-Hans" else "− Remove", func():
+		_deck_change(card.id, -1)
+		modal.queue_free()
+		_show_card_detail_modal(card)
+	, Color("593b32"), Vector2(65, 32))
+	minus_btn.name = "DetailMinusBtn"
+	minus_btn.disabled = in_deck <= 0
+	act_row.add_child(minus_btn)
+
+	var plus_btn := g._button("+ 加入" if g.lang == "zh-Hans" else "+ Add", func():
+		_deck_change(card.id, 1)
+		modal.queue_free()
+		_show_card_detail_modal(card)
+	, Color("245247"), Vector2(65, 32))
+	plus_btn.name = "DetailPlusBtn"
+	plus_btn.disabled = in_deck >= owned or g.profile.deck.size() >= 25
+	act_row.add_child(plus_btn)
+	vbox.add_child(act_row)
 
 func _toggle_foil_reforge(card: Dictionary) -> void:
 	if not g.profile.get("foil_cards") is Array:

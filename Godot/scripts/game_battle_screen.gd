@@ -325,6 +325,7 @@ func show_battle() -> void:
 	g._clear(); g._play_music(true, stage_lvl); g.enemy_boxes.clear()
 	_setup_battle_background(encounter, stage_lvl)
 	_update_danger_vignette()
+	_show_turn_banner(true)
 	var page := g._create_page(4)
 
 	var top := HBoxContainer.new(); top.custom_minimum_size.y = 32
@@ -3329,6 +3330,7 @@ func _resolve_play(hand_index: int, before: Array, player_shield_before: int = 0
 	var card_id: String = str(card.get("id", ""))
 	for i in g.combat.state.enemies.size():
 		if i < before.size() and before[i] > g.combat.state.enemies[i].health:
+			_spawn_card_cast_beam(Vector2(195, 620), i, card)
 			_animate_attack_slash(i, card_id)
 			await g.get_tree().create_timer(g._battle_delay(0.14)).timeout
 			# The condition above ran before the two awaits between it and here, and the live enemy
@@ -4096,6 +4098,10 @@ func _advance_to_reward() -> void:
 		if g.active_modifier.get("is_tribulation", false):
 			SpiritSave.advance_cultivation_realm(g.profile)
 			g._toast("✦ 雷劫散去，大境界突破成功！", g.GOLD)
+			g.show_camp()
+			if g._camp_screen and g._camp_screen.has_method("_show_realm_breakthrough_ceremony"):
+				g._camp_screen._show_realm_breakthrough_ceremony(int(g.profile.get("cultivation_realm", 0)))
+			return
 		elif g.active_modifier.get("is_puzzle", false):
 			var pid: String = str(g.active_modifier.get("puzzle_id", ""))
 			if not g.profile.lethal_puzzles_cleared.has(pid):
@@ -4111,6 +4117,7 @@ func _advance_to_reward() -> void:
 func _enemy_turn() -> void:
 	g.resolving = true
 	g.selected_card = -1
+	_show_turn_banner(false)
 	# Snapshot the telegraphed intents before end_turn consumes them, so each enemy can play
 	# the animation for what it actually promised.
 	var planned: Array = []
@@ -4144,6 +4151,7 @@ func _enemy_turn() -> void:
 
 	# Give a brief pause after all enemy actions and damage resolve before player can act
 	await g.get_tree().create_timer(g._battle_delay(0.30)).timeout
+	_show_turn_banner(true)
 	show_battle()
 	g.resolving = false
 	if g.auto_battle_active and g.combat != null and g.combat.state.phase == "player":
@@ -5100,11 +5108,14 @@ func _update_danger_vignette() -> void:
 			vig.add_theme_stylebox_override("panel", v_style)
 			g.overlay.add_child(vig)
 			var tw := vig.create_tween().set_loops()
+			vig.tree_exited.connect(tw.kill)
 			tw.tween_property(vig, "modulate:a", 1.0, g._battle_delay(0.18)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_callback(func(): g._haptic("light"))
 			tw.tween_property(vig, "modulate:a", 0.45, g._battle_delay(0.16)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 			tw.tween_property(vig, "modulate:a", 0.90, g._battle_delay(0.16)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_callback(func(): g._haptic("light"))
 			tw.tween_property(vig, "modulate:a", 0.25, g._battle_delay(0.40)).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			tw.tween_interval(g._battle_delay(0.25))
+			tw.tween_interval(g._battle_delay(0.40))
 			g._haptic("heavy")
 			if g.has_method("_set_low_hp_tension_audio"):
 				g._set_low_hp_tension_audio(true)
@@ -5125,6 +5136,127 @@ func _clear_danger_vignette(immediate: bool = false) -> void:
 		existing.tree_exited.connect(tw.kill)
 		tw.tween_property(existing, "modulate:a", 0.0, 0.25)
 		tw.tween_callback(existing.queue_free)
+
+func _show_turn_banner(is_player: bool) -> void:
+	if g.overlay == null or not is_instance_valid(g.overlay): return
+	var old_banner := g.overlay.get_node_or_null("TurnBanner")
+	if old_banner != null and is_instance_valid(old_banner):
+		old_banner.queue_free()
+
+	var banner := PanelContainer.new()
+	banner.name = "TurnBanner"
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.z_index = 320
+
+	var style := StyleBoxFlat.new()
+	var bg_col: Color = Color("0d2d26") if is_player else Color("2c0c16")
+	bg_col.a = 0.88
+	style.bg_color = bg_col
+	var border_col: Color = g.GOLD if is_player else Color("ef4444")
+	style.border_color = border_col
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_left = 6
+	style.corner_radius_bottom_right = 6
+	banner.add_theme_stylebox_override("panel", style)
+
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_top", 6)
+	pad.add_theme_constant_override("margin_bottom", 6)
+	pad.add_theme_constant_override("margin_left", 20)
+	pad.add_theme_constant_override("margin_right", 20)
+	banner.add_child(pad)
+
+	var text: String
+	if is_player:
+		text = "☯  %s  ☯" % ("灵气充盈 · 出牌阶段" if g.lang == "zh-Hans" else "Celestial Qi · Player Turn")
+	else:
+		text = "⚡  %s  ⚡" % ("妖气汇聚 · 敌方行动" if g.lang == "zh-Hans" else "Demonic Surge · Enemy Turn")
+
+	var lbl := g._label(text, 15, g.GOLD if is_player else Color("fca5a5"), HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl.add_theme_constant_override("outline_size", 4)
+	pad.add_child(lbl)
+
+	banner.custom_minimum_size = Vector2(280, 42)
+	banner.position = Vector2(55, 330)
+	banner.scale = Vector2(0.85, 0.85)
+	banner.pivot_offset = Vector2(140, 21)
+	banner.modulate.a = 0.0
+
+	g.overlay.add_child(banner)
+
+	if is_player:
+		g.play_sfx("buff", 0.04, 1.0)
+		g._haptic("light")
+	else:
+		g.play_sfx("attack_slash", 0.06, -2.0)
+		g._haptic("medium")
+
+	var tw := banner.create_tween()
+	banner.tree_exited.connect(tw.kill)
+	tw.tween_property(banner, "modulate:a", 1.0, g._battle_delay(0.14)).set_trans(Tween.TRANS_QUAD)
+	tw.parallel().tween_property(banner, "scale", Vector2(1.04, 1.04), g._battle_delay(0.14)).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(banner, "scale", Vector2(1.0, 1.0), g._battle_delay(0.10))
+	tw.tween_interval(g._battle_delay(0.42))
+	tw.tween_property(banner, "modulate:a", 0.0, g._battle_delay(0.18)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(banner, "position:y", 318.0, g._battle_delay(0.18))
+	tw.tween_callback(banner.queue_free)
+
+func _spawn_card_cast_beam(from_pos: Vector2, enemy_index: int, card: Dictionary) -> void:
+	if g.overlay == null: return
+	var target_box: Control = null
+	for box in g.enemy_boxes:
+		if box and is_instance_valid(box) and int(box.get_meta("enemy_index", -1)) == enemy_index:
+			target_box = box
+			break
+	if target_box == null: return
+	var to_pos: Vector2 = target_box.global_position + target_box.size * 0.5
+
+	var elem: String = str(card.get("element", ""))
+	var beam_col: Color
+	match elem:
+		"fire": beam_col = Color("f97316")
+		"gale": beam_col = Color("10b981")
+		"stone": beam_col = Color("f59e0b")
+		"water": beam_col = Color("06b6d4")
+		"poison": beam_col = Color("a855f7")
+		_:
+			var kind: String = str(card.get("kind", ""))
+			beam_col = Color("ef4444") if kind == "Attack" else Color("38bdf8")
+
+	var bolt := ColorRect.new()
+	bolt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bolt.z_index = 280
+	bolt.color = beam_col
+	bolt.custom_minimum_size = Vector2(12, 12)
+	bolt.size = bolt.custom_minimum_size
+	bolt.pivot_offset = Vector2(6, 6)
+	bolt.position = from_pos
+	g.overlay.add_child(bolt)
+
+	var glow := Panel.new()
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var glow_style := StyleBoxFlat.new()
+	glow_style.bg_color = beam_col.lerp(Color.WHITE, 0.4)
+	glow_style.corner_radius_top_left = 6; glow_style.corner_radius_top_right = 6
+	glow_style.corner_radius_bottom_left = 6; glow_style.corner_radius_bottom_right = 6
+	glow_style.shadow_color = beam_col
+	glow_style.shadow_size = 14
+	glow.add_theme_stylebox_override("panel", glow_style)
+	bolt.add_child(glow)
+
+	var dur: float = g._battle_delay(0.20)
+	var tw := bolt.create_tween()
+	bolt.tree_exited.connect(tw.kill)
+	tw.tween_property(bolt, "position", to_pos - Vector2(6, 6), dur).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(bolt, "scale", Vector2(1.8, 1.8), dur * 0.5)
+	tw.tween_property(bolt, "scale", Vector2(0.2, 0.2), dur * 0.5)
+	tw.parallel().tween_property(bolt, "modulate:a", 0.0, dur * 0.5)
+	tw.tween_callback(bolt.queue_free)
 
 
 func _leave_battle() -> void:
