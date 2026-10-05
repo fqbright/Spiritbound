@@ -57,9 +57,6 @@ func _apply_difficulty(base: Dictionary, tier_mod: Dictionary) -> Dictionary:
 func begin_battle(index: int) -> void:
 	g.resolving = false
 	auto_stepping = false
-	if g.profile.has("battle_speed") and float(g.profile.battle_speed) > g.battle_speed:
-		g.battle_speed = float(g.profile.battle_speed)
-	g.profile.battle_speed = g.battle_speed
 	g.battle_telemetry = {"turns": 1, "dmg_dealt": 0, "dmg_blocked": 0, "card_impact": {}}
 	g.last_played_card_id = ""
 
