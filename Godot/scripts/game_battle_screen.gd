@@ -1023,10 +1023,13 @@ func _enemy_view(index: int, depth_t := 0.0) -> Control:
 	)
 	# Floating oriental runic seal: sleek translucent spirit pill with glowing border & soft shadow
 	var is_threat: bool = bool(intent_style.get("high_threat", false))
-	var raw_intent_dmg: int = int(intent.get("amount", 0)) if str(intent.get("kind", "")) == "attack" else 0
-	var player_total_guard: int = int(g.combat.state.player.get("health", 0)) + int(g.combat.state.player.get("shield", 0)) if g.combat and g.combat.state else 60
+	var raw_intent_dmg: int = int(intent.get("amount", 0)) if str(intent.get("kind", "")) in ["attack", "critical", "attack_defend"] else 0
+	var player_total_guard: int = int(g.combat.state.player.get("health", 0)) + int(g.combat.state.player.get("shield", 0)) if (g.combat and g.combat.state and g.combat.state.player) else 60
 	var is_lethal: bool = raw_intent_dmg >= player_total_guard and raw_intent_dmg > 0
 	if is_lethal: is_threat = true
+
+	_apply_threat_warning_ring(unit, enemy)
+
 	var intent_box := StyleBoxFlat.new()
 	intent_box.bg_color = intent_style.bg
 	intent_box.border_color = Color("ff4d4d") if is_threat else intent_style.border
@@ -1408,9 +1411,12 @@ func _build_player_stage() -> Control:
 	stage.add_child(side_panel)
 
 	var all_items: Array = []
-	# 1. Active combat statuses (Shield, Focus, Strength, Burn, Poison, Vulnerable, Weak)
 	if int(g.combat.state.player.shield) > 0:
-		all_items.append(_status_chip_clickable("shield", "⬢", int(g.combat.state.player.shield), Color("9fd8ff"), 20.0))
+		var has_retain: bool = bool(g.combat.state.get("bastion_form_active", false)) or (g.combat.state.player and bool(g.combat.state.player.get("bastion_form_active", false)))
+		var shield_color: Color = Color("72f0c0") if has_retain else Color("9fd8ff")
+		var shield_chip := _status_chip_clickable("shield", "⬢", int(g.combat.state.player.shield), shield_color, 20.0)
+		_update_player_shield_retain_indicator(shield_chip)
+		all_items.append(shield_chip)
 	if int(g.combat.state.player.focus) > 0:
 		all_items.append(_status_chip_clickable("focus", "◉", int(g.combat.state.player.focus), Color("ffe08a"), 20.0))
 	if int(g.combat.state.player.get("strength", 0)) > 0:
@@ -1761,6 +1767,71 @@ func _modal_backdrop(node_name: String, on_dismiss: Callable) -> Button:
 	if on_dismiss.is_valid(): backdrop.pressed.connect(on_dismiss)
 	g.overlay.add_child(backdrop)
 	return backdrop
+
+func _update_player_shield_retain_indicator(shield_box: Control) -> Control:
+	if shield_box == null or not is_instance_valid(shield_box): return null
+	var has_retain: bool = false
+	if g.combat and g.combat.state:
+		has_retain = bool(g.combat.state.get("bastion_form_active", false)) or (g.combat.state.player and bool(g.combat.state.player.get("bastion_form_active", false)))
+	var badge = shield_box.get_node_or_null("ShieldRetainBadge")
+	if has_retain:
+		if badge == null:
+			badge = Label.new()
+			badge.name = "ShieldRetainBadge"
+			badge.text = "∞"
+			badge.add_theme_font_size_override("font_size", 9)
+			badge.add_theme_color_override("font_color", Color("72f0c0"))
+			badge.position = Vector2(14, -5)
+			badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			shield_box.add_child(badge)
+		badge.visible = true
+	else:
+		if badge != null:
+			badge.visible = false
+	return badge
+
+func _apply_threat_warning_ring(unit: Control, enemy: Dictionary) -> Panel:
+	if unit == null or not is_instance_valid(unit): return null
+	var existing := unit.get_node_or_null("ThreatWarningRing") as Panel
+	var intent: Dictionary = enemy.get("intent", {})
+	var intent_style := _intent_style(intent)
+	var is_threat: bool = bool(intent_style.get("high_threat", false))
+	var raw_intent_dmg: int = int(intent.get("amount", 0)) if str(intent.get("kind", "")) in ["attack", "critical", "attack_defend"] else 0
+	var player_total_guard: int = int(g.combat.state.player.get("health", 0)) + int(g.combat.state.player.get("shield", 0)) if (g.combat and g.combat.state and g.combat.state.player) else 60
+	var is_lethal: bool = raw_intent_dmg >= player_total_guard and raw_intent_dmg > 0
+	if is_lethal: is_threat = true
+
+	if not is_threat:
+		if existing: existing.visible = false
+		return null
+
+	var threat_ring: Panel = existing
+	if threat_ring == null:
+		threat_ring = Panel.new()
+		threat_ring.name = "ThreatWarningRing"
+		var ring_w: float = unit.size.x + 8.0
+		var ring_h: float = (unit.size.y if unit.size.y > 0 else 235.0) + 8.0
+		threat_ring.custom_minimum_size = Vector2(ring_w, ring_h)
+		threat_ring.size = threat_ring.custom_minimum_size
+		threat_ring.position = Vector2((unit.size.x - ring_w) / 2.0, -4.0)
+		threat_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var r_box := StyleBoxFlat.new()
+		r_box.bg_color = Color.TRANSPARENT
+		r_box.border_color = Color("ff2e2e", 0.85) if is_lethal else Color("f59e0b", 0.7)
+		r_box.set_border_width_all(2)
+		r_box.set_corner_radius_all(14)
+		threat_ring.add_theme_stylebox_override("panel", r_box)
+		threat_ring.pivot_offset = threat_ring.size / 2.0
+		unit.add_child(threat_ring)
+		unit.move_child(threat_ring, 0)
+		var r_tw := threat_ring.create_tween().set_loops()
+		r_tw.tween_property(threat_ring, "scale", Vector2(1.04, 1.04), 0.5).set_trans(Tween.TRANS_SINE)
+		r_tw.parallel().tween_property(threat_ring, "modulate:a", 0.4, 0.5)
+		r_tw.tween_property(threat_ring, "scale", Vector2(0.98, 0.98), 0.5).set_trans(Tween.TRANS_SINE)
+		r_tw.parallel().tween_property(threat_ring, "modulate:a", 1.0, 0.5)
+	else:
+		threat_ring.visible = true
+	return threat_ring
 
 func _status_chip_clickable(status_key: String, glyph: String, amount: int, color: Color, height := 19.0, width := 38.0) -> Control:
 	var chip := g._status_chip(glyph, amount, color, height, width)
@@ -5119,10 +5190,37 @@ func _update_danger_vignette() -> void:
 			g._haptic("heavy")
 			if g.has_method("_set_low_hp_tension_audio"):
 				g._set_low_hp_tension_audio(true)
+			_spawn_guardian_wisp(vig)
+		else:
+			_spawn_guardian_wisp(existing)
 	else:
 		_clear_danger_vignette()
 		if g.has_method("_set_low_hp_tension_audio"):
 			g._set_low_hp_tension_audio(false)
+
+func _spawn_guardian_wisp(vig: Control) -> void:
+	if vig == null or not is_instance_valid(vig): return
+	if vig.get_node_or_null("GuardianWispParticles") != null: return
+	var wisp := CPUParticles2D.new()
+	wisp.name = "GuardianWispParticles"
+	wisp.emitting = true
+	wisp.amount = 20
+	wisp.lifetime = 1.4
+	wisp.speed_scale = 1.0
+	wisp.direction = Vector2(0, -1)
+	wisp.spread = 45.0
+	wisp.initial_velocity_min = 30.0
+	wisp.initial_velocity_max = 70.0
+	wisp.gravity = Vector2(0, -35)
+	wisp.scale_amount_min = 2.5
+	wisp.scale_amount_max = 5.5
+	wisp.color = Color(0.38, 0.88, 1.0, 0.85)
+	var p_sprite: Node2D = g.root.find_child("PlayerSprite", true, false) as Node2D if (g.root and is_instance_valid(g.root)) else null
+	if p_sprite != null and is_instance_valid(p_sprite):
+		wisp.position = p_sprite.global_position + Vector2(0, 10)
+	else:
+		wisp.position = Vector2(110, 520)
+	vig.add_child(wisp)
 
 func _clear_danger_vignette(immediate: bool = false) -> void:
 	if g.overlay == null: return

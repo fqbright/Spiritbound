@@ -761,5 +761,156 @@ func test_realm_breakthrough_ceremony():
 	assert_not_null(confirm_btn, "BreakthroughConfirmBtn present")
 	modal.queue_free()
 
+func test_title_screen_no_overflow_bounds():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	g.show_title_screen()
+	var start_btn = g.root.find_child("TitleStartBtn", true, false)
+	assert_not_null(start_btn, "TitleStartBtn present")
+	var guest_btn = g.root.find_child("TitleGuestBtn", true, false)
+	assert_not_null(guest_btn, "TitleGuestBtn present")
+	var apple_btn = g.root.find_child("TitleAppleBtn", true, false)
+	assert_not_null(apple_btn, "TitleAppleBtn present")
+	var google_btn = g.root.find_child("TitleGoogleBtn", true, false)
+	assert_not_null(google_btn, "TitleGoogleBtn present")
+
+func test_battle_speed_toggle_visuals():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	add_child_autofree(g)
+	var speed_btn := Button.new()
+	speed_btn.name = "SpeedToggle"
+	g.root.add_child(speed_btn)
+	g.battle_speed = 1.0
+	g._cycle_speed()
+	assert_eq(g.battle_speed, 1.5, "Cycled from 1x to 1.5x")
+	assert_eq(speed_btn.text, "1.5x", "Speed button text updated to 1.5x")
+	g._cycle_speed()
+	assert_eq(g.battle_speed, 2.0, "Cycled from 1.5x to 2x")
+	assert_eq(speed_btn.text, "2x", "Speed button text updated to 2x")
+	g._cycle_speed()
+	assert_eq(g.battle_speed, 3.0, "Cycled from 2x to 3x")
+	g._cycle_speed()
+	assert_eq(g.battle_speed, 4.0, "Cycled from 3x to 4x")
+	assert_eq(speed_btn.text, "⚡4x", "Speed button text updated to ⚡4x")
+	g._cycle_speed()
+	assert_eq(g.battle_speed, 1.0, "Cycled from 4x back to 1x")
+
+func test_shield_retain_indicator():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen = load("res://scripts/game_battle_screen.gd").new(g)
+	var combat := SpiritCombat.new(content)
+	combat.create(42, _test_encounter(), ["strike", "ward"], 60, {}, [], {}, {}, [], {}, {}, {}, {})
+	g.combat = combat
+
+	var shield_box := Control.new()
+	combat.state.player["bastion_form_active"] = true
+	battle_screen._update_player_shield_retain_indicator(shield_box)
+	var badge = shield_box.get_node_or_null("ShieldRetainBadge")
+	assert_not_null(badge, "ShieldRetainBadge created when bastion_form_active is true")
+	assert_true(badge.visible, "Badge is visible")
+
+	combat.state.player["bastion_form_active"] = false
+	battle_screen._update_player_shield_retain_indicator(shield_box)
+	assert_false(badge.visible, "Badge is hidden when bastion_form_active is false")
+
+func test_enemy_lethal_intent_warning():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen = load("res://scripts/game_battle_screen.gd").new(g)
+	var combat := SpiritCombat.new(content)
+	combat.create(42, _test_encounter(), ["strike", "ward"], 60, {}, [], {}, {}, [], {}, {}, {}, {})
+	g.combat = combat
+
+	var enemy_box := Control.new()
+	enemy_box.size = Vector2(100, 100)
+	var enemy: Dictionary = {"intent": {"kind": "critical", "amount": 65}}
+	battle_screen._apply_threat_warning_ring(enemy_box, enemy)
+	var ring = enemy_box.get_node_or_null("ThreatWarningRing")
+	assert_not_null(ring, "ThreatWarningRing created for high threat intent")
+	assert_true(ring.visible, "ThreatWarningRing is visible")
+
+func test_guardian_wisp_on_danger():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen = load("res://scripts/game_battle_screen.gd").new(g)
+	var vig := Panel.new()
+	vig.name = "DangerVignette"
+	g.overlay.add_child(vig)
+	battle_screen._spawn_guardian_wisp(vig)
+	var wisp = vig.get_node_or_null("GuardianWispParticles")
+	assert_not_null(wisp, "GuardianWispParticles created inside danger vignette")
+	assert_true(wisp is CPUParticles2D, "Guardian wisp is CPUParticles2D")
+	vig.queue_free()
+
+func test_chapter_quick_jump_modal():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.profile.unlocked = 15
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var map_screen = load("res://scripts/game_map_screen.gd").new(g)
+	map_screen._show_chapter_jump_modal()
+	var modal = g.overlay.get_node_or_null("ChapterJumpModal")
+	assert_not_null(modal, "ChapterJumpModal created")
+	var close_btn = modal.find_child("ChapterJumpCloseBtn", true, false)
+	assert_not_null(close_btn, "ChapterJumpCloseBtn present")
+	var jump_btn_0 = modal.find_child("ChapterJumpBtn_0", true, false)
+	assert_not_null(jump_btn_0, "ChapterJumpBtn_0 present for chapter 0")
+	modal.queue_free()
+
+func test_deck_archetype_synergy_compass():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	# Give deck 5 fire cards
+	g.profile.deck = ["cinder_slash", "cinder_slash", "cinder_slash", "samadhi_fire", "strike"]
+	add_child_autofree(g)
+	var deck_screen = load("res://scripts/game_shop_deck_screen.gd").new(g)
+	var page := Control.new()
+	add_child_autofree(page)
+	var compass = deck_screen._render_archetype_synergy_compass(page)
+	assert_not_null(compass, "DeckSynergyCompass rendered")
+	assert_eq(compass.name, "DeckSynergyCompass")
+	page.queue_free()
+
+func test_combat_pile_inspectors():
+	var g := SpiritGame.new()
+	g.content = content
+	g.profile = SpiritSave.defaults(content)
+	g.overlay = Control.new()
+	add_child_autofree(g.overlay)
+	add_child_autofree(g)
+	var battle_screen = load("res://scripts/game_battle_screen.gd").new(g)
+	var cards: Array = [
+		{"card_id": "strike", "name": "烈火斩", "cost": 1, "description": "造成伤害"},
+		{"card_id": "ward", "name": "护体印", "cost": 1, "description": "获得护盾"}
+	]
+	battle_screen.show_pile_inspector("ui.pile_draw_title", cards)
+	var modal = g.overlay.get_node_or_null("PileInspector")
+	assert_not_null(modal, "PileInspector backdrop created for draw pile")
+	var close_btn = modal.find_child("PileCloseBtn", true, false)
+	assert_not_null(close_btn, "PileCloseBtn present")
+	modal.queue_free()
+
+
 
 

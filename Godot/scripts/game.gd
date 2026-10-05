@@ -681,10 +681,20 @@ func _cycle_speed() -> void:
 	battle_speed = BATTLE_SPEED_OPTIONS[idx]
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
+	_haptic("light")
 	var speed_label: String = "⚡4x" if battle_speed >= 4.0 else ((str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x")
 	var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button if root != null and is_instance_valid(root) else null
 	if speed_btn != null and is_instance_valid(speed_btn):
 		speed_btn.text = speed_label
+		var speed_color: Color = JADE
+		if battle_speed >= 4.0: speed_color = Color("a855f7")
+		elif battle_speed >= 3.0: speed_color = EMBER
+		elif battle_speed >= 2.0: speed_color = GOLD
+		speed_btn.add_theme_color_override("font_color", speed_color)
+		speed_btn.pivot_offset = speed_btn.size / 2.0
+		var tw := speed_btn.create_tween()
+		tw.tween_property(speed_btn, "scale", Vector2(1.22, 1.22), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(speed_btn, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	elif is_inside_tree() and combat != null:
 		show_battle()
 	if auto_battle_active and not resolving and combat != null and combat.state.phase == "player":
@@ -821,31 +831,35 @@ func show_title_screen() -> void:
 	root.add_child(backdrop)
 	root.move_child(backdrop, 0)
 
-	var page := _create_scrollable_page(8)
+	var page := _create_scrollable_page(6)
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	# Fox spirit crest
 	var crest := TextureRect.new()
 	crest.texture = _get_character_texture("fox")
-	crest.custom_minimum_size = Vector2(0, 64)
+	crest.custom_minimum_size = Vector2(0, 46)
 	crest.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	crest.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	page.add_child(crest)
 
-	# Logo
+	# Logo with subtle breathing animation
 	var logo := TextureRect.new()
 	logo.name = "TitleScreenLogo"
 	var logo_tex: Texture2D = load("res://assets/ui/spiritbound_logo.png")
 	logo.texture = logo_tex
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(190, 44)
+	logo.custom_minimum_size = Vector2(170, 36)
 	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	logo.pivot_offset = Vector2(85, 18)
+	var l_tw := logo.create_tween().set_loops()
+	l_tw.tween_property(logo, "scale", Vector2(1.02, 1.02), 1.8).set_trans(Tween.TRANS_SINE)
+	l_tw.tween_property(logo, "scale", Vector2(0.98, 0.98), 1.8).set_trans(Tween.TRANS_SINE)
 	page.add_child(logo)
 
-	page.add_child(_label(t("ui.auth_start_subtitle"), 11, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label(t("ui.auth_start_subtitle"), 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 
-	# Account Status Card
+	# Account Status Capsule Badge
 	var is_linked := SpiritSave.is_cloud_linked(profile)
 	var acc_name: String = str(profile.get("account", {}).get("name", "")).strip_edges()
 	if acc_name.is_empty():
@@ -853,97 +867,105 @@ func show_title_screen() -> void:
 	var acc_email: String = str(profile.get("account", {}).get("email", ""))
 
 	var acc_card := PanelContainer.new()
-	var acc_style := _panel(Color("0c1a1e", 0.9), 10, JADE if is_linked else Color("c4923e"))
-	acc_style.content_margin_left = 12
-	acc_style.content_margin_right = 12
-	acc_style.content_margin_top = 6
-	acc_style.content_margin_bottom = 6
+	var acc_style := _panel(Color("0c1a1e", 0.92), 14, JADE if is_linked else Color("c4923e", 0.8))
+	acc_style.content_margin_left = 10
+	acc_style.content_margin_right = 10
+	acc_style.content_margin_top = 4
+	acc_style.content_margin_bottom = 4
 	acc_card.add_theme_stylebox_override("panel", acc_style)
-
-	var acc_vbox := VBoxContainer.new()
-	acc_vbox.add_theme_constant_override("separation", 3)
-	acc_card.add_child(acc_vbox)
+	acc_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 	var acc_top_row := HBoxContainer.new()
 	acc_top_row.add_theme_constant_override("separation", 6)
 
-	var acc_icon_lbl := _label("☁️" if is_linked else "👤", 13, JADE if is_linked else GOLD)
+	var acc_icon_lbl := _label("☁️" if is_linked else "👤", 11, JADE if is_linked else GOLD)
 	acc_top_row.add_child(acc_icon_lbl)
 
 	var display_label := acc_name
 	if is_linked and not acc_email.is_empty():
 		display_label += " (" + acc_email + ")"
-	var acc_name_lbl := _label(display_label, 12, TEXT)
-	acc_name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var acc_name_lbl := _label(display_label, 11, TEXT)
 	acc_top_row.add_child(acc_name_lbl)
 
 	var status_tag := _label(t("ui.auth_cloud_synced") if is_linked else t("ui.auth_status_guest"), 9, JADE if is_linked else Color("e09c48"))
 	acc_top_row.add_child(status_tag)
-	acc_vbox.add_child(acc_top_row)
+	acc_card.add_child(acc_top_row)
 
 	page.add_child(acc_card)
 
-	# Main Start Button
+	# Main Start Button (Prominent Golden-Ember glow)
 	var start_btn := _button(t("ui.auth_start_adventure"), func():
 		if not SpiritSave.has_account_name(profile):
 			_create_account(acc_name)
 		else:
 			show_map()
-	, EMBER, Vector2(0, 44))
+	, EMBER, Vector2(0, 42))
 	start_btn.name = "TitleStartBtn"
 	page.add_child(start_btn)
 
-	# One-Click Device Cloud Sync Button (if not yet linked to cloud)
+	# Secondary Sync / Auth Entry Row (Compact 32px height)
+	var auth_row := HBoxContainer.new()
+	auth_row.add_theme_constant_override("separation", 6)
 	if not is_linked:
-		var device_btn := _button(t("ui.auth_btn_device"), func():
+		var device_btn := _button("⚡ " + t("ui.auth_btn_device"), func():
 			SpiritAuth.sign_in_with_device(self, func(ok, _p):
 				if ok:
 					show_title_screen()
 			)
-		, JADE, Vector2(0, 36))
+		, Color("143b35"), Vector2(0, 32))
 		device_btn.name = "TitleDeviceAuthBtn"
-		page.add_child(device_btn)
+		device_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if font_cjk: device_btn.add_theme_font_override("font", font_cjk)
+		device_btn.add_theme_font_size_override("font_size", 11)
+		auth_row.add_child(device_btn)
 
-	# Account Switch / Login Button
-	var auth_btn := _button(t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title"), func():
+	var auth_btn := _button("☁️ " + (t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title")), func():
 		show_auth_modal(func(): show_map())
-	, Color("1a4049") if not is_linked else JADE, Vector2(0, 36))
+	, Color("1a4049") if not is_linked else JADE, Vector2(0, 32))
 	auth_btn.name = "TitleAuthBtn"
-	page.add_child(auth_btn)
+	auth_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if font_cjk: auth_btn.add_theme_font_override("font", font_cjk)
+	auth_btn.add_theme_font_size_override("font_size", 11)
+	auth_row.add_child(auth_btn)
+	page.add_child(auth_row)
 
-	# Quick OAuth row (Apple, Google, Guest)
+	# Quick OAuth row: Apple, Google, Guest (Clean 28px height)
 	var oauth_row := HBoxContainer.new()
-	oauth_row.add_theme_constant_override("separation", 8)
+	oauth_row.add_theme_constant_override("separation", 6)
 
 	var apple_btn := _button("Apple", func():
 		SpiritAuth.sign_in_with_apple(self, func(_ok, _p): show_map())
-	, Color("080808"), Vector2(0, 36))
+	, Color("080808"), Vector2(0, 28))
 	apple_btn.name = "TitleAppleBtn"
 	apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if font_cjk: apple_btn.add_theme_font_override("font", font_cjk)
+	apple_btn.add_theme_font_size_override("font_size", 10)
 	var apple_icon := TextureRect.new()
 	apple_icon.texture = load("res://assets/icons/icon_apple.png")
-	apple_icon.custom_minimum_size = Vector2(16, 16)
+	apple_icon.custom_minimum_size = Vector2(14, 14)
 	apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	apple_icon.position = Vector2(10, 10)
+	apple_icon.position = Vector2(8, 7)
 	apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	apple_btn.add_child(apple_icon)
 	oauth_row.add_child(apple_btn)
 
 	var google_btn := _button("Google", func():
 		SpiritAuth.sign_in_with_google(self, func(_ok, _p): show_map())
-	, Color("f0f2f5"), Vector2(0, 36))
+	, Color("f0f2f5"), Vector2(0, 28))
 	google_btn.name = "TitleGoogleBtn"
 	google_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	google_btn.add_theme_color_override("font_color", Color("1f1f1f"))
 	google_btn.add_theme_color_override("font_hover_color", Color("111111"))
 	google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
+	if font_cjk: google_btn.add_theme_font_override("font", font_cjk)
+	google_btn.add_theme_font_size_override("font_size", 10)
 	var google_icon := TextureRect.new()
 	google_icon.texture = load("res://assets/icons/icon_google.png")
-	google_icon.custom_minimum_size = Vector2(16, 16)
+	google_icon.custom_minimum_size = Vector2(14, 14)
 	google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	google_icon.position = Vector2(10, 10)
+	google_icon.position = Vector2(8, 7)
 	google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	google_btn.add_child(google_icon)
 	oauth_row.add_child(google_btn)
@@ -952,16 +974,18 @@ func show_title_screen() -> void:
 		if not SpiritSave.has_account_name(profile):
 			_create_account("灵界探险家")
 		show_map()
-	, Color("17363e"), Vector2(0, 36))
+	, Color("17363e"), Vector2(0, 28))
 	guest_btn.name = "TitleGuestBtn"
 	guest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if font_cjk: guest_btn.add_theme_font_override("font", font_cjk)
+	guest_btn.add_theme_font_size_override("font_size", 10)
 	oauth_row.add_child(guest_btn)
 
 	page.add_child(oauth_row)
 
-	# Bottom utility row: Language, Settings, Version
+	# Bottom utility row: Language, Settings, and Version (One single compact line)
 	var bot_row := HBoxContainer.new()
-	bot_row.add_theme_constant_override("separation", 10)
+	bot_row.add_theme_constant_override("separation", 8)
 	bot_row.alignment = BoxContainer.ALIGNMENT_CENTER
 
 	var lang_btn := _button("中 / EN", func():
@@ -969,17 +993,23 @@ func show_title_screen() -> void:
 		profile.language = lang
 		SpiritSave.write(profile)
 		show_title_screen()
-	, Color("142226"), Vector2(70, 30))
+	, Color("142226"), Vector2(64, 26))
+	if font_cjk: lang_btn.add_theme_font_override("font", font_cjk)
+	lang_btn.add_theme_font_size_override("font_size", 10)
 	bot_row.add_child(lang_btn)
 
 	var set_btn := _button(t("ui.nav_settings"), func():
 		show_settings()
-	, Color("142226"), Vector2(70, 30))
+	, Color("142226"), Vector2(64, 26))
+	if font_cjk: set_btn.add_theme_font_override("font", font_cjk)
+	set_btn.add_theme_font_size_override("font_size", 10)
 	bot_row.add_child(set_btn)
 
-	page.add_child(bot_row)
+	var ver_lbl := _label("v1.1.0 · Build 46", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	ver_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bot_row.add_child(ver_lbl)
 
-	page.add_child(_label("v1.0.5 · Build 26", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(bot_row)
 
 func show_account_setup(from_rename: bool = false) -> void:
 	_close_settings()

@@ -823,15 +823,17 @@ func _add_map_chapter(chapter: int) -> void:
 	band.add_child(bottom_fade)
 
 	var locked: bool = chapter * 5 > int(g.profile.unlocked)
-	# The chapter name used to sit inside a framed Panel with prev/next buttons either side;
-	# both were dropped in favor of a left/right swipe to change chapters (see game.gd's
-	# _input()), so the name now just floats over the painted art with a drop shadow for
-	# legibility, matching the stage-pin captions' existing floating-text treatment.
+	# Chapter name floats over the painted art. Tapping opens Chapter Quick-Jump modal.
 	var plaque := Control.new()
 	plaque.name = "ChapterPlaque"
 	plaque.position = Vector2(g.MAP_WIDTH / 2.0 - 130.0, 114.0)
 	plaque.size = Vector2(260, 52)
-	plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plaque.mouse_filter = Control.MOUSE_FILTER_STOP if not locked else Control.MOUSE_FILTER_IGNORE
+	if not locked:
+		plaque.gui_input.connect(func(ev: InputEvent):
+			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+				_show_chapter_jump_modal()
+		)
 	band.add_child(plaque)
 
 	var plaque_stack := VBoxContainer.new()
@@ -846,7 +848,8 @@ func _add_map_chapter(chapter: int) -> void:
 	plaque_eyebrow.add_theme_constant_override("shadow_offset_y", 1)
 	plaque_stack.add_child(plaque_eyebrow)
 
-	var plaque_name := g._label(g.content.chapter_name(chapter, g.lang), 15, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var plaque_title_text := g.content.chapter_name(chapter, g.lang) + (" ▾" if not locked else "")
+	var plaque_name := g._label(plaque_title_text, 15, g.TEXT if not locked else g.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	plaque_name.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
 	plaque_name.add_theme_constant_override("shadow_offset_y", 1)
 	plaque_stack.add_child(plaque_name)
@@ -1336,6 +1339,73 @@ func _add_stage_pin(index: int) -> void:
 	caption.position = Vector2(point.x - 56.0, point.y + 6.0)
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.map_canvas.add_child(caption)
+
+func _show_chapter_jump_modal() -> void:
+	if g.overlay == null: return
+	var modal := g._modal_dialog("ChapterJumpModal", func():
+		var ex: Node = g.overlay.get_node_or_null("ChapterJumpModal")
+		if ex: ex.queue_free()
+	)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(330, 420)
+	var pstyle := g._panel(Color("0c1a1f", 0.96), 14, g.JADE)
+	pstyle.content_margin_left = 16
+	pstyle.content_margin_right = 16
+	pstyle.content_margin_top = 16
+	pstyle.content_margin_bottom = 16
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+
+	var head := HBoxContainer.new()
+	var title_text := "行历画卷 · 快速跳转" if g.lang == "zh-Hans" else "Chronicle · Quick Jump"
+	head.add_child(g._label(title_text, 16, g.GOLD))
+	var close_btn := g._button("✕", func(): modal.queue_free(), Color("17363e"), Vector2(30, 30))
+	close_btn.name = "ChapterJumpCloseBtn"
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	head.add_child(close_btn)
+	list.add_child(head)
+
+	var sub_text := "点击已解锁章节，快速穿梭画卷" if g.lang == "zh-Hans" else "Tap an unlocked chapter to travel"
+	list.add_child(g._label(sub_text, 11, g.MUTED))
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(298, 320)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list.add_child(scroll)
+
+	var ch_vbox := VBoxContainer.new()
+	ch_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ch_vbox.add_theme_constant_override("separation", 6)
+	scroll.add_child(ch_vbox)
+
+	var max_unlocked_ch: int = clampi(int(g.profile.unlocked) / 5, 0, 49)
+	for ch_idx in range(max_unlocked_ch + 1):
+		var ch_name := g.content.chapter_name(ch_idx, g.lang)
+		var is_cur := (ch_idx == g.current_map_chapter)
+		var btn_text := "第 %d 章 · %s%s" % [ch_idx + 1, ch_name, (" ★" if is_cur else "")]
+		var btn_color := g.JADE if is_cur else Color("15262c")
+		var target_ch := ch_idx
+		var ch_btn := g._button(btn_text, func():
+			g.current_map_chapter = target_ch
+			modal.queue_free()
+			show_map()
+			g._haptic("light")
+		, btn_color, Vector2(0, 34))
+		ch_btn.name = "ChapterJumpBtn_%d" % ch_idx
+		ch_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ch_vbox.add_child(ch_btn)
 
 func _show_ascension_modal() -> void:
 	var modal := g._modal_dialog("AscensionModal", func():

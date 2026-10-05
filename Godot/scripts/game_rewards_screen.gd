@@ -23,6 +23,9 @@ func show_reward() -> void:
 	page.alignment = BoxContainer.ALIGNMENT_CENTER
 	page.add_child(g._label(g.t("ui.battle_won"), 26, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	_spawn_victory_coin_fountain(page)
+	_spawn_victory_spirit_radiance(page)
+	g.play_sfx("battle_victory")
+	g._haptic("heavy")
 
 	# Battle Telemetry Summary Row
 	if g.battle_telemetry and (int(g.battle_telemetry.get("dmg_dealt", 0)) > 0 or int(g.battle_telemetry.get("turns", 1)) > 0):
@@ -1891,6 +1894,33 @@ func _spawn_victory_coin_fountain(parent: Control) -> void:
 	var holder_clean := holder.create_tween()
 	holder_clean.tween_interval(1.2)
 	holder_clean.tween_callback(holder.queue_free)
+
+func _spawn_victory_spirit_radiance(parent: Control) -> void:
+	if parent == null or not is_instance_valid(parent): return
+	if bool(g.profile.get("reduce_motion", false)): return
+	var p := CPUParticles2D.new()
+	p.name = "VictoryRadianceParticles"
+	p.position = Vector2(g.MAP_WIDTH * 0.5, 0.0)
+	p.emitting = true
+	p.amount = 32
+	p.lifetime = 2.4
+	p.speed_scale = 1.0
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(g.MAP_WIDTH * 0.5, 8.0)
+	p.direction = Vector2(0, 1)
+	p.spread = 25.0
+	p.initial_velocity_min = 60.0
+	p.initial_velocity_max = 140.0
+	p.gravity = Vector2(0, 30)
+	p.scale_amount_min = 2.0
+	p.scale_amount_max = 4.5
+	p.color = Color(1.0, 0.84, 0.35, 0.85)
+	parent.add_child(p)
+	var tw := p.create_tween()
+	tw.tween_interval(2.5)
+	tw.tween_property(p, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(p.queue_free)
+
 
 
 

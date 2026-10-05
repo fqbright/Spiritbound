@@ -1467,6 +1467,125 @@ func _rename_preset_modal(slot_idx: int) -> void:
 	input.text_submitted.connect(func(_t: String) -> void: save_btn.pressed.emit())
 	list.add_child(save_btn)
 
+func _render_archetype_synergy_compass(parent: Control) -> Control:
+	if parent == null or not is_instance_valid(parent): return null
+	var deck: Array = g.profile.deck if (g.profile and g.profile.get("deck") is Array) else []
+	var counts := {"fire": 0, "water": 0, "frost": 0, "thunder": 0, "gale": 0, "stone": 0, "poison": 0}
+	for cid in deck:
+		var c := g.content.card(cid)
+		var el: String = str(c.get("element", "")).to_lower()
+		if el in counts:
+			counts[el] += 1
+		elif el == "ice":
+			counts["frost"] += 1
+		elif el == "wind":
+			counts["gale"] += 1
+
+	var water_frost: int = counts["frost"] + counts["water"]
+	var thunder_gale: int = counts["thunder"] + counts["gale"]
+	var fire_cnt: int = counts["fire"]
+	var stone_cnt: int = counts["stone"]
+	var poison_cnt: int = counts["poison"]
+
+	var top_type := "balanced"
+	var max_cnt := 0
+
+	if fire_cnt > max_cnt:
+		max_cnt = fire_cnt
+		top_type = "fire"
+	if water_frost > max_cnt:
+		max_cnt = water_frost
+		top_type = "frost"
+	if thunder_gale > max_cnt:
+		max_cnt = thunder_gale
+		top_type = "thunder"
+	if stone_cnt > max_cnt:
+		max_cnt = stone_cnt
+		top_type = "stone"
+	if poison_cnt > max_cnt:
+		max_cnt = poison_cnt
+		top_type = "poison"
+
+	if max_cnt < 3:
+		top_type = "balanced"
+
+	var arch_title := ""
+	var arch_color := g.GOLD
+	var synergy_rank := ""
+
+	var is_zh: bool = (g.lang == "zh-Hans")
+	if max_cnt >= 7:
+		synergy_rank = "天道合一 · 极境" if is_zh else "Divine Unity · Pinnacle"
+	elif max_cnt >= 4:
+		synergy_rank = "气脉贯通 · 极佳" if is_zh else "Harmonious · Great"
+	else:
+		synergy_rank = "诸法汇聚 · 均衡" if is_zh else "Multifaceted · Balanced"
+
+	match top_type:
+		"fire":
+			arch_title = "🔥 纯阳烈火流" if is_zh else "🔥 Pure Flame Stance"
+			arch_color = Color("f97316")
+		"frost":
+			arch_title = "❄️ 玄阴霜魄流" if is_zh else "❄️ Frost Soul Stance"
+			arch_color = Color("38bdf8")
+		"thunder":
+			arch_title = "⚡ 疾风迅雷流" if is_zh else "⚡ Tempest Flash Stance"
+			arch_color = Color("c084fc")
+		"stone":
+			arch_title = "🪨 磐石不败流" if is_zh else "🪨 Iron Bastion Stance"
+			arch_color = Color("f59e0b")
+		"poison":
+			arch_title = "☠️ 幽冥蛊毒流" if is_zh else "☠️ Nether Venom Stance"
+			arch_color = Color("4ade80")
+		_:
+			arch_title = "⚔️ 万法随心流" if is_zh else "⚔️ Omni Synthesis Stance"
+			arch_color = g.GOLD
+
+	var box := PanelContainer.new()
+	box.name = "DeckSynergyCompass"
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var b_style := g._panel(Color(0.06, 0.12, 0.16, 0.94), 10, arch_color * Color(1, 1, 1, 0.75))
+	b_style.content_margin_left = 12
+	b_style.content_margin_right = 12
+	b_style.content_margin_top = 6
+	b_style.content_margin_bottom = 6
+	box.add_theme_stylebox_override("panel", b_style)
+
+	var hbox := HBoxContainer.new()
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 10)
+	box.add_child(hbox)
+
+	var left_vbox := VBoxContainer.new()
+	left_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_vbox.add_theme_constant_override("separation", 1)
+	hbox.add_child(left_vbox)
+
+	var title_lbl := g._label(arch_title, 13, arch_color)
+	left_vbox.add_child(title_lbl)
+
+	var rank_lbl := g._label(synergy_rank, 10, g.MUTED)
+	left_vbox.add_child(rank_lbl)
+
+	# Element breakdown chips
+	var el_row := HBoxContainer.new()
+	el_row.add_theme_constant_override("separation", 6)
+	if fire_cnt > 0:
+		el_row.add_child(g._label("🔥%d" % fire_cnt, 10, Color("fdba74")))
+	if water_frost > 0:
+		el_row.add_child(g._label("❄️%d" % water_frost, 10, Color("7dd3fc")))
+	if thunder_gale > 0:
+		el_row.add_child(g._label("⚡%d" % thunder_gale, 10, Color("e9d5ff")))
+	if stone_cnt > 0:
+		el_row.add_child(g._label("🪨%d" % stone_cnt, 10, Color("fde68a")))
+	if poison_cnt > 0:
+		el_row.add_child(g._label("☠️%d" % poison_cnt, 10, Color("86efac")))
+	hbox.add_child(el_row)
+
+	parent.add_child(box)
+	return box
+
 func show_deck() -> void:
 	g._clear(); g._play_music(false)
 	g._back_action = g.show_map
@@ -1535,6 +1654,8 @@ func show_deck() -> void:
 	inscribe_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	inscribe_bar.add_child(inscribe_btn)
 	page.add_child(inscribe_bar)
+
+	_render_archetype_synergy_compass(page)
 
 	# Search & Filter Chips (F3)
 	var search_row := HBoxContainer.new()
