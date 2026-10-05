@@ -250,7 +250,7 @@ func _add_notification_dot(anchor: Control, btn_size: Vector2) -> void:
 
 # Speed-adjusted timer: combat delays are divided by battle_speed so 2x plays twice as fast.
 func show_map() -> void:
-	g._clear(); g._play_music(false)
+	g._clear(); g._play_music(false, g.current_map_chapter)
 	var backdrop := ColorRect.new(); backdrop.color = g.BG; backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	g.root.add_child(backdrop); g.root.move_child(backdrop,0)
 
@@ -1792,7 +1792,7 @@ func _show_branch_picker(index: int, options: Array[String]) -> void:
 		card.pressed.connect(select_option)
 
 func show_chapter_transition(cleared_ch: int, next_ch: int, on_complete := Callable()) -> void:
-	g._clear(); g._play_music(false)
+	g._clear(); g._play_music(false, next_ch)
 	g._back_action = Callable()
 
 	var bg_black := ColorRect.new()

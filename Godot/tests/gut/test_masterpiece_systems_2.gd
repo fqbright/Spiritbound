@@ -603,6 +603,12 @@ func test_boss_phase_2_enrage_cutin_trigger():
 func test_music_tracks_integrity_and_sample_rates():
 	var tracks := [
 		"res://assets/audio/map_symphony.wav",
+		"res://assets/audio/map_biome_0.wav",
+		"res://assets/audio/map_biome_1.wav",
+		"res://assets/audio/map_biome_2.wav",
+		"res://assets/audio/map_biome_3.wav",
+		"res://assets/audio/map_biome_4.wav",
+		"res://assets/audio/map_biome_5.wav",
 		"res://assets/audio/battle_stage_0.wav",
 		"res://assets/audio/battle_stage_1.wav",
 		"res://assets/audio/battle_stage_2.wav",
@@ -614,6 +620,21 @@ func test_music_tracks_integrity_and_sample_rates():
 		var stream = load(track) as AudioStream
 		assert_not_null(stream, "AudioStream loads successfully: %s" % track)
 		assert_gt(stream.get_length(), 20.0, "Soundtrack has full length > 20s: %s" % track)
+
+func test_map_biome_music_switching():
+	var g := SpiritGame.new()
+	add_child_autofree(g)
+	g._build_audio()
+	assert_eq(g.map_music_streams.size(), 6, "All 6 map biome music streams loaded")
+	for i in range(6):
+		assert_not_null(g.map_music_streams[i], "Biome stream %d is valid" % i)
+	
+	# Test dynamic switching per biome
+	for ch in range(12):
+		var expected_biome: int = ch % 6
+		g._play_music(false, ch)
+		assert_eq(g.map_music.stream, g.map_music_streams[expected_biome], "Map chapter %d plays biome %d track" % [ch, expected_biome])
+		assert_eq(g._current_map_biome_idx, expected_biome, "Tracked biome index matches chapter %d" % ch)
 
 func test_targeting_arc_zero_division_safety():
 	var arc_script = load("res://scripts/targeting_arc.gd")

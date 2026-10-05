@@ -114,6 +114,8 @@ var _back_action := Callable()
 var _swipe_origin := Vector2.ZERO
 var _swipe_tracking := false
 var map_music: AudioStreamPlayer
+var map_music_streams: Array[AudioStream] = []
+var _current_map_biome_idx: int = -1
 var battle_music: AudioStreamPlayer
 var battle_tension_music: AudioStreamPlayer
 var battle_music_streams: Array[AudioStream] = []
@@ -1519,9 +1521,24 @@ func _create_scrollable_page(separation := 6) -> VBoxContainer:
 
 
 func _build_audio() -> void:
-	map_music = AudioStreamPlayer.new(); map_music.stream = load("res://assets/audio/map_symphony.wav"); map_music.volume_db = -10; add_child(map_music)
+	map_music = AudioStreamPlayer.new(); map_music.volume_db = -10; add_child(map_music)
 	battle_music = AudioStreamPlayer.new(); battle_music.volume_db = -10; add_child(battle_music)
 	battle_tension_music = AudioStreamPlayer.new(); battle_tension_music.volume_db = -80; add_child(battle_tension_music)
+	map_music_streams = [
+		load("res://assets/audio/map_biome_0.wav"),
+		load("res://assets/audio/map_biome_1.wav"),
+		load("res://assets/audio/map_biome_2.wav"),
+		load("res://assets/audio/map_biome_3.wav"),
+		load("res://assets/audio/map_biome_4.wav"),
+		load("res://assets/audio/map_biome_5.wav"),
+	]
+	var fallback_map: AudioStream = load("res://assets/audio/map_symphony.wav")
+	for i in range(map_music_streams.size()):
+		if map_music_streams[i] == null:
+			map_music_streams[i] = fallback_map
+	map_music.stream = map_music_streams[0] if not map_music_streams.is_empty() and map_music_streams[0] != null else fallback_map
+	_current_map_biome_idx = 0
+
 	battle_music_streams = [
 		load("res://assets/audio/battle_stage_0.wav"),
 		load("res://assets/audio/battle_stage_1.wav"),
@@ -1590,7 +1607,7 @@ func play_sfx(sfx_name: String, pitch_range: float = 0.06, volume_db: float = 0.
 	player.pitch_scale = clampf(base_scale * combo_mult, 0.5, 2.5)
 	player.play()
 
-func _play_music(battle := false, stage_level: int = 0) -> void:
+func _play_music(battle := false, stage_or_chapter: int = -1) -> void:
 	if muted: return
 	var mus_vol: float = float(profile.get("music_volume", 1.0))
 	var target_db: float = 0.0 if mus_vol >= 0.99 else linear_to_db(maxf(mus_vol, 0.01))
@@ -1600,7 +1617,8 @@ func _play_music(battle := false, stage_level: int = 0) -> void:
 		if battle_music != null: battle_music.pitch_scale = 1.0
 		if map_music != null: map_music.stop()
 		if battle_music_streams.is_empty(): return
-		var stream_idx: int = clampi(stage_level, 0, battle_music_streams.size() - 1)
+		var stage_idx: int = stage_or_chapter if stage_or_chapter >= 0 else int(profile.get("position", 0)) % 5
+		var stream_idx: int = clampi(stage_idx, 0, battle_music_streams.size() - 1)
 		if battle_music_streams.size() > stream_idx and battle_music_streams[stream_idx] != null:
 			var target_stream: AudioStream = battle_music_streams[stream_idx]
 			if battle_music != null and (battle_music.stream != target_stream or not battle_music.playing):
@@ -1615,7 +1633,23 @@ func _play_music(battle := false, stage_level: int = 0) -> void:
 		if battle_tension_music != null:
 			battle_tension_music.volume_db = -80.0
 			battle_tension_music.stop()
-		if map_music != null and not map_music.playing: map_music.play()
+		var ch: int = stage_or_chapter if stage_or_chapter >= 0 else current_map_chapter
+		var biome_idx: int = posmod(ch, 6)
+		var target_stream: AudioStream = null
+		if map_music_streams.size() > biome_idx and map_music_streams[biome_idx] != null:
+			target_stream = map_music_streams[biome_idx]
+		elif map_music != null:
+			target_stream = map_music.stream
+		
+		if map_music != null:
+			if target_stream != null and map_music.stream != target_stream:
+				map_music.stream = target_stream
+				_current_map_biome_idx = biome_idx
+				map_music.play()
+			elif not map_music.playing:
+				if target_stream != null: map_music.stream = target_stream
+				_current_map_biome_idx = biome_idx
+				map_music.play()
 
 func _set_boss_phase_music(boosted: bool) -> void:
 	if battle_music != null and is_instance_valid(battle_music):
