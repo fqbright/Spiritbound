@@ -5,9 +5,20 @@ extends GutTest
 # ==============================================================================
 
 var content: SpiritContent
+var had_real_save: bool
+var real_save_text: String
 
 func before_all():
 	content = SpiritContent.new()
+	had_real_save = FileAccess.file_exists(SpiritSave.PATH)
+	if had_real_save:
+		real_save_text = FileAccess.open(SpiritSave.PATH, FileAccess.READ).get_as_text()
+
+func after_all():
+	if had_real_save:
+		FileAccess.open(SpiritSave.PATH, FileAccess.WRITE).store_string(real_save_text)
+	else:
+		SpiritSave.reset()
 
 func _create_game(lang := "zh-Hans", viewport_size := Vector2(390, 844)) -> SpiritGame:
 	var g := SpiritGame.new()
@@ -108,13 +119,8 @@ func test_five_elements_cycle_double_round_trip():
 	var initial_enemy_hp: int = combat.state.enemies[0].health
 
 	# Cycle 1: wood -> fire -> earth -> metal -> water (5 steps)
-	# Verify that five_elements_cycle_history accumulates and resets on completion
 	combat.state.five_elements_cycle_history = ["wood", "fire", "earth", "metal"]
 	combat.state.last_element = "metal"
-	# Playing water completes the 5-element cycle -> deals 25 damage and resets history
-	combat.state.hand = [{"card_id": "ward"}] # Let's make an ad-hoc card or use content
-	var water_card: Dictionary = {"id": "test_water", "element": "water", "cost": 0, "effects": []}
-	# Manually proc the cycle logic by playing with last_element set:
 	combat.state.five_elements_cycle_history.append("water")
 	if combat.state.five_elements_cycle_history.has("wood") and combat.state.five_elements_cycle_history.has("fire") and combat.state.five_elements_cycle_history.has("earth") and combat.state.five_elements_cycle_history.has("metal") and combat.state.five_elements_cycle_history.has("water"):
 		for ei in combat.state.enemies.size():
@@ -214,3 +220,208 @@ func test_multi_resolution_layout_safety():
 		assert_true(g.root.get_child_count() > 0, "[%s] Deck screen builds cleanly" % str(vp))
 
 		g.free()
+
+# ------------------------------------------------------------------------------
+# 8. Atomic Save & Backup Auto-Recovery Safety
+# ------------------------------------------------------------------------------
+
+func test_atomic_save_and_backup_recovery():
+	var test_profile := SpiritSave.defaults(content)
+	test_profile.gold = 777
+	test_profile.unlocked = 12
+	# Save once to create primary save
+	SpiritSave.write(test_profile)
+	# Save again with updated data to ensure .bak is populated
+	test_profile.gold = 888
+	SpiritSave.write(test_profile)
+
+	assert_true(FileAccess.file_exists(SpiritSave.PATH), "Primary save exists")
+	assert_true(FileAccess.file_exists(SpiritSave.PATH + ".bak"), "Backup save exists")
+
+	# Simulate sudden crash / 0-byte or corrupted primary save
+	var corrupt_f := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+	corrupt_f.store_string("{ 'truncated_json': 123... ")
+	corrupt_f.close()
+
+	# Loading should transparently recover from .bak
+	var recovered: Dictionary = SpiritSave.load_profile(content)
+	assert_true(int(recovered.gold) >= 777, "Recovered profile restored gold from backup (got %d)" % int(recovered.gold))
+	assert_eq(int(recovered.unlocked), 12, "Recovered profile restored unlocked stage from backup")
+
+# ------------------------------------------------------------------------------
+# 9. Currency & Stamina Negative / NaN Sanitization
+# ------------------------------------------------------------------------------
+
+func test_currency_and_stamina_corruption_sanitization():
+	var corrupt_data := {
+		"gold": -500,
+		"spirit_jade": -100,
+		"spirit_dust": -50,
+		"stamina": {"current": -25, "max": 0},
+		"music_volume": 2.5,
+		"sfx_volume": -0.5,
+		"text_scale": 0.2
+	}
+	var f := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+	f.store_string(JSON.stringify(corrupt_data))
+	f.close()
+	if FileAccess.file_exists(SpiritSave.PATH + ".bak"):
+		DirAccess.remove_absolute(SpiritSave.PATH + ".bak")
+
+	var loaded: Dictionary = SpiritSave.load_profile(content)
+	assert_eq(int(loaded.gold), 0, "Negative gold clamped to 0")
+	assert_eq(int(loaded.spirit_jade), 0, "Negative spirit_jade clamped to 0")
+	assert_eq(int(loaded.spirit_dust), 0, "Negative spirit_dust clamped to 0")
+	assert_true(int(loaded.stamina.max) >= 10, "Zero stamina max clamped to >= 10")
+	assert_true(int(loaded.stamina.current) >= 0, "Negative stamina current clamped to >= 0")
+	assert_true(loaded.music_volume <= 1.0, "Excessive music volume clamped to 1.0")
+	assert_true(loaded.sfx_volume >= 0.0, "Negative sfx volume clamped to 0.0")
+	assert_true(loaded.text_scale >= 0.8, "Sub-minimum text scale clamped to 0.8")
+
+# ------------------------------------------------------------------------------
+# 10. Corrupted Deck Presets Fallback Safety
+# ------------------------------------------------------------------------------
+
+func test_deck_presets_corruption_fallback():
+	var corrupt_presets := {
+		"deck_presets": {
+			"1": [],           # Empty
+			"2": ["strike"],   # Too few
+			"3": "not_an_array" # Malformed
+		}
+	}
+	var f := FileAccess.open(SpiritSave.PATH, FileAccess.WRITE)
+	f.store_string(JSON.stringify(corrupt_presets))
+	f.close()
+	if FileAccess.file_exists(SpiritSave.PATH + ".bak"):
+		DirAccess.remove_absolute(SpiritSave.PATH + ".bak")
+
+	var loaded: Dictionary = SpiritSave.load_profile(content)
+	assert_eq(loaded.deck_presets["1"].size(), 25, "Empty preset 1 restored to starting deck")
+	assert_eq(loaded.deck_presets["2"].size(), 25, "Undersized preset 2 restored to starting deck")
+	assert_eq(loaded.deck_presets["3"].size(), 25, "Non-array preset 3 restored to starting deck")
+
+# ------------------------------------------------------------------------------
+# 11. Combat DoT Lethal Victory Phase Transition Safety
+# ------------------------------------------------------------------------------
+
+func test_combat_dot_lethal_victory_transition():
+	var combat := SpiritCombat.new(content)
+	var encounter := {"name": "毒瘴精怪", "health": 4, "damage": 0, "chapter": 1, "level": 1, "adds": 0, "mechanics": {}}
+	combat.create(404, encounter, ["strike"], 60, {}, [], {}, {})
+	# Inflict lethal DoT on enemy (5 burn when enemy has 4 HP)
+	combat.state.enemies[0].burn = 5
+	var initial_player_hp: int = combat.state.player.health
+
+	# End turn: Burn should kill the enemy during DoT resolution
+	combat.end_turn()
+
+	assert_eq(combat.state.enemies[0].health, 0, "Enemy slain by burn DoT")
+	assert_eq(combat.state.phase, "won", "Combat immediately marks phase as won upon DoT kill")
+	assert_eq(combat.state.player.health, initial_player_hp, "Dead enemy does not inflict attack damage on player")
+
+# ------------------------------------------------------------------------------
+# 12. Combat Card Undo Edge Cases & Reversion Safety
+# ------------------------------------------------------------------------------
+
+func test_combat_undo_edge_cases():
+	var combat := SpiritCombat.new(content)
+	var encounter := {"name": "试炼木桩", "health": 100, "damage": 0, "chapter": 1, "level": 1, "adds": 0, "mechanics": {}}
+	combat.create(505, encounter, ["strike", "ward"], 60, {}, [], {}, {})
+	combat.state.hand = [{"uid": 101, "card_id": "strike"}]
+	combat.state.energy = 2
+
+	# Initial state: can_undo is false
+	assert_false(combat.can_undo(), "can_undo is false before playing cards")
+	assert_false(combat.undo_last_card(), "undo_last_card returns false safely when no history")
+
+	# Play strike (cost 1, deals 6 dmg)
+	var before_energy: int = combat.state.energy
+	var ok: bool = combat.play(0, 0)
+	assert_true(ok, "Card play succeeds")
+	assert_eq(combat.state.energy, before_energy - 1, "Energy consumed")
+	assert_eq(combat.state.enemies[0].health, 94, "Enemy took 6 damage")
+	assert_true(combat.can_undo(), "can_undo is true after playing card")
+
+	# Undo card play
+	var undone: bool = combat.undo_last_card()
+	assert_true(undone, "undo_last_card succeeds")
+	assert_eq(combat.state.energy, before_energy, "Energy restored on undo")
+	assert_eq(combat.state.enemies[0].health, 100, "Enemy HP restored on undo")
+	assert_false(combat.can_undo(), "can_undo is false after undoing")
+
+# ------------------------------------------------------------------------------
+# 13. Familiar Ultimate Qi Threshold & Reset Boundary
+# ------------------------------------------------------------------------------
+
+func test_familiar_ultimate_boundary_and_qi_reset():
+	var combat := SpiritCombat.new(content)
+	var encounter := {"name": "灵兽试炼", "health": 100, "damage": 0, "chapter": 1, "level": 1, "adds": 0, "mechanics": {}}
+	combat.create(606, encounter, ["strike"], 60, {}, [], {}, {})
+
+	# 1. At 99% Qi, activation rejected
+	combat.state.familiar_qi = 99
+	var res_fail: Dictionary = combat.activate_familiar_ultimate()
+	assert_false(res_fail.ok, "Ultimate rejected when Qi < 100")
+	assert_eq(combat.state.familiar_qi, 99, "Qi not consumed on failed activation")
+
+	# 2. At 100% Qi, activation succeeds
+	combat.state.familiar_qi = 100
+	var res_ok: Dictionary = combat.activate_familiar_ultimate()
+	assert_true(res_ok.ok, "Ultimate succeeds at 100 Qi")
+	assert_eq(combat.state.familiar_qi, 0, "Qi fully reset to 0")
+	assert_true(combat.state.player.shield >= 14, "Player gained at least 14 shield")
+	assert_eq(int(combat.state.enemies[0].get("weak", 0)), 2, "Enemy inflicted with 2 weak")
+
+	# 3. Consecutive immediate activation rejected
+	var res_again: Dictionary = combat.activate_familiar_ultimate()
+	assert_false(res_again.ok, "Immediate re-activation rejected")
+
+# ------------------------------------------------------------------------------
+# 14. Shop Payment Exact & Insufficient Balance Boundary
+# ------------------------------------------------------------------------------
+
+func test_shop_payment_exact_and_insufficient_currencies():
+	var g := _create_game()
+	var shop_scr := ShopDeckScreen.new(g)
+
+	# Scenario A: Exact gold payment
+	g.profile.gold = 50
+	g.profile.spirit_jade = 0
+	var pay_exact: Dictionary = shop_scr._resolve_payment(50, 20)
+	assert_eq(str(pay_exact.kind), "gold", "Resolves gold when exact amount available")
+	assert_eq(int(pay_exact.amount), 50, "Gold amount is 50")
+	var spent: bool = shop_scr._spend_payment(50, 20)
+	assert_true(spent, "Payment succeeds")
+	assert_eq(int(g.profile.gold), 0, "Gold balance is exactly 0 without negative balance")
+
+	# Scenario B: Insufficient gold, fallback to Spirit Jade
+	g.profile.gold = 10
+	g.profile.spirit_jade = 25
+	var pay_jade: Dictionary = shop_scr._resolve_payment(50, 20)
+	assert_eq(str(pay_jade.kind), "jade", "Falls back to jade when gold insufficient")
+	assert_eq(int(pay_jade.amount), 20, "Jade cost is 20")
+
+	# Scenario C: Insufficient for both
+	g.profile.gold = 10
+	g.profile.spirit_jade = 5
+	var pay_none: Dictionary = shop_scr._resolve_payment(50, 20)
+	assert_eq(str(pay_none.kind), "", "Returns empty payment kind when both currencies insufficient")
+	assert_false(shop_scr._can_pay(50, 20), "_can_pay returns false")
+	g.free()
+
+# ------------------------------------------------------------------------------
+# 15. Extreme Ascension Scaling Invariants
+# ------------------------------------------------------------------------------
+
+func test_extreme_ascension_scaling_invariants():
+	for asc_lvl in [0, 5, 10, 15, 20, 25]:
+		var combat := SpiritCombat.new(content)
+		var encounter := {"name": "天道试炼", "health": 100, "damage": 10, "chapter": 1, "level": 1, "adds": 0, "mechanics": {}}
+		combat.create(707 + asc_lvl, encounter, ["strike"], 60, {}, [], {}, {"ascension_level": asc_lvl})
+
+		assert_true(combat.state.player.health > 0, "[Asc %d] Player health is positive" % asc_lvl)
+		assert_true(combat.state.enemies[0].health >= 100, "[Asc %d] Enemy health scaled >= base" % asc_lvl)
+		assert_true(combat.state.enemies[0].damage >= 10, "[Asc %d] Enemy damage scaled >= base" % asc_lvl)
+		if asc_lvl >= 20:
+			assert_true(int(combat.state.get("ascension_level", 0)) >= 20, "Ascension 20+ recorded in combat state")

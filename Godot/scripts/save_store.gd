@@ -32,12 +32,36 @@ static func defaults(content: SpiritContent) -> Dictionary:
 
 static func load_profile(content: SpiritContent) -> Dictionary:
 	var base := defaults(content)
-	if not FileAccess.file_exists(PATH): return base
-	var file := FileAccess.open(PATH,FileAccess.READ)
-	var parsed = JSON.parse_string(file.get_as_text())
+	var parsed = null
+	if FileAccess.file_exists(PATH):
+		var file := FileAccess.open(PATH, FileAccess.READ)
+		if file != null:
+			var txt: String = file.get_as_text()
+			if not txt.is_empty():
+				parsed = JSON.parse_string(txt)
+	# If primary save is missing or corrupted, attempt recovery from .bak
+	if not parsed is Dictionary and FileAccess.file_exists(PATH + ".bak"):
+		var bak_file := FileAccess.open(PATH + ".bak", FileAccess.READ)
+		if bak_file != null:
+			var bak_txt: String = bak_file.get_as_text()
+			if not bak_txt.is_empty():
+				var bak_parsed = JSON.parse_string(bak_txt)
+				if bak_parsed is Dictionary:
+					parsed = bak_parsed
 	if not parsed is Dictionary: return base
 	for key in parsed: base[key] = parsed[key]
+	base.gold = maxi(0, int(base.get("gold", 30)))
+	base.spirit_jade = maxi(0, int(base.get("spirit_jade", 10)))
+	base.spirit_dust = maxi(0, int(base.get("spirit_dust", 0)))
+	base.music_volume = clampf(float(base.get("music_volume", 1.0)), 0.0, 1.0)
+	base.sfx_volume = clampf(float(base.get("sfx_volume", 1.0)), 0.0, 1.0)
+	base.text_scale = clampf(float(base.get("text_scale", 1.0)), 0.8, 1.3)
 	if not base.deck is Array or base.deck.size() < 12 or base.deck.size() > 50: base.deck = content.raw.startingDeck.duplicate()
+	if base.get("deck_presets") is Dictionary:
+		for p_key in base.deck_presets:
+			var p_deck = base.deck_presets[p_key]
+			if not p_deck is Array or p_deck.size() < 12 or p_deck.size() > 50:
+				base.deck_presets[p_key] = content.raw.startingDeck.duplicate()
 	if not base.get("card_branches") is Dictionary: base.card_branches = {}
 	if not base.has("first_boss_capstone_awarded"): base.first_boss_capstone_awarded = false
 	if not base.get("seven_day_journey") is Dictionary: base.seven_day_journey = {"unlocked_day": 1, "claimed": [], "progress": {}}
@@ -157,8 +181,8 @@ static func load_profile(content: SpiritContent) -> Dictionary:
 	if not base.get("stamina") is Dictionary:
 		base.stamina = {"current":100,"max":100,"last_regen_time":0}
 	else:
-		if not base.stamina.has("current"): base.stamina.current = 100
-		if not base.stamina.has("max"): base.stamina.max = 100
+		base.stamina.max = maxi(10, int(base.stamina.get("max", 100)))
+		base.stamina.current = clampi(int(base.stamina.get("current", 100)), 0, int(base.stamina.max))
 		if not base.stamina.has("last_regen_time"): base.stamina.last_regen_time = 0
 	# Saves written before accounts existed get one on load rather than on next write.
 	if not base.get("account") is Dictionary or not base.account.has("id"): base.account = new_account()
@@ -223,8 +247,39 @@ static func write(profile: Dictionary) -> void:
 	profile.updated_at = int(Time.get_unix_time_from_system())
 	profile.schema_version = SCHEMA_VERSION
 	var json_payload := JSON.stringify(profile, "  ")
-	var file := FileAccess.open(PATH, FileAccess.WRITE)
-	file.store_string(json_payload)
+	# 1. Write to temporary file first (atomic write)
+	var tmp_path := PATH + ".tmp"
+	var tmp_file := FileAccess.open(tmp_path, FileAccess.WRITE)
+	if tmp_file != null:
+		tmp_file.store_string(json_payload)
+		tmp_file.close()
+		# 2. Backup existing valid save
+		if FileAccess.file_exists(PATH):
+			var cur_file := FileAccess.open(PATH, FileAccess.READ)
+			if cur_file != null:
+				var cur_text := cur_file.get_as_text()
+				cur_file.close()
+				if not cur_text.is_empty():
+					var bak_file := FileAccess.open(PATH + ".bak", FileAccess.WRITE)
+					if bak_file != null:
+						bak_file.store_string(cur_text)
+						bak_file.close()
+		# 3. Commit tmp to target PATH
+		var dir := DirAccess.open("user://")
+		if dir != null:
+			if FileAccess.file_exists(PATH):
+				dir.remove(PATH.get_file())
+			dir.rename(tmp_path.get_file(), PATH.get_file())
+		else:
+			var direct_file := FileAccess.open(PATH, FileAccess.WRITE)
+			if direct_file != null:
+				direct_file.store_string(json_payload)
+				direct_file.close()
+	else:
+		var direct_file := FileAccess.open(PATH, FileAccess.WRITE)
+		if direct_file != null:
+			direct_file.store_string(json_payload)
+			direct_file.close()
 	if OS.get_name() == "iOS":
 		var icloud_f := FileAccess.open("user://icloud_trigger.json", FileAccess.WRITE)
 		if icloud_f != null:
@@ -318,6 +373,8 @@ static func unlink_account(profile: Dictionary) -> void:
 
 static func reset() -> void:
 	if FileAccess.file_exists(PATH): DirAccess.remove_absolute(PATH)
+	if FileAccess.file_exists(PATH + ".tmp"): DirAccess.remove_absolute(PATH + ".tmp")
+	if FileAccess.file_exists(PATH + ".bak"): DirAccess.remove_absolute(PATH + ".bak")
 
 static func merge_profiles(local_p: Dictionary, cloud_p: Dictionary) -> Dictionary:
 	var merged := local_p.duplicate(true)
