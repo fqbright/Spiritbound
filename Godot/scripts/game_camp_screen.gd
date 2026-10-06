@@ -4524,7 +4524,7 @@ func _show_realm_breakthrough_ceremony(realm_idx: int) -> void:
 	modal.add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(320, 360)
+	panel.custom_minimum_size = Vector2(330, 460)
 	panel.add_theme_stylebox_override("panel", g._panel(Color("0b151e"), 16, g.GOLD))
 	panel.scale = Vector2(0.85, 0.85)
 	panel.pivot_offset = Vector2(160, 180)
@@ -4572,9 +4572,60 @@ func _show_realm_breakthrough_ceremony(realm_idx: int) -> void:
 		d_vbox.add_child(g._label(p_text, 11, Color("cbd5e1"), HORIZONTAL_ALIGNMENT_LEFT))
 	vbox.add_child(desc_box)
 
+	# 3-Choice Destiny Boon Selection (突破本命仙命三选一)
+	var owned_boons: Array = g.profile.get("destiny_boons", [])
+	var candidate_keys: Array = []
+	for bk in SpiritContent.DESTINY_BOONS:
+		if not owned_boons.has(bk):
+			candidate_keys.append(bk)
+	candidate_keys.shuffle()
+	var boon_choices: Array = candidate_keys.slice(0, 3)
+
+	if not boon_choices.is_empty():
+		vbox.add_child(g._label("☯ 抉择本命仙命 (颠覆战局法则) ☯" if g.lang == "zh-Hans" else "☯ Choose Destiny Boon (Rule Bending) ☯", 12, g.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+		var boons_box := VBoxContainer.new()
+		boons_box.name = "DestinyBoonsChoiceBox"
+		boons_box.add_theme_constant_override("separation", 6)
+		vbox.add_child(boons_box)
+
+		for b_id in boon_choices:
+			var b_data: Dictionary = g.content.destiny_boon(b_id)
+			var b_name: String = g.content.destiny_boon_name(b_data, g.lang)
+			var b_desc: String = g.content.destiny_boon_desc(b_data, g.lang)
+			var b_icon: String = str(b_data.get("icon", "✦"))
+
+			var b_card := PanelContainer.new()
+			b_card.add_theme_stylebox_override("panel", g._panel(Color("15222d"), 8, Color("2e5466")))
+			var b_pad := MarginContainer.new()
+			for s in ["left", "right", "top", "bottom"]: b_pad.add_theme_constant_override("margin_%s" % s, 6)
+			b_card.add_child(b_pad)
+
+			var b_row := HBoxContainer.new()
+			b_row.add_theme_constant_override("separation", 8)
+			b_pad.add_child(b_row)
+
+			var b_info := VBoxContainer.new()
+			b_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b_info.add_child(g._label("%s %s" % [b_icon, b_name], 11, g.GOLD))
+			b_info.add_child(g._label(b_desc, 9, Color("94a3b8"), HORIZONTAL_ALIGNMENT_LEFT, true))
+			b_row.add_child(b_info)
+
+			var pick_btn := g._button("契定" if g.lang == "zh-Hans" else "Attune", func():
+				if not g.profile.get("destiny_boons", []).has(b_id):
+					g.profile.destiny_boons.append(b_id)
+					SpiritSave.write(g.profile)
+				g._toast(g.tf("ui.destiny_boon_chosen", b_name) if g.content.has_method("tf") else ("✦ 契定本命仙命: " + b_name), g.GOLD)
+				g._haptic("heavy")
+				modal.queue_free()
+			, Color("059669"), Vector2(54, 30))
+			pick_btn.name = "PickBoonBtn_%s" % b_id
+			b_row.add_child(pick_btn)
+
+			boons_box.add_child(b_card)
+
 	var confirm_btn := g._button("纳气归元" if g.lang == "zh-Hans" else "Absorb Qi", func():
 		modal.queue_free()
-	, g.GOLD, Vector2(0, 40))
+	, g.GOLD, Vector2(0, 36))
 	confirm_btn.name = "BreakthroughConfirmBtn"
 	vbox.add_child(confirm_btn)
 

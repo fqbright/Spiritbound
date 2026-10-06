@@ -113,3 +113,59 @@ func test_seasonal_qi_anomalies():
 	combat_spring.play(0, 0)
 	assert_eq(int(combat_spring.state.player.health), 52, "Spring rain heals player for 2 on poison card play")
 
+func test_five_elements_generative_cycle_and_grand_wheel():
+	var content := SpiritContent.new()
+	var combat := SpiritCombat.new(content)
+	var enc := {"name": "试道假人", "health": 100, "damage": 0, "chapter": 1, "level": 1, "adds": 0, "mechanics": {}}
+	combat.create(777, enc, ["strike", "foxfire"], 60, {}, [], {}, {}, [], {"destiny_boons": ["heavenly_roots"]})
+
+	# Test 1: Wood -> Fire (木生火: Burn +4 and draw 1)
+	combat.state.last_element = "wood"
+	combat.state.hand = [{"card_id": "foxfire"}] # fire
+	combat.state.energy = 3
+	var initial_draw_count: int = combat.state.draw.size()
+	var events_recorded: Array = []
+	combat.event.connect(func(kind, payload): events_recorded.append([kind, payload]))
+	var ok: bool = combat.play(0, 0)
+	assert_true(ok, "Playing fire card after wood succeeds")
+	assert_eq(int(combat.state.enemies[0].burn), 3 + 4, "Wood -> Fire procs +4 burn (3 base + 4 cycle)")
+	assert_true(events_recorded.any(func(e): return e[0] == "elemental_cycle_proc" and e[1].get("type") == "wood_fire"), "elemental_cycle_proc wood_fire event emitted")
+	assert_true(events_recorded.any(func(e): return e[0] == "destiny_boon_proc" and e[1].get("id") == "heavenly_roots"), "heavenly_roots destiny boon refunded 1 energy")
+
+	# Test 2: Fire -> Earth (火生土: Shield +6)
+	combat.state.last_element = "fire"
+	combat.state.hand = [{"card_id": "strike"}] # stone (earth)
+	combat.state.energy = 3
+	var shield_before: int = combat.state.player.shield
+	combat.play(0, 0)
+	assert_eq(combat.state.player.shield, shield_before + 6, "Fire -> Earth procs +6 shield")
+
+func test_destiny_boons_mechanics():
+	var content := SpiritContent.new()
+
+	# Test 1: Sword heart (+50% dmg on first attack)
+	var combat_sh := SpiritCombat.new(content)
+	var enc := {"name": "剑客", "health": 100, "damage": 0, "chapter": 1, "level": 1, "adds": 0, "mechanics": {}}
+	combat_sh.create(888, enc, ["strike"], 60, {}, [], {}, {}, [], {"destiny_boons": ["sword_heart"]})
+	combat_sh.state.hand = [{"card_id": "strike"}]
+	combat_sh.state.energy = 2
+	combat_sh.play(0, 0)
+	# Strike is 6 dmg * 1.5 = 9 dmg
+	assert_eq(combat_sh.state.enemies[0].health, 100 - 9, "Sword Heart deals 150% damage on first attack (6 * 1.5 = 9)")
+
+	# Test 2: Alchemical physique (+50% pill effect)
+	var combat_alc := SpiritCombat.new(content)
+	combat_alc.create(889, enc, ["strike"], 60, {}, [], {}, {}, [], {"destiny_boons": ["alchemical_physique"]})
+	assert_eq(combat_alc.state.player.shield, 4, "Alchemical physique starts combat with +4 shield")
+	combat_alc.use_alchemy_pill("qi_pill")
+	# Qi pill gives 2 energy * 1.5 = 3 energy
+	assert_eq(combat_alc.state.energy, 2 + 3, "Qi gathering pill grants 3 energy (2 * 1.5)")
+
+	# Test 3: Earth embrace (+2 bonus shield on defense cards)
+	var combat_ee := SpiritCombat.new(content)
+	combat_ee.create(890, enc, ["ward"], 60, {}, [], {}, {}, [], {"destiny_boons": ["earth_embrace"]})
+	combat_ee.state.hand = [{"card_id": "ward"}] # 5 shield
+	combat_ee.state.energy = 2
+	combat_ee.play(0, -1)
+	assert_eq(combat_ee.state.player.shield, 5 + 2, "Earth embrace grants +2 bonus shield (5 + 2 = 7)")
+

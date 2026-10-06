@@ -111,11 +111,16 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		"awakened_cards": hero_bonuses.get("awakened_cards", []),
 		"pagoda_soul_pacts": hero_bonuses.get("pagoda_soul_pacts", modifier.get("pagoda_soul_pacts", [])),
 		"defense_played_this_turn": false,
-		"played_cards_tally": {},
 		"player_fog_veil": 1 if str(modifier.get("weather_affix", "")) == "fog" else 0,
 		"pill_used_this_combat": false,
 		"taiji_retained_shield": 0,
+		"destiny_boons": hero_bonuses.get("destiny_boons", modifier.get("destiny_boons", [])).duplicate() if (hero_bonuses.get("destiny_boons") is Array or modifier.get("destiny_boons") is Array) else [],
+		"phoenix_rebirth_used": false,
+		"five_elements_cycle_history": [],
+		"heavenly_roots_proc_turn": 0,
 	}
+	if state.destiny_boons.has("alchemical_physique"):
+		state.player.shield += 4
 	if state.pagoda_soul_pacts.has("asura_blood_pact"):
 		state.player.max_health = maxi(1, int(round(float(state.player.max_health) * 0.75)))
 		state.player.health = mini(state.player.health, state.player.max_health)
@@ -248,6 +253,8 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 		if unique_elems.size() >= 4:
 			draw_bonus += 1
 	var open_draw: int = 5 + draw_bonus + (1 if _has_relic("cursedTome") else 0)
+	if state.get("destiny_boons", []).has("starlight_transmutation"):
+		open_draw += 1
 	if state.get("pagoda_soul_pacts", []).has("taishang_detachment"):
 		open_draw = maxi(1, open_draw - 1)
 	_draw(open_draw)
@@ -265,6 +272,16 @@ func create(seed: int, encounter: Dictionary, deck: Array, player_health: int, u
 	if _has_relic("cursedTome"): _damage_player(2)
 	_plan_intents()
 	return state
+
+func _canonical_element(raw_el: String) -> String:
+	var el := raw_el.to_lower().strip_edges()
+	match el:
+		"wood", "poison", "toxin": return "wood"
+		"fire", "flame": return "fire"
+		"earth", "stone": return "earth"
+		"metal", "thunder", "lightning", "storm": return "metal"
+		"water", "frost", "ice": return "water"
+		_: return ""
 
 func _has_relic(id: String) -> bool:
 	return state.get("relics", []).has(id)
@@ -294,12 +311,16 @@ func use_alchemy_pill(pill_id: String) -> bool:
 	if recipe.is_empty(): return false
 	state.pill_used_this_combat = true
 	var eff: Dictionary = recipe.get("effect", {})
+	var mult: float = 1.5 if state.get("destiny_boons", []).has("alchemical_physique") else 1.0
 	if eff.has("energy"):
-		state.energy = mini(10, state.energy + int(eff.energy))
+		var gain_e: int = int(round(float(eff.energy) * mult))
+		state.energy = mini(10, state.energy + gain_e)
 	if eff.has("shield"):
-		state.player.shield += int(eff.shield)
+		var gain_s: int = int(round(float(eff.shield) * mult))
+		state.player.shield += gain_s
 	if eff.has("heal"):
-		state.player.health = mini(state.player.max_health, state.player.health + int(eff.heal))
+		var gain_h: int = int(round(float(eff.heal) * mult))
+		state.player.health = mini(state.player.max_health, state.player.health + gain_h)
 	if bool(eff.get("cleanse", false)):
 		state.player.burn = 0
 		if state.player.has("vulnerable"): state.player.vulnerable = 0
@@ -505,6 +526,11 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# per-turn and it must reset every turn — the two have the same name but different lifetimes.
 	state.cards_played_this_turn = int(state.get("cards_played_this_turn", 0)) + 1
 	state.turn_combo_count = int(state.get("turn_combo_count", 0)) + 1
+	if state.get("destiny_boons", []).has("avatar_of_thunder") and state.cards_played_this_turn == 3:
+		var th_target := _smart_target()
+		if th_target >= 0:
+			_damage_enemy(th_target, 5, true)
+			emit_signal("event", "destiny_boon_proc", {"id": "avatar_of_thunder", "damage": 5})
 	state.familiar_qi = mini(100, int(state.get("familiar_qi", 0)) + 20)
 	if str(state.get("deck_archetype", "")) == "archetype_wind" and state.cards_played_this_turn == 3:
 		state.energy = mini(10, state.energy + 1)
@@ -585,7 +611,11 @@ func play(hand_index: int, target_index := -1) -> bool:
 	# would be a content error, not something this needs to arbitrate.
 	if card.get("boomerang", false) and not card.exhaust: state.boomerang_queue.append(instance)
 	elif rune == "cycle" and not card.exhaust: state.draw.push_front(instance)
-	elif card.exhaust: state.exhaust.append(instance)
+	elif card.exhaust:
+		state.exhaust.append(instance)
+		if state.get("destiny_boons", []).has("pure_mind"):
+			state.player.health = mini(state.player.max_health, state.player.health + 2)
+			emit_signal("event", "destiny_boon_proc", {"id": "pure_mind", "heal": 2})
 	else: state.discard.append(instance)
 	if card.cost >= 2 and _has_relic("swiftBoots") and not bool(state.get("swift_boots_used", false)):
 		state.energy += 1
@@ -673,24 +703,76 @@ func play(hand_index: int, target_index := -1) -> bool:
 		state.elements[element] = state.elements.get(element,0) + 1
 		var prev_element: String = str(state.get("last_element", ""))
 		if not prev_element.is_empty():
+			var prev_norm := _canonical_element(prev_element)
+			var cur_norm := _canonical_element(element)
+			var resonance_bonus: int = 3 if state.get("destiny_boons", []).has("five_elements_transcendence") else 0
+			var is_cycle_step := false
+
+			# 1. Classical pairs (Backward compatibility & legacy synergies)
 			if (prev_element == "fire" and element in ["spirit", "gale"]) or (prev_element in ["spirit", "gale"] and element == "fire"):
-				# Combustion: deals 3 splash damage to other living enemies
 				for enemy_idx in state.enemies.size():
 					if enemy_idx != target_index and state.enemies[enemy_idx].health > 0:
-						_damage_enemy(enemy_idx, 3, false)
-				emit_signal("event", "resonance", {"type": "combustion", "amount": 3})
+						_damage_enemy(enemy_idx, 3 + resonance_bonus, false)
+				emit_signal("event", "resonance", {"type": "combustion", "amount": 3 + resonance_bonus})
 			elif (prev_element == "water" and element in ["stone", "poison"]) or (prev_element in ["stone", "poison"] and element == "water"):
-				# Sunder: strips up to 5 shield and inflicts 1 vulnerable on target
 				if target_index >= 0 and state.enemies[target_index].health > 0:
-					var stripped: int = mini(5, int(state.enemies[target_index].shield))
+					var stripped: int = mini(5 + resonance_bonus, int(state.enemies[target_index].shield))
 					state.enemies[target_index].shield = maxi(0, int(state.enemies[target_index].shield) - stripped)
 					state.enemies[target_index].vulnerable = int(state.enemies[target_index].get("vulnerable", 0)) + 1
 					emit_signal("event", "resonance", {"type": "sunder", "target": target_index})
 			elif (prev_element == "stone" and element in ["spirit", "stone"]) or (prev_element == "spirit" and element == "stone"):
-				# Fortify: grants player +4 shield
-				state.player.shield += 4
-				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 4
-				emit_signal("event", "resonance", {"type": "fortify", "amount": 4})
+				state.player.shield += 4 + resonance_bonus
+				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + 4 + resonance_bonus
+				emit_signal("event", "resonance", {"type": "fortify", "amount": 4 + resonance_bonus})
+
+			# 2. Authentic Five Elements Generative Cycle (弈仙牌 · 五行相生)
+			# Wood -> Fire -> Earth -> Metal -> Water -> Wood
+			if prev_norm == "wood" and cur_norm == "fire":
+				is_cycle_step = true
+				if target_index >= 0 and state.enemies[target_index].health > 0 and not bool(state.enemies[target_index].mechanics.get("burn_immune", false)):
+					state.enemies[target_index].burn = int(state.enemies[target_index].get("burn", 0)) + 4 + resonance_bonus
+				_draw(1)
+				emit_signal("event", "elemental_cycle_proc", {"type": "wood_fire", "from": prev_norm, "to": cur_norm})
+			elif prev_norm == "fire" and cur_norm == "earth":
+				is_cycle_step = true
+				var gain_s: int = 6 + resonance_bonus
+				state.player.shield += gain_s
+				if state.has("stats"): state.stats.shield_gained = int(state.stats.get("shield_gained", 0)) + gain_s
+				emit_signal("event", "elemental_cycle_proc", {"type": "fire_earth", "from": prev_norm, "to": cur_norm, "shield": gain_s})
+			elif prev_norm == "earth" and cur_norm == "metal":
+				is_cycle_step = true
+				var p_dmg: int = 5 + resonance_bonus
+				var s_target := target_index if target_index >= 0 else _smart_target()
+				if s_target >= 0 and state.enemies[s_target].health > 0:
+					_damage_enemy(s_target, p_dmg, true)
+					state.enemies[s_target].vulnerable = int(state.enemies[s_target].get("vulnerable", 0)) + 1
+				emit_signal("event", "elemental_cycle_proc", {"type": "earth_metal", "from": prev_norm, "to": cur_norm, "damage": p_dmg})
+			elif prev_norm == "metal" and cur_norm == "water":
+				is_cycle_step = true
+				var heal_amt: int = 5 + resonance_bonus
+				state.player.health = mini(state.player.max_health, state.player.health + heal_amt)
+				state.energy = mini(10, state.energy + 1)
+				emit_signal("event", "elemental_cycle_proc", {"type": "metal_water", "from": prev_norm, "to": cur_norm, "heal": heal_amt})
+			elif prev_norm == "water" and cur_norm == "wood":
+				is_cycle_step = true
+				if target_index >= 0 and state.enemies[target_index].health > 0:
+					state.enemies[target_index].poison = int(state.enemies[target_index].get("poison", 0)) + 4 + resonance_bonus
+				_draw(1)
+				emit_signal("event", "elemental_cycle_proc", {"type": "water_wood", "from": prev_norm, "to": cur_norm})
+
+			if is_cycle_step:
+				if state.get("destiny_boons", []).has("heavenly_roots") and state.turn != int(state.get("heavenly_roots_proc_turn", 0)):
+					state.energy = mini(10, state.energy + 1)
+					state.heavenly_roots_proc_turn = state.turn
+					emit_signal("event", "destiny_boon_proc", {"id": "heavenly_roots", "energy": 1})
+				var hist: Array = state.get("five_elements_cycle_history", [])
+				hist.append(cur_norm)
+				if hist.has("wood") and hist.has("fire") and hist.has("earth") and hist.has("metal") and hist.has("water"):
+					for ei in state.enemies.size():
+						if state.enemies[ei].health > 0:
+							_damage_enemy(ei, 25 + resonance_bonus * 2, true)
+					state.five_elements_cycle_history = []
+					emit_signal("event", "great_elemental_wheel", {"damage": 25 + resonance_bonus * 2})
 		state.last_element = element
 	var sp := str(card.get("special", ""))
 	if sp == "stun" and target_index >= 0: state.enemies[target_index].stun += 1
@@ -887,7 +969,10 @@ func end_turn() -> void:
 	if state.has("stats"): state.stats.turns_taken = int(state.stats.get("turns_taken", 0)) + 1
 	var energy_growth: int = int((state.turn - 1) / 2)
 	if _has_relic("titanBell"): energy_growth = 0
-	state.energy = 2 + energy_growth
+	var retained_energy: int = 0
+	if state.get("destiny_boons", []).has("void_dao_bones"):
+		retained_energy = mini(1, maxi(0, int(state.get("energy", 0))))
+	state.energy = 2 + energy_growth + retained_energy
 	if _has_relic("foxCharm") and state.turn == 2: state.energy += 1
 	var sl_pending: int = int(state.get("soul_lantern_pending", 0))
 	if sl_pending > 0:
@@ -1036,6 +1121,8 @@ func end_turn() -> void:
 func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: float) -> int:
 	var dealt := 0
 	var surge_bonus: int = 3 if state.get("card_branches", {}).get(card.id, "") == "surge" else 0
+	if state.get("destiny_boons", []).has("convergence_of_all"):
+		surge_bonus += state.get("elements", {}).size()
 	for effect in card.effects:
 		var amount := maxi(1,int(round((effect.amount + bonus + surge_bonus if effect.operation == "damage" else effect.amount + int(state.upgrades.get(card.id,0)) + surge_bonus) * scale)))
 		match effect.operation:
@@ -1046,6 +1133,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 				var dmg_mult: float = float(state.get("modifier", {}).get("player_dmg_mult", 1.0))
 				if state.get("pagoda_soul_pacts", []).has("ten_thousand_swords") and not bool(state.get("defense_played_this_turn", false)):
 					dmg_mult *= 2.0
+				if state.get("destiny_boons", []).has("sword_heart") and int(state.get("turn_attack_count", 0)) <= 1:
+					dmg_mult *= 1.5
 				if card.id == "strike" and _is_card_awakened("strike"):
 					amount += 3
 				for index in targets:
@@ -1066,6 +1155,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 						state.enemies[index].vulnerable = int(state.enemies[index].get("vulnerable", 0)) + 1
 			"shield":
 				var shield_gain := amount
+				if state.get("destiny_boons", []).has("earth_embrace"):
+					shield_gain += 2
 				var water_r: int = int(state.get("spiritual_roots", {}).get("water", 1))
 				if water_r > 1: shield_gain += (water_r - 1)
 				if state.get("rune_sets", []).has("set_stone") and rng.randf() < 0.25:
@@ -1099,6 +1190,8 @@ func _resolve_effects(card: Dictionary, target_index: int, bonus: int, scale: fl
 					if effect.target == "actor": state.player[effect.status] = state.player.get(effect.status,0) + final_amt
 					elif target_index >= 0:
 						if str(state.get("weather_affix", "")) == "blizzard" and effect.status in ["stun", "freeze", "weak"]:
+							final_amt += 1
+						if effect.status == "poison" and state.get("destiny_boons", []).has("nether_venom"):
 							final_amt += 1
 						state.enemies[target_index][effect.status] = state.enemies[target_index].get(effect.status,0) + final_amt
 						if _has_relic("frostNeedle"):
@@ -1454,6 +1547,10 @@ func _damage_player(amount: int, pierce := false) -> int:
 			state.player.health = maxi(1, int(state.player.max_health * 0.2))
 			state.phoenix_used = true
 			emit_signal("event","relic",{"id":"phoenixFeather"})
+		elif state.get("destiny_boons", []).has("phoenix_rebirth") and not bool(state.get("phoenix_rebirth_used", false)):
+			state.player.health = mini(state.player.max_health, 15)
+			state.phoenix_rebirth_used = true
+			emit_signal("event", "destiny_boon_proc", {"id": "phoenix_rebirth", "heal": 15})
 		else: state.phase = "lost"
 	if dealt > 0:
 		state.qi_gauge = mini(100, int(state.get("qi_gauge", 0)) + 5)

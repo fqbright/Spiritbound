@@ -267,6 +267,7 @@ func _current_hero_mastery_bonuses() -> Dictionary:
 	bonuses["astral_roots"] = g.profile.get("astral_roots", {}).duplicate()
 	bonuses["card_mastery"] = g.profile.get("card_mastery", {}).duplicate()
 	bonuses["pagoda_soul_pacts"] = g.profile.get("pagoda_soul_pacts", []).duplicate()
+	bonuses["destiny_boons"] = g.profile.get("destiny_boons", []).duplicate()
 	return bonuses
 
 # Battle screen header/background source of truth: campaign battles index straight into

@@ -75,9 +75,12 @@ func show_deck_purge(return_callback: Callable, cost := 0, on_done := Callable()
 			if idx >= 0: g.profile.deck.remove_at(idx)
 			if int(g.profile.collection.get(card.id, 0)) > 0:
 				g.profile.collection[card.id] = maxi(0, int(g.profile.collection[card.id]) - 1)
+			# Refinement Alchemy bonus (炼化返还天地灵尘与金币)
+			var dust_bonus := 15
+			g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + dust_bonus
 			SpiritSave.write(g.profile)
 			g._haptic("heavy")
-			g._toast(g.tf("ui.card_purged_toast", g.content.text(card.nameKey, g.lang)), g.JADE)
+			g._toast(g.tf("ui.card_purged_toast", g.content.text(card.nameKey, g.lang)) + (" · 炼化得灵尘+%d" % dust_bonus if g.lang != "en" else " · +%d Dust" % dust_bonus), g.JADE)
 			if on_done.is_valid(): on_done.call()
 			else: return_callback.call()
 		, g.EMBER, Vector2(88, 38))

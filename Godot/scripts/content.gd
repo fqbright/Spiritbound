@@ -4595,3 +4595,98 @@ const WEATHER_SYNERGIES = {
 	}
 }
 
+const DESTINY_BOONS = {
+	"heavenly_roots": {
+		"id": "heavenly_roots",
+		"name_zh": "天灵根", "name_en": "Heavenly Roots",
+		"icon": "🌱",
+		"desc_zh": "五行亲和圆满：五行相生触发时额外获得 1 点灵力（每回合限 1 次）",
+		"desc_en": "Elemental perfection: Gain +1 Energy upon triggering Elemental Resonance (once per turn)"
+	},
+	"sword_heart": {
+		"id": "sword_heart",
+		"name_zh": "剑心通明", "name_en": "Sword Heart Clarity",
+		"icon": "⚔️",
+		"desc_zh": "剑意自生：每回合打出的第一张攻击卡伤害提升 50%",
+		"desc_en": "Sharp intent: The first Attack card played each turn deals +50% damage"
+	},
+	"alchemical_physique": {
+		"id": "alchemical_physique",
+		"name_zh": "丹鼎之体", "name_en": "Alchemical Body",
+		"icon": "💊",
+		"desc_zh": "药力通神：战斗内丹药效果提升 50%，且战斗起始获得 4 点玄金护甲",
+		"desc_en": "Master of pills: Battle alchemy pill effects boosted by 50%, gain 4 Shield at combat start"
+	},
+	"five_elements_transcendence": {
+		"id": "five_elements_transcendence",
+		"name_zh": "五行化境", "name_en": "Five Elements Transcendence",
+		"icon": "☯️",
+		"desc_zh": "阴阳造化：五行相生触发的所有伤害、护盾与治疗额外提升 3 点",
+		"desc_en": "Dual harmony: All damage, shield, and healing from Elemental Resonance increased by +3"
+	},
+	"void_dao_bones": {
+		"id": "void_dao_bones",
+		"name_zh": "太虚道骨", "name_en": "Void Dao Bones",
+		"icon": "🦴",
+		"desc_zh": "虚灵藏纳：回合结束时未消耗的灵力可保留至下回合（最多 1 点）",
+		"desc_en": "Ethereal reservoir: Retain up to 1 unspent Energy at turn end"
+	},
+	"phoenix_rebirth": {
+		"id": "phoenix_rebirth",
+		"name_zh": "涅槃真火", "name_en": "Phoenix Rebirth",
+		"icon": "🔥",
+		"desc_zh": "死中求生：受到致命伤害时免疫死亡并回复 15 点生命（每场限 1 次）",
+		"desc_en": "Death defiance: Evade lethal blow and recover 15 HP (once per battle)"
+	},
+	"starlight_transmutation": {
+		"id": "starlight_transmutation",
+		"name_zh": "移星换斗", "name_en": "Starlight Transmutation",
+		"icon": "⭐",
+		"desc_zh": "星移斗转：首回合起手抽牌数 +1",
+		"desc_en": "Celestial alignment: Draw +1 extra card on Turn 1"
+	},
+	"earth_embrace": {
+		"id": "earth_embrace",
+		"name_zh": "厚德载物", "name_en": "Earth's Embrace",
+		"icon": "🛡️",
+		"desc_zh": "不动如山：打出防守卡牌时，额外获得 2 点护盾加持",
+		"desc_en": "Immovable: Playing any defense or shield card grants +2 bonus Shield"
+	},
+	"nether_venom": {
+		"id": "nether_venom",
+		"name_zh": "九幽蛊毒", "name_en": "Nether Venom",
+		"icon": "🐍",
+		"desc_zh": "万毒归宗：对敌人施加剧毒时，额外追加 1 层剧毒",
+		"desc_en": "Venom amplification: Whenever you apply Poison, apply +1 extra stack"
+	},
+	"pure_mind": {
+		"id": "pure_mind",
+		"name_zh": "清心无妄", "name_en": "Pure Mind",
+		"icon": "💧",
+		"desc_zh": "无尘心境：消耗卡牌被消耗时，恢复 2 点生命值",
+		"desc_en": "Detachment: Whenever a card is Exhausted, heal 2 HP"
+	},
+	"avatar_of_thunder": {
+		"id": "avatar_of_thunder",
+		"name_zh": "雷霆化身", "name_en": "Avatar of Thunder",
+		"icon": "⚡",
+		"desc_zh": "天怒神罚：每回合打出第 3 张卡牌时，降下天雷对随机敌人造成 5 点伤害",
+		"desc_en": "Heaven's wrath: On playing your 3rd card each turn, call lightning dealing 5 damage"
+	},
+	"convergence_of_all": {
+		"id": "convergence_of_all",
+		"name_zh": "万象归一", "name_en": "Convergence of All",
+		"icon": "🌀",
+		"desc_zh": "万象合流：牌组中每拥有 1 种不同元素的卡牌，全卡牌伤害与护甲 +1",
+		"desc_en": "Cosmic convergence: Gain +1 Damage and Shield for each unique element in deck"
+	}
+}
+
+func destiny_boon(id: String) -> Dictionary:
+	return DESTINY_BOONS.get(id, {})
+
+func destiny_boon_name(boon: Dictionary, lang_code := "zh-Hans") -> String:
+	return str(boon.get("name_en" if lang_code == "en" else "name_zh", boon.get("id", "")))
+
+func destiny_boon_desc(boon: Dictionary, lang_code := "zh-Hans") -> String:
+	return str(boon.get("desc_en" if lang_code == "en" else "desc_zh", ""))

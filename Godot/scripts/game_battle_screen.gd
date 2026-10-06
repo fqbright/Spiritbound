@@ -1251,26 +1251,61 @@ func _build_player_stage() -> Control:
 	)
 	stage.add_child(fam_btn)
 
-	var has_pills: bool = false
+	# Battle Consumable Pouch (战局丹药灵囊 - Balatro & 月圆之夜对标)
 	var pills_inv: Dictionary = g.profile.get("alchemy_pills", {})
-	for pk in pills_inv:
-		if int(pills_inv[pk]) > 0:
-			has_pills = true
-			break
-	if has_pills and g.combat and not bool(g.combat.state.get("pill_used_this_combat", false)):
-		var pill_btn := Button.new()
-		pill_btn.name = "CombatPillBtn"
-		pill_btn.text = "💊"
-		pill_btn.tooltip_text = g.t("ui.pill_quick_use")
-		pill_btn.custom_minimum_size = Vector2(34.0, 34.0)
-		pill_btn.size = pill_btn.custom_minimum_size
-		pill_btn.position = Vector2(player_x - 92.0, 48.0)
-		var p_style := g._panel(Color("1e3a2f"), 17, Color("34d399"))
-		pill_btn.add_theme_stylebox_override("normal", p_style)
-		pill_btn.add_theme_stylebox_override("hover", p_style)
-		pill_btn.add_theme_stylebox_override("pressed", p_style)
-		pill_btn.pressed.connect(_show_combat_pill_modal)
-		stage.add_child(pill_btn)
+	var available_pill_types: Array = []
+	for pk in SpiritContent.ALCHEMY_RECIPES:
+		if int(pills_inv.get(pk, 0)) > 0:
+			available_pill_types.append(pk)
+
+	var pouch_holder := HBoxContainer.new()
+	pouch_holder.name = "CombatPouchHolder"
+	pouch_holder.add_theme_constant_override("separation", 6)
+	pouch_holder.position = Vector2(player_x - 98.0, 48.0)
+	stage.add_child(pouch_holder)
+
+	var pill_used: bool = bool(g.combat.state.get("pill_used_this_combat", false)) if g.combat else false
+	# Slot 1: Primary Pill or Quick Open
+	var pill_btn := Button.new()
+	pill_btn.name = "CombatPillBtn"
+	pill_btn.text = "💊" if not pill_used else "💊✕"
+	pill_btn.tooltip_text = g.t("ui.pill_quick_use")
+	pill_btn.custom_minimum_size = Vector2(34.0, 34.0)
+	pill_btn.size = pill_btn.custom_minimum_size
+	var p_style := g._panel(Color("1e3a2f") if not pill_used else Color("141a18"), 17, Color("34d399") if not pill_used else Color("243e34"))
+	pill_btn.add_theme_stylebox_override("normal", p_style)
+	pill_btn.add_theme_stylebox_override("hover", p_style)
+	pill_btn.add_theme_stylebox_override("pressed", p_style)
+	pill_btn.disabled = pill_used or available_pill_types.is_empty()
+	pill_btn.pressed.connect(_show_combat_pill_modal)
+	pouch_holder.add_child(pill_btn)
+
+	# Slot 2: Pouch Talisman / Quick Recovery Slot (快捷服用首选丹药)
+	if not available_pill_types.is_empty():
+		var quick_pk: String = str(available_pill_types[0])
+		var quick_recipe: Dictionary = SpiritContent.ALCHEMY_RECIPES.get(quick_pk, {})
+		var quick_btn := Button.new()
+		quick_btn.name = "CombatQuickPouchBtn"
+		quick_btn.text = "⚡" if not pill_used else "🔒"
+		var quick_name: String = str(quick_recipe.get("name_en" if g.lang == "en" else "name_zh", quick_pk))
+		quick_btn.tooltip_text = "一键快捷服丹: %s (余量: %d)" % [quick_name, int(pills_inv.get(quick_pk, 0))]
+		quick_btn.custom_minimum_size = Vector2(28.0, 28.0)
+		quick_btn.size = quick_btn.custom_minimum_size
+		quick_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var q_style := g._panel(Color("132d2a"), 14, Color("5eead4") if not pill_used else Color("1e3b37"))
+		quick_btn.add_theme_stylebox_override("normal", q_style)
+		quick_btn.add_theme_stylebox_override("hover", q_style)
+		quick_btn.add_theme_stylebox_override("pressed", q_style)
+		quick_btn.disabled = pill_used
+		quick_btn.pressed.connect(func():
+			if not pill_used and g.combat and g.combat.use_alchemy_pill(quick_pk):
+				SpiritSave.consume_pill(g.profile, quick_pk)
+				g._toast(g.tf("ui.pill_used_fmt", quick_name), g.GOLD)
+				g.play_sfx("card_play")
+				g._haptic("heavy")
+				show_battle()
+		)
+		pouch_holder.add_child(quick_btn)
 
 	# Hero Qi-Gauge Awakening Aura (Phase 16)
 	if g.combat and g.combat.can_cast_ultimate():
@@ -2305,10 +2340,19 @@ func _has_combat_synergy(card: Dictionary, primary_enemy: Dictionary) -> bool:
 	var c_spec: String = str(card.get("special", ""))
 	var c_id: String = str(card.get("id", ""))
 
-	# 1. State-based Elemental Resonance with last played element
+	# 1. State-based Elemental Resonance & Five Elements Generative Cycle
 	if g.combat != null and g.combat.state != null:
 		var prev_elem: String = str(g.combat.state.get("last_element", "")).to_lower()
 		if not prev_elem.is_empty() and not c_elem.is_empty():
+			# Five Elements Generative Cycle: Wood -> Fire -> Earth -> Metal -> Water -> Wood
+			var p_norm := g.combat._canonical_element(prev_elem) if g.combat.has_method("_canonical_element") else prev_elem
+			var c_norm := g.combat._canonical_element(c_elem) if g.combat.has_method("_canonical_element") else c_elem
+			if p_norm == "wood" and c_norm == "fire": return true
+			if p_norm == "fire" and c_norm == "earth": return true
+			if p_norm == "earth" and c_norm == "metal": return true
+			if p_norm == "metal" and c_norm == "water": return true
+			if p_norm == "water" and c_norm == "wood": return true
+
 			if (prev_elem == "fire" and c_elem in ["spirit", "gale"]) or (prev_elem in ["spirit", "gale"] and c_elem == "fire"):
 				return true
 			if (prev_elem == "water" and c_elem in ["stone", "poison"]) or (prev_elem in ["stone", "poison"] and c_elem == "water"):
@@ -2458,16 +2502,26 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	if has_synergy:
 		var combo_badge := Panel.new()
 		combo_badge.name = "ComboBadge"
-		combo_badge.custom_minimum_size = Vector2(50, 14)
+		combo_badge.custom_minimum_size = Vector2(54, 14)
 		combo_badge.size = combo_badge.custom_minimum_size
 		var y_pos: float = 18.0 if is_capstone else 2.0
-		combo_badge.position = Vector2((116.0 - 50.0) / 2.0, y_pos)
+		combo_badge.position = Vector2((116.0 - 54.0) / 2.0, y_pos)
 		var combo_style := g._panel(Color("082422", 0.95), 4, Color("5ffbe2"))
 		combo_style.border_width_left = 1; combo_style.border_width_right = 1
 		combo_style.border_width_top = 1; combo_style.border_width_bottom = 1
 		combo_badge.add_theme_stylebox_override("panel", combo_style)
 		combo_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var c_lbl := g._label(g.t("ui.card_combo_badge"), 8, Color("5ffbe2"), HORIZONTAL_ALIGNMENT_CENTER)
+
+		var badge_txt: String = g.t("ui.card_combo_badge")
+		if g.combat and g.combat.state:
+			var prev_el: String = str(g.combat.state.get("last_element", ""))
+			var card_el: String = str(card.get("element", ""))
+			var p_n: String = g.combat._canonical_element(prev_el) if g.combat.has_method("_canonical_element") else ""
+			var c_n: String = g.combat._canonical_element(card_el) if g.combat.has_method("_canonical_element") else ""
+			if (p_n == "wood" and c_n == "fire") or (p_n == "fire" and c_n == "earth") or (p_n == "earth" and c_n == "metal") or (p_n == "metal" and c_n == "water") or (p_n == "water" and c_n == "wood"):
+				badge_txt = "☯ 相生" if g.lang != "en" else "☯ RESONANCE"
+
+		var c_lbl := g._label(badge_txt, 8, Color("5ffbe2"), HORIZONTAL_ALIGNMENT_CENTER)
 		c_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		c_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		c_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4848,6 +4902,46 @@ func _combat_event(kind: String, payload: Dictionary) -> void:
 		_spawn_player_floating_text("🐾 灵宠庇护 +%d" % payload.get("shield", 3), Color("6ee7b7"), 22)
 	elif kind == "leyline_surge":
 		_spawn_player_floating_text("🌀 地脉灵涌 +%d 灵气" % payload.get("qi", 15), Color("a78bfa"), 20)
+	elif kind == "elemental_cycle_proc":
+		var c_type: String = str(payload.get("type", ""))
+		var c_name := "☯ 五行相生"
+		var c_color := Color("5ffbe2")
+		match c_type:
+			"wood_fire":
+				c_name = "☯ 木生火 · 炽烈爆燃"
+				c_color = Color("f97316")
+			"fire_earth":
+				c_name = "☯ 火生土 · 熔岩凝甲"
+				c_color = Color("fbbf24")
+			"earth_metal":
+				c_name = "☯ 土生金 · 金石破障"
+				c_color = Color("facc15")
+			"metal_water":
+				c_name = "☯ 金生水 · 甘霖反哺"
+				c_color = Color("38bdf8")
+			"water_wood":
+				c_name = "☯ 水生木 · 万物滋荣"
+				c_color = Color("4ade80")
+		_spawn_player_floating_text(c_name, c_color, 24)
+		g._toast(c_name, c_color)
+		g.play_sfx("card_play")
+		g._haptic("heavy")
+	elif kind == "great_elemental_wheel":
+		_shake_screen(16.0, 0.5)
+		_flash_screen_bloom()
+		g.play_sfx("attack_heavy")
+		g._haptic("lethal")
+		_spawn_player_floating_text("⚡【大五行造化圆满】-%d!⚡" % payload.get("damage", 25), Color("ffd700"), 30)
+		g._toast("⚡ 天地共鸣！大五行造化圆满降临！", Color("ffd700"))
+	elif kind == "destiny_boon_proc":
+		var b_id: String = str(payload.get("id", ""))
+		var b_title := "✦ 仙命觉醒 ✦"
+		if b_id == "heavenly_roots": b_title = "🌱 天灵根 · 灵气回流 +1"
+		elif b_id == "avatar_of_thunder": b_title = "⚡ 雷霆化身 · 天雷轰顶 -%d" % payload.get("damage", 5)
+		elif b_id == "pure_mind": b_title = "💧 清心无妄 · 涤尘回春 +%d" % payload.get("heal", 2)
+		elif b_id == "phoenix_rebirth": b_title = "🔥 涅槃真火 · 死境重生 +%d!" % payload.get("heal", 15)
+		_spawn_player_floating_text(b_title, Color("ffd700"), 22)
+		g._toast(b_title, Color("ffd700"))
 	elif kind == "archetype_proc":
 		var t_type := str(payload.get("type", ""))
 		if t_type == "wind":
