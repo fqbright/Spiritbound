@@ -53,6 +53,8 @@ func _is_interactive(c: Control) -> bool:
 func _rect_of(c: Control) -> Rect2:
 	return Rect2(c.global_position, c.size)
 
+const VIEWPORT_SIZE := Vector2(390.0, 844.0)
+
 ## A control that hangs past a non-clipping parent still draws, and several deliberate layouts
 ## rely on that (an energy badge centred on a card's corner is *supposed* to sit half outside its
 ## tile). So this reports only the cases that are unambiguously cut off:
@@ -62,7 +64,7 @@ func _rect_of(c: Control) -> Rect2:
 ## Returns {} when nothing actually clips.
 func _containment_breach(c: Control) -> Dictionary:
 	var r: Rect2 = _rect_of(c)
-	var screen := Rect2(Vector2.ZERO, root.size)
+	var screen := Rect2(Vector2.ZERO, VIEWPORT_SIZE)
 	var scrollable := false
 
 	var p: Node = c.get_parent()
@@ -458,6 +460,7 @@ func _report_and_quit(status: int) -> void:
 
 func _run() -> void:
 	print("\nUI AUDIT — measured, not eyeballed\n")
+	root.size = Vector2i(390, 844)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://tests/snapshots"))
 
 	var scene: PackedScene = load("res://Main.tscn")

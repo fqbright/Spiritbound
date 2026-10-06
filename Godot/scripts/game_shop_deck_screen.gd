@@ -2043,12 +2043,12 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 
 	# 4. Carved-out space in the lower-middle portion for card info
 	var info_box := PanelContainer.new()
-	info_box.position = Vector2(8, 126)
-	info_box.custom_minimum_size = Vector2(160, 98)
+	info_box.position = Vector2(6, 122)
+	info_box.custom_minimum_size = Vector2(164, 104)
 	info_box.size = info_box.custom_minimum_size
 	var box_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 8, border_color)
-	# Slender border g.overlay margin
-	box_style.content_margin_left = 12; box_style.content_margin_right = 12
+	# Slender border overlay margin
+	box_style.content_margin_left = 6; box_style.content_margin_right = 6
 	box_style.content_margin_top = 2; box_style.content_margin_bottom = 2
 	info_box.add_theme_stylebox_override("panel", box_style)
 	info_box.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -2080,24 +2080,24 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	stack.add_child(counts)
 
 	var controls := HBoxContainer.new()
-	controls.add_theme_constant_override("separation", 6)
+	controls.add_theme_constant_override("separation", 4)
 	controls.alignment = BoxContainer.ALIGNMENT_CENTER
 	stack.add_child(controls)
-	var minus := g._button("−", func(): _deck_change(card.id, -1), Color("593b32"), Vector2(44, 30))
+	var minus := g._button("−", func(): _deck_change(card.id, -1), Color("593b32"), Vector2(38, 28))
 	minus.disabled = in_deck <= 0
 	controls.add_child(minus)
-	var plus := g._button("+", func(): _deck_change(card.id, 1), Color("245247"), Vector2(44, 30))
+	var plus := g._button("+", func(): _deck_change(card.id, 1), Color("245247"), Vector2(38, 28))
 	plus.disabled = in_deck >= owned or g.profile.deck.size() >= 25
 	controls.add_child(plus)
 	var on_foil_click := func():
 		_toggle_foil_reforge(card)
-	var foil_btn := g._button("✦" if is_foil else "镀", on_foil_click, Color("3d2c0b") if is_foil else Color("1e2a30"), Vector2(34, 30))
+	var foil_btn := g._button("✦" if is_foil else "镀", on_foil_click, Color("3d2c0b") if is_foil else Color("1e2a30"), Vector2(32, 28))
 	foil_btn.name = "FoilBtn_%s" % card.id
 	if is_foil:
 		foil_btn.add_theme_color_override("font_color", Color("ffd700"))
 	controls.add_child(foil_btn)
 
-	var inspect_btn := g._button("🔍", func(): _show_card_detail_modal(card), Color("172a30"), Vector2(30, 30))
+	var inspect_btn := g._button("🔍", func(): _show_card_detail_modal(card), Color("172a30"), Vector2(28, 28))
 	inspect_btn.name = "InspectBtn_%s" % card.id
 	controls.add_child(inspect_btn)
 

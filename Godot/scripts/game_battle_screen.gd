@@ -335,7 +335,7 @@ func show_battle() -> void:
 	stage_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	stage_lbl.clip_text = true
 	stage_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	stage_lbl.custom_minimum_size = Vector2(0, 0)
+	stage_lbl.custom_minimum_size = Vector2(80, 0)
 	top.add_child(stage_lbl)
 
 	var turn_lbl := g._label("· " + g.tf("ui.turn_n", g.combat.state.turn), 11, g.GOLD)
@@ -2568,7 +2568,7 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	info_style.corner_radius_top_left = 6; info_style.corner_radius_top_right = 6
 	info_style.border_width_top = 2; info_style.border_color = border_col
 	# ~8% of the card width, clearing the slender border g.overlay added below
-	info_style.content_margin_left = 11; info_style.content_margin_right = 11
+	info_style.content_margin_left = 12; info_style.content_margin_right = 12
 	info_style.content_margin_top = 2; info_style.content_margin_bottom = 2
 	info_box.add_theme_stylebox_override("panel", info_style)
 	card_clip.add_child(info_box)
