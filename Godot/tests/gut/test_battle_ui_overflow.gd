@@ -295,21 +295,53 @@ func test_retreat_confirmation_modal_and_progressive_unlocks():
 	confirm_btn.pressed.emit()
 	assert_null(game.overlay.get_node_or_null("RetreatConfirmModal"), "Modal closed after retreat")
 
-	# Now test at stage >= 1: speed unlocked, auto locked
-	game.profile.unlocked = 1
-	game.begin_battle(1)
-	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
-	auto_btn = game.root.find_child("AutoBattleToggle", true, false) as Button
-	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at stage 1")
-	assert_true(auto_btn.text.begins_with("🔒"), "Auto still locked at stage 1")
+	confirm_btn.pressed.emit()
+	assert_null(game.overlay.get_node_or_null("RetreatConfirmModal"), "Modal closed after retreat")
 
-	# Now test at stage >= 2: both speed and auto unlocked
-	game.profile.unlocked = 2
-	game.begin_battle(2)
+	# Chapter 1 (stages 0-4): Speed and auto are both locked
+	game.profile.unlocked = 4
+	game.battle_speed = 1.0
+	game.begin_battle(4)
 	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
 	auto_btn = game.root.find_child("AutoBattleToggle", true, false) as Button
-	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at stage 2")
-	assert_false(auto_btn.text.begins_with("🔒"), "Auto unlocked at stage 2")
+	assert_true(speed_btn.text.begins_with("🔒"), "Speed locked in Chapter 1")
+	assert_true(auto_btn.text.begins_with("🔒"), "Auto locked in Chapter 1")
+
+	# Chapter 2 (unlocked >= 5): Speed 2x unlocked, auto still locked
+	game.profile.unlocked = 5
+	game.battle_speed = 1.0
+	game.begin_battle(5)
+	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
+	auto_btn = game.root.find_child("AutoBattleToggle", true, false) as Button
+	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at Chapter 2")
+	assert_true(auto_btn.text.begins_with("🔒"), "Auto still locked at Chapter 2")
+	speed_btn.pressed.emit()
+	assert_eq(game.battle_speed, 2.0, "Speed cycles to 2x in Chapter 2")
+	speed_btn.pressed.emit()
+	assert_eq(game.battle_speed, 1.0, "Speed cycles back to 1x in Chapter 2")
+
+	# Chapter 3 (unlocked >= 10): Speed 3x unlocked, auto unlocked
+	game.profile.unlocked = 10
+	game.battle_speed = 1.0
+	game.begin_battle(10)
+	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
+	auto_btn = game.root.find_child("AutoBattleToggle", true, false) as Button
+	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at Chapter 3")
+	assert_false(auto_btn.text.begins_with("🔒"), "Auto unlocked at Chapter 3")
+	speed_btn.pressed.emit()
+	assert_eq(game.battle_speed, 2.0, "Speed cycles to 2x in Chapter 3")
+	speed_btn.pressed.emit()
+	assert_eq(game.battle_speed, 3.0, "Speed cycles to 3x in Chapter 3")
+	speed_btn.pressed.emit()
+	assert_eq(game.battle_speed, 1.0, "Speed cycles back to 1x in Chapter 3")
+
+	# Chapter 4 (unlocked >= 15): All speeds unlocked (up to 4x)
+	game.profile.unlocked = 15
+	game.battle_speed = 1.0
+	game.begin_battle(15)
+	speed_btn = game.root.find_child("SpeedToggle", true, false) as Button
+	assert_false(speed_btn.text.begins_with("🔒"), "Speed unlocked at Chapter 4")
+	assert_eq(game.get_max_allowed_speed(), 4.0, "Max allowed speed is 4x at Chapter 4")
 
 	game.queue_free()
 

@@ -675,19 +675,52 @@ func _haptic(kind: String) -> void:
 				get_tree().create_timer(0.1, true, false, true).timeout.connect(func(): Input.vibrate_handheld(100))
 		_: Input.vibrate_handheld(15)
 
-func _cycle_speed() -> void:
+func get_max_allowed_speed() -> float:
+	var unl: int = int(profile.get("unlocked", 0))
+	if unl >= 15:
+		return 4.0
+	elif unl >= 10:
+		return 3.0
+	elif unl >= 5:
+		return 2.0
+	else:
+		return 1.0
+
+func _cycle_speed(max_allowed_speed: float = 0.0) -> void:
+	var options: Array[float] = BATTLE_SPEED_OPTIONS
+	var is_constrained := false
+	if max_allowed_speed > 0.0:
+		var eff_max: float = maxf(max_allowed_speed, battle_speed)
+		if eff_max >= 4.0:
+			options = BATTLE_SPEED_OPTIONS
+		elif eff_max >= 3.0:
+			options = [1.0, 2.0, 3.0]
+			is_constrained = true
+		elif eff_max >= 2.0:
+			options = [1.0, 2.0]
+			is_constrained = true
+		else:
+			options = [1.0]
+			is_constrained = true
+
 	var idx: int = -1
-	for i in range(BATTLE_SPEED_OPTIONS.size()):
-		if is_equal_approx(battle_speed, BATTLE_SPEED_OPTIONS[i]):
+	for i in range(options.size()):
+		if is_equal_approx(battle_speed, options[i]):
 			idx = i
 			break
 	if idx < 0:
 		idx = 0
-	idx = (idx + 1) % BATTLE_SPEED_OPTIONS.size()
-	battle_speed = BATTLE_SPEED_OPTIONS[idx]
+	idx = (idx + 1) % options.size()
+	battle_speed = options[idx]
 	profile.battle_speed = battle_speed
 	SpiritSave.write(profile)
 	_haptic("light")
+
+	if is_constrained and idx == 0 and options.size() > 1:
+		if max_allowed_speed < 3.0:
+			_toast(t("ui.speed_hint_ch3"), MUTED)
+		elif max_allowed_speed < 4.0:
+			_toast(t("ui.speed_hint_ch4"), MUTED)
 	var speed_label: String = "⚡4x" if battle_speed >= 4.0 else ((str(int(battle_speed)) if battle_speed == float(int(battle_speed)) else str(battle_speed)) + "x")
 	var speed_btn: Button = root.find_child("SpeedToggle", true, false) as Button if root != null and is_instance_valid(root) else null
 	if speed_btn != null and is_instance_valid(speed_btn):

@@ -183,10 +183,10 @@ func _add_map_right_rail(parent: Control) -> void:
 		banner_holder.add_child(digest_btn)
 		rail.add_child(banner_holder)
 
-	var auto_unlocked := int(g.profile.get("unlocked", 0)) >= 2
+	var auto_unlocked := int(g.profile.get("unlocked", 0)) >= 10 or g.auto_battle_active
 	var auto_push_btn := g._button("", func():
 		if not auto_unlocked:
-			g._toast(g.t("ui.auto_locked_toast"), g.GOLD)
+			g._toast(g.t("ui.auto_locked_ch3"), g.GOLD)
 			g.play_sfx("error")
 			return
 		if not g.can_spend_stamina(5):

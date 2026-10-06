@@ -346,7 +346,8 @@ func show_battle() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(spacer)
 
-	var speed_unlocked: bool = int(g.profile.get("unlocked", 0)) >= 1 or g.battle_speed > 1.0
+	var max_speed: float = g.get_max_allowed_speed()
+	var speed_unlocked: bool = max_speed >= 2.0 or g.battle_speed > 1.0
 	var speed_label: String
 	if not speed_unlocked:
 		speed_label = "🔒1x"
@@ -357,10 +358,10 @@ func show_battle() -> void:
 
 	var on_cycle_speed = func():
 		if not speed_unlocked:
-			g._toast(g.t("ui.speed_locked_toast"), g.GOLD)
+			g._toast(g.t("ui.speed_locked_ch1"), g.GOLD)
 			g.play_sfx("error")
 			return
-		g._cycle_speed()
+		g._cycle_speed(max_speed)
 
 	var speed_btn := g._button(speed_label, on_cycle_speed, Color("142226") if not speed_unlocked else Color("1a3a42"), Vector2(38, 28))
 	speed_btn.name = "SpeedToggle"
@@ -377,7 +378,7 @@ func show_battle() -> void:
 	speed_btn.add_theme_color_override("font_color", speed_color)
 	top.add_child(speed_btn)
 
-	var auto_unlocked: bool = int(g.profile.get("unlocked", 0)) >= 2 or g.auto_battle_active
+	var auto_unlocked: bool = int(g.profile.get("unlocked", 0)) >= 10 or g.auto_battle_active
 	var auto_label: String
 	if not auto_unlocked:
 		auto_label = "🔒" + g.t("ui.auto_battle")
@@ -389,7 +390,7 @@ func show_battle() -> void:
 	var auto_btn: Button
 	var on_toggle_auto = func():
 		if not auto_unlocked:
-			g._toast(g.t("ui.auto_locked_toast"), g.GOLD)
+			g._toast(g.t("ui.auto_locked_ch3"), g.GOLD)
 			g.play_sfx("error")
 			return
 		g.toggle_auto_battle()
