@@ -954,6 +954,10 @@ func show_title_screen() -> void:
 			show_map()
 	, EMBER, Vector2(0, 42))
 	start_btn.name = "TitleStartBtn"
+	var s_tw := start_btn.create_tween().set_loops()
+	s_tw.tween_property(start_btn, "modulate", Color(1.15, 1.15, 1.05, 1.0), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	s_tw.tween_property(start_btn, "modulate", Color(1.0, 1.0, 1.0, 1.0), 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	start_btn.tree_exited.connect(s_tw.kill)
 	page.add_child(start_btn)
 
 	# Secondary Sync / Auth Entry Row (Compact 32px height)
@@ -1384,8 +1388,25 @@ func _stat_bar(bar_width: float, bar_height: float, value: int, max_value: int, 
 	bar.show_percentage = false
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var radius := int(bar_height / 2.0)
-	bar.add_theme_stylebox_override("background", _panel(Color(0.02, 0.06, 0.08, 0.85), radius, Color(0, 0, 0, 0.45)))
-	bar.add_theme_stylebox_override("fill", _panel(fill_color, radius))
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.02, 0.05, 0.07, 0.90)
+	bg_style.corner_radius_top_left = radius; bg_style.corner_radius_top_right = radius
+	bg_style.corner_radius_bottom_left = radius; bg_style.corner_radius_bottom_right = radius
+	bg_style.border_width_left = 1; bg_style.border_width_right = 1
+	bg_style.border_width_top = 1; bg_style.border_width_bottom = 1
+	bg_style.border_color = Color(0.12, 0.22, 0.26, 0.8)
+	bg_style.shadow_color = Color(0, 0, 0, 0.45)
+	bg_style.shadow_size = 2
+	bg_style.shadow_offset = Vector2(0, 1)
+	bar.add_theme_stylebox_override("background", bg_style)
+
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = fill_color
+	fill_style.corner_radius_top_left = radius; fill_style.corner_radius_top_right = radius
+	fill_style.corner_radius_bottom_left = radius; fill_style.corner_radius_bottom_right = radius
+	fill_style.border_width_top = 1
+	fill_style.border_color = fill_color.lightened(0.35)
+	bar.add_theme_stylebox_override("fill", fill_style)
 	if not text.is_empty():
 		# WHITE TEXT SPANS THE WHOLE BAR, NOT JUST THE FILL — so it has to stay readable against
 		# two backgrounds at once: the light fill on the left, the dark track on the right, in
@@ -1412,9 +1433,17 @@ func _status_chip(glyph: String, amount: int, color: Color, height := 19.0, widt
 	chip.custom_minimum_size = Vector2(width, height)
 	chip.size = chip.custom_minimum_size
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := _panel(Color(color.r * 0.32, color.g * 0.32, color.b * 0.32, 0.94), int(height / 2.0), color)
+	var radius := int(height / 2.0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(color.r * 0.22, color.g * 0.22, color.b * 0.22, 0.95)
+	style.corner_radius_top_left = radius; style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius; style.corner_radius_bottom_right = radius
 	style.border_width_left = 1; style.border_width_right = 1
 	style.border_width_top = 1; style.border_width_bottom = 1
+	style.border_color = color
+	style.shadow_color = Color(0, 0, 0, 0.35)
+	style.shadow_size = 1
+	style.shadow_offset = Vector2(0, 1)
 	chip.add_theme_stylebox_override("panel", style)
 	var lbl := _label("%s%d" % [glyph, amount], int(height * 0.58), color, HORIZONTAL_ALIGNMENT_CENTER)
 	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1431,6 +1460,9 @@ func _icon_badge(glyph: String, color: Color, diameter := 42, glyph_size := 20) 
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
 	style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+	style.shadow_color = Color(0, 0, 0, 0.35)
+	style.shadow_size = 2
+	style.shadow_offset = Vector2(0, 1)
 	badge.add_theme_stylebox_override("panel", style)
 	var lbl := _label(glyph, glyph_size, color, HORIZONTAL_ALIGNMENT_CENTER)
 	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1448,6 +1480,9 @@ func _drawn_icon_badge(kind: String, flourish: String, color: Color, diameter :=
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
 	style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+	style.shadow_color = Color(0, 0, 0, 0.35)
+	style.shadow_size = 2
+	style.shadow_offset = Vector2(0, 1)
 	badge.add_theme_stylebox_override("panel", style)
 	var icon := GameIcon.new()
 	icon.kind = kind
@@ -1470,6 +1505,9 @@ func _equip_icon_badge(item: Dictionary, color: Color, diameter := 44) -> Panel:
 		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var style := _panel(Color(color.r, color.g, color.b, 0.18), int(diameter / 2.0), color)
 		style.border_width_left = 2; style.border_width_right = 2; style.border_width_top = 2; style.border_width_bottom = 2
+		style.shadow_color = Color(0, 0, 0, 0.35)
+		style.shadow_size = 2
+		style.shadow_offset = Vector2(0, 1)
 		badge.add_theme_stylebox_override("panel", style)
 		var tr := TextureRect.new()
 		tr.texture = load(icon_path)
@@ -1781,6 +1819,71 @@ func _label(text: String, size := 14, color := TEXT, align := HORIZONTAL_ALIGNME
 	else: value.autowrap_mode = TextServer.AUTOWRAP_OFF
 	return value
 
+func _button_style(color: Color, radius: int = 10, border: Color = Color.TRANSPARENT, state: String = "normal") -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	style.corner_detail = 6
+
+	match state:
+		"pressed":
+			style.bg_color = color.darkened(0.14)
+			style.border_width_left = 1
+			style.border_width_right = 1
+			style.border_width_top = 2
+			style.border_width_bottom = 1
+			style.border_color = border if border.a > 0 else EMBER
+			style.shadow_color = Color(0, 0, 0, 0.25)
+			style.shadow_size = 1
+			style.shadow_offset = Vector2(0, 1)
+			style.content_margin_top = 4
+			style.content_margin_bottom = 2
+			style.content_margin_left = 10
+			style.content_margin_right = 10
+		"hover":
+			style.bg_color = color.lightened(0.10)
+			style.border_width_left = 1
+			style.border_width_right = 1
+			style.border_width_top = 2
+			style.border_width_bottom = 2
+			style.border_color = border if border.a > 0 else JADE
+			style.shadow_color = Color(0, 0, 0, 0.35)
+			style.shadow_size = 4
+			style.shadow_offset = Vector2(0, 2)
+			style.content_margin_top = 3
+			style.content_margin_bottom = 3
+			style.content_margin_left = 10
+			style.content_margin_right = 10
+		"disabled":
+			style.bg_color = color.darkened(0.35)
+			style.border_width_left = 1
+			style.border_width_right = 1
+			style.border_width_top = 1
+			style.border_width_bottom = 1
+			style.border_color = Color("2a3a40")
+			style.shadow_size = 0
+			style.content_margin_top = 3
+			style.content_margin_bottom = 3
+			style.content_margin_left = 10
+			style.content_margin_right = 10
+		_: # "normal"
+			style.bg_color = color
+			style.border_width_left = 1
+			style.border_width_right = 1
+			style.border_width_top = 2
+			style.border_width_bottom = 2
+			style.border_color = border if border.a > 0 else GOLD
+			style.shadow_color = Color(0, 0, 0, 0.32)
+			style.shadow_size = 3
+			style.shadow_offset = Vector2(0, 2)
+			style.content_margin_top = 3
+			style.content_margin_bottom = 3
+			style.content_margin_left = 10
+			style.content_margin_right = 10
+	return style
+
 func _bind_touch_guard(btn: Button, callback: Callable, slop: float = 14.0) -> void:
 	if not callback.is_valid(): return
 	var state := {
@@ -1792,9 +1895,18 @@ func _bind_touch_guard(btn: Button, callback: Callable, slop: float = 14.0) -> v
 			if ev.pressed:
 				state.press_start = ev.position
 				state.drag_cancelled = false
+				btn.pivot_offset = btn.size * 0.5
+				var tw := btn.create_tween()
+				tw.tween_property(btn, "scale", Vector2(0.96, 0.96), 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			else:
+				var tw := btn.create_tween()
+				tw.tween_property(btn, "scale", Vector2(1.025, 1.025), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tw.tween_property(btn, "scale", Vector2.ONE, 0.08).set_trans(Tween.TRANS_SINE)
 		elif ev is InputEventScreenDrag or ev is InputEventMouseMotion:
 			if not bool(state.drag_cancelled) and (ev.position - Vector2(state.press_start)).length() > slop:
 				state.drag_cancelled = true
+				var tw := btn.create_tween()
+				tw.tween_property(btn, "scale", Vector2.ONE, 0.1)
 	)
 	btn.pressed.connect(func():
 		if bool(state.drag_cancelled):
@@ -1824,22 +1936,7 @@ func contrast_ratio(a: Color, b: Color) -> float:
 	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
 
 ## Pick the readable text colour for a given button fill.
-##
-## WHY THIS IS A FUNCTION AND NOT A CONSTANT: `_button` used to hardcode near-white `TEXT` for
-## every fill, which is invisible-on-white the moment a caller passes a light accent. That is not
-## hypothetical — the deck screen's *active* filter chips (EMBER #ff9a4c) measured 1.90:1 and its
-## active element chip (JADE #83e4c1) measured 1.62:1, both far below WCAG AA's 4.5:1, and the
-## confirm-deck button ("确认牌组 25/25") 1.76:1. Every one of those was a *live, tappable* control
-## whose label could not be read. Choosing per-fill means a future caller cannot reintroduce it by
-## picking a new colour — see ui_audit.gd, which measures the rendered frames rather than trusting
-## this reasoning.
 func _ink_for(fill: Color) -> Color:
-	# Two candidates, pick the higher contrast. LIGHT_INK is near-black rather than a mid-dark
-	# slate because mid-tone fills exist in this palette where BOTH a mid-dark and a near-white ink
-	# fall short: on the deck screen's epic-purple (`#a663bc`, luminance 0.20) a `#16232a` ink
-	# manages only 3.9:1 and white only 3.8:1, so only a near-black clears 4.5:1. Since the whole
-	# point of this function is that no fill can lose, the dark candidate has to be dark enough to
-	# win on the worst fill in the palette — ui_smoke.gd asserts that over every one of them.
 	const LIGHT_INK := Color.BLACK
 	return LIGHT_INK if contrast_ratio(LIGHT_INK, fill) > contrast_ratio(TEXT, fill) else TEXT
 
@@ -1848,13 +1945,55 @@ func _button(text: String, callback: Callable, color := PANEL, min_size := Vecto
 	if font_cjk: value.add_theme_font_override("font", font_cjk)
 	value.add_theme_font_size_override("font_size", 12)
 	value.add_theme_color_override("font_color", _ink_for(color))
-	value.add_theme_stylebox_override("normal", _panel(color, 10, GOLD))
-	value.add_theme_stylebox_override("hover", _panel(color.lightened(.1), 10, JADE))
-	value.add_theme_stylebox_override("pressed", _panel(color.darkened(.12), 10, EMBER))
-	value.add_theme_stylebox_override("disabled", _panel(color.darkened(.3), 10, Color("3a4a50")))
+	value.add_theme_stylebox_override("normal", _button_style(color, 10, GOLD, "normal"))
+	value.add_theme_stylebox_override("hover", _button_style(color, 10, JADE, "hover"))
+	value.add_theme_stylebox_override("pressed", _button_style(color, 10, EMBER, "pressed"))
+	value.add_theme_stylebox_override("disabled", _button_style(color, 10, Color("3a4a50"), "disabled"))
 	if callback.is_valid():
 		_bind_touch_guard(value, callback)
 	return value
+
+func _create_card_cost_badge(cost: int, accent: Color, can_afford: bool = true, diameter: float = 26.0) -> Control:
+	var badge := Panel.new()
+	badge.custom_minimum_size = Vector2(diameter, diameter)
+	badge.size = badge.custom_minimum_size
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var rad: int = int(diameter / 2.0)
+	var bg_col: Color = accent if can_afford else Color("221012")
+	var border_col: Color = accent.lightened(0.25) if can_afford else Color("7f1d1d")
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_col
+	style.corner_radius_top_left = rad
+	style.corner_radius_top_right = rad
+	style.corner_radius_bottom_left = rad
+	style.corner_radius_bottom_right = rad
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = border_col
+	style.shadow_color = Color(0, 0, 0, 0.45)
+	style.shadow_size = 3
+	style.shadow_offset = Vector2(0, 1)
+	badge.add_theme_stylebox_override("panel", style)
+
+	var glint := ColorRect.new()
+	glint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glint.custom_minimum_size = Vector2(diameter * 0.22, diameter * 0.22)
+	glint.size = glint.custom_minimum_size
+	glint.position = Vector2(diameter * 0.22, diameter * 0.16)
+	glint.color = Color(1.0, 1.0, 1.0, 0.55 if can_afford else 0.25)
+	badge.add_child(glint)
+
+	var font_col: Color = Color("140904") if can_afford else Color("fca5a5")
+	var font_sz: int = int(diameter * 0.58)
+	var lbl := _label(str(cost), font_sz, font_col, HORIZONTAL_ALIGNMENT_CENTER)
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(lbl)
+	return badge
 
 func _texture(path: String) -> Texture2D:
 	return load("res://assets/%s" % path)
@@ -2585,6 +2724,11 @@ func _modal_dialog(node_name: String, on_dismiss: Callable = Callable()) -> Cont
 		dim_btn.pressed.connect(on_dismiss)
 	root.add_child(dim_btn)
 	overlay.add_child(root)
+
+	root.modulate.a = 0.0
+	var tw := root.create_tween()
+	tw.tween_property(root, "modulate:a", 1.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
 	return root
 
 func _maybe_show_tutorial(tutorial_id: String) -> void:

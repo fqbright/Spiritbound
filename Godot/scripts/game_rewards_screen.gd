@@ -686,15 +686,18 @@ func show_reward_details() -> void:
 	var equip_id := str(g.pending_rewards.get("equipment", ""))
 	if not equip_id.is_empty():
 		var item := g.content.equipment(equip_id)
-		list.add_child(_reward_item(g.tf("ui.boss_equip_title", [item.icon, g._equip_name(item)]), g._equip_detail(item), g.GOLD))
+		if not item.is_empty():
+			list.add_child(_reward_item(g.tf("ui.boss_equip_title", [str(item.get("icon", "⚔")), g._equip_name(item)]), g._equip_detail(item), g.GOLD))
 	var relic_id := str(g.pending_rewards.get("relic", ""))
 	if not relic_id.is_empty():
 		var relic := g.content.relic(relic_id)
-		list.add_child(_reward_item(g.tf("ui.relic_reward_title", [relic.icon, g._relic_name(relic)]), g._relic_detail(relic), Color(relic.color)))
+		if not relic.is_empty():
+			list.add_child(_reward_item(g.tf("ui.relic_reward_title", [str(relic.get("icon", "✦")), g._relic_name(relic)]), g._relic_detail(relic), Color(str(relic.get("color", "ffd700")))))
 	var rune_id := str(g.pending_rewards.get("rune", ""))
 	if not rune_id.is_empty():
 		var rune := g.content.rune(rune_id)
-		list.add_child(_reward_item(g.tf("ui.elite_rune_title", [rune.icon, g._rune_name(rune)]), g._rune_detail(rune), Color(rune.color)))
+		if not rune.is_empty():
+			list.add_child(_reward_item(g.tf("ui.elite_rune_title", [str(rune.get("icon", "ᚱ")), g._rune_name(rune)]), g._rune_detail(rune), Color(str(rune.get("color", "5ec880")))))
 
 	if bool(g.pending_rewards.get("daily_trial", false)):
 		if bool(g.pending_rewards.get("daily_trial_completed", false)):
@@ -717,8 +720,14 @@ func show_reward_details() -> void:
 
 	list.add_child(g._label(g.t("ui.reward_choose"), 13, g.JADE, HORIZONTAL_ALIGNMENT_CENTER))
 	var reward_options := _get_reward_card_options()
-	for card in reward_options:
-		list.add_child(_reward_card_row(card))
+	for i in reward_options.size():
+		var card: Dictionary = reward_options[i]
+		var c_row: Control = _reward_card_row(card)
+		list.add_child(c_row)
+		c_row.modulate.a = 0.0
+		var r_tw := c_row.create_tween()
+		r_tw.tween_interval(float(i) * 0.06)
+		r_tw.tween_property(c_row, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_QUAD)
 	var dust_gain := 15
 	var skip_btn := g._button(g.tf("ui.reward_skip_dust", dust_gain), func():
 		g.profile.spirit_dust = int(g.profile.get("spirit_dust", 0)) + dust_gain
@@ -815,7 +824,16 @@ func _reward_card_row(card: Dictionary) -> Control:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size.y = 126
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", g._panel(Color("181a10") if is_cap else Color("11242a"), 12, accent))
+	var p_style := StyleBoxFlat.new()
+	p_style.bg_color = Color("1a180e") if is_cap else Color("0d1e24")
+	p_style.border_color = accent
+	p_style.set_border_width_all(2 if is_cap else 1)
+	p_style.border_width_top = 2
+	p_style.set_corner_radius_all(12)
+	p_style.shadow_color = Color(0, 0, 0, 0.45)
+	p_style.shadow_size = 4
+	p_style.shadow_offset = Vector2(0, 2)
+	panel.add_theme_stylebox_override("panel", p_style)
 
 	var pad := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 8)
@@ -831,8 +849,18 @@ func _reward_card_row(card: Dictionary) -> Control:
 	art_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(art_holder)
 	art_holder.add_child(g._card_art_panel(card.id, Vector2(76, 106)))
-	var badge := g._cost_badge(int(card.cost), accent, 24)
-	badge.position = Vector2(3, 3)
+	var card_rarity: String = str(card.get("rarity", "Common"))
+	var frame_tex := g._get_card_frame_texture(card_rarity)
+	if frame_tex != null:
+		var frame_rect := TextureRect.new()
+		frame_rect.texture = frame_tex
+		frame_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		frame_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		frame_rect.stretch_mode = TextureRect.STRETCH_SCALE
+		frame_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art_holder.add_child(frame_rect)
+	var badge := g._cost_badge(int(card.cost), accent, 26)
+	badge.position = Vector2(1, 1)
 	art_holder.add_child(badge)
 
 	var right := VBoxContainer.new()
@@ -923,7 +951,27 @@ func _smart_add_card(card: Dictionary) -> void:
 	_finish_reward()
 
 func _reward_item(title: String, detail: String, color: Color) -> PanelContainer:
-	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(340,54); panel.add_theme_stylebox_override("panel",g._panel(Color("193839"),12,color)); var stack := VBoxContainer.new(); panel.add_child(stack); stack.add_child(g._label(title, 12, color, HORIZONTAL_ALIGNMENT_CENTER)); stack.add_child(g._label(detail, 9, g.MUTED, HORIZONTAL_ALIGNMENT_CENTER, true)); return panel
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(340, 58)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("0d2229", 0.95)
+	style.border_color = color
+	style.set_border_width_all(1)
+	style.border_width_top = 2
+	style.set_corner_radius_all(10)
+	style.shadow_color = Color(0, 0, 0, 0.45)
+	style.shadow_size = 3
+	style.shadow_offset = Vector2(0, 1)
+	style.content_margin_left = 12; style.content_margin_right = 12
+	style.content_margin_top = 6; style.content_margin_bottom = 6
+	panel.add_theme_stylebox_override("panel", style)
+
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 2)
+	panel.add_child(stack)
+	stack.add_child(g._label(title, 13, color, HORIZONTAL_ALIGNMENT_CENTER))
+	stack.add_child(g._label(detail, 10, Color("cbd5e1"), HORIZONTAL_ALIGNMENT_CENTER, true))
+	return panel
 
 func _finish_reward() -> void:
 	SpiritSave.write(g.profile)

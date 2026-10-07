@@ -70,7 +70,7 @@ extends SceneTree
 # =============================================================================
 
 const MAX_RETRIES := 8
-const QUICK_MAX_RETRIES := 1
+const QUICK_MAX_RETRIES := 2
 const TURN_GUARD := 300
 # Set this to a printed digest to pin a regression baseline (see the telemetry report). Left
 # disabled by default so the suite reports the live curve without failing CI the moment the

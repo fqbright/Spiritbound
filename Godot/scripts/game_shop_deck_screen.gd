@@ -1182,17 +1182,7 @@ func _card_art_panel(card_id: String, art_size: Vector2, radius := 8) -> Control
 	return clip
 
 func _cost_badge(cost: int, accent: Color, diameter := 26) -> Panel:
-	var badge := Panel.new()
-	badge.custom_minimum_size = Vector2(diameter, diameter)
-	badge.size = badge.custom_minimum_size
-	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.add_theme_stylebox_override("panel", g._panel(accent, int(diameter / 2.0), Color("2b1a10")))
-	var lbl := g._label(str(cost), int(diameter * 0.6), Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
-	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.add_child(lbl)
-	return badge
+	return g._create_card_cost_badge(cost, accent, true, float(diameter)) as Panel
 
 # A single rounded border reads as a plain panel; a thin inset accent line plus a small leaf
 # ornament at each corner is what turns it into something that reads as a picture frame,
@@ -2042,11 +2032,26 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	tile.add_child(rarity_row)
 
 	# 4. Carved-out space in the lower-middle portion for card info
+	var art_vignette := ColorRect.new()
+	art_vignette.name = "ArtBottomVignette"
+	art_vignette.position = Vector2(0, 110)
+	art_vignette.size = Vector2(tile.custom_minimum_size.x, tile.custom_minimum_size.y - 110)
+	art_vignette.color = Color(0.02, 0.05, 0.07, 0.52)
+	art_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(art_vignette)
+
 	var info_box := PanelContainer.new()
 	info_box.position = Vector2(6, 122)
 	info_box.custom_minimum_size = Vector2(164, 104)
 	info_box.size = info_box.custom_minimum_size
-	var box_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 8, border_color)
+	var box_style := StyleBoxFlat.new()
+	box_style.bg_color = Color(0.04, 0.08, 0.11, 0.78)
+	box_style.corner_radius_top_left = 8
+	box_style.corner_radius_top_right = 8
+	box_style.corner_radius_bottom_left = 8
+	box_style.corner_radius_bottom_right = 8
+	box_style.border_width_top = 2
+	box_style.border_color = border_color
 	# Slender border overlay margin
 	box_style.content_margin_left = 6; box_style.content_margin_right = 6
 	box_style.content_margin_top = 2; box_style.content_margin_bottom = 2
@@ -2059,8 +2064,8 @@ func _deck_card_tile(card: Dictionary, owned: int) -> Control:
 	stack.mouse_filter = Control.MOUSE_FILTER_PASS
 	info_box.add_child(stack)
 
-	var name_lbl := g._label(g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else ""), 12, g.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	var name_lbl := g._label(g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else ""), 12, Color("fff8eb"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 	name_lbl.add_theme_constant_override("outline_size", 2)
 	stack.add_child(name_lbl)
 
@@ -2162,13 +2167,25 @@ func _show_card_detail_modal(card: Dictionary) -> void:
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	g._apply_card_foil(art, str(card.get("rarity", "Common")), up_lvl > 0 or is_foil)
 	art_frame.add_child(art)
+
+	var border_tr := TextureRect.new()
+	border_tr.texture = g._get_card_frame_texture(str(card.get("rarity", "Common")))
+	border_tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	border_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	border_tr.stretch_mode = TextureRect.STRETCH_SCALE
+	border_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art_frame.add_child(border_tr)
+
+	var cost_badge := g._create_card_cost_badge(int(card.cost), accent, true, 28.0)
+	cost_badge.position = Vector2(4, 4)
+	art_frame.add_child(cost_badge)
 	art_box.add_child(art_frame)
 	vbox.add_child(art_box)
 
 	var info_row := HBoxContainer.new()
 	info_row.add_theme_constant_override("separation", 6)
 	var kind_elem_str := g._kind_element_line(card)
-	info_row.add_child(g._label(kind_elem_str, 12, g.TEXT))
+	info_row.add_child(g._label(kind_elem_str, 12, g.GOLD))
 	var cost_lbl := g._label("灵气: %d" % int(card.cost) if g.lang == "zh-Hans" else "Cost: %d" % int(card.cost), 12, g.EMBER)
 	cost_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

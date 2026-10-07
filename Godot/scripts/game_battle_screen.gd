@@ -722,6 +722,11 @@ func _apply_card_foil(node: CanvasItem, rarity: String, upgraded: bool, is_capst
 			var accel: Vector3 = Input.get_accelerometer()
 			var tilt: float = clampf(accel.x * 0.25, -1.0, 1.0) if accel.length() > 0.01 else 0.0
 			mat.set_shader_parameter("tilt_shift", tilt)
+			if is_capstone or is_foil_reforge:
+				mat.set_shader_parameter("is_gold_foil", true)
+				mat.set_shader_parameter("foil_intensity", 0.65)
+			elif upgraded:
+				mat.set_shader_parameter("foil_intensity", 0.50)
 			node.material = mat
 
 func _get_hero_volumetric_shader() -> Shader:
@@ -1589,7 +1594,11 @@ func _pile_chip(count: int, caption: String, number_color: Color, on_tap: Callab
 	chip.custom_minimum_size = chip_size
 	chip.size = chip.custom_minimum_size
 	chip.mouse_filter = Control.MOUSE_FILTER_PASS if on_tap.is_valid() else Control.MOUSE_FILTER_IGNORE
-	chip.add_theme_stylebox_override("panel", g._panel(Color("0c1a1f"), 10, Color("1f404d")))
+	var chip_style := g._panel(Color("0c1a1f"), 10, Color("1f404d"))
+	chip_style.shadow_color = Color(0, 0, 0, 0.35)
+	chip_style.shadow_size = 2
+	chip_style.shadow_offset = Vector2(0, 1)
+	chip.add_theme_stylebox_override("panel", chip_style)
 
 	if count == 0:
 		chip.modulate = Color(1.0, 1.0, 1.0, 0.55)
@@ -1657,6 +1666,9 @@ func _add_hand(page: VBoxContainer) -> void:
 	orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var orb_style := g._panel(Color("0d3a4a"), 23, Color("6fd8ff"))
 	orb_style.border_width_left = 2; orb_style.border_width_right = 2; orb_style.border_width_top = 2; orb_style.border_width_bottom = 2
+	orb_style.shadow_color = Color(0, 0, 0, 0.45)
+	orb_style.shadow_size = 4
+	orb_style.shadow_offset = Vector2(0, 2)
 	orb.add_theme_stylebox_override("panel", orb_style)
 	if g.combat and g.combat.state and g.combat.state.phase == "player" and not g.resolving and g.is_inside_tree():
 		var cur_turn: int = int(g.combat.state.get("turn", 1))
@@ -1701,6 +1713,12 @@ func _add_hand(page: VBoxContainer) -> void:
 	ult_btn.tooltip_text = g.t("ui.ultimate_ready") if can_ult else g.t("ui.ultimate_tooltip")
 	if can_ult:
 		ult_btn.add_theme_color_override("font_color", Color("fff5a0"))
+		var u_style := g._button_style(Color("7a3e08"), 8, Color("ffd700"), "normal")
+		ult_btn.add_theme_stylebox_override("normal", u_style)
+		var u_tw := ult_btn.create_tween().set_loops()
+		u_tw.tween_property(ult_btn, "modulate", Color(1.22, 1.18, 1.05, 1.0), 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		u_tw.tween_property(ult_btn, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		ult_btn.tree_exited.connect(u_tw.kill)
 	status.add_child(ult_btn)
 
 	var discard_chip := _pile_chip(g.combat.state.discard.size(), g.t("ui.discard_pile"), Color("a8b2b5"), func(): show_pile_inspector("ui.pile_discard_title", g.combat.state.discard))
@@ -1769,6 +1787,13 @@ func _add_hand(page: VBoxContainer) -> void:
 		leak_badge.add_child(b_lbl)
 		leak_badge.position = Vector2(pass_btn.custom_minimum_size.x - 14, -6)
 		pass_btn.add_child(leak_badge)
+	elif g.combat != null and g.combat.state != null and int(g.combat.state.energy) == 0:
+		var ready_style := g._button_style(Color("223b32"), 8, Color("68d391"), "normal")
+		pass_btn.add_theme_stylebox_override("normal", ready_style)
+		var p_tw := pass_btn.create_tween().set_loops()
+		p_tw.tween_property(pass_btn, "modulate", Color(1.15, 1.15, 1.05, 1.0), 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		p_tw.tween_property(pass_btn, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.75).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		pass_btn.tree_exited.connect(p_tw.kill)
 	status.add_child(pass_btn)
 
 	if g.combat and g.combat.can_undo():
@@ -2186,6 +2211,15 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	_apply_card_foil(art, card_rarity, up_lvl > 0, false, card.id)
 	frame.add_child(art)
 
+	var art_vignette := ColorRect.new()
+	art_vignette.name = "ArtBottomVignette"
+	art_vignette.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	art_vignette.anchor_top = 0.46
+	art_vignette.anchor_bottom = 1.0
+	art_vignette.color = Color(0.02, 0.05, 0.07, 0.58)
+	art_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(art_vignette)
+
 	var info_box := PanelContainer.new()
 	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	info_box.anchor_left = 0.0; info_box.anchor_right = 1.0
@@ -2193,7 +2227,7 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	info_box.offset_left = 0; info_box.offset_right = 0
 	info_box.offset_top = 0; info_box.offset_bottom = 0
 	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var info_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 0)
+	var info_style := g._panel(Color(0.04, 0.08, 0.11, 0.82), 0)
 	info_style.corner_radius_top_left = 8; info_style.corner_radius_top_right = 8
 	info_style.border_width_top = 3; info_style.border_color = border_col
 	# ~8% of the card width, clearing the slender border g.overlay added below
@@ -2208,8 +2242,8 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	info_box.add_child(stack)
 
 	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else "")
-	var name_lbl := g._label(name_text, 16, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	var name_lbl := g._label(name_text, 16, Color("fff8eb"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 	name_lbl.add_theme_constant_override("outline_size", 3)
 	stack.add_child(name_lbl)
 
@@ -2233,13 +2267,8 @@ func _big_card_face(card: Dictionary, rune_id: String) -> Panel:
 	border_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(border_overlay)
 
-	var cost_badge := PanelContainer.new()
-	cost_badge.custom_minimum_size = Vector2(38, 38)
+	var cost_badge := g._create_card_cost_badge(int(card.cost), accent, true, 38.0)
 	cost_badge.position = Vector2(-10, -10)
-	cost_badge.add_theme_stylebox_override("panel", g._panel(accent, 19, Color("2b1a10")))
-	var cost_lbl := g._label(str(int(card.cost)), 22, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
-	cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	cost_badge.add_child(cost_lbl)
 	frame.add_child(cost_badge)
 
 	var rarity_row := g._rarity_star_row(card_rarity, g.GOLD, BoxContainer.ALIGNMENT_END)
@@ -2553,6 +2582,15 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	# 3. A solid text box from the middle down, like a normal trading card's rules box —
 	# a name/type bar over a dark, near-opaque description panel, not a floating translucent
 	# island in the middle of the art.
+	var art_vignette := ColorRect.new()
+	art_vignette.name = "ArtBottomVignette"
+	art_vignette.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	art_vignette.anchor_top = 0.48
+	art_vignette.anchor_bottom = 1.0
+	art_vignette.color = Color(0.02, 0.05, 0.07, 0.52)
+	art_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_clip.add_child(art_vignette)
+
 	var info_box := PanelContainer.new()
 	info_box.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	info_box.anchor_left = 0.0
@@ -2564,11 +2602,12 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	info_box.offset_top = 0
 	info_box.offset_bottom = 0
 	info_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var info_style := g._panel(Color(0.04, 0.08, 0.10, 0.48), 0)
+	var info_style := StyleBoxFlat.new()
+	info_style.bg_color = Color(0.04, 0.08, 0.11, 0.78)
 	info_style.corner_radius_top_left = 6; info_style.corner_radius_top_right = 6
 	info_style.border_width_top = 2; info_style.border_color = border_col
 	# ~8% of the card width, clearing the slender border g.overlay added below
-	info_style.content_margin_left = 12; info_style.content_margin_right = 12
+	info_style.content_margin_left = 10; info_style.content_margin_right = 10
 	info_style.content_margin_top = 2; info_style.content_margin_bottom = 2
 	info_box.add_theme_stylebox_override("panel", info_style)
 	card_clip.add_child(info_box)
@@ -2587,8 +2626,8 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	info_box.add_child(info_stack)
 
 	var name_text: String = g.content.text(card.nameKey, g.lang) + (" +%d" % up_lvl if up_lvl > 0 else "")
-	var name_lbl := g._label(name_text, 10, Color("f3e8cf"), HORIZONTAL_ALIGNMENT_CENTER)
-	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	var name_lbl := g._label(name_text, 10, Color("fff8eb"), HORIZONTAL_ALIGNMENT_CENTER)
+	name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 	name_lbl.add_theme_constant_override("outline_size", 2)
 	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info_stack.add_child(name_lbl)
@@ -2607,21 +2646,9 @@ func _card_view(instance: Dictionary, index: int, count: int) -> HandCard:
 	desc_lbl.clip_text = true
 	info_stack.add_child(desc_lbl)
 
-	# 5. Top badges (cost & rune)
-	var cost_badge := PanelContainer.new()
-	cost_badge.custom_minimum_size = Vector2(26, 26)
-	cost_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cost_badge.position = Vector2(-6, -6)
-	if can_afford:
-		cost_badge.add_theme_stylebox_override("panel", g._panel(accent, 13, Color("2b1a10")))
-		var cost_lbl := g._label(str(int(card.cost)), 16, Color("160b06"), HORIZONTAL_ALIGNMENT_CENTER)
-		cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		cost_badge.add_child(cost_lbl)
-	else:
-		cost_badge.add_theme_stylebox_override("panel", g._panel(Color("221012"), 13, Color("5a2024")))
-		var cost_lbl := g._label(str(int(card.cost)), 16, Color("e06060"), HORIZONTAL_ALIGNMENT_CENTER)
-		cost_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		cost_badge.add_child(cost_lbl)
+	# 5. Top badges (cost crystal gem & rune)
+	var cost_badge := g._create_card_cost_badge(int(card.cost), accent, can_afford, 26.0)
+	cost_badge.position = Vector2(-5, -5)
 	tile.add_child(cost_badge)
 
 	var rune_info: Dictionary = g.content.rune(rune_id)
@@ -2699,6 +2726,9 @@ func _animate_card_draw_in(tile: HandCard, stagger_index: int) -> void:
 	tw.parallel().tween_property(tile, "rotation", final_rot, g._battle_delay(0.32))
 	tw.parallel().tween_property(tile, "scale", Vector2.ONE, g._battle_delay(0.28))
 	tw.parallel().tween_property(tile, "modulate:a", 1.0, g._battle_delay(0.2))
+	if is_cap:
+		tw.parallel().tween_property(tile, "modulate", Color(1.28, 1.22, 0.92, 1.0), g._battle_delay(0.18)).set_trans(Tween.TRANS_SINE)
+		tw.chain().tween_property(tile, "modulate", Color.WHITE, g._battle_delay(0.22)).set_trans(Tween.TRANS_SINE)
 
 # Fired the instant a card is played (see _resolve_play()), while its tile is still the one
 # left over from the hand's last render — show_battle() at the end of that same resolve
@@ -4824,7 +4854,7 @@ func _spawn_floating_text(pos: Vector2, text: String, color: Color, font_size: i
 	var is_heavy: bool = is_crit or text.to_int() >= 25
 	var display_text: String = text
 	if is_heavy and text.is_valid_int():
-		var clr_flairs := ["【破！】", "【绝！】", "【烈！】", "【震！】"]
+		var clr_flairs := ["CRIT!", "SHATTER!", "BURST!", "SMITE!"] if g.lang == "en" else ["【破！】", "【绝！】", "【烈！】", "【震！】"]
 		display_text = clr_flairs[abs(hash(text)) % clr_flairs.size()] + " " + text
 	var label := g._label(display_text, font_size, color, HORIZONTAL_ALIGNMENT_CENTER)
 	label.position = pos - Vector2(75, 18)
@@ -5409,23 +5439,28 @@ func _show_turn_banner(is_player: bool) -> void:
 
 	var style := StyleBoxFlat.new()
 	var bg_col: Color = Color("0d2d26") if is_player else Color("2c0c16")
-	bg_col.a = 0.88
+	bg_col.a = 0.94
 	style.bg_color = bg_col
 	var border_col: Color = g.GOLD if is_player else Color("ef4444")
 	style.border_color = border_col
 	style.border_width_top = 2
 	style.border_width_bottom = 2
-	style.corner_radius_top_left = 6
-	style.corner_radius_top_right = 6
-	style.corner_radius_bottom_left = 6
-	style.corner_radius_bottom_right = 6
+	style.border_width_left = 3
+	style.border_width_right = 3
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	style.shadow_color = Color(0, 0, 0, 0.65)
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0, 3)
 	banner.add_theme_stylebox_override("panel", style)
 
 	var pad := MarginContainer.new()
-	pad.add_theme_constant_override("margin_top", 6)
-	pad.add_theme_constant_override("margin_bottom", 6)
-	pad.add_theme_constant_override("margin_left", 20)
-	pad.add_theme_constant_override("margin_right", 20)
+	pad.add_theme_constant_override("margin_top", 7)
+	pad.add_theme_constant_override("margin_bottom", 7)
+	pad.add_theme_constant_override("margin_left", 22)
+	pad.add_theme_constant_override("margin_right", 22)
 	banner.add_child(pad)
 
 	var text: String

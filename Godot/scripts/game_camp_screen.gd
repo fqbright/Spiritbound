@@ -1574,7 +1574,149 @@ func _astral_roots_section() -> Control:
 
 	return panel
 
+func _hero_spotlight_section() -> Control:
+	var current_class_id: String = str(g.profile.get("hero_class", "fox_spirit"))
+	var hero: Dictionary = g.content.hero_class(current_class_id)
+	if hero.is_empty():
+		return Control.new()
+
+	var panel := PanelContainer.new()
+	panel.name = "HeroSpotlightPanel"
+	panel.custom_minimum_size = Vector2(0, 164)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var r_tier: int = clampi(int(g.profile.get("unlocked", 0)) / 50, 0, 5)
+	if int(g.profile.get("samsara_count", 0)) > 0:
+		r_tier = mini(5, r_tier + int(g.profile.get("samsara_count", 0)))
+	var realm_colors := [Color("5eead4"), Color("38bdf8"), Color("c084fc"), Color("facc15"), Color("f97316"), Color("f43f5e")]
+	var r_col: Color = realm_colors[clampi(r_tier, 0, realm_colors.size() - 1)]
+
+	var p_style := StyleBoxFlat.new()
+	p_style.bg_color = Color("0d171d")
+	p_style.corner_radius_top_left = 14
+	p_style.corner_radius_top_right = 14
+	p_style.corner_radius_bottom_left = 14
+	p_style.corner_radius_bottom_right = 14
+	p_style.border_width_left = 2; p_style.border_width_right = 2
+	p_style.border_width_top = 2; p_style.border_width_bottom = 2
+	p_style.border_color = r_col.lerp(g.GOLD, 0.4)
+	p_style.shadow_color = Color(0, 0, 0, 0.45)
+	p_style.shadow_size = 5
+	p_style.shadow_offset = Vector2(0, 2)
+	panel.add_theme_stylebox_override("panel", p_style)
+
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]: pad.add_theme_constant_override("margin_%s" % side, 10)
+	panel.add_child(pad)
+
+	var main_row := HBoxContainer.new()
+	main_row.add_theme_constant_override("separation", 12)
+	pad.add_child(main_row)
+
+	# Left: Character Stage with breathing animation
+	var stage_box := CenterContainer.new()
+	stage_box.custom_minimum_size = Vector2(96, 136)
+	stage_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_row.add_child(stage_box)
+
+	var stage_holder := Control.new()
+	stage_holder.custom_minimum_size = Vector2(92, 130)
+	stage_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_box.add_child(stage_holder)
+
+	var pedestal := Panel.new()
+	pedestal.custom_minimum_size = Vector2(76, 20)
+	pedestal.size = pedestal.custom_minimum_size
+	pedestal.position = Vector2(8, 106)
+	var ped_style := g._panel(Color(r_col.r, r_col.g, r_col.b, 0.22), 10, r_col)
+	pedestal.add_theme_stylebox_override("panel", ped_style)
+	pedestal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_holder.add_child(pedestal)
+
+	var hero_sprite_key: String = str(hero.get("sprite", "fox"))
+	var spr := TextureRect.new()
+	spr.texture = g._get_character_texture(hero_sprite_key)
+	spr.custom_minimum_size = Vector2(86, 100)
+	spr.size = spr.custom_minimum_size
+	spr.position = Vector2(3, 8)
+	spr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	spr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	spr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_holder.add_child(spr)
+
+	var tw := spr.create_tween().set_loops()
+	tw.tween_property(spr, "position:y", 5.0, 1.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.parallel().tween_property(spr, "scale", Vector2(1.02, 0.98), 1.3).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(spr, "position:y", 11.0, 1.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.parallel().tween_property(spr, "scale", Vector2(0.98, 1.02), 1.3).set_trans(Tween.TRANS_SINE)
+
+	# Right Column: Hero Details, Realm, and Fast Switcher
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.alignment = BoxContainer.ALIGNMENT_CENTER
+	details.add_theme_constant_override("separation", 3)
+	main_row.add_child(details)
+
+	var hero_name_str: String = g.content.hero_name(hero, g.lang)
+	var title_lbl := g._label(hero_name_str, 16, g.GOLD)
+	title_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	title_lbl.add_theme_constant_override("outline_size", 2)
+	details.add_child(title_lbl)
+
+	var realm_idx: int = clampi(int(g.profile.get("cultivation_realm", 0)), 0, 4)
+	var realm_name: String = g.t("ui.cultivation_realm_%d" % realm_idx)
+	var realm_lbl := g._label("☯ " + realm_name, 11, r_col)
+	details.add_child(realm_lbl)
+
+	var hero_xp: int = int(g.profile.get("hero_masteries", {}).get(current_class_id, {}).get("xp", 0))
+	var hero_level: int = g.content.mastery_level_for_xp(hero_xp)
+	var max_level_xp: int = g.content.mastery_xp_for_level(hero_level + 1)
+	var mastery_text := g.tf("ui.mastery_level_fmt", hero_level)
+	if hero_level >= 5: mastery_text += " (MAX)"
+	else: mastery_text += " (%d/%d)" % [hero_xp, max_level_xp]
+	details.add_child(g._label("✦ " + mastery_text, 10, Color("9fd8c9")))
+
+	var switch_row := HBoxContainer.new()
+	switch_row.add_theme_constant_override("separation", 6)
+	details.add_child(switch_row)
+	for other_h in g.content.HERO_CLASSES:
+		var is_cur: bool = (other_h.id == current_class_id)
+		var h_btn := Button.new()
+		h_btn.custom_minimum_size = Vector2(34, 30)
+		var btn_style := g._panel(Color("162d35") if not is_cur else g.GOLD, 8, g.GOLD if is_cur else Color("2a4e58"))
+		h_btn.add_theme_stylebox_override("normal", btn_style)
+		h_btn.add_theme_stylebox_override("hover", btn_style)
+		h_btn.add_theme_stylebox_override("pressed", btn_style)
+		var icon_str := "🦊"
+		if other_h.id == "stone_sentinel": icon_str = "🗿"
+		elif other_h.id == "shadow_stalker": icon_str = "🗡️"
+		elif other_h.id == "miasma_witch": icon_str = "🧪"
+		h_btn.text = icon_str
+		h_btn.tooltip_text = g.content.hero_name(other_h, g.lang)
+		var other_id: String = other_h.id
+		var other_deck: Array = other_h.deck
+		var other_relic: String = str(other_h.get("relic", ""))
+		var other_name: String = g.content.hero_name(other_h, g.lang)
+		h_btn.pressed.connect(func():
+			if g.profile.hero_class != other_id:
+				g.profile.hero_class = other_id
+				g.profile.deck = other_deck.duplicate()
+				for cid in other_deck:
+					g.profile.collection[cid] = maxi(int(g.profile.collection.get(cid, 0)), other_deck.count(cid))
+				if not other_relic.is_empty() and not g.profile.relics.has(other_relic):
+					g.profile.relics.append(other_relic)
+				SpiritSave.write(g.profile)
+				g._haptic("heavy")
+				g._toast(g.tf("ui.hero_selected_toast", other_name), g.GOLD)
+				show_camp()
+		)
+		switch_row.add_child(h_btn)
+
+	return panel
+
 func _build_camp_character(list: VBoxContainer) -> void:
+	list.add_child(_hero_spotlight_section())
 	list.add_child(_account_panel())
 	list.add_child(_prestige_titles_section())
 	list.add_child(_sanctuary_garden_section())
@@ -2275,7 +2417,20 @@ func _hero_archetypes_section() -> Control:
 		panel.custom_minimum_size = Vector2(0, 116 if art_pending else 104)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var border_col: Color = g.GOLD if is_selected else Color("1a3d44")
-		panel.add_theme_stylebox_override("panel", g._panel(Color("10242b") if not is_selected else Color("153038"), 12, border_col))
+		var p_style := StyleBoxFlat.new()
+		p_style.bg_color = Color("15333a") if is_selected else Color("10242b")
+		p_style.corner_radius_top_left = 12; p_style.corner_radius_top_right = 12
+		p_style.corner_radius_bottom_left = 12; p_style.corner_radius_bottom_right = 12
+		p_style.border_width_left = 2 if is_selected else 1
+		p_style.border_width_right = 2 if is_selected else 1
+		p_style.border_width_top = 2 if is_selected else 1
+		p_style.border_width_bottom = 2 if is_selected else 1
+		p_style.border_color = border_col
+		if is_selected:
+			p_style.shadow_color = Color(0.85, 0.70, 0.20, 0.25)
+			p_style.shadow_size = 4
+			p_style.shadow_offset = Vector2(0, 1)
+		panel.add_theme_stylebox_override("panel", p_style)
 
 		var pad := MarginContainer.new()
 		pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -2286,8 +2441,12 @@ func _hero_archetypes_section() -> Control:
 		row.add_theme_constant_override("separation", 10)
 		pad.add_child(row)
 
-		var portrait := CenterContainer.new()
-		portrait.custom_minimum_size = Vector2(48, 48)
+		var portrait := PanelContainer.new()
+		portrait.custom_minimum_size = Vector2(50, 50)
+		var port_style := g._panel(Color("091316"), 10, g.GOLD if is_selected else Color("2a4e58"))
+		port_style.content_margin_left = 3; port_style.content_margin_right = 3
+		port_style.content_margin_top = 3; port_style.content_margin_bottom = 3
+		portrait.add_theme_stylebox_override("panel", port_style)
 		var spr := TextureRect.new()
 		spr.texture = g._get_character_texture(str(h.sprite))
 		spr.custom_minimum_size = Vector2(44, 44)
@@ -4701,24 +4860,57 @@ func _spiritual_roots_section() -> Control:
 	pad.add_child(vbox)
 
 	var pts: int = int(g.profile.get("spiritual_root_points", 0))
-	vbox.add_child(g._label(g.t("ui.spiritual_roots_title") + " (" + g.tf("ui.spiritual_root_pts", pts) + ")", 14, Color("38bdf8"), HORIZONTAL_ALIGNMENT_LEFT))
+	var title_row := HBoxContainer.new()
+	var title_lbl := g._label(g.t("ui.spiritual_roots_title"), 13, Color("38bdf8"), HORIZONTAL_ALIGNMENT_LEFT)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title_lbl)
+	var pts_text: String = ("造化点: %d" if g.lang != "en" else "Pts: %d") % pts
+	var pts_lbl := g._label(pts_text, 11, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+	title_row.add_child(pts_lbl)
+	vbox.add_child(title_row)
 	vbox.add_child(g._label(g.t("ui.spiritual_roots_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 3)
+	row.add_theme_constant_override("separation", 2)
 	var roots: Dictionary = g.profile.get("spiritual_roots", {"metal": 1, "wood": 1, "water": 1, "fire": 1, "earth": 1})
+	var elem_colors := {
+		"metal": Color("2e384d"),
+		"wood": Color("14432a"),
+		"water": Color("143b5c"),
+		"fire": Color("5c2614"),
+		"earth": Color("4d3814")
+	}
+	var elem_borders := {
+		"metal": Color("cbd5e1"),
+		"wood": Color("4ade80"),
+		"water": Color("60a5fa"),
+		"fire": Color("f97316"),
+		"earth": Color("facc15")
+	}
 	for elem in ["metal", "wood", "water", "fire", "earth"]:
 		var val: int = int(roots.get(elem, 1))
 		var elem_perk: Dictionary = g.content.SPIRITUAL_ROOT_PERKS.get(elem, {})
 		var elem_name: String = str(elem_perk.get("name_zh" if g.lang != "en" else "name_en", elem))
-		var b := g._button("%s:%d" % [elem_name, val], func():
+		var short_name: String = elem.capitalize() if g.lang == "en" else elem_name.left(2)
+		var btn_bg: Color = elem_colors.get(elem, Color("1e293b")) if pts > 0 else Color("0f172a")
+		var b := g._button("%s:%d" % [short_name, val], func():
 			if SpiritSave.invest_spiritual_root(g.profile, elem):
-				g._toast("灵根淬炼成功！%s提升至 %d" % [elem_name, val + 1], g.GOLD)
+				var succ_msg: String = ("灵根淬炼成功！%s提升至 %d" % [elem_name, val + 1]) if g.lang != "en" else ("Spiritual Root refined! %s increased to %d" % [elem_name, val + 1])
+				g._toast(succ_msg, g.GOLD)
 				g.show_camp()
-		, Color("1e293b") if pts > 0 else Color("0f172a"), Vector2(0, 28))
+		, btn_bg, Vector2(0, 28))
 		b.name = "RootBtn_%s" % elem
+		b.tooltip_text = "%s\n%s" % [elem_name, str(elem_perk.get("desc_zh" if g.lang != "en" else "desc_en", ""))]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_size_override("font_size", 9)
+		var border_col: Color = elem_borders.get(elem, g.GOLD) if pts > 0 else Color("2a3d42")
+		for st_name in ["normal", "hover", "pressed"]:
+			var b_style := g._button_style(btn_bg, 6, border_col, st_name)
+			b_style.content_margin_left = 3
+			b_style.content_margin_right = 3
+			b_style.content_margin_top = 2
+			b_style.content_margin_bottom = 2
+			b.add_theme_stylebox_override(st_name, b_style)
 		row.add_child(b)
 	vbox.add_child(row)
 	return panel
@@ -4739,18 +4931,28 @@ func _endless_pagoda_section() -> Control:
 	pad.add_child(vbox)
 
 	var cur_fl: int = int(g.profile.get("pagoda_highest_floor", 1))
-	vbox.add_child(g._label(g.t("ui.pagoda_title") + " (最高: 第%d层)" % cur_fl, 14, g.EMBER, HORIZONTAL_ALIGNMENT_LEFT))
+	var pag_title_row := HBoxContainer.new()
+	var pag_title_lbl := g._label(g.t("ui.pagoda_title"), 13, g.EMBER, HORIZONTAL_ALIGNMENT_LEFT)
+	pag_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pag_title_row.add_child(pag_title_lbl)
+	var floor_text: String = ("最高: %d层" if g.lang != "en" else "Record: Fl.%d") % cur_fl
+	var pag_rec_lbl := g._label(floor_text, 11, g.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+	pag_title_row.add_child(pag_rec_lbl)
+	vbox.add_child(pag_title_row)
 	vbox.add_child(g._label(g.t("ui.pagoda_sub"), 9, g.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var btn_row := HBoxContainer.new()
 	btn_row.add_theme_constant_override("separation", 8)
 
-	var enter_btn := g._button(g.tf("ui.pagoda_enter_btn", cur_fl), func(): begin_pagoda_battle(cur_fl), g.EMBER, Vector2(160, 32))
+	var enter_str: String = g.tf("ui.pagoda_enter_btn", cur_fl) if g.lang != "en" else ("Ascend (Fl.%d)" % cur_fl)
+	var enter_btn := g._button(enter_str, func(): begin_pagoda_battle(cur_fl), g.EMBER, Vector2(0, 32))
 	enter_btn.name = "PagodaEnterBtn"
+	enter_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_row.add_child(enter_btn)
 
-	var pact_btn := g._button("📜 " + g.t("ui.pact_title"), _show_soul_pacts_modal, Color("581c87"), Vector2(140, 32))
+	var pact_btn := g._button("📜 " + g.t("ui.pact_title"), _show_soul_pacts_modal, Color("581c87"), Vector2(0, 32))
 	pact_btn.name = "PagodaPactBtn"
+	pact_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn_row.add_child(pact_btn)
 
 	vbox.add_child(btn_row)

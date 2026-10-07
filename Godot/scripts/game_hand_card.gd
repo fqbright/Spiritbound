@@ -118,6 +118,9 @@ func _on_touch_down(local_pos: Vector2) -> void:
 	current_tween.tween_property(self, "position:y", home_pos.y - 32.0, 0.18)
 	current_tween.tween_property(self, "rotation", 0.0, 0.18)
 	current_tween.tween_property(self, "scale", Vector2(1.1, 1.1), 0.18)
+	var card_frame := get_node_or_null("CardFrame")
+	if card_frame and is_instance_valid(card_frame):
+		current_tween.tween_property(card_frame, "modulate", Color(1.14, 1.14, 1.10, 1.0), 0.18)
 
 	# Show the peek right away (see the const comment above for why there is no delay
 	# here any more) — _on_touch_up decides afterwards, from how long it was actually
@@ -291,5 +294,8 @@ func _spring_back() -> void:
 	current_tween.tween_property(self, "position", home_pos, 0.4)
 	current_tween.tween_property(self, "rotation", home_rot, 0.3)
 	current_tween.tween_property(self, "scale", Vector2.ONE, 0.3)
+	var card_frame := get_node_or_null("CardFrame")
+	if card_frame and is_instance_valid(card_frame):
+		current_tween.tween_property(card_frame, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.25)
 
 
