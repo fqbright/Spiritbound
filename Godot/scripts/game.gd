@@ -896,7 +896,7 @@ func show_title_screen() -> void:
 	l_tw.tween_property(logo, "scale", Vector2(0.98, 0.98), 1.8).set_trans(Tween.TRANS_SINE)
 	page.add_child(logo)
 
-	page.add_child(_label(t("ui.auth_start_subtitle"), 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	page.add_child(_label(t("ui.auth_start_subtitle"), 10, GOLD, HORIZONTAL_ALIGNMENT_CENTER, true))
 
 	# Account Status Capsule Badge
 	var is_linked := SpiritSave.is_cloud_linked(profile)
@@ -940,7 +940,8 @@ func show_title_screen() -> void:
 	acc_name_lbl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	acc_top_row.add_child(acc_name_lbl)
 
-	var status_tag := _label(t("ui.auth_cloud_synced") if is_linked else t("ui.auth_status_guest"), 9, JADE if is_linked else Color("e09c48"))
+	var status_text: String = t("ui.auth_cloud_synced") if is_linked else (t("ui.auth_guest") if lang.begins_with("zh") else "Guest (Local)")
+	var status_tag := _label(status_text, 9, JADE if is_linked else Color("e09c48"))
 	acc_top_row.add_child(status_tag)
 	acc_card.add_child(acc_top_row)
 
@@ -964,7 +965,8 @@ func show_title_screen() -> void:
 	var auth_row := HBoxContainer.new()
 	auth_row.add_theme_constant_override("separation", 6)
 	if not is_linked:
-		var device_btn := _button("⚡ " + t("ui.auth_btn_device"), func():
+		var dev_label: String = "⚡ " + (t("ui.auth_btn_device") if lang.begins_with("zh") else "Cloud Sync")
+		var device_btn := _button(dev_label, func():
 			SpiritAuth.sign_in_with_device(self, func(ok, _p):
 				if ok:
 					show_title_screen()
@@ -974,15 +976,24 @@ func show_title_screen() -> void:
 		device_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if font_cjk: device_btn.add_theme_font_override("font", font_cjk)
 		device_btn.add_theme_font_size_override("font_size", 11)
+		for st in ["normal", "hover", "pressed"]:
+			var s := _button_style(Color("143b35"), 8, JADE if st == "hover" else Color("2a4e45"), st)
+			s.content_margin_left = 6; s.content_margin_right = 6
+			device_btn.add_theme_stylebox_override(st, s)
 		auth_row.add_child(device_btn)
 
-	var auth_btn := _button("☁️ " + (t("ui.auth_switch_account") if is_linked else t("ui.auth_modal_title")), func():
+	var auth_label: String = "☁️ " + (t("ui.auth_switch_account") if is_linked else (t("ui.auth_modal_title") if lang.begins_with("zh") else "Cloud Account"))
+	var auth_btn := _button(auth_label, func():
 		show_auth_modal(func(): show_map())
 	, Color("1a4049") if not is_linked else JADE, Vector2(0, 32))
 	auth_btn.name = "TitleAuthBtn"
 	auth_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if font_cjk: auth_btn.add_theme_font_override("font", font_cjk)
 	auth_btn.add_theme_font_size_override("font_size", 11)
+	for st in ["normal", "hover", "pressed"]:
+		var s := _button_style(Color("1a4049") if not is_linked else JADE, 8, GOLD if st == "pressed" else Color("2a4e58"), st)
+		s.content_margin_left = 6; s.content_margin_right = 6
+		auth_btn.add_theme_stylebox_override(st, s)
 	auth_row.add_child(auth_btn)
 	page.add_child(auth_row)
 
@@ -998,12 +1009,16 @@ func show_title_screen() -> void:
 		apple_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if font_cjk: apple_btn.add_theme_font_override("font", font_cjk)
 		apple_btn.add_theme_font_size_override("font_size", 10)
+		for st in ["normal", "hover", "pressed"]:
+			var s := _button_style(Color("080808"), 8, Color("444444"), st)
+			s.content_margin_left = 4; s.content_margin_right = 4
+			apple_btn.add_theme_stylebox_override(st, s)
 		var apple_icon := TextureRect.new()
 		apple_icon.texture = load("res://assets/icons/icon_apple.png")
 		apple_icon.custom_minimum_size = Vector2(14, 14)
 		apple_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		apple_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		apple_icon.position = Vector2(8, 7)
+		apple_icon.position = Vector2(6, 7)
 		apple_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		apple_btn.add_child(apple_icon)
 		oauth_row.add_child(apple_btn)
@@ -1018,17 +1033,22 @@ func show_title_screen() -> void:
 		google_btn.add_theme_color_override("font_pressed_color", Color("000000"))
 		if font_cjk: google_btn.add_theme_font_override("font", font_cjk)
 		google_btn.add_theme_font_size_override("font_size", 10)
+		for st in ["normal", "hover", "pressed"]:
+			var s := _button_style(Color("f0f2f5"), 8, Color("cbd5e1"), st)
+			s.content_margin_left = 4; s.content_margin_right = 4
+			google_btn.add_theme_stylebox_override(st, s)
 		var google_icon := TextureRect.new()
 		google_icon.texture = load("res://assets/icons/icon_google.png")
 		google_icon.custom_minimum_size = Vector2(14, 14)
 		google_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		google_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		google_icon.position = Vector2(8, 7)
+		google_icon.position = Vector2(6, 7)
 		google_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		google_btn.add_child(google_icon)
 		oauth_row.add_child(google_btn)
 
-		var guest_btn := _button(t("ui.auth_status_guest"), func():
+		var guest_label: String = t("ui.auth_guest") if lang.begins_with("zh") else "Guest"
+		var guest_btn := _button(guest_label, func():
 			if not SpiritSave.has_account_name(profile):
 				_create_account("灵界探险家")
 			show_map()
@@ -1037,6 +1057,10 @@ func show_title_screen() -> void:
 		guest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if font_cjk: guest_btn.add_theme_font_override("font", font_cjk)
 		guest_btn.add_theme_font_size_override("font_size", 10)
+		for st in ["normal", "hover", "pressed"]:
+			var s := _button_style(Color("17363e"), 8, Color("2a4e58"), st)
+			s.content_margin_left = 4; s.content_margin_right = 4
+			guest_btn.add_theme_stylebox_override(st, s)
 		oauth_row.add_child(guest_btn)
 
 		page.add_child(oauth_row)
@@ -1063,7 +1087,8 @@ func show_title_screen() -> void:
 	set_btn.add_theme_font_size_override("font_size", 10)
 	bot_row.add_child(set_btn)
 
-	var ver_lbl := _label("v1.1.0 · Build 49", 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var ver_num: String = str(profile.get("build_version", "48"))
+	var ver_lbl := _label("v1.1.0 · Build %s" % ver_num, 9, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	ver_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bot_row.add_child(ver_lbl)
 

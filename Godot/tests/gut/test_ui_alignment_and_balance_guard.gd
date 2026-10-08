@@ -201,3 +201,55 @@ func test_balance_probe_retry_allowance_invariant():
 	# gets at least 1 retry, avoiding spurious CI test wall failures.
 	assert_true(text.contains("const QUICK_MAX_RETRIES := 2") or text.contains("const QUICK_MAX_RETRIES := 3"),
 		"QUICK_MAX_RETRIES is configured to at least 2 in balance_probe.gd")
+
+# ------------------------------------------------------------------------------
+# 6. Title / Login Screen: Button and Label No-Overflow Guard
+# ------------------------------------------------------------------------------
+
+func test_title_login_screen_buttons_and_labels_no_overflow():
+	for lang in ["zh-Hans", "en"]:
+		var g := _create_game(lang)
+		g.show_title_screen()
+
+		var start_btn: Control = g.root.find_child("TitleStartBtn", true, false)
+		assert_not_null(start_btn, "[%s] TitleStartBtn exists" % lang)
+		if start_btn:
+			assert_true(start_btn.get_combined_minimum_size().x <= 366.0,
+				"[%s] TitleStartBtn width <= 366.0" % lang)
+
+		var dev_btn: Control = g.root.find_child("TitleDeviceAuthBtn", true, false)
+		var auth_btn: Control = g.root.find_child("TitleAuthBtn", true, false)
+		if dev_btn and auth_btn:
+			var auth_row: HBoxContainer = dev_btn.get_parent() as HBoxContainer
+			assert_not_null(auth_row, "[%s] auth_row exists" % lang)
+			if auth_row:
+				var auth_w: float = auth_row.get_combined_minimum_size().x
+				assert_true(auth_w <= 366.0,
+					"[%s] Title auth_row width (%f) must be <= 366.0" % [lang, auth_w])
+
+		var apple_btn: Control = g.root.find_child("TitleAppleBtn", true, false)
+		var google_btn: Control = g.root.find_child("TitleGoogleBtn", true, false)
+		var guest_btn: Button = g.root.find_child("TitleGuestBtn", true, false) as Button
+		if apple_btn and google_btn and guest_btn:
+			var oauth_row: HBoxContainer = apple_btn.get_parent() as HBoxContainer
+			assert_not_null(oauth_row, "[%s] oauth_row exists" % lang)
+			if oauth_row:
+				var oauth_w: float = oauth_row.get_combined_minimum_size().x
+				assert_true(oauth_w <= 366.0,
+					"[%s] Title oauth_row width (%f) must be <= 366.0" % [lang, oauth_w])
+			# Assert guest button has concise label, avoiding the unlinked paragraph
+			assert_true(guest_btn.text == "游客账号" or guest_btn.text == "Guest",
+				"[%s] TitleGuestBtn has concise label '%s'" % [lang, guest_btn.text])
+
+		# Verify all controls on the title page fit within 366.0
+		if start_btn:
+			var page: Control = start_btn.get_parent() as Control
+			if page:
+				for child in page.get_children():
+					if child is Control and child.visible:
+						var c_min_w: float = (child as Control).get_combined_minimum_size().x
+						assert_true(c_min_w <= 366.0,
+							"[%s] Title child '%s' width (%f) <= 366.0" % [lang, child.name, c_min_w])
+
+		g.free()
+
